@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ESNext"],
+    "types": ["bun-types"],
+    "allowImportingTsExtensions": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "baseUrl": ".",
+    "paths": {
+      "@orch/core/*": ["./src/core/*"],
+      "@orch/runners/*": ["./src/runners/*"],
+      "@orch/services/*": ["./src/services/*"],
+      "@orch/state/*": ["./src/state/*"],
+      "@orch/validators/*": ["./src/validators/*"],
+      "@orch/test/*": ["./tests/helpers/*"]
+    }
+  },
+  "include": ["src", "tests"]
+}

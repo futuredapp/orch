@@ -1,0 +1,29 @@
+{
+  "enabledPlugins": {
+    "compound-engineering@every-marketplace": true
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // empty' | xargs -r -I{} sh -c 'cd \"$CLAUDE_PROJECT_DIR\" 2>/dev/null || true; bunx @biomejs/biome format --write \"{}\" 2>/dev/null || true'"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/warn-big-file.sh\""
+          }
+        ]
+      }
+    ]
+  }
+}
