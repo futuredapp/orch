@@ -1,9 +1,7 @@
 import { afterEach, describe, expect, it } from 'bun:test'
 import * as fs from 'node:fs/promises'
-import { FileStateStore, type RunId, type StepEntry } from '../../../src/state/index.ts'
 import { BunFsService, path } from '../../../src/services/index.ts'
-
-const rid = (s: string): RunId => s as RunId
+import { FileStateStore, type RunId, type StepEntry } from '../../../src/state/index.ts'
 
 let tmpDir: string
 
@@ -36,9 +34,9 @@ describe('FileStateStore (integration)', () => {
     const state = await store.loadRun(id)
 
     expect(state).toBeDefined()
-    expect(state!.id).toBe(id)
-    expect(state!.schemaVersion).toBe(1)
-    expect(state!.steps['step-a']).toEqual(entry)
+    expect(state?.id).toBe(id)
+    expect(state?.schemaVersion).toBe(1)
+    expect(state?.steps['step-a']).toEqual(entry)
   })
 
   it('atomic write produces valid JSON on disk', async () => {

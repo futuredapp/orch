@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test'
-import { FileRunRegistry, type RunId } from '../../../src/state/index.ts'
 import { FakeFsService, path } from '../../../src/services/index.ts'
+import { FileRunRegistry, type RunId } from '../../../src/state/index.ts'
 
 const rid = (s: string): RunId => s as RunId
 const BASE = path('/runs')

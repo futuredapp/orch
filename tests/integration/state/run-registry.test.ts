@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'bun:test'
 import * as fs from 'node:fs/promises'
-import { FileRunRegistry, type RunId } from '../../../src/state/index.ts'
 import { BunFsService, path } from '../../../src/services/index.ts'
+import { FileRunRegistry, type RunId } from '../../../src/state/index.ts'
 
 const rid = (s: string): RunId => s as RunId
 

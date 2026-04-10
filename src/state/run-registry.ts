@@ -1,5 +1,6 @@
-import type { FsService, Path } from '../services/index.ts'
-import type { RunId } from './run-id.ts'
+import type { FsService } from '../services/index.ts'
+import type { Path } from '../services/types.ts'
+import { RUN_ID_PATTERN, type RunId, runId } from './run-id.ts'
 
 export interface RunRegistry {
   listRuns(): Promise<readonly RunId[]>
@@ -8,19 +9,32 @@ export interface RunRegistry {
 }
 
 export class FileRunRegistry implements RunRegistry {
-  constructor(_deps: { readonly fs: FsService; readonly basePath: Path }) {
-    throw new Error('Not implemented')
+  readonly #fs: FsService
+  readonly #basePath: Path
+
+  constructor(deps: { readonly fs: FsService; readonly basePath: Path }) {
+    this.#fs = deps.fs
+    this.#basePath = deps.basePath
   }
 
-  listRuns(): Promise<readonly RunId[]> {
-    throw new Error('Not implemented')
+  async listRuns(): Promise<readonly RunId[]> {
+    const exists = await this.#fs.exists(this.#basePath)
+    if (!exists) return []
+
+    const entries = await this.#fs.readDir(this.#basePath)
+    return entries
+      .filter((e) => RUN_ID_PATTERN.test(e))
+      .sort()
+      .map((e) => runId(e))
   }
 
-  findLatest(): Promise<RunId | undefined> {
-    throw new Error('Not implemented')
+  async findLatest(): Promise<RunId | undefined> {
+    const runs = await this.listRuns()
+    return runs.at(-1) ?? undefined
   }
 
-  findByPrefix(_prefix: string): Promise<readonly RunId[]> {
-    throw new Error('Not implemented')
+  async findByPrefix(prefix: string): Promise<readonly RunId[]> {
+    const runs = await this.listRuns()
+    return runs.filter((id) => id.startsWith(prefix))
   }
 }

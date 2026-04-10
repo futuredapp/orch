@@ -1,12 +1,6 @@
 import { describe, expect, it } from 'bun:test'
-import {
-  FileStateStore,
-  type RunId,
-  type RunState,
-  StateCorruptionError,
-  type StepEntry,
-} from '../../../src/state/index.ts'
 import { FakeFsService, path } from '../../../src/services/index.ts'
+import { FileStateStore, type RunId, type StepEntry } from '../../../src/state/index.ts'
 
 const rid = (s: string): RunId => s as RunId
 
@@ -47,10 +41,10 @@ describe('FileStateStore', () => {
     const state = await store.loadRun(id)
 
     expect(state).toBeDefined()
-    expect(state!.id).toBe(id)
-    expect(state!.schemaVersion).toBe(1)
-    expect(state!.status).toBe('running')
-    expect(state!.steps['step-a']).toEqual(entry)
+    expect(state?.id).toBe(id)
+    expect(state?.schemaVersion).toBe(1)
+    expect(state?.status).toBe('running')
+    expect(state?.steps['step-a']).toEqual(entry)
   })
 
   it('saveStep then loadRun round-trips multiple step entries', async () => {
@@ -64,9 +58,9 @@ describe('FileStateStore', () => {
     const state = await store.loadRun(id)
 
     expect(state).toBeDefined()
-    expect(Object.keys(state!.steps)).toHaveLength(2)
-    expect(state!.steps['step-a']).toEqual(entryA)
-    expect(state!.steps['step-b']).toEqual(entryB)
+    expect(Object.keys(state?.steps ?? {})).toHaveLength(2)
+    expect(state?.steps['step-a']).toEqual(entryA)
+    expect(state?.steps['step-b']).toEqual(entryB)
   })
 
   it('saveStep overwrites an existing step with the same name', async () => {
@@ -79,7 +73,7 @@ describe('FileStateStore', () => {
     await store.saveStep(id, updated)
     const state = await store.loadRun(id)
 
-    expect(state!.steps['step-a']!.value).toBe('second')
+    expect(state?.steps['step-a']?.value).toBe('second')
   })
 
   it('saveStep creates the run directory if it does not exist', async () => {
@@ -127,7 +121,7 @@ describe('FileStateStore', () => {
     const { store } = makeStore()
     const id = rid('r-2026-04-10-0001')
     const circular: Record<string, unknown> = {}
-    circular['self'] = circular
+    circular.self = circular
     const entry = makeEntry({ name: 'bad-value', value: circular })
 
     try {

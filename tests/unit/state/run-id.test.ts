@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test'
-import { generateRunId, RUN_ID_PATTERN, runId, type RunId } from '../../../src/state/index.ts'
 import { FakeClock } from '../../../src/services/index.ts'
+import { generateRunId, RUN_ID_PATTERN, type RunId, runId } from '../../../src/state/index.ts'
 
 const rid = (s: string): RunId => s as RunId
 
