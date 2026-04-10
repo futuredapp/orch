@@ -424,14 +424,14 @@ Each integration test creates and tears down its own temp dir via `BunFsService.
 
 **Goal:** `tests/integration/services/fs/bun-fs-service.test.ts` green.
 
-- [ ] `readFile` → `Bun.file(path).text()`. `writeFile` → `Bun.write(path, data)`.
-- [ ] `rename` → `node:fs/promises.rename`. `mkdir` → `fs.mkdir(path, { recursive })`. `exists` → `fs.stat(path).then(() => true, () => false)`.
-- [ ] `glob` → `new Bun.Glob(pattern).scan({ cwd })` wrapped to yield `Path`.
-- [ ] `readDir` → `fs.readdir`. `stat` → `fs.stat`, projected to `{ size, mtimeMs }`. `remove` → `fs.rm(path, { recursive: true, force: true })`.
-- [ ] `tempDir` → `fs.mkdtemp(path.join(os.tmpdir(), prefix))` returned as `Path`.
-- [ ] Each method ≤ 15 lines; file ≤ 140 lines.
-- [ ] `bun test tests/integration/services/fs/bun-fs-service.test.ts` → green. `bun run check` → **full green**.
-- [ ] Commit: `phase 1: implement BunFsService wrapping Bun.file + node:fs/promises`.
+- [x] `readFile` → `Bun.file(path).text()`. `writeFile` → `Bun.write(path, data)`.
+- [x] `rename` → `node:fs/promises.rename`. `mkdir` → `fs.mkdir(path, { recursive })`. `exists` → `fs.stat(path).then(() => true, () => false)`.
+- [x] `glob` → `new Bun.Glob(pattern).scan({ cwd })` wrapped to yield `Path`.
+- [x] `readDir` → `fs.readdir`. `stat` → `fs.stat`, projected to `{ size, mtimeMs }`. `remove` → `fs.rm(path, { recursive: true, force: true })`.
+- [x] `tempDir` → `fs.mkdtemp(path.join(os.tmpdir(), prefix))` returned as `Path`.
+- [x] Each method ≤ 15 lines; file ≤ 140 lines.
+- [x] `bun test tests/integration/services/fs/bun-fs-service.test.ts` → green. `bun run check` → **full green**.
+- [x] Commit: `phase 1: implement BunFsService wrapping Bun.file + node:fs/promises`.
 
 ### Commit 9 — Barrel audit + phase landing note
 

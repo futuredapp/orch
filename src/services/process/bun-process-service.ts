@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
+import { frameLines } from './line-framer.ts'
 import type { ProcessService, SpawnHandle, SpawnOptions } from './process-service.ts'
 import { ProcessSpawnError } from './process-service.ts'
-import { frameLines } from './line-framer.ts'
 
 const STDERR_TAIL_SIZE = 200
 
@@ -28,10 +28,12 @@ export class BunProcessService implements ProcessService {
     // Pump stderr eagerly to prevent pipe backpressure deadlock.
     // SpawnHandle.stderr iterates the tail buffer, not the live stream.
     const stderrTail: string[] = []
-    const stderrDone = drainStderr(proc.stderr, stderrTail, STDERR_TAIL_SIZE)
+    const stderrStream = proc.stderr as ReadableStream<Uint8Array>
+    const stderrDone = drainStderr(stderrStream, stderrTail, STDERR_TAIL_SIZE)
 
+    const stdoutStream = proc.stdout as ReadableStream<Uint8Array>
     return {
-      stdout: frameLines(proc.stdout),
+      stdout: frameLines(stdoutStream),
 
       stderr: replayBuffer(stderrTail, stderrDone),
 

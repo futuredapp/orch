@@ -1,44 +1,57 @@
+import * as fs from 'node:fs/promises'
+import * as os from 'node:os'
+import * as nodePath from 'node:path'
 import type { Path } from '../types.ts'
+import { path } from '../types.ts'
 import type { FsService } from './fs-service.ts'
 
 export class BunFsService implements FsService {
-  readFile(_path: Path): Promise<string> {
-    throw new Error('not implemented')
+  async readFile(p: Path): Promise<string> {
+    return Bun.file(p).text()
   }
 
-  writeFile(_path: Path, _data: string): Promise<void> {
-    throw new Error('not implemented')
+  async writeFile(p: Path, data: string): Promise<void> {
+    await Bun.write(p, data)
   }
 
-  rename(_from: Path, _to: Path): Promise<void> {
-    throw new Error('not implemented')
+  async rename(from: Path, to: Path): Promise<void> {
+    await fs.rename(from, to)
   }
 
-  mkdir(_path: Path, _opts?: { readonly recursive?: boolean }): Promise<void> {
-    throw new Error('not implemented')
+  async mkdir(p: Path, opts?: { readonly recursive?: boolean }): Promise<void> {
+    await fs.mkdir(p, { recursive: opts?.recursive ?? false })
   }
 
-  exists(_path: Path): Promise<boolean> {
-    throw new Error('not implemented')
+  async exists(p: Path): Promise<boolean> {
+    return fs.stat(p).then(
+      () => true,
+      () => false,
+    )
   }
 
-  glob(_pattern: string, _opts?: { readonly cwd?: Path }): AsyncIterable<Path> {
-    throw new Error('not implemented')
+  async *glob(pattern: string, opts?: { readonly cwd?: Path }): AsyncIterable<Path> {
+    const cwd = opts?.cwd ?? path(process.cwd())
+    const scanner = new Bun.Glob(pattern).scan({ cwd })
+    for await (const match of scanner) {
+      yield path(match)
+    }
   }
 
-  readDir(_path: Path): Promise<readonly Path[]> {
-    throw new Error('not implemented')
+  async readDir(p: Path): Promise<readonly Path[]> {
+    const entries = await fs.readdir(p)
+    return entries.map((e) => path(e))
   }
 
-  stat(_path: Path): Promise<{ readonly size: number; readonly mtimeMs: number }> {
-    throw new Error('not implemented')
+  async stat(p: Path): Promise<{ readonly size: number; readonly mtimeMs: number }> {
+    const s = await fs.stat(p)
+    return { size: s.size, mtimeMs: s.mtimeMs }
   }
 
-  remove(_path: Path): Promise<void> {
-    throw new Error('not implemented')
+  async remove(p: Path): Promise<void> {
+    await fs.rm(p, { recursive: true, force: true })
   }
 
-  tempDir(_prefix: string): Promise<Path> {
-    throw new Error('not implemented')
+  async tempDir(prefix: string): Promise<Path> {
+    return path(await fs.mkdtemp(nodePath.join(os.tmpdir(), prefix)))
   }
 }
