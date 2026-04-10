@@ -374,18 +374,18 @@ Each integration test creates and tears down its own temp dir via `BunFsService.
 
 **Goal:** `tests/unit/services/process/fake-process-service.test.ts` green.
 
-- [ ] Internal state: `#queues: Map<string, FakeResponse[]>` keyed by `JSON.stringify(argv)`.
-- [ ] `when(argv)` returns `{ respondWith(r) { /* push into queue */ } }`. Create the queue lazily.
-- [ ] `spawn(opts)`:
+- [x] Internal state: `#queues: Map<string, FakeResponse[]>` keyed by `JSON.stringify(argv)`.
+- [x] `when(argv)` returns `{ respondWith(r) { /* push into queue */ } }`. Create the queue lazily.
+- [x] `spawn(opts)`:
   - Key = `JSON.stringify(opts.argv)`. Pop the front; throw with the exact message on empty.
   - Build the returned `SpawnHandle` inline:
     - `stdout`: async generator yielding each scripted line. Between yields, check a `killed` flag; if set, throw an `AbortError`.
     - `stderr`: symmetric.
     - `wait()`: await an internal "iterator finished or killed" promise, then resolve with `{ exitCode: killed ? -1 : scripted.exit }`.
     - `kill()`: sets `killed`, idempotent.
-- [ ] File ≤ 100 lines (brainstorm budget).
-- [ ] `bun test tests/unit/services/process/fake-process-service.test.ts` → green.
-- [ ] Commit: `phase 1: implement FakeProcessService with per-argv FIFO queue`.
+- [x] File ≤ 100 lines (brainstorm budget).
+- [x] `bun test tests/unit/services/process/fake-process-service.test.ts` → green.
+- [x] Commit: `phase 1: implement FakeProcessService with per-argv FIFO queue`.
 
 ### Commit 6 — Implement `FakeFsService`
 
