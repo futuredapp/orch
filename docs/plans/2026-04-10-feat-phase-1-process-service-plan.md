@@ -407,7 +407,7 @@ Each integration test creates and tears down its own temp dir via `BunFsService.
 
 **Goal:** `tests/integration/services/process/bun-process-service.test.ts` green. This is the first file in the phase allowed to reference `Bun.spawn` (the Biome override makes it legal).
 
-- [ ] `spawn(opts)`:
+- [x] `spawn(opts)`:
   1. Validate `cwd` exists (via `node:fs/promises.stat`); on failure, throw `ProcessSpawnError('cwd does not exist: ' + opts.cwd)`.
   2. `const proc = Bun.spawn({ cmd: [...opts.argv], cwd: opts.cwd, env: opts.env, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' })`. Wrap in try/catch; rewrap synchronous throws as `ProcessSpawnError`.
   3. **Pump stderr immediately** via an async IIFE that drains `frameLines(proc.stderr)` into a bounded tail buffer (size 200). Prevents the pipe-backpressure deadlock (Watch-outs §1).
@@ -416,9 +416,9 @@ Each integration test creates and tears down its own temp dir via `BunFsService.
      - `stderr`: expose a generator that replays the tail buffer. Document: "stderr is pumped eagerly to prevent pipe backpressure; `SpawnHandle.stderr` iterates the tail buffer, not the live stream."
      - `wait()`: `await proc.exited; return { exitCode: proc.exitCode ?? -1 }`.
      - `kill(signal = 'SIGTERM')`: `proc.kill(signal)`.
-- [ ] File ≤ 140 lines; `spawn()` body ≤ 60 lines (CLAUDE.md Rule 5).
-- [ ] `bun test tests/integration/services/process/bun-process-service.test.ts` → all seven integration tests green, including the stderr backpressure case.
-- [ ] Commit: `phase 1: implement BunProcessService wrapping Bun.spawn`.
+- [x] File ≤ 140 lines; `spawn()` body ≤ 60 lines (CLAUDE.md Rule 5).
+- [x] `bun test tests/integration/services/process/bun-process-service.test.ts` → all seven integration tests green, including the stderr backpressure case.
+- [x] Commit: `phase 1: implement BunProcessService wrapping Bun.spawn`.
 
 ### Commit 8 — Implement `BunFsService` (integration-green)
 
