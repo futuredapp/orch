@@ -36,7 +36,7 @@ describe('generateRunId', () => {
 
     const id = generateRunId({ clock })
 
-    const slug = id.split('-').slice(3).join('-')
+    const slug = id.split('-').at(-1)
     expect(slug).toHaveLength(4)
     expect(slug).toBe('0000')
   })
