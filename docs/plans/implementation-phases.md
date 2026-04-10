@@ -51,7 +51,7 @@ Legend: ☐ not started · ◐ in progress · ✓ landed
 
 ---
 
-### Phase 1 — `ProcessService` port + Bun adapter + Fake adapter ☐
+### Phase 1 — `ProcessService` port + Bun adapter + Fake adapter ✓
 
 **Goal:** the single seam between the codebase and every subprocess it will ever spawn.
 
@@ -66,6 +66,8 @@ Legend: ☐ not started · ◐ in progress · ✓ landed
 - **Integration** — `BunProcessService` spawns `echo hello` on a real shell and reads it back. (No Claude/Codex yet.)
 
 **Definition of Done:** Any file importing `Bun.spawn` outside this folder fails the `bun run check` gate (enforced via a grep-based pre-lint step or a custom Biome rule).
+
+**Landed:** 2026-04-10
 
 ---
 

@@ -1,7 +1,7 @@
 ---
 title: Phase 1 — ProcessService port, Bun adapter, Fake adapter, and fs/clock service parity
 type: feat
-status: active
+status: completed
 date: 2026-04-10
 phase: 1
 relates-to:
@@ -437,19 +437,19 @@ Each integration test creates and tears down its own temp dir via `BunFsService.
 
 **Goal:** cross-module callers see exactly the surface the brainstorm promises; the roadmap is updated.
 
-- [ ] Verify `src/services/index.ts` matches the "Top-level barrel" section exactly. Quick check:
+- [x] Verify `src/services/index.ts` matches the "Top-level barrel" section exactly. Quick check:
   ```bash
   bun -e "import('./src/services/index.ts').then(m => console.log(Object.keys(m).sort()))"
   ```
-- [ ] Verify each sub-barrel is consistent with the top-level barrel.
-- [ ] Sanity grep for the `Bun.spawn` global gap (not CI-wired):
+- [x] Verify each sub-barrel is consistent with the top-level barrel.
+- [x] Sanity grep for the `Bun.spawn` global gap (not CI-wired):
   ```bash
   grep -rn 'Bun\.spawn' src/ tests/ | grep -v 'src/services/process/'
   # expected: no matches
   ```
-- [ ] `bun run check` → full green.
-- [ ] Update `docs/plans/implementation-phases.md`: flip Phase 1's glyph from `☐` to `✓` and append `**Landed:** YYYY-MM-DD`. Do not touch any other phase.
-- [ ] Commit: `phase 1: land — services barrel + roadmap update`.
+- [x] `bun run check` → full green.
+- [x] Update `docs/plans/implementation-phases.md`: flip Phase 1's glyph from `☐` to `✓` and append `**Landed:** YYYY-MM-DD`. Do not touch any other phase.
+- [x] Commit: `phase 1: land — services barrel + roadmap update`.
 
 ## Tests this phase ships
 
@@ -471,15 +471,15 @@ Each integration test creates and tears down its own temp dir via `BunFsService.
 
 ## Definition of Done
 
-- [ ] `bun run check` green on the phase branch.
-- [ ] Every unit + integration test above present and passing.
-- [ ] **A stray `import 'child_process'` in `src/index.ts` fails `bun run lint`** — verified via temporary red experiment, confirmed, reverted.
-- [ ] No file references `Bun.spawn` outside `src/services/process/bun-process-service.ts` — verified via manual grep.
-- [ ] Every new file under 300 lines. Every new function under 60 lines. Any exception has an inline comment.
-- [ ] Zero `any`, zero `!` non-null assertions.
-- [ ] No `mock.module()` / `jest.mock()` / `vi.mock()` anywhere in Phase 1 tests.
-- [ ] No runtime side effects at module import time (reviewed file-by-file).
-- [ ] `docs/plans/implementation-phases.md` updated: Phase 1 glyph `✓`, landed date recorded.
+- [x] `bun run check` green on the phase branch.
+- [x] Every unit + integration test above present and passing.
+- [x] **A stray `import 'child_process'` in `src/index.ts` fails `bun run lint`** — verified via temporary red experiment, confirmed, reverted.
+- [x] No file references `Bun.spawn` outside `src/services/process/bun-process-service.ts` — verified via manual grep.
+- [x] Every new file under 300 lines. Every new function under 60 lines. Any exception has an inline comment.
+- [x] Zero `any`, zero `!` non-null assertions.
+- [x] No `mock.module()` / `jest.mock()` / `vi.mock()` anywhere in Phase 1 tests.
+- [x] No runtime side effects at module import time (reviewed file-by-file).
+- [x] `docs/plans/implementation-phases.md` updated: Phase 1 glyph `✓`, landed date recorded.
 - [ ] PR description lists tests per layer:
   ```
   ## Phase 1 — ProcessService port + Bun adapter + Fake adapter + fs/clock parity
