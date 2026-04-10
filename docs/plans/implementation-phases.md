@@ -93,19 +93,25 @@ Legend: ☐ not started · ◐ in progress · ✓ landed
 
 ---
 
-### Phase 3 — State store + run IDs ☐
+### Phase 3 — State store + run IDs ✓
 
 **Goal:** deterministic, inspectable persistence. Everything the workflow needs to memoize.
 
 **Deliverables:**
-- `src/state/run-id.ts` — `r-YYYY-MM-DD-<4-char-slug>` generator (uses injected `Clock` for determinism).
-- `src/state/state-store.ts` — load/save `.orchestrator/runs/<id>/state.json`; atomic writes (tmp + rename); typed per-step entry `{ name, value, startedAt, endedAt, artifacts, durationMs }`.
-- `src/state/run-registry.ts` — list runs, find latest, find by prefix.
+- `src/state/run-id.ts` — `RunId` branded type + `generateRunId()` with clock-derived slug (`r-YYYY-MM-DD-xxxx`).
+- `src/state/state-store.ts` — `FileStateStore` with atomic writes (tmp + rename); `RunState` with `schemaVersion: 1` and `status`; `StepEntry` `{ name, value, startedAt, endedAt, artifacts }` (dropped `durationMs` — redundant with `endedAt - startedAt`); `StateCorruptionError` with Zod issues; Zod validation on load + `JSON.stringify` guard on save.
+- `src/state/run-registry.ts` — `FileRunRegistry` with `listRuns`, `findLatest`, `findByPrefix`.
+- `src/state/index.ts` — public barrel.
 
 **Tests:**
-- **Unit** — state store round-trips a run, handles missing files, survives partial writes (kill between write and rename).
-- **Unit** — run id is stable given a fixed clock.
-- **Integration** — against a real temp directory (via `FsService` adapter).
+- **Unit** — run-id: format, stability, date portion, slug padding, validation (8 tests).
+- **Unit** — state store: round-trip, overwrite, missing files, corrupted JSON, atomic write safety, stringify error wrapping (8 tests).
+- **Unit** — run registry: empty/missing dirs, sorted listing, non-matching entry filtering, latest, prefix search (8 tests).
+- **Integration** — state store + run registry against real temp directories via `BunFsService` (3 tests).
+
+**Detailed plan:** [`docs/plans/2026-04-10-feat-phase-3-state-store-run-ids-plan.md`](2026-04-10-feat-phase-3-state-store-run-ids-plan.md)
+
+**Landed:** 2026-04-10
 
 ---
 
