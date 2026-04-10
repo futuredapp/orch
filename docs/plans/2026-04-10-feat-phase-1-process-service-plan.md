@@ -365,10 +365,10 @@ Each integration test creates and tears down its own temp dir via `BunFsService.
 
 **Goal:** `tests/unit/services/clock/fake-clock.test.ts` green.
 
-- [ ] `SystemClock.now()` returns `Date.now()`.
-- [ ] `FakeClock`: constructor stores optional `initial` (default 0) in `#time`. `now()` returns `#time`. `advance(ms)` does `#time += ms` and throws if `ms < 0` (`FakeClock.advance: ms must be >= 0; use set() to move backward`). `set(ms)` replaces `#time` unconditionally.
-- [ ] `bun test tests/unit/services/clock/fake-clock.test.ts` → green.
-- [ ] Commit: `phase 1: implement SystemClock and FakeClock`.
+- [x] `SystemClock.now()` returns `Date.now()`.
+- [x] `FakeClock`: constructor stores optional `initial` (default 0) in `#time`. `now()` returns `#time`. `advance(ms)` does `#time += ms` and throws if `ms < 0` (`FakeClock.advance: ms must be >= 0; use set() to move backward`). `set(ms)` replaces `#time` unconditionally.
+- [x] `bun test tests/unit/services/clock/fake-clock.test.ts` → green.
+- [x] Commit: `phase 1: implement SystemClock and FakeClock`.
 
 ### Commit 5 — Implement `FakeProcessService`
 

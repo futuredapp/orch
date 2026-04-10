@@ -1,20 +1,25 @@
 import type { Clock } from './clock.ts'
 
 export class FakeClock implements Clock {
-  constructor(_initial?: number) {
-    throw new Error('not implemented')
+  #time: number
+
+  constructor(initial = 0) {
+    this.#time = initial
   }
 
   now(): number {
-    throw new Error('not implemented')
+    return this.#time
   }
 
-  advance(_ms: number): void {
-    throw new Error('not implemented')
+  advance(ms: number): void {
+    if (ms < 0) {
+      throw new Error('FakeClock.advance: ms must be >= 0; use set() to move backward')
+    }
+    this.#time += ms
   }
 
   /** Can move backward; needed for state-replay tests. */
-  set(_ms: number): void {
-    throw new Error('not implemented')
+  set(ms: number): void {
+    this.#time = ms
   }
 }
