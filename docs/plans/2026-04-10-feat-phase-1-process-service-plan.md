@@ -351,15 +351,15 @@ Each integration test creates and tears down its own temp dir via `BunFsService.
 
 **Goal:** `tests/unit/services/process/line-framer.test.ts` goes green.
 
-- [ ] Implement `frameLines()` as a pure async generator:
+- [x] Implement `frameLines()` as a pure async generator:
   1. Instantiate `new TextDecoder('utf-8', { fatal: false })` once.
   2. Buffer `= ''`. For each chunk: `buffer += decoder.decode(chunk, { stream: true })`.
   3. Split buffer on `'\n'`; keep last element as new buffer; for every other element, strip a single trailing `'\r'` and yield.
   4. On source completion: `buffer += decoder.decode()` (flush trailing state); if non-empty, yield with the same `\r` strip.
-- [ ] Accept both `AsyncIterable<Uint8Array>` and `ReadableStream<Uint8Array>` (detect via `Symbol.asyncIterator` vs `getReader()`).
-- [ ] Body ≤ 40 lines (brainstorm budget).
-- [ ] `bun test tests/unit/services/process/line-framer.test.ts` → green. `bun run check` lint+typecheck green; other tests still red.
-- [ ] Commit: `phase 1: implement line-framer (pure async generator)`.
+- [x] Accept both `AsyncIterable<Uint8Array>` and `ReadableStream<Uint8Array>` (detect via `Symbol.asyncIterator` vs `getReader()`).
+- [x] Body ≤ 40 lines (brainstorm budget).
+- [x] `bun test tests/unit/services/process/line-framer.test.ts` → green. `bun run check` lint+typecheck green; other tests still red.
+- [x] Commit: `phase 1: implement line-framer (pure async generator)`.
 
 ### Commit 4 — Implement `SystemClock` + `FakeClock`
 
