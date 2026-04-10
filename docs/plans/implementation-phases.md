@@ -71,18 +71,25 @@ Legend: ☐ not started · ◐ in progress · ✓ landed
 
 ---
 
-### Phase 2 — `Runner` port + `FakeRunner` ☐
+### Phase 2 — `Runner` port + `FakeRunner` + `runRunner` ✓
 
-**Goal:** the abstraction the workflow core will talk to. No real CLI yet.
+**Goal:** the abstraction the workflow core will talk to. No real CLI yet. Three-layer split: pure adapter (`Runner`), executor glue (`runRunner`), test double (`FakeRunner`).
 
 **Deliverables:**
-- `src/runners/runner.ts` — `Runner` interface (`name`, `supports`, `buildCommand`, `parseEvents`, `extractStructuredOutput`, optional `escalationWiring`) and `defineRunner()` factory.
-- `src/runners/fake/fake-runner.ts` — script-driven runner used by all upcoming core tests.
-- `RunnerContext` type (working dir, env, prompt, schema, pane handle, transcript path).
+- `src/runners/runner.ts` — `Runner` interface (`name`, `supports`, `buildCommand`, `parseEvents`, `extractStructuredOutput`), `RunnerContext`, `RunnerEvent` union (`TerminalEvent` + `InfoEvent`), `defineRunner()` factory, `isTerminalEvent` predicate. `Path` imported from `src/services/types.ts` (already shipped by Phase 1).
+- `src/runners/execute.ts` — `runRunner(runner, ctx, deps)` executor that pumps a runner against a `ProcessService` and produces a `RunnerResult`.
+- `src/runners/fake/fake-runner.ts` — scriptable `FakeRunner` class with FIFO script queue, per-instance nonce, invocation tracking.
+- `src/runners/index.ts` — single public barrel.
+- `RunnerContext` type: `cwd: Path`, `env`, `prompt`, `extraArgs` only. (`schema`, `paneHandle`, `transcriptPath`, `secrets` deferred to their respective phases — YAGNI.)
 
 **Tests:**
-- **Unit** — `FakeRunner` can be configured to emit a sequence of events, return a structured value, fail with an error, and track invocation count.
-- **Unit** — `defineRunner()` validates required fields.
+- **Unit** — `FakeRunner` can be configured to emit a sequence of events, return a structured value, fail with an error, track invocation count, consume scripts FIFO, and throw on empty queue.
+- **Unit** — `defineRunner()` validates required fields; `isTerminalEvent` narrows correctly.
+- **Integration (mocked edges)** — `FakeRunner → runRunner → FakeProcessService` round-trips events, terminal event, structured output, measures `durationMs` via injected `Clock`.
+
+**Detailed plan:** [`docs/plans/2026-04-09-feat-phase-2-runner-port-plan.md`](2026-04-09-feat-phase-2-runner-port-plan.md)
+
+**Landed:** 2026-04-10
 
 ---
 
