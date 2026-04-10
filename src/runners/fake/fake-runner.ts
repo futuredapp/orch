@@ -1,3 +1,4 @@
+import type { FakeProcessService } from '../../services/process/fake-process-service.ts'
 import type {
   InfoEvent,
   Runner,
@@ -16,6 +17,12 @@ export interface FakeScript {
 export class FakeRunner implements Runner {
   readonly name = 'fake'
   readonly supports = { interactive: true, structuredOutput: true } as const
+
+  #fps: FakeProcessService
+
+  constructor(processService: FakeProcessService) {
+    this.#fps = processService
+  }
 
   script(_s: FakeScript): this {
     throw new Error('not implemented')
