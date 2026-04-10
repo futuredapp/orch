@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import type { Path } from '../services/types.ts'
 
 // ---------------------------------------------------------------------------
@@ -63,8 +64,35 @@ export interface Runner {
 
 // ---------------------------------------------------------------------------
 // defineRunner — validating identity factory
+//
+// Uses safeParse to avoid leaking config values in error messages (S7).
+// Returns the original config frozen — not Zod's inferred output — to
+// preserve the caller's literal type T.
 // ---------------------------------------------------------------------------
 
-export function defineRunner<T extends Runner>(_config: T): Readonly<T> {
-  throw new Error('not implemented')
+const RunnerAdapterSchema = z.object({
+  name: z.string().min(1),
+  supports: z.object({
+    interactive: z.boolean(),
+    structuredOutput: z.boolean(),
+  }),
+  buildCommand: z.custom<Runner['buildCommand']>((v) => typeof v === 'function', {
+    message: 'expected function',
+  }),
+  parseEvents: z.custom<Runner['parseEvents']>((v) => typeof v === 'function', {
+    message: 'expected function',
+  }),
+  extractStructuredOutput: z.custom<Runner['extractStructuredOutput']>(
+    (v) => typeof v === 'function',
+    { message: 'expected function' },
+  ),
+})
+
+export function defineRunner<T extends Runner>(config: T): Readonly<T> {
+  const result = RunnerAdapterSchema.safeParse(config)
+  if (!result.success) {
+    const fields = result.error.issues.map((i) => i.path.join('.')).join(', ')
+    throw new Error(`defineRunner: invalid runner config (fields: ${fields})`)
+  }
+  return Object.freeze(config)
 }
