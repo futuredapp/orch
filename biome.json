@@ -28,7 +28,17 @@
       "style": {
         "noNonNullAssertion": "error",
         "useImportType": "error",
-        "noDefaultExport": "error"
+        "noDefaultExport": "error",
+        "noRestrictedImports": {
+          "level": "error",
+          "options": {
+            "paths": {
+              "child_process": "Use ProcessService from src/services/process",
+              "node:child_process": "Use ProcessService from src/services/process",
+              "node-pty": "Use ProcessService from src/services/process"
+            }
+          }
+        }
       },
       "complexity": {
         "noExcessiveCognitiveComplexity": {
@@ -45,6 +55,18 @@
       "trailingCommas": "all"
     }
   },
+  "overrides": [
+    {
+      "includes": ["src/services/process/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": "off"
+          }
+        }
+      }
+    }
+  ],
   "json": {
     "formatter": {
       "enabled": true,
