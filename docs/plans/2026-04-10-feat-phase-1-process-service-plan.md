@@ -344,8 +344,8 @@ describe('BunFsService', () => {
 
 Each integration test creates and tears down its own temp dir via `BunFsService.tempDir('orch-phase1-')`.
 
-- [ ] `bun run lint` green. `bun run typecheck` green. `bun test` red (every test throws `Error: not implemented`).
-- [ ] Commit: `phase 1: red tests for line-framer, FakeProcessService, FakeClock, FakeFsService, BunProcessService, BunFsService`. Commit body states explicitly that `bun test` is expected red and the next six commits green them in order.
+- [x] `bun run lint` green. `bun run typecheck` green. `bun test` red (every test throws `Error: not implemented`).
+- [x] Commit: `phase 1: red tests for line-framer, FakeProcessService, FakeClock, FakeFsService, BunProcessService, BunFsService`. Commit body states explicitly that `bun test` is expected red and the next six commits green them in order.
 
 ### Commit 3 — Implement `line-framer`
 
