@@ -1,5 +1,7 @@
-import type { FsService, Path } from '../services/index.ts'
-import type { RunId } from './run-id.ts'
+import { z } from 'zod'
+import type { FsService } from '../services/index.ts'
+import { type Path, path } from '../services/types.ts'
+import { RUN_ID_PATTERN, type RunId } from './run-id.ts'
 
 export interface StepEntry {
   readonly name: string
@@ -24,7 +26,7 @@ export interface StateStore {
 export class StateCorruptionError extends Error {
   constructor(
     message: string,
-    readonly path: Path,
+    readonly filePath: Path,
     readonly zodIssues: readonly {
       readonly path: readonly (string | number)[]
       readonly message: string
@@ -35,16 +37,98 @@ export class StateCorruptionError extends Error {
   }
 }
 
+const StepEntrySchema = z.object({
+  name: z.string().min(1),
+  value: z.unknown(),
+  startedAt: z.number(),
+  endedAt: z.number(),
+  artifacts: z.array(z.string()),
+})
+
+const RunStateSchema = z.object({
+  schemaVersion: z.literal(1),
+  id: z.string().regex(RUN_ID_PATTERN),
+  status: z.enum(['running', 'completed', 'crashed']),
+  steps: z.record(z.string(), StepEntrySchema),
+})
+
 export class FileStateStore implements StateStore {
-  constructor(_deps: { readonly fs: FsService; readonly basePath: Path }) {
-    throw new Error('Not implemented')
+  readonly #fs: FsService
+  readonly #basePath: Path
+
+  constructor(deps: { readonly fs: FsService; readonly basePath: Path }) {
+    this.#fs = deps.fs
+    this.#basePath = deps.basePath
   }
 
-  loadRun(_runId: RunId): Promise<RunState | undefined> {
-    throw new Error('Not implemented')
+  async loadRun(runId: RunId): Promise<RunState | undefined> {
+    const file = this.#statePath(runId)
+
+    let raw: string
+    try {
+      raw = await this.#fs.readFile(file)
+    } catch {
+      return undefined
+    }
+
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(raw)
+    } catch (cause) {
+      throw new StateCorruptionError(`Failed to parse JSON at ${file}`, file, [
+        { path: [], message: (cause as Error).message },
+      ])
+    }
+
+    const result = RunStateSchema.safeParse(parsed)
+    if (!result.success) {
+      const summary = result.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')
+      throw new StateCorruptionError(
+        `Corrupted state at ${file}: ${summary}`,
+        file,
+        result.error.issues,
+      )
+    }
+
+    return result.data as unknown as RunState
   }
 
-  saveStep(_runId: RunId, _entry: StepEntry): Promise<void> {
-    throw new Error('Not implemented')
+  async saveStep(runId: RunId, entry: StepEntry): Promise<void> {
+    const dir = this.#runDir(runId)
+    const file = this.#statePath(runId)
+    const tmp = this.#tmpPath(runId)
+
+    const existing = await this.loadRun(runId)
+    const state: RunState = {
+      schemaVersion: 1,
+      id: runId,
+      status: existing?.status ?? 'running',
+      steps: { ...existing?.steps, [entry.name]: entry },
+    }
+
+    let json: string
+    try {
+      json = JSON.stringify(state, null, 2)
+    } catch (cause) {
+      throw new Error(`Failed to serialize step "${entry.name}": ${(cause as Error).message}`, {
+        cause,
+      })
+    }
+
+    await this.#fs.mkdir(dir, { recursive: true })
+    await this.#fs.writeFile(tmp, json)
+    await this.#fs.rename(tmp, file)
+  }
+
+  #runDir(runId: RunId): Path {
+    return path(`${this.#basePath}/${runId}`)
+  }
+
+  #statePath(runId: RunId): Path {
+    return path(`${this.#runDir(runId)}/state.json`)
+  }
+
+  #tmpPath(runId: RunId): Path {
+    return path(`${this.#statePath(runId)}.tmp`)
   }
 }

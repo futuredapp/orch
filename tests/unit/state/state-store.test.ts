@@ -110,15 +110,9 @@ describe('FileStateStore', () => {
 
     const originalJson = await fakeFs.readFile(path('/runs/r-2026-04-10-0001/state.json'))
 
-    // Inject a failing rename
-    const originalRename = fakeFs.rename.bind(fakeFs)
-    let renameCallCount = 0
-    fakeFs.rename = async (from, to) => {
-      renameCallCount++
-      if (renameCallCount > 1) {
-        throw new Error('Simulated rename failure')
-      }
-      return originalRename(from, to)
+    // Inject a failing rename — applied after the first successful save
+    fakeFs.rename = async () => {
+      throw new Error('Simulated rename failure')
     }
 
     await expect(
