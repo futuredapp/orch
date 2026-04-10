@@ -391,17 +391,17 @@ Each integration test creates and tears down its own temp dir via `BunFsService.
 
 **Goal:** `tests/unit/services/fs/fake-fs-service.test.ts` green.
 
-- [ ] Internal state: `#files: Map<Path, { data: string; mtimeMs: number }>`, `#dirs: Set<Path>`.
-- [ ] `writeFile(path, data)`: require parent to exist (parent = `path.slice(0, path.lastIndexOf('/'))`) unless empty; record `{ data, mtimeMs: Date.now() }`. Phase 3 will add a Clock dep when deterministic mtimes matter.
-- [ ] `readFile(path)`: throw on missing; else return `data`.
-- [ ] `rename(from, to)`: copy entry, delete `from`; throw if `from` missing.
-- [ ] `mkdir(path, { recursive })`: non-recursive throws on missing parent; recursive splits on `/` and adds every prefix to `#dirs`.
-- [ ] `exists(path)`: `#files.has(path) || #dirs.has(path)`.
-- [ ] `glob(pattern, { cwd })`: minimal pattern-to-regex (`**` → `.*`, `*` → `[^/]*`, `?` → `[^/]`, escape the rest); match over `#files`. If the matcher exceeds 30 lines, extract to `src/services/fs/fake-fs-glob.ts`.
-- [ ] `readDir`, `stat`, `remove`, `tempDir` per the brainstorm surface.
-- [ ] File ≤ 180 lines (brainstorm budget).
-- [ ] `bun test tests/unit/services/fs/fake-fs-service.test.ts` → green.
-- [ ] Commit: `phase 1: implement FakeFsService (map-backed)`.
+- [x] Internal state: `#files: Map<Path, { data: string; mtimeMs: number }>`, `#dirs: Set<Path>`.
+- [x] `writeFile(path, data)`: require parent to exist (parent = `path.slice(0, path.lastIndexOf('/'))`) unless empty; record `{ data, mtimeMs: Date.now() }`. Phase 3 will add a Clock dep when deterministic mtimes matter.
+- [x] `readFile(path)`: throw on missing; else return `data`.
+- [x] `rename(from, to)`: copy entry, delete `from`; throw if `from` missing.
+- [x] `mkdir(path, { recursive })`: non-recursive throws on missing parent; recursive splits on `/` and adds every prefix to `#dirs`.
+- [x] `exists(path)`: `#files.has(path) || #dirs.has(path)`.
+- [x] `glob(pattern, { cwd })`: minimal pattern-to-regex (`**` → `.*`, `*` → `[^/]*`, `?` → `[^/]`, escape the rest); match over `#files`. If the matcher exceeds 30 lines, extract to `src/services/fs/fake-fs-glob.ts`.
+- [x] `readDir`, `stat`, `remove`, `tempDir` per the brainstorm surface.
+- [x] File ≤ 180 lines (brainstorm budget).
+- [x] `bun test tests/unit/services/fs/fake-fs-service.test.ts` → green.
+- [x] Commit: `phase 1: implement FakeFsService (map-backed)`.
 
 ### Commit 7 — Implement `BunProcessService` (integration-green)
 

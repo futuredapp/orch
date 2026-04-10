@@ -1,44 +1,149 @@
 import type { Path } from '../types.ts'
+import { path } from '../types.ts'
 import type { FsService } from './fs-service.ts'
 
+interface FileEntry {
+  data: string
+  mtimeMs: number
+}
+
 export class FakeFsService implements FsService {
-  readFile(_path: Path): Promise<string> {
-    throw new Error('not implemented')
+  #files = new Map<string, FileEntry>()
+  #dirs = new Set<string>()
+  #tempCounter = 0
+
+  constructor() {
+    // Root always exists
+    this.#dirs.add('/')
   }
 
-  writeFile(_path: Path, _data: string): Promise<void> {
-    throw new Error('not implemented')
+  async readFile(p: Path): Promise<string> {
+    const entry = this.#files.get(p)
+    if (!entry) {
+      throw new Error(`ENOENT: no such file: ${p}`)
+    }
+    return entry.data
   }
 
-  rename(_from: Path, _to: Path): Promise<void> {
-    throw new Error('not implemented')
+  async writeFile(p: Path, data: string): Promise<void> {
+    const parent = parentDir(p)
+    if (parent && !this.#dirs.has(parent)) {
+      throw new Error(`ENOENT: parent directory does not exist: ${parent}`)
+    }
+    this.#files.set(p, { data, mtimeMs: Date.now() })
   }
 
-  mkdir(_path: Path, _opts?: { readonly recursive?: boolean }): Promise<void> {
-    throw new Error('not implemented')
+  async rename(from: Path, to: Path): Promise<void> {
+    const entry = this.#files.get(from)
+    if (!entry) {
+      throw new Error(`ENOENT: no such file: ${from}`)
+    }
+    this.#files.set(to, entry)
+    this.#files.delete(from)
   }
 
-  exists(_path: Path): Promise<boolean> {
-    throw new Error('not implemented')
+  async mkdir(p: Path, opts?: { readonly recursive?: boolean }): Promise<void> {
+    if (opts?.recursive) {
+      const segments = p.split('/').filter(Boolean)
+      let current = ''
+      for (const seg of segments) {
+        current += `/${seg}`
+        this.#dirs.add(current)
+      }
+    } else {
+      const parent = parentDir(p)
+      if (parent && !this.#dirs.has(parent)) {
+        throw new Error(`ENOENT: parent directory does not exist: ${parent}`)
+      }
+      this.#dirs.add(p)
+    }
   }
 
-  glob(_pattern: string, _opts?: { readonly cwd?: Path }): AsyncIterable<Path> {
-    throw new Error('not implemented')
+  async exists(p: Path): Promise<boolean> {
+    return this.#files.has(p) || this.#dirs.has(p)
   }
 
-  readDir(_path: Path): Promise<readonly Path[]> {
-    throw new Error('not implemented')
+  async *glob(pattern: string, opts?: { readonly cwd?: Path }): AsyncIterable<Path> {
+    const cwd = opts?.cwd ?? path('/')
+    const regex = globToRegex(pattern)
+
+    for (const filePath of this.#files.keys()) {
+      if (!filePath.startsWith(cwd === '/' ? '/' : `${cwd}/`)) continue
+      const relative = cwd === '/' ? filePath.slice(1) : filePath.slice(cwd.length + 1)
+      if (regex.test(relative)) {
+        yield path(relative)
+      }
+    }
   }
 
-  stat(_path: Path): Promise<{ readonly size: number; readonly mtimeMs: number }> {
-    throw new Error('not implemented')
+  async readDir(p: Path): Promise<readonly Path[]> {
+    const prefix = p === '/' ? '/' : `${p}/`
+    const children = new Set<string>()
+
+    for (const filePath of this.#files.keys()) {
+      if (!filePath.startsWith(prefix)) continue
+      const relative = filePath.slice(prefix.length)
+      const firstSegment = relative.split('/')[0]
+      if (firstSegment) children.add(firstSegment)
+    }
+
+    for (const dirPath of this.#dirs) {
+      if (!dirPath.startsWith(prefix)) continue
+      const relative = dirPath.slice(prefix.length)
+      const firstSegment = relative.split('/')[0]
+      if (firstSegment) children.add(firstSegment)
+    }
+
+    return [...children].sort().map((c) => path(c))
   }
 
-  remove(_path: Path): Promise<void> {
-    throw new Error('not implemented')
+  async stat(p: Path): Promise<{ readonly size: number; readonly mtimeMs: number }> {
+    const entry = this.#files.get(p)
+    if (!entry) {
+      throw new Error(`ENOENT: no such file: ${p}`)
+    }
+    return { size: new TextEncoder().encode(entry.data).byteLength, mtimeMs: entry.mtimeMs }
   }
 
-  tempDir(_prefix: string): Promise<Path> {
-    throw new Error('not implemented')
+  async remove(p: Path): Promise<void> {
+    this.#files.delete(p)
+    this.#dirs.delete(p)
   }
+
+  async tempDir(prefix: string): Promise<Path> {
+    this.#tempCounter++
+    const dir = path(`/tmp/${prefix}${this.#tempCounter}`)
+    this.#dirs.add(dir)
+    return dir
+  }
+}
+
+function parentDir(p: string): string {
+  const idx = p.lastIndexOf('/')
+  if (idx <= 0) return '/'
+  return p.slice(0, idx)
+}
+
+function globToRegex(pattern: string): RegExp {
+  let regex = ''
+  let i = 0
+  while (i < pattern.length) {
+    if (pattern[i] === '*' && pattern[i + 1] === '*') {
+      regex += '.*'
+      i += pattern[i + 2] === '/' ? 3 : 2
+    } else if (pattern[i] === '*') {
+      regex += '[^/]*'
+      i++
+    } else if (pattern[i] === '?') {
+      regex += '[^/]'
+      i++
+    } else if (pattern[i] === '.') {
+      regex += '\\.'
+      i++
+    } else {
+      regex += pattern[i]
+      i++
+    }
+  }
+  return new RegExp(`^${regex}$`)
 }
