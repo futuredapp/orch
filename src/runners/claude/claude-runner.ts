@@ -23,11 +23,26 @@ const ClaudeResultSuccess = z
     session_id: z.string(),
     duration_ms: z.number(),
     duration_api_ms: z.number(),
-    is_error: z.boolean(),
+    is_error: z.literal(false),
     num_turns: z.number(),
     total_cost_usd: z.number(),
     usage: ClaudeUsage,
     structured_output: z.unknown().optional(),
+  })
+  .passthrough()
+
+// Claude CLI emits `subtype:'success'` + `is_error:true` for some failure
+// modes (e.g. `--bare` + missing ANTHROPIC_API_KEY surfaces as a "success"
+// envelope whose `result` field carries "Not logged in · Please run /login").
+// Treat these as terminal errors and surface `result` as the message.
+const ClaudeResultSuccessErrored = z
+  .object({
+    type: z.literal('result'),
+    subtype: z.literal('success'),
+    result: z.string(),
+    session_id: z.string(),
+    duration_ms: z.number(),
+    is_error: z.literal(true),
   })
   .passthrough()
 
@@ -118,6 +133,17 @@ function parseResultEnvelope(raw: unknown): TerminalEvent {
   const successResult = ClaudeResultSuccess.safeParse(raw)
   if (successResult.success) {
     return { kind: 'terminal', type: 'turn-complete', data: successResult.data }
+  }
+
+  // "success" envelope flagged as error — carries the message in `result`.
+  const erroredSuccess = ClaudeResultSuccessErrored.safeParse(raw)
+  if (erroredSuccess.success) {
+    return {
+      kind: 'terminal',
+      type: 'error',
+      message: erroredSuccess.data.result,
+      data: erroredSuccess.data,
+    }
   }
 
   const errorResult = ClaudeResultError.safeParse(raw)

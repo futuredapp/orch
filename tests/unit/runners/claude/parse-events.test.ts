@@ -69,7 +69,7 @@ describe('parseClaudeLine', () => {
     }
   })
 
-  it('parses success with is_error: true as turn-complete (not rejected)', () => {
+  it('parses a success envelope with is_error: true as a terminal error carrying the result text as the message', () => {
     const line = JSON.stringify({
       type: 'result',
       subtype: 'success',
@@ -91,7 +91,47 @@ describe('parseClaudeLine', () => {
     const evt = parseClaudeLine(line)
 
     expect(evt?.kind).toBe('terminal')
-    expect(evt?.type).toBe('turn-complete')
+    expect(evt?.type).toBe('error')
+    if (evt?.kind === 'terminal' && evt.type === 'error') {
+      expect(evt.message).toBe('partial auth')
+    }
+  })
+
+  // Regression: claude CLI v2.1.101 emits this exact envelope when `--bare`
+  // is set and no ANTHROPIC_API_KEY is available. Without the is_error branch,
+  // the workflow surfaces "runner exited 1" instead of the real reason.
+  it('surfaces the "Not logged in" message from a bare-mode authentication_failed envelope', () => {
+    const line = JSON.stringify({
+      type: 'result',
+      subtype: 'success',
+      is_error: true,
+      duration_ms: 59,
+      duration_api_ms: 0,
+      num_turns: 1,
+      result: 'Not logged in · Please run /login',
+      stop_reason: 'stop_sequence',
+      session_id: '93646082-377c-4bfd-8bf7-9c5b6e2fca15',
+      total_cost_usd: 0,
+      usage: {
+        input_tokens: 0,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 0,
+        output_tokens: 0,
+      },
+      modelUsage: {},
+      permission_denials: [],
+      terminal_reason: 'completed',
+    })
+
+    const evt = parseClaudeLine(line)
+
+    expect(evt?.kind).toBe('terminal')
+    expect(evt?.type).toBe('error')
+    if (evt?.kind === 'terminal' && evt.type === 'error') {
+      expect(evt.message).toBe('Not logged in · Please run /login')
+      const data = evt.data as Record<string, unknown> | undefined
+      expect(data?.session_id).toBe('93646082-377c-4bfd-8bf7-9c5b6e2fca15')
+    }
   })
 
   it('parses unknown error subtype successfully (not rejected by enum)', () => {

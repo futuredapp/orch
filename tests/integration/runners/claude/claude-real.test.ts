@@ -13,7 +13,9 @@ function ctxFor(prompt: string): RunnerContext {
 
 describe.skipIf(!canRun)('ClaudeRunner real CLI', () => {
   it('runs "Reply with exactly: OK" and receives a success result with intermediate events', async () => {
-    const runner = claude({ maxTurns: 1 })
+    // `bare: false` so the CLI can use the dev machine's keychain auth.
+    // `--bare` would force ANTHROPIC_API_KEY, which Claude Pro users don't have.
+    const runner = claude({ bare: false })
     const ctx = ctxFor('Reply with exactly: OK')
     const processService = new BunProcessService()
     const clock = new BunClock()
