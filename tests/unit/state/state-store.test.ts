@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import { FakeFsService, type FsService, type Path, path } from '../../../src/services/index.ts'
 import { FileStateStore, type RunId, runId, type StepEntry } from '../../../src/state/index.ts'
+import { makeStepEntry } from '../../helpers/make-step-entry.ts'
 
 const rid = (s: string): RunId => runId(s)
 
@@ -12,16 +13,7 @@ function makeStore(fs?: FsService): { store: FileStateStore; fs: FsService } {
   return { store, fs: fakeFs }
 }
 
-function makeEntry(overrides: Partial<StepEntry> = {}): StepEntry {
-  return {
-    name: 'step-a',
-    value: { result: 'ok' },
-    startedAt: 1000,
-    endedAt: 2000,
-    artifacts: [],
-    ...overrides,
-  }
-}
+const makeEntry = (overrides: Partial<StepEntry> = {}): StepEntry => makeStepEntry(overrides)
 
 /**
  * Thin recording fake that tracks every writeFile call by path. Lets tests
@@ -97,7 +89,7 @@ describe('FileStateStore', () => {
 
     expect(state).toBeDefined()
     expect(state?.id).toBe(id)
-    expect(state?.schemaVersion).toBe(1)
+    expect(state?.schemaVersion).toBe(2)
     expect(state?.status).toBe('running')
     expect(state?.steps['step-a']).toEqual(entry)
   })
@@ -197,7 +189,7 @@ describe('FileStateStore', () => {
 
     expect(state).toBeDefined()
     expect(state?.id).toBe(id)
-    expect(state?.schemaVersion).toBe(1)
+    expect(state?.schemaVersion).toBe(2)
     expect(state?.status).toBe('running')
     expect(state?.steps).toEqual({})
   })

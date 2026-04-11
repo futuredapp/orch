@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'bun:test'
 import * as fs from 'node:fs/promises'
 import { BunFsService, path } from '../../../src/services/index.ts'
 import { FileStateStore, type RunId, type StepEntry } from '../../../src/state/index.ts'
+import { makeStepEntry } from '../../helpers/make-step-entry.ts'
 
 let tmpDir: string
 
@@ -11,16 +12,7 @@ afterEach(async () => {
   }
 })
 
-function makeEntry(overrides: Partial<StepEntry> = {}): StepEntry {
-  return {
-    name: 'step-a',
-    value: { result: 'ok' },
-    startedAt: 1000,
-    endedAt: 2000,
-    artifacts: [],
-    ...overrides,
-  }
-}
+const makeEntry = (overrides: Partial<StepEntry> = {}): StepEntry => makeStepEntry(overrides)
 
 describe('FileStateStore (integration)', () => {
   it('round-trips against a real temp directory', async () => {
@@ -35,7 +27,7 @@ describe('FileStateStore (integration)', () => {
 
     expect(state).toBeDefined()
     expect(state?.id).toBe(id)
-    expect(state?.schemaVersion).toBe(1)
+    expect(state?.schemaVersion).toBe(2)
     expect(state?.steps['step-a']).toEqual(entry)
   })
 

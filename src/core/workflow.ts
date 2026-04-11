@@ -135,6 +135,7 @@ export function workflow(name: string, fn: (run: RunFn) => Promise<void>): Workf
           startedAt,
           endedAt,
           artifacts: [],
+          validations: [],
         }
         await deps.stateStore.saveStep(deps.runId, entry)
 

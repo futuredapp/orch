@@ -155,7 +155,7 @@ describe('workflow (integration)', () => {
     const parsed = JSON.parse(raw)
 
     const RunStateSchema = z.object({
-      schemaVersion: z.literal(1),
+      schemaVersion: z.literal(2),
       id: z.string().regex(/^r-\d{4}-\d{2}-\d{2}-[a-z0-9]{6}$/),
       status: z.enum(['running', 'completed', 'crashed']),
       steps: z.record(
@@ -166,6 +166,15 @@ describe('workflow (integration)', () => {
           startedAt: z.number(),
           endedAt: z.number(),
           artifacts: z.array(z.string()),
+          preRunSnapshot: z.object({ headSha: z.string() }).optional(),
+          validations: z.array(
+            z.object({
+              name: z.string(),
+              ok: z.boolean(),
+              reason: z.string().optional(),
+              hint: z.string().optional(),
+            }),
+          ),
         }),
       ),
     })
