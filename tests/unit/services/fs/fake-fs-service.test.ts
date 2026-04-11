@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test'
+import { FakeClock } from '../../../../src/services/clock/index.ts'
 import { FakeFsService } from '../../../../src/services/fs/fake-fs-service.ts'
 import { path } from '../../../../src/services/types.ts'
 
@@ -120,5 +121,16 @@ describe('FakeFsService', () => {
     const content = await fs.readFile(path('/data/file.txt'))
 
     expect(content).toBe('updated')
+  })
+
+  it('writeFile honors an injected clock for mtime', async () => {
+    const clock = new FakeClock(1_700_000_000_000)
+    const fs = new FakeFsService({ clock })
+    await fs.mkdir(path('/data'), { recursive: true })
+
+    await fs.writeFile(path('/data/file.txt'), 'payload')
+    const s = await fs.stat(path('/data/file.txt'))
+
+    expect(s.mtimeMs).toBe(1_700_000_000_000)
   })
 })

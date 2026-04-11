@@ -1,7 +1,8 @@
 // orch — public barrel.
 //
-// This file re-exports the public API. It is intentionally empty during Phase 0;
-// each subsequent phase adds the symbols it introduces (workflow, step, run,
-// parallel, claude, codex, defineRunner, ...).
+// Re-exports the module-level barrels so consumers can `import { ... } from 'orch'`.
+// This file is re-exports only: no logic, no side effects at import time.
 
-export {}
+export * from './runners/index.ts'
+export * from './services/index.ts'
+export * from './state/index.ts'

@@ -170,6 +170,7 @@ export function claude(opts: ClaudeOptions = {}): Readonly<Runner> {
 
   return defineRunner({
     name: 'claude',
+    // `supports` is a capability declaration of what this runner CAN do — not an instruction. Phase 7 will consume `structuredOutput` via a `schema` option.
     supports: { interactive: false, structuredOutput: false },
 
     buildCommand(ctx: RunnerContext): RunnerCommand {

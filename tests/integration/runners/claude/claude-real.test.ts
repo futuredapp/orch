@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import { claude, isTerminalEvent, runRunner } from '../../../../src/runners/index.ts'
 import type { RunnerContext } from '../../../../src/runners/types.ts'
-import { SystemClock } from '../../../../src/services/clock/index.ts'
+import { BunClock } from '../../../../src/services/clock/index.ts'
 import { BunProcessService } from '../../../../src/services/process/index.ts'
 import { path } from '../../../../src/services/types.ts'
 
@@ -16,7 +16,7 @@ describe.skipIf(!canRun)('ClaudeRunner real CLI', () => {
     const runner = claude({ maxTurns: 1 })
     const ctx = ctxFor('Reply with exactly: OK')
     const processService = new BunProcessService()
-    const clock = new SystemClock()
+    const clock = new BunClock()
 
     const result = await runRunner(runner, ctx, { processService, clock })
 

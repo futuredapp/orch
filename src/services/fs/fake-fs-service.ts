@@ -1,3 +1,4 @@
+import type { Clock } from '../clock/index.ts'
 import type { Path } from '../types.ts'
 import { path } from '../types.ts'
 import type { FsService } from './fs-service.ts'
@@ -11,8 +12,10 @@ export class FakeFsService implements FsService {
   #files = new Map<string, FileEntry>()
   #dirs = new Set<string>()
   #tempCounter = 0
+  readonly #clock: Clock | undefined
 
-  constructor() {
+  constructor(deps: { readonly clock?: Clock } = {}) {
+    this.#clock = deps.clock
     // Root always exists
     this.#dirs.add('/')
   }
@@ -30,7 +33,7 @@ export class FakeFsService implements FsService {
     if (parent && !this.#dirs.has(parent)) {
       throw new Error(`ENOENT: parent directory does not exist: ${parent}`)
     }
-    this.#files.set(p, { data, mtimeMs: Date.now() })
+    this.#files.set(p, { data, mtimeMs: this.#clock?.now() ?? Date.now() })
   }
 
   async rename(from: Path, to: Path): Promise<void> {

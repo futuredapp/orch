@@ -3,12 +3,7 @@ import * as fs from 'node:fs/promises'
 import { step } from '../../../../src/core/step.ts'
 import { type WorkflowDeps, workflow } from '../../../../src/core/workflow.ts'
 import { claude } from '../../../../src/runners/index.ts'
-import {
-  BunFsService,
-  BunProcessService,
-  path,
-  SystemClock,
-} from '../../../../src/services/index.ts'
+import { BunClock, BunFsService, BunProcessService, path } from '../../../../src/services/index.ts'
 import { FileStateStore, type RunId } from '../../../../src/state/index.ts'
 
 const canRun = process.env.RUN_REAL_CLAUDE === '1' && Bun.which('claude') !== null
@@ -31,7 +26,7 @@ describe.skipIf(!canRun)('ClaudeRunner e2e-lite (workflow DSL + real CLI)', () =
     const deps: WorkflowDeps = {
       stateStore: new FileStateStore({ fs: new BunFsService(), basePath: path(tmpDir) }),
       processService: new BunProcessService(),
-      clock: new SystemClock(),
+      clock: new BunClock(),
       runId: runIdVal,
       cwd: path(process.cwd()),
     }
