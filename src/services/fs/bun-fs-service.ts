@@ -5,7 +5,32 @@ import type { Path } from '../types.ts'
 import { path } from '../types.ts'
 import type { FsService } from './fs-service.ts'
 
+/**
+ * Paths that `remove()` must never touch, no matter what the caller asks.
+ * Keyed off the resolved absolute path so that symlinks and `.` segments
+ * cannot smuggle a value through. `$HOME` and its direct parent are included
+ * because `rm -rf $HOME` and `rm -rf /Users` would both be catastrophic.
+ */
+const isProtectedRoot = (resolved: string, home: string): boolean => {
+  if (resolved === '' || resolved === '/') return true
+  if (home !== '' && resolved === home) return true
+  // Direct parent of $HOME — e.g. /Users on macOS, /home on Linux.
+  if (home !== '' && resolved === nodePath.dirname(home)) return true
+  return false
+}
+
 export class BunFsService implements FsService {
+  readonly #homedir: () => string
+
+  /**
+   * `homedir` is injectable so unit tests can exercise the `remove()` guard
+   * against deterministic values without touching the real user's home.
+   * Production callers pass nothing and get `os.homedir()`.
+   */
+  constructor(deps: { readonly homedir?: () => string } = {}) {
+    this.#homedir = deps.homedir ?? (() => os.homedir())
+  }
+
   async readFile(p: Path): Promise<string> {
     return Bun.file(p).text()
   }
@@ -48,6 +73,12 @@ export class BunFsService implements FsService {
   }
 
   async remove(p: Path): Promise<void> {
+    const resolved = nodePath.resolve(p)
+    const home = this.#homedir()
+    if (isProtectedRoot(resolved, home)) {
+      throw new Error(`remove() refused: path is a protected root (${resolved})`)
+    }
+    // `recursive: true, force: true` stays — the safeguard is the guard above.
     await fs.rm(p, { recursive: true, force: true })
   }
 
