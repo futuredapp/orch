@@ -1,3 +1,4 @@
+export { ANONYMOUS_CHECK_NAME, anyNeedsHeadSha, normalizeValidators } from './normalize.ts'
 export type {
   PersistedValidation,
   ValidationFailure,

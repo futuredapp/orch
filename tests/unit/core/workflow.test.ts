@@ -7,24 +7,42 @@ import {
   type Runner,
   type RunnerContext,
 } from '../../../src/runners/index.ts'
-import { FakeClock, FakeFsService, FakeProcessService, path } from '../../../src/services/index.ts'
+import {
+  FakeClock,
+  FakeFsService,
+  FakeGitService,
+  FakeProcessService,
+  path,
+} from '../../../src/services/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
 
 const rid = (s: string): RunId => s as RunId
 
 const BASE = path('/runs')
 
+interface TestDeps extends WorkflowDeps {
+  readonly fs: FakeFsService
+  readonly processService: FakeProcessService
+  readonly clock: FakeClock
+  readonly gitService: FakeGitService
+  readonly fsService: FakeFsService
+}
+
 function makeDeps(overrides?: {
   fs?: FakeFsService
   processService?: FakeProcessService
   clock?: FakeClock
   runId?: RunId
-}): WorkflowDeps & { fs: FakeFsService; processService: FakeProcessService; clock: FakeClock } {
+  gitService?: FakeGitService
+}): TestDeps {
   const fs = overrides?.fs ?? new FakeFsService()
   const processService = overrides?.processService ?? new FakeProcessService()
   const clock = overrides?.clock ?? new FakeClock(1000)
+  const gitService = overrides?.gitService ?? new FakeGitService()
   return {
     fs,
+    fsService: fs,
+    gitService,
     processService,
     clock,
     stateStore: new FileStateStore({ fs, basePath: BASE }),

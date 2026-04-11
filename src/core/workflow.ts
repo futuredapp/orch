@@ -1,6 +1,18 @@
-import { type RunnerContext, runRunner } from '../runners/index.ts'
-import type { Clock, ProcessService } from '../services/index.ts'
+import { runRunner } from '../runners/index.ts'
+import type { Clock, FsService, GitService, ProcessService } from '../services/index.ts'
+import { GitCommandError } from '../services/index.ts'
 import type { StateStore, StepEntry } from '../state/index.ts'
+import {
+  anyNeedsHeadSha,
+  normalizeValidators,
+  type PersistedValidation,
+  ValidationError,
+  type ValidationFailure,
+  type ValidationOutcome,
+  type Validator,
+  type ValidatorCtx,
+  type ValidatorServices,
+} from '../validators/index.ts'
 import type { Step } from './step.ts'
 import { type Path, type RunId, type StepName, stepName } from './types.ts'
 
@@ -37,6 +49,8 @@ export interface WorkflowDeps {
   readonly clock: Clock
   readonly runId: RunId
   readonly cwd: Path
+  readonly fsService: FsService
+  readonly gitService: GitService
 }
 
 // ---------------------------------------------------------------------------
@@ -87,8 +101,157 @@ function assemblePrompt(
 }
 
 // ---------------------------------------------------------------------------
+// safeHeadSha — best-effort baseline capture
+// ---------------------------------------------------------------------------
+//
+// Returns undefined when cwd is not a git repo. Only swallows GitCommandError;
+// other error classes (e.g. ProcessSpawnError when git is missing entirely)
+// propagate as real runtime errors.
+async function safeHeadSha(git: GitService, cwd: Path): Promise<string | undefined> {
+  try {
+    return await git.headSha(cwd)
+  } catch (err) {
+    if (err instanceof GitCommandError) return undefined
+    throw err
+  }
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
+// ---------------------------------------------------------------------------
+// runValidators — serial execution, no fail-fast
+// ---------------------------------------------------------------------------
+//
+// Serial rather than Promise.all for deterministic failure ordering and
+// to avoid IO thrash on filesystem-heavy validators. All validators run
+// even if earlier ones fail — the whole point is multi-failure DX.
+async function runValidators(
+  validators: ReadonlyArray<Validator>,
+  services: ValidatorServices,
+  ctx: ValidatorCtx,
+): Promise<ReadonlyArray<ValidationOutcome>> {
+  const outcomes: ValidationOutcome[] = []
+  for (const v of validators) {
+    try {
+      const r = await v.run(services, ctx)
+      if (r.ok) {
+        outcomes.push({ name: v.name, ok: true })
+      } else {
+        outcomes.push({
+          name: v.name,
+          ok: false,
+          reason: r.reason,
+          ...(r.hint !== undefined ? { hint: r.hint } : {}),
+        })
+      }
+    } catch (err) {
+      outcomes.push({ name: v.name, ok: false, reason: errorMessage(err) })
+    }
+  }
+  return outcomes
+}
+
+function outcomesToFailures(
+  outcomes: ReadonlyArray<ValidationOutcome>,
+): ReadonlyArray<ValidationFailure> {
+  const failures: ValidationFailure[] = []
+  for (const o of outcomes) {
+    if (o.ok) continue
+    failures.push({
+      name: o.name,
+      reason: o.reason,
+      ...(o.hint !== undefined ? { hint: o.hint } : {}),
+    })
+  }
+  return failures
+}
+
+function outcomesToPersisted(
+  outcomes: ReadonlyArray<ValidationOutcome>,
+): ReadonlyArray<PersistedValidation> {
+  return outcomes.map((o): PersistedValidation => {
+    if (o.ok) return { name: o.name, ok: true }
+    return {
+      name: o.name,
+      ok: false,
+      reason: o.reason,
+      ...(o.hint !== undefined ? { hint: o.hint } : {}),
+    }
+  })
+}
+
+// ---------------------------------------------------------------------------
 // workflow — the core DSL entry point
 // ---------------------------------------------------------------------------
+
+async function runStepOnce(
+  deps: WorkflowDeps,
+  s: Step,
+  overrides: RunOverrides | undefined,
+): Promise<unknown> {
+  const key = stepName(overrides?.as ?? s.name)
+
+  // Cache-hit early return MUST come before any git/baseline work —
+  // resume runs must do zero git subprocess calls.
+  const state = await deps.stateStore.loadRun(deps.runId)
+  const cached = state?.steps[key]
+  if (cached !== undefined) return cached.value
+
+  const normalized = normalizeValidators(s.config.validate, key)
+  const headSha = anyNeedsHeadSha(normalized)
+    ? await safeHeadSha(deps.gitService, deps.cwd)
+    : undefined
+  const preRunSnapshot = headSha !== undefined ? { headSha } : undefined
+
+  const startedAt = deps.clock.now()
+  const result = await runRunner(
+    s.config.agent,
+    {
+      cwd: deps.cwd,
+      env: {},
+      prompt: assemblePrompt(s.config.prompt, overrides),
+      extraArgs: [],
+    },
+    { processService: deps.processService, clock: deps.clock },
+  )
+
+  if (result.finalEvent.type === 'error' || result.exitCode !== 0) {
+    const msg =
+      result.finalEvent.type === 'error'
+        ? result.finalEvent.message
+        : `runner exited ${result.exitCode}`
+    throw new StepError(key, result.exitCode, msg)
+  }
+
+  const value = s.config.agent.extractStructuredOutput(result.finalEvent)
+
+  const validatorCtx: ValidatorCtx = {
+    stepName: key,
+    cwd: deps.cwd,
+    value,
+    ...(preRunSnapshot !== undefined ? { preRunSnapshot } : {}),
+  }
+  const services: ValidatorServices = { fs: deps.fsService, git: deps.gitService }
+  const outcomes = await runValidators(normalized, services, validatorCtx)
+  const failures = outcomesToFailures(outcomes)
+  if (failures.length > 0) {
+    throw new ValidationError(key, failures)
+  }
+
+  const entry: StepEntry = {
+    name: key,
+    value,
+    startedAt,
+    endedAt: deps.clock.now(),
+    artifacts: [],
+    ...(preRunSnapshot !== undefined ? { preRunSnapshot } : {}),
+    validations: outcomesToPersisted(outcomes),
+  }
+  await deps.stateStore.saveStep(deps.runId, entry)
+  return value
+}
 
 export function workflow(name: string, fn: (run: RunFn) => Promise<void>): WorkflowExecutor {
   return {
@@ -96,51 +259,8 @@ export function workflow(name: string, fn: (run: RunFn) => Promise<void>): Workf
     async execute(deps: WorkflowDeps): Promise<void> {
       await deps.stateStore.initRun(deps.runId)
 
-      const run: RunFn = async (s: Step, overrides?: RunOverrides): Promise<unknown> => {
-        const key = stepName(overrides?.as ?? s.name)
-
-        const state = await deps.stateStore.loadRun(deps.runId)
-        const cached = state?.steps[key]
-        if (cached !== undefined) return cached.value
-
-        const prompt = assemblePrompt(s.config.prompt, overrides)
-        const ctx: RunnerContext = {
-          cwd: deps.cwd,
-          env: {},
-          prompt,
-          extraArgs: [],
-        }
-
-        const startedAt = deps.clock.now()
-        const result = await runRunner(s.config.agent, ctx, {
-          processService: deps.processService,
-          clock: deps.clock,
-        })
-
-        const isError = result.finalEvent.type === 'error' || result.exitCode !== 0
-        if (isError) {
-          const msg =
-            result.finalEvent.type === 'error'
-              ? result.finalEvent.message
-              : `runner exited ${result.exitCode}`
-          throw new StepError(key, result.exitCode, msg)
-        }
-
-        const value = s.config.agent.extractStructuredOutput(result.finalEvent)
-        const endedAt = deps.clock.now()
-
-        const entry: StepEntry = {
-          name: key,
-          value,
-          startedAt,
-          endedAt,
-          artifacts: [],
-          validations: [],
-        }
-        await deps.stateStore.saveStep(deps.runId, entry)
-
-        return value
-      }
+      const run: RunFn = (s: Step, overrides?: RunOverrides): Promise<unknown> =>
+        runStepOnce(deps, s, overrides)
 
       try {
         await fn(run)

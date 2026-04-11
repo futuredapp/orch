@@ -4,7 +4,13 @@ import { z } from 'zod'
 import { step } from '../../../src/core/step.ts'
 import { StepError, type WorkflowDeps, workflow } from '../../../src/core/workflow.ts'
 import { FakeRunner } from '../../../src/runners/index.ts'
-import { BunFsService, FakeClock, FakeProcessService, path } from '../../../src/services/index.ts'
+import {
+  BunFsService,
+  FakeClock,
+  FakeGitService,
+  FakeProcessService,
+  path,
+} from '../../../src/services/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
 
 let tmpDir: string
@@ -29,6 +35,8 @@ function makeIntegrationDeps(overrides?: {
   return {
     processService,
     clock,
+    fsService: bunFs,
+    gitService: new FakeGitService(),
     stateStore: new FileStateStore({ fs: bunFs, basePath: path(tmpDir) }),
     runId: overrides?.runId ?? ('r-2026-04-10-000001' as RunId),
     cwd: path('/workspace'),
