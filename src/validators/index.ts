@@ -1,3 +1,6 @@
+export type { CheckFn } from './check.ts'
+export { check } from './check.ts'
+export { DuplicateValidatorError, defineValidator, getValidator } from './define-validator.ts'
 export { fileProduced } from './file-produced.ts'
 export { gitCommitCreated } from './git-commit-created.ts'
 export { gitDiffCreated } from './git-diff-created.ts'
