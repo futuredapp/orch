@@ -1,5 +1,5 @@
 ---
-status: pending
+status: done
 priority: p3
 issue_id: "018"
 tags: [code-review, quality, testing]
@@ -32,3 +32,4 @@ Accept a `Clock` in the `FakeFsService` constructor, or use a fixed timestamp.
 | Date | Action | Learnings |
 |------|--------|-----------|
 | 2026-04-11 | Created from code review | |
+| 2026-04-11 | Resolved | G5 shipped — FakeFsService accepts optional Clock via constructor; writeFile uses clock?.now() ?? Date.now() |

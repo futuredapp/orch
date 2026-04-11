@@ -1,5 +1,5 @@
 ---
-status: pending
+status: done
 priority: p2
 issue_id: "009"
 tags: [code-review, architecture]
@@ -40,3 +40,4 @@ CLAUDE.md rule 7 requires importing from `src/<module>/index.ts` across module b
 |------|--------|-----------|
 | 2026-04-11 | Created from code review | |
 | 2026-04-11 | G3: fixed execute.ts barrel import to use `../services/index.ts`; state-store.ts portion still owned by G2 | Partial fix — closing once G2 lands |
+| 2026-04-11 | Resolved | G2 (state-store.ts) and G3 (execute.ts) both shipped — imports now go through `../services/index.ts` barrel |

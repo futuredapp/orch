@@ -1,5 +1,5 @@
 ---
-status: pending
+status: done
 priority: p2
 issue_id: "007"
 tags: [code-review, quality, typescript]
@@ -35,3 +35,4 @@ dependencies: []
 | Date | Action | Learnings |
 |------|--------|-----------|
 | 2026-04-11 | Created from code review | |
+| 2026-04-11 | Resolved | G2 shipped — loadRun rebuilds RunState explicitly and brands id via runId(data.id); no more double cast |

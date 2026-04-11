@@ -1,5 +1,5 @@
 ---
-status: pending
+status: done
 priority: p3
 issue_id: "017"
 tags: [code-review, quality, duplication]
@@ -36,3 +36,4 @@ Extract `async #atomicWrite(runId: RunId, state: RunState): Promise<void>` with:
 | Date | Action | Learnings |
 |------|--------|-----------|
 | 2026-04-11 | Created from code review | Natural to combine with 005 and 006 |
+| 2026-04-11 | Resolved | G2 shipped — atomic write extracted to #atomicWrite; saveStep/initRun/setStatus all route through it |

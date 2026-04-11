@@ -1,5 +1,5 @@
 ---
-status: pending
+status: done
 priority: p2
 issue_id: "005"
 tags: [code-review, data-integrity, performance]
@@ -44,3 +44,4 @@ dependencies: []
 | Date | Action | Learnings |
 |------|--------|-----------|
 | 2026-04-11 | Created from code review | 3 agents flagged independently |
+| 2026-04-11 | Resolved | G2 shipped — #atomicWrite helper with per-call unique tmp path `${file}.${pid}-${counter}.tmp`; parallel saveStep calls no longer collide |

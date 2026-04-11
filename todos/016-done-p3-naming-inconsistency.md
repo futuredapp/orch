@@ -1,5 +1,5 @@
 ---
-status: pending
+status: done
 priority: p3
 issue_id: "016"
 tags: [code-review, quality, naming]
@@ -35,3 +35,4 @@ Standardize to one convention. Options:
 | Date | Action | Learnings |
 |------|--------|-----------|
 | 2026-04-11 | Created from code review | |
+| 2026-04-11 | Resolved | G5 shipped — SystemClock renamed to BunClock (file and class); all call sites updated; grep confirms 0 matches |

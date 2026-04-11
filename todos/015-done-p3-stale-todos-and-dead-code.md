@@ -1,5 +1,5 @@
 ---
-status: pending
+status: done
 priority: p3
 issue_id: "015"
 tags: [code-review, quality, cleanup]
@@ -42,3 +42,4 @@ Several housekeeping items accumulated across phases:
 | Date | Action | Learnings |
 |------|--------|-----------|
 | 2026-04-11 | Created from code review | |
+| 2026-04-11 | Resolved | G5 shipped — src/index.ts re-exports module barrels; placeholder.test.ts deleted; structuredOutput capability comment added |

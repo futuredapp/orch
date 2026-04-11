@@ -1,5 +1,5 @@
 ---
-status: pending
+status: done
 priority: p2
 issue_id: "006"
 tags: [code-review, data-integrity]
@@ -34,3 +34,4 @@ dependencies: []
 | Date | Action | Learnings |
 |------|--------|-----------|
 | 2026-04-11 | Created from code review | |
+| 2026-04-11 | Resolved | G2 shipped — try/catch around writeFile+rename cleans up the tmp file on any failure path |
