@@ -159,7 +159,7 @@ Legend: ☐ not started · ◐ in progress · ✓ landed
 
 ---
 
-### Phase 6 — Validators ☐
+### Phase 6 — Validators ☑
 
 **Goal:** post-exit assertions land with a readable DX.
 
@@ -175,6 +175,8 @@ Legend: ☐ not started · ◐ in progress · ✓ landed
 - **Unit** — each built-in validator with a fake service; pass / fail / error paths. Validator names appear verbatim in failure messages.
 - **Unit** — `check(fn)` accepts `true | string | { ok, reason }`.
 - **Integration** — `fileProduced` against a real temp dir; `gitDiffCreated` against a real temp git repo created by `tests/helpers/temp-git-repo.ts`.
+
+**Landed:** 2026-04-11 — see [`2026-04-11-feat-phase-6-validators-plan.md`](2026-04-11-feat-phase-6-validators-plan.md). Ships the minimal `GitService` port (headSha, hasDiffSince, diffSinceSha — `isClean` deferred to Phase 10), `StepEntry` schema v2 with security-constrained `preRunSnapshot.headSha`, lazy baseline capture via `needs: ['headSha']` capability, serial no-fail-fast validator loop, and the module-level named validator registry ready for Phase 14's out-of-process `orch validate` CLI.
 
 ---
 
