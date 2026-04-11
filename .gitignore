@@ -26,6 +26,10 @@ build/
 .DS_Store
 Thumbs.db
 
+# environment
+.env
+.env.*
+
 # logs
 *.log
 npm-debug.log*

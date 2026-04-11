@@ -1,0 +1,38 @@
+import { describe, expect, it } from 'bun:test'
+import { claude, isTerminalEvent, runRunner } from '../../../../src/runners/index.ts'
+import type { RunnerContext } from '../../../../src/runners/types.ts'
+import { SystemClock } from '../../../../src/services/clock/index.ts'
+import { BunProcessService } from '../../../../src/services/process/index.ts'
+import { path } from '../../../../src/services/types.ts'
+
+const canRun = process.env.RUN_REAL_CLAUDE === '1' && Bun.which('claude') !== null
+
+function ctxFor(prompt: string): RunnerContext {
+  return { cwd: path(process.cwd()), env: {}, prompt, extraArgs: [] }
+}
+
+describe.skipIf(!canRun)('ClaudeRunner real CLI', () => {
+  it('runs "Reply with exactly: OK" and receives a success result with intermediate events', async () => {
+    const runner = claude({ maxTurns: 1 })
+    const ctx = ctxFor('Reply with exactly: OK')
+    const processService = new BunProcessService()
+    const clock = new SystemClock()
+
+    const result = await runRunner(runner, ctx, { processService, clock })
+
+    expect(isTerminalEvent(result.finalEvent)).toBe(true)
+    expect(result.finalEvent.type).toBe('turn-complete')
+
+    if (result.finalEvent.type === 'turn-complete') {
+      const data = result.finalEvent.data as Record<string, unknown>
+      expect(data.subtype).toBe('success')
+    }
+
+    // At least one intermediate event (system init or assistant message)
+    const infoEvents = result.events.filter((e) => e.kind === 'info')
+    expect(infoEvents.length).toBeGreaterThanOrEqual(1)
+
+    expect(result.exitCode).toBe(0)
+    expect(result.durationMs).toBeGreaterThan(0)
+  }, 30_000)
+})

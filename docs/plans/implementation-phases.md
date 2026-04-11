@@ -115,7 +115,7 @@ Legend: ☐ not started · ◐ in progress · ✓ landed
 
 ---
 
-### Phase 4 — `step.define` + `workflow` + `run` + memoization ☐
+### Phase 4 — `step.define` + `workflow` + `run` + memoization ✓
 
 **Goal:** the core DSL. Runs workflows powered **entirely by `FakeRunner`**.
 
@@ -130,21 +130,28 @@ Legend: ☐ not started · ◐ in progress · ✓ landed
 - **Unit** — crash mid-workflow, resume re-executes top-to-bottom but skips completed names.
 - **Integration** — a 4-step fake workflow end-to-end; inspect `state.json`.
 
+**Detailed plan:** [`docs/plans/2026-04-10-feat-phase-4-step-workflow-run-plan.md`](2026-04-10-feat-phase-4-step-workflow-run-plan.md)
+
+**Landed:** 2026-04-10
+
 ---
 
-### Phase 5 — Real `ClaudeRunner` (minimal: prompt only, no schema, no validate) ☐
+### Phase 5 — Real `ClaudeRunner` (minimal: prompt only, no schema, no validate) ◐
 
 **Goal:** first real end-to-end execution. **This is the "real feedback early" milestone.**
 
 **Deliverables:**
-- `src/runners/claude/claude-runner.ts` — `buildCommand` producing `claude --bare -p <prompt> --output-format stream-json --verbose --session-id <uuid>`.
-- `src/runners/claude/claude-events.ts` — `stream-json` NDJSON parser; detects the final `{"type":"result","subtype":...}` envelope.
-- Minimal `claude()` factory exported from `src/runners/index.ts`.
+- `src/runners/claude/claude-runner.ts` — Zod schemas, NDJSON parser, env allowlist builder, `claude()` factory via `defineRunner()`. `buildCommand` producing `claude --bare -p <prompt> --output-format stream-json --verbose --no-session-persistence`.
+- `src/runners/claude/index.ts` — module barrel.
+- `claude()` factory exported from `src/runners/index.ts`.
 
 **Tests:**
-- **Unit** — `ClaudeRunner` with `FakeProcessService` scripted from `tests/fixtures/claude/simple-success.jsonl`; asserts stdout parsing, command shape, exit detection.
-- **Integration (auto-skipped if `claude --version` fails)** — real `claude` run with a tiny "reply with OK" prompt; asserts the final result event arrives and has subtype `success`.
-- **E2E-lite** — a hand-written `orchestration.ts` using the DSL from Phase 4 + this runner, exercised through `workflow.execute()` directly (no CLI yet). Real Claude behind `RUN_REAL_CLAUDE=1`.
+- **Unit** — `buildCommand` argv construction, env allowlist, option combinations (`tests/unit/runners/claude/build-command.test.ts`). NDJSON parser, success/error envelopes, malformed JSON, `extractStructuredOutput` (`tests/unit/runners/claude/parse-events.test.ts`).
+- **Integration (mocked)** — full round-trip `ClaudeRunner → runRunner → FakeProcessService` from fixture NDJSON (`tests/integration/runners/claude/claude-mocked.test.ts`).
+- **Integration (real, gated `RUN_REAL_CLAUDE=1` + `Bun.which('claude')`)** — real `claude` run with "Reply with exactly: OK" prompt (`tests/integration/runners/claude/claude-real.test.ts`).
+- **E2E-lite (gated)** — workflow DSL + real ClaudeRunner, persisted state inspection (`tests/integration/runners/claude/claude-e2e-lite.test.ts`).
+
+**Detailed plan:** [`docs/plans/2026-04-11-feat-phase-5-claude-runner-plan.md`](2026-04-11-feat-phase-5-claude-runner-plan.md)
 
 **Definition of Done:** `RUN_REAL_CLAUDE=1 bun run test:int` produces a passing real run on a dev machine in under 30 s.
 

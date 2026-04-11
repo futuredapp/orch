@@ -47,6 +47,7 @@ export function isTerminalEvent(e: RunnerEvent): e is TerminalEvent {
 
 export interface RunnerCommand {
   readonly argv: readonly string[]
+  /** Full replacement — passed directly to ProcessService. No automatic merge with process.env. */
   readonly env: Readonly<Record<string, string>>
 }
 
