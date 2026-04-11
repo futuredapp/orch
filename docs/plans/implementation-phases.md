@@ -136,7 +136,7 @@ Legend: ☐ not started · ◐ in progress · ✓ landed
 
 ---
 
-### Phase 5 — Real `ClaudeRunner` (minimal: prompt only, no schema, no validate) ◐
+### Phase 5 — Real `ClaudeRunner` (minimal: prompt only, no schema, no validate) ✓
 
 **Goal:** first real end-to-end execution. **This is the "real feedback early" milestone.**
 
@@ -154,6 +154,8 @@ Legend: ☐ not started · ◐ in progress · ✓ landed
 **Detailed plan:** [`docs/plans/2026-04-11-feat-phase-5-claude-runner-plan.md`](2026-04-11-feat-phase-5-claude-runner-plan.md)
 
 **Definition of Done:** `RUN_REAL_CLAUDE=1 bun run test:int` produces a passing real run on a dev machine in under 30 s.
+
+**Landed:** 2026-04-11
 
 ---
 
