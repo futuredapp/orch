@@ -28,7 +28,7 @@ function makeDeps(overrides?: {
     processService,
     clock,
     stateStore: new FileStateStore({ fs, basePath: BASE }),
-    runId: overrides?.runId ?? rid('r-2026-04-10-0001'),
+    runId: overrides?.runId ?? rid('r-2026-04-10-000001'),
     cwd: path('/workspace'),
   }
 }
@@ -185,7 +185,7 @@ describe('workflow run()', () => {
   })
 
   it('resume skips completed steps and re-runs the failed step', async () => {
-    const sharedRunId = rid('r-2026-04-10-0001')
+    const sharedRunId = rid('r-2026-04-10-000001')
     const fs = new FakeFsService()
 
     // First execution: steps 1 and 2 succeed, step 3 fails
