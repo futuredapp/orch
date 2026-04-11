@@ -18,18 +18,18 @@ describe('FileRunRegistry (integration)', () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-registry-test-')
     const bunFs = new BunFsService()
 
-    await fs.mkdir(`${tmpDir}/r-2026-04-10-cc00`)
-    await fs.mkdir(`${tmpDir}/r-2026-04-08-aa00`)
-    await fs.mkdir(`${tmpDir}/r-2026-04-09-bb00`)
+    await fs.mkdir(`${tmpDir}/r-2026-04-10-cc0000`)
+    await fs.mkdir(`${tmpDir}/r-2026-04-08-aa0000`)
+    await fs.mkdir(`${tmpDir}/r-2026-04-09-bb0000`)
 
     const registry = new FileRunRegistry({ fs: bunFs, basePath: path(tmpDir) })
 
     const runs = await registry.listRuns()
 
     expect(runs).toEqual([
-      rid('r-2026-04-08-aa00'),
-      rid('r-2026-04-09-bb00'),
-      rid('r-2026-04-10-cc00'),
+      rid('r-2026-04-08-aa0000'),
+      rid('r-2026-04-09-bb0000'),
+      rid('r-2026-04-10-cc0000'),
     ])
   })
 })

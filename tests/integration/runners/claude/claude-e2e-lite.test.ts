@@ -24,7 +24,7 @@ afterEach(async () => {
 describe.skipIf(!canRun)('ClaudeRunner e2e-lite (workflow DSL + real CLI)', () => {
   it('runs a single-step workflow and persists completed state', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-claude-e2e-')
-    const runIdVal = 'r-2026-04-11-e2e1' as RunId
+    const runIdVal = 'r-2026-04-11-e2e001' as RunId
     const runner = claude({ maxTurns: 1 })
     const STEP = step.define('say-ok', { agent: runner, prompt: 'Reply with exactly: OK' })
 

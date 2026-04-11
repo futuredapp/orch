@@ -4,9 +4,6 @@
   "description": "Code-first orchestrator for chaining coding-agent CLIs (Claude Code, Codex)",
   "type": "module",
   "private": true,
-  "bin": {
-    "orch": "./src/cli/index.ts"
-  },
   "scripts": {
     "check": "bun run lint && bun run typecheck && bun run test",
     "lint": "biome check .",
