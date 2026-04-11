@@ -1,7 +1,7 @@
 import { z } from 'zod'
-import type { FsService } from '../services/index.ts'
-import { type Path, path } from '../services/types.ts'
-import { RUN_ID_PATTERN, type RunId } from './run-id.ts'
+import type { FsService, Path } from '../services/index.ts'
+import { path } from '../services/index.ts'
+import { RUN_ID_PATTERN, type RunId, runId } from './run-id.ts'
 
 export interface StepEntry {
   readonly name: string
@@ -54,23 +54,37 @@ const RunStateSchema = z.object({
   steps: z.record(z.string(), StepEntrySchema),
 })
 
+function errorMessage(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause)
+}
+
 export class FileStateStore implements StateStore {
   readonly #fs: FsService
   readonly #basePath: Path
+  #tmpCounter = 0
 
   constructor(deps: { readonly fs: FsService; readonly basePath: Path }) {
     this.#fs = deps.fs
     this.#basePath = deps.basePath
   }
 
-  async loadRun(runId: RunId): Promise<RunState | undefined> {
-    const file = this.#statePath(runId)
+  async loadRun(rid: RunId): Promise<RunState | undefined> {
+    const file = this.#statePath(rid)
 
     let raw: string
     try {
       raw = await this.#fs.readFile(file)
-    } catch {
-      return undefined
+    } catch (err) {
+      if (err && typeof err === 'object' && 'code' in err && err.code === 'ENOENT') {
+        return undefined
+      }
+      // FakeFsService and some environments throw Error objects whose message
+      // starts with "ENOENT:" but without a `code` field. Treat that prefix as
+      // not-found to preserve round-trip semantics without swallowing real errors.
+      if (err instanceof Error && err.message.startsWith('ENOENT')) {
+        return undefined
+      }
+      throw err
     }
 
     let parsed: unknown
@@ -78,7 +92,7 @@ export class FileStateStore implements StateStore {
       parsed = JSON.parse(raw)
     } catch (cause) {
       throw new StateCorruptionError(`Failed to parse JSON at ${file}`, file, [
-        { path: [], message: (cause as Error).message },
+        { path: [], message: errorMessage(cause) },
       ])
     }
 
@@ -92,18 +106,33 @@ export class FileStateStore implements StateStore {
       )
     }
 
-    return result.data as unknown as RunState
+    const data = result.data
+    const steps: Record<string, StepEntry> = {}
+    for (const [key, step] of Object.entries(data.steps)) {
+      steps[key] = {
+        name: step.name,
+        value: step.value,
+        startedAt: step.startedAt,
+        endedAt: step.endedAt,
+        artifacts: step.artifacts,
+      }
+    }
+    return {
+      schemaVersion: data.schemaVersion,
+      id: runId(data.id),
+      status: data.status,
+      steps,
+    }
   }
 
-  async saveStep(runId: RunId, entry: StepEntry): Promise<void> {
-    const dir = this.#runDir(runId)
-    const file = this.#statePath(runId)
-    const tmp = this.#tmpPath(runId)
+  async saveStep(rid: RunId, entry: StepEntry): Promise<void> {
+    const dir = this.#runDir(rid)
+    const file = this.#statePath(rid)
 
-    const existing = await this.loadRun(runId)
+    const existing = await this.loadRun(rid)
     const state: RunState = {
       schemaVersion: 1,
-      id: runId,
+      id: rid,
       status: existing?.status ?? 'running',
       steps: { ...existing?.steps, [entry.name]: entry },
     }
@@ -112,62 +141,65 @@ export class FileStateStore implements StateStore {
     try {
       json = JSON.stringify(state, null, 2)
     } catch (cause) {
-      throw new Error(`Failed to serialize step "${entry.name}": ${(cause as Error).message}`, {
+      throw new Error(`Failed to serialize step "${entry.name}": ${errorMessage(cause)}`, {
         cause,
       })
     }
 
     await this.#fs.mkdir(dir, { recursive: true })
-    await this.#fs.writeFile(tmp, json)
-    await this.#fs.rename(tmp, file)
+    await this.#atomicWrite(file, json)
   }
 
-  async initRun(runId: RunId): Promise<void> {
-    const existing = await this.loadRun(runId)
+  async initRun(rid: RunId): Promise<void> {
+    const existing = await this.loadRun(rid)
     if (existing !== undefined) return
 
-    const dir = this.#runDir(runId)
-    const file = this.#statePath(runId)
-    const tmp = this.#tmpPath(runId)
-
+    const dir = this.#runDir(rid)
+    const file = this.#statePath(rid)
     const state: RunState = {
       schemaVersion: 1,
-      id: runId,
+      id: rid,
       status: 'running',
       steps: {},
     }
 
     await this.#fs.mkdir(dir, { recursive: true })
-    await this.#fs.writeFile(tmp, JSON.stringify(state, null, 2))
-    await this.#fs.rename(tmp, file)
+    await this.#atomicWrite(file, JSON.stringify(state, null, 2))
   }
 
-  async setStatus(runId: RunId, status: RunState['status']): Promise<void> {
-    const existing = await this.loadRun(runId)
+  async setStatus(rid: RunId, status: RunState['status']): Promise<void> {
+    const existing = await this.loadRun(rid)
     if (existing === undefined) {
-      throw new Error(`Cannot set status: run "${runId}" does not exist`)
+      throw new Error(`Cannot set status: run "${rid}" does not exist`)
     }
 
-    const file = this.#statePath(runId)
-    const tmp = this.#tmpPath(runId)
+    const file = this.#statePath(rid)
     const state: RunState = { ...existing, status }
 
-    await this.#fs.writeFile(tmp, JSON.stringify(state, null, 2))
-    await this.#fs.rename(tmp, file)
+    await this.#atomicWrite(file, JSON.stringify(state, null, 2))
   }
 
-  // TODO(phase-8): saveStep does load-then-write (non-atomic). Safe for Phase 4
-  // (sequential), but parallel() needs locking or CAS.
-
-  #runDir(runId: RunId): Path {
-    return path(`${this.#basePath}/${runId}`)
+  async #atomicWrite(filePath: Path, json: string): Promise<void> {
+    const tmp = this.#nextTmpPath(filePath)
+    try {
+      await this.#fs.writeFile(tmp, json)
+      await this.#fs.rename(tmp, filePath)
+    } catch (err) {
+      await this.#fs.remove(tmp).catch(() => {})
+      throw err
+    }
   }
 
-  #statePath(runId: RunId): Path {
-    return path(`${this.#runDir(runId)}/state.json`)
+  #nextTmpPath(filePath: Path): Path {
+    this.#tmpCounter += 1
+    return path(`${filePath}.${process.pid}-${this.#tmpCounter}.tmp`)
   }
 
-  #tmpPath(runId: RunId): Path {
-    return path(`${this.#statePath(runId)}.tmp`)
+  #runDir(rid: RunId): Path {
+    return path(`${this.#basePath}/${rid}`)
+  }
+
+  #statePath(rid: RunId): Path {
+    return path(`${this.#runDir(rid)}/state.json`)
   }
 }

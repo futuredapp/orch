@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'bun:test'
-import { FakeFsService, path } from '../../../src/services/index.ts'
-import { FileStateStore, type RunId, type StepEntry } from '../../../src/state/index.ts'
+import { FakeFsService, type FsService, type Path, path } from '../../../src/services/index.ts'
+import { FileStateStore, type RunId, runId, type StepEntry } from '../../../src/state/index.ts'
 
-const rid = (s: string): RunId => s as RunId
+const rid = (s: string): RunId => runId(s)
 
 const BASE = path('/runs')
 
-function makeStore(fs?: FakeFsService): { store: FileStateStore; fs: FakeFsService } {
+function makeStore(fs?: FsService): { store: FileStateStore; fs: FsService } {
   const fakeFs = fs ?? new FakeFsService()
   const store = new FileStateStore({ fs: fakeFs, basePath: BASE })
   return { store, fs: fakeFs }
@@ -20,6 +20,61 @@ function makeEntry(overrides: Partial<StepEntry> = {}): StepEntry {
     endedAt: 2000,
     artifacts: [],
     ...overrides,
+  }
+}
+
+/**
+ * Thin recording fake that tracks every writeFile call by path. Lets tests
+ * observe tmp-file naming without mocking internal modules. Delegates reads
+ * and rename to an underlying FakeFsService.
+ */
+class RecordingFsService implements FsService {
+  readonly inner: FakeFsService
+  readonly writes: Path[] = []
+
+  constructor() {
+    this.inner = new FakeFsService()
+  }
+
+  readFile(p: Path): Promise<string> {
+    return this.inner.readFile(p)
+  }
+
+  async writeFile(p: Path, data: string): Promise<void> {
+    this.writes.push(p)
+    await this.inner.writeFile(p, data)
+  }
+
+  rename(from: Path, to: Path): Promise<void> {
+    return this.inner.rename(from, to)
+  }
+
+  mkdir(p: Path, opts?: { readonly recursive?: boolean }): Promise<void> {
+    return this.inner.mkdir(p, opts)
+  }
+
+  exists(p: Path): Promise<boolean> {
+    return this.inner.exists(p)
+  }
+
+  glob(pattern: string, opts?: { readonly cwd?: Path }): AsyncIterable<Path> {
+    return this.inner.glob(pattern, opts)
+  }
+
+  readDir(p: Path): Promise<readonly Path[]> {
+    return this.inner.readDir(p)
+  }
+
+  stat(p: Path): Promise<{ readonly size: number; readonly mtimeMs: number }> {
+    return this.inner.stat(p)
+  }
+
+  remove(p: Path): Promise<void> {
+    return this.inner.remove(p)
+  }
+
+  tempDir(prefix: string): Promise<Path> {
+    return this.inner.tempDir(prefix)
   }
 }
 
@@ -77,12 +132,13 @@ describe('FileStateStore', () => {
   })
 
   it('saveStep creates the run directory if it does not exist', async () => {
-    const { store, fs } = makeStore()
+    const fakeFs = new FakeFsService()
+    const store = new FileStateStore({ fs: fakeFs, basePath: BASE })
     const id = rid('r-2026-04-10-0001')
 
     await store.saveStep(id, makeEntry())
 
-    expect(await fs.exists(path('/runs/r-2026-04-10-0001'))).toBe(true)
+    expect(await fakeFs.exists(path('/runs/r-2026-04-10-0001'))).toBe(true)
   })
 
   it('loadRun throws StateCorruptionError on corrupted JSON', async () => {
@@ -187,5 +243,69 @@ describe('FileStateStore', () => {
     const id = rid('r-2026-04-10-0001')
 
     expect(store.setStatus(id, 'completed')).rejects.toThrow('does not exist')
+  })
+
+  it('loadRun rethrows EACCES errors instead of returning undefined', async () => {
+    const fakeFs = new FakeFsService()
+    const eaccesError: Error & { code?: string } = new Error('EACCES: permission denied')
+    eaccesError.code = 'EACCES'
+    fakeFs.readFile = async () => {
+      throw eaccesError
+    }
+    const store = new FileStateStore({ fs: fakeFs, basePath: BASE })
+    const id = rid('r-2026-04-10-0001')
+
+    await expect(store.loadRun(id)).rejects.toThrow('EACCES: permission denied')
+  })
+
+  it('saveStep cleans up its .tmp file when the rename step fails', async () => {
+    const recording = new RecordingFsService()
+    const store = new FileStateStore({ fs: recording, basePath: BASE })
+    const id = rid('r-2026-04-10-0001')
+
+    recording.rename = async () => {
+      throw new Error('Simulated rename failure')
+    }
+
+    await expect(store.saveStep(id, makeEntry())).rejects.toThrow('Simulated rename failure')
+
+    const tmpWrites = recording.writes.filter((p) => p.endsWith('.tmp'))
+    expect(tmpWrites).toHaveLength(1)
+    const tmpPath = tmpWrites[0]
+    expect(tmpPath).toBeDefined()
+    if (tmpPath) {
+      expect(await recording.inner.exists(tmpPath)).toBe(false)
+    }
+  })
+
+  it('saveStep uses a unique tmp path per invocation', async () => {
+    const recording = new RecordingFsService()
+    const store = new FileStateStore({ fs: recording, basePath: BASE })
+    const id = rid('r-2026-04-10-0001')
+
+    await store.saveStep(id, makeEntry({ name: 'step-a' }))
+    await store.saveStep(id, makeEntry({ name: 'step-b' }))
+    await store.saveStep(id, makeEntry({ name: 'step-c' }))
+
+    const tmpWrites = recording.writes.filter((p) => p.endsWith('.tmp'))
+    const uniqueTmpWrites = new Set(tmpWrites)
+    expect(tmpWrites).toHaveLength(3)
+    expect(uniqueTmpWrites.size).toBe(3)
+  })
+
+  it('loadRun returns a branded RunId, not a raw string', async () => {
+    const { store } = makeStore()
+    const id = rid('r-2026-04-10-0001')
+
+    await store.saveStep(id, makeEntry())
+    const state = await store.loadRun(id)
+
+    expect(state).toBeDefined()
+    if (state) {
+      // Compile-time assertion: assigning to RunId without a cast only type-checks
+      // if state.id is already branded. A raw string would fail `strict` mode.
+      const branded: RunId = state.id
+      expect(branded).toBe(id)
+    }
   })
 })
