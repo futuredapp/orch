@@ -1,3 +1,6 @@
+export { fileProduced } from './file-produced.ts'
+export { gitCommitCreated } from './git-commit-created.ts'
+export { gitDiffCreated } from './git-diff-created.ts'
 export { ANONYMOUS_CHECK_NAME, anyNeedsHeadSha, normalizeValidators } from './normalize.ts'
 export type {
   PersistedValidation,
