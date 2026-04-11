@@ -33,16 +33,7 @@ describe('ClaudeRunner mocked integration', () => {
     clock.advance(500)
     const result = await resultPromise
 
-    // 3 events: system init (info), assistant (info), result (terminal)
-    expect(result.events).toHaveLength(3)
-
-    // First two are info events
-    expect(result.events[0]?.kind).toBe('info')
-    expect(result.events[0]?.type).toBe('system')
-    expect(result.events[1]?.kind).toBe('info')
-    expect(result.events[1]?.type).toBe('assistant')
-
-    // Terminal event
+    // Terminal event is the turn-complete result envelope.
     expect(isTerminalEvent(result.finalEvent)).toBe(true)
     expect(result.finalEvent.type).toBe('turn-complete')
     expect(result.exitCode).toBe(0)

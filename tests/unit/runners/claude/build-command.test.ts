@@ -121,45 +121,42 @@ describe('buildClaudeEnv', () => {
     }
   })
 
-  it('includes ANTHROPIC_ and CLAUDE_ prefixed vars from process.env', () => {
-    const original = process.env.ANTHROPIC_API_KEY
-    process.env.ANTHROPIC_API_KEY = 'sk-test-key'
+  it('includes ANTHROPIC_ and CLAUDE_ prefixed vars from the injected processEnv', () => {
+    const env = buildClaudeEnv({}, { ANTHROPIC_API_KEY: 'sk-test-key' })
 
-    try {
-      const env = buildClaudeEnv({})
-
-      expect(env.ANTHROPIC_API_KEY).toBe('sk-test-key')
-    } finally {
-      if (original !== undefined) {
-        process.env.ANTHROPIC_API_KEY = original
-      } else {
-        delete process.env.ANTHROPIC_API_KEY
-      }
-    }
+    expect(env.ANTHROPIC_API_KEY).toBe('sk-test-key')
   })
 
   it('excludes non-allowlisted vars like DATABASE_URL', () => {
-    const original = process.env.DATABASE_URL
-    process.env.DATABASE_URL = 'postgres://secret'
+    const env = buildClaudeEnv({}, { DATABASE_URL: 'postgres://secret' })
 
-    try {
-      const env = buildClaudeEnv({})
-
-      expect(env.DATABASE_URL).toBeUndefined()
-    } finally {
-      if (original !== undefined) {
-        process.env.DATABASE_URL = original
-      } else {
-        delete process.env.DATABASE_URL
-      }
-    }
+    expect(env.DATABASE_URL).toBeUndefined()
   })
 
-  it('merges ctx.env with higher precedence over allowlist', () => {
-    const env = buildClaudeEnv({ HOME: '/custom/home', CUSTOM_VAR: 'custom' })
+  it('gives allowlist precedence over ctx.env so callers cannot override PATH', () => {
+    const env = buildClaudeEnv(
+      { PATH: '/evil/bin', HOME: '/evil/home' },
+      {
+        PATH: '/usr/bin',
+        HOME: '/home/user',
+      },
+    )
 
-    expect(env.HOME).toBe('/custom/home')
-    expect(env.CUSTOM_VAR).toBe('custom')
+    expect(env.PATH).toBe('/usr/bin')
+    expect(env.HOME).toBe('/home/user')
+  })
+
+  it('uses the injected processEnv, not the global process.env', () => {
+    const stub: Record<string, string | undefined> = {
+      PATH: '/stub/bin',
+      ANTHROPIC_API_KEY: 'stub-key',
+    }
+
+    const env = buildClaudeEnv({}, stub)
+
+    expect(env.PATH).toBe('/stub/bin')
+    expect(env.ANTHROPIC_API_KEY).toBe('stub-key')
+    expect(env.HOME).toBeUndefined()
   })
 
   it('produces no undefined values in the result', () => {
@@ -168,5 +165,31 @@ describe('buildClaudeEnv', () => {
     for (const val of Object.values(env)) {
       expect(val).not.toBeUndefined()
     }
+  })
+})
+
+describe('claude() flag denylist', () => {
+  it('rejects --dangerously-skip-permissions in flags', () => {
+    const runner = claude({ flags: ['--dangerously-skip-permissions'] })
+
+    expect(() => runner.buildCommand(ctxFor('hi'))).toThrow(
+      /flag "--dangerously-skip-permissions" is on the denylist/,
+    )
+  })
+
+  it('rejects --settings in ctx.extraArgs', () => {
+    const runner = claude()
+
+    expect(() =>
+      runner.buildCommand(ctxFor('hi', { extraArgs: ['--settings', '{"evil":true}'] })),
+    ).toThrow(/flag "--settings" is on the denylist/)
+  })
+
+  it('rejects --mcp-config=foo (prefix match) in flags', () => {
+    const runner = claude({ flags: ['--mcp-config=/tmp/evil.json'] })
+
+    expect(() => runner.buildCommand(ctxFor('hi'))).toThrow(
+      /flag "--mcp-config=\/tmp\/evil.json" is on the denylist/,
+    )
   })
 })

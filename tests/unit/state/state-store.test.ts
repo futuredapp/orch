@@ -132,4 +132,60 @@ describe('FileStateStore', () => {
       expect((err as Error).message).toContain('bad-value')
     }
   })
+
+  it('initRun creates an empty running state', async () => {
+    const { store } = makeStore()
+    const id = rid('r-2026-04-10-0001')
+
+    await store.initRun(id)
+    const state = await store.loadRun(id)
+
+    expect(state).toBeDefined()
+    expect(state?.id).toBe(id)
+    expect(state?.schemaVersion).toBe(1)
+    expect(state?.status).toBe('running')
+    expect(state?.steps).toEqual({})
+  })
+
+  it('initRun is idempotent — calling twice does not clear existing steps', async () => {
+    const { store } = makeStore()
+    const id = rid('r-2026-04-10-0001')
+
+    await store.initRun(id)
+    await store.saveStep(id, makeEntry({ name: 'step-a' }))
+    await store.initRun(id)
+    const state = await store.loadRun(id)
+
+    expect(state?.steps['step-a']).toBeDefined()
+    expect(Object.keys(state?.steps ?? {})).toHaveLength(1)
+  })
+
+  it('setStatus transitions status from running to completed', async () => {
+    const { store } = makeStore()
+    const id = rid('r-2026-04-10-0001')
+
+    await store.initRun(id)
+    await store.setStatus(id, 'completed')
+    const state = await store.loadRun(id)
+
+    expect(state?.status).toBe('completed')
+  })
+
+  it('setStatus transitions status from running to crashed', async () => {
+    const { store } = makeStore()
+    const id = rid('r-2026-04-10-0001')
+
+    await store.initRun(id)
+    await store.setStatus(id, 'crashed')
+    const state = await store.loadRun(id)
+
+    expect(state?.status).toBe('crashed')
+  })
+
+  it('setStatus throws for a non-existent run', async () => {
+    const { store } = makeStore()
+    const id = rid('r-2026-04-10-0001')
+
+    expect(store.setStatus(id, 'completed')).rejects.toThrow('does not exist')
+  })
 })

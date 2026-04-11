@@ -30,13 +30,6 @@ describe('runRunner', () => {
     clock.advance(500)
     const result = await runRunner(fr, ctxFor('test'), { processService: fps, clock })
 
-    expect(result.events).toHaveLength(3)
-    expect(result.events[0]).toEqual({
-      kind: 'info',
-      type: 'thinking',
-      payload: { text: 'analyzing' },
-    })
-    expect(result.events[1]).toEqual({ kind: 'info', type: 'tool-call', payload: { name: 'read' } })
     expect(isTerminalEvent(result.finalEvent)).toBe(true)
     expect(result.finalEvent.type).toBe('turn-complete')
     expect(result.exitCode).toBe(0)
@@ -166,8 +159,8 @@ describe('runRunner', () => {
 
     const result = await runRunner(fr2, ctxFor('trailing'), { processService: fps2, clock })
 
-    // Only 2 events: 1 info + 1 terminal. The trailing telemetry lines are discarded.
-    expect(result.events).toHaveLength(2)
+    // Trailing telemetry lines after the terminal event are drained but ignored.
+    expect(result.finalEvent.type).toBe('turn-complete')
     expect(result.exitCode).toBe(0)
   })
 })

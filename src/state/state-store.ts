@@ -21,6 +21,8 @@ export interface RunState {
 export interface StateStore {
   loadRun(runId: RunId): Promise<RunState | undefined>
   saveStep(runId: RunId, entry: StepEntry): Promise<void>
+  initRun(runId: RunId): Promise<void>
+  setStatus(runId: RunId, status: RunState['status']): Promise<void>
 }
 
 export class StateCorruptionError extends Error {
@@ -119,6 +121,43 @@ export class FileStateStore implements StateStore {
     await this.#fs.writeFile(tmp, json)
     await this.#fs.rename(tmp, file)
   }
+
+  async initRun(runId: RunId): Promise<void> {
+    const existing = await this.loadRun(runId)
+    if (existing !== undefined) return
+
+    const dir = this.#runDir(runId)
+    const file = this.#statePath(runId)
+    const tmp = this.#tmpPath(runId)
+
+    const state: RunState = {
+      schemaVersion: 1,
+      id: runId,
+      status: 'running',
+      steps: {},
+    }
+
+    await this.#fs.mkdir(dir, { recursive: true })
+    await this.#fs.writeFile(tmp, JSON.stringify(state, null, 2))
+    await this.#fs.rename(tmp, file)
+  }
+
+  async setStatus(runId: RunId, status: RunState['status']): Promise<void> {
+    const existing = await this.loadRun(runId)
+    if (existing === undefined) {
+      throw new Error(`Cannot set status: run "${runId}" does not exist`)
+    }
+
+    const file = this.#statePath(runId)
+    const tmp = this.#tmpPath(runId)
+    const state: RunState = { ...existing, status }
+
+    await this.#fs.writeFile(tmp, JSON.stringify(state, null, 2))
+    await this.#fs.rename(tmp, file)
+  }
+
+  // TODO(phase-8): saveStep does load-then-write (non-atomic). Safe for Phase 4
+  // (sequential), but parallel() needs locking or CAS.
 
   #runDir(runId: RunId): Path {
     return path(`${this.#basePath}/${runId}`)

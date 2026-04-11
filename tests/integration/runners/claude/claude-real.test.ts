@@ -28,10 +28,6 @@ describe.skipIf(!canRun)('ClaudeRunner real CLI', () => {
       expect(data.subtype).toBe('success')
     }
 
-    // At least one intermediate event (system init or assistant message)
-    const infoEvents = result.events.filter((e) => e.kind === 'info')
-    expect(infoEvents.length).toBeGreaterThanOrEqual(1)
-
     expect(result.exitCode).toBe(0)
     expect(result.durationMs).toBeGreaterThan(0)
   }, 30_000)

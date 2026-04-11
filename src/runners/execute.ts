@@ -1,10 +1,8 @@
-import type { Clock } from '../services/clock/clock.ts'
-import type { ProcessService } from '../services/process/process-service.ts'
-import type { Runner, RunnerContext, RunnerEvent, TerminalEvent } from './types.ts'
+import type { Clock, ProcessService } from '../services/index.ts'
+import type { Runner, RunnerContext, TerminalEvent } from './types.ts'
 import { isTerminalEvent } from './types.ts'
 
 export interface RunnerResult {
-  readonly events: readonly RunnerEvent[]
   readonly finalEvent: TerminalEvent
   readonly exitCode: number
   readonly durationMs: number
@@ -26,21 +24,34 @@ export async function runRunner(
   // Drain stderr concurrently to prevent pipe deadlock.
   const stderrDone = drainStream(handle.stderr)
 
-  const events: RunnerEvent[] = []
   let finalEvent: TerminalEvent | null = null
+  let exitCode: number
 
-  for await (const line of handle.stdout) {
-    if (finalEvent !== null) continue // drain trailing output without processing
-    const evt = runner.parseEvents(line)
-    if (evt === null) continue
-    events.push(evt)
-    if (isTerminalEvent(evt)) {
-      finalEvent = evt
+  try {
+    for await (const line of handle.stdout) {
+      if (finalEvent !== null) continue // drain trailing output without processing
+      const evt = runner.parseEvents(line)
+      if (evt === null) continue
+      if (isTerminalEvent(evt)) {
+        finalEvent = evt
+      }
+    }
+
+    const waitResult = await handle.wait()
+    exitCode = waitResult.exitCode
+    await stderrDone
+  } finally {
+    // Guarantee subprocess cleanup on every throw path. kill() is a safe
+    // no-op once the process has already exited (verified in
+    // bun-process-service.ts and fake-process-service.ts); swallow any
+    // error it may throw so it cannot mask the original failure.
+    try {
+      handle.kill()
+    } catch {
+      /* subprocess already gone */
     }
   }
 
-  const { exitCode } = await handle.wait()
-  await stderrDone
   const durationMs = deps.clock.now() - startedAt
 
   if (finalEvent === null) {
@@ -51,7 +62,7 @@ export async function runRunner(
     }
   }
 
-  return { events, finalEvent, exitCode, durationMs, structuredOutput: undefined }
+  return { finalEvent, exitCode, durationMs, structuredOutput: undefined }
 }
 
 async function drainStream(stream: AsyncIterable<string>): Promise<void> {

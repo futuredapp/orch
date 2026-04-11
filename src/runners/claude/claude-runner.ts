@@ -74,18 +74,40 @@ const CLAUDE_ENV_ALLOWLIST = [
   'NODE_EXTRA_CA_CERTS',
 ] as const
 
-export function buildClaudeEnv(ctxEnv: Readonly<Record<string, string>>): Record<string, string> {
+// processEnv is injected for testability; the `process.env` default only
+// activates inside the production call path (see buildCommand below).
+export function buildClaudeEnv(
+  ctxEnv: Readonly<Record<string, string>>,
+  processEnv: Readonly<Record<string, string | undefined>> = process.env,
+): Record<string, string> {
   const base: Record<string, string> = {}
   for (const key of CLAUDE_ENV_ALLOWLIST) {
-    const val = process.env[key]
+    const val = processEnv[key]
     if (val !== undefined) base[key] = val
   }
-  for (const [key, val] of Object.entries(process.env)) {
+  for (const [key, val] of Object.entries(processEnv)) {
     if ((key.startsWith('ANTHROPIC_') || key.startsWith('CLAUDE_')) && val !== undefined) {
       base[key] = val
     }
   }
-  return { ...base, ...ctxEnv }
+  // Allowlist wins over ctxEnv: a caller cannot override PATH/HOME/etc.
+  return { ...ctxEnv, ...base }
+}
+
+// Flags that would let a caller escape the sandbox or inject arbitrary
+// config. Denied whether they appear in `flags` or `ctx.extraArgs`.
+const CLAUDE_FLAG_DENYLIST = [
+  '--dangerously-skip-permissions',
+  '--settings',
+  '--mcp-config',
+] as const
+
+function assertFlagAllowed(flag: string): void {
+  for (const deny of CLAUDE_FLAG_DENYLIST) {
+    if (flag === deny || flag.startsWith(`${deny}=`)) {
+      throw new Error(`claude(): flag "${flag}" is on the denylist`)
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -151,6 +173,9 @@ export function claude(opts: ClaudeOptions = {}): Readonly<Runner> {
     supports: { interactive: false, structuredOutput: false },
 
     buildCommand(ctx: RunnerContext): RunnerCommand {
+      for (const flag of flags ?? []) assertFlagAllowed(flag)
+      for (const flag of ctx.extraArgs) assertFlagAllowed(flag)
+
       const argv = [
         'claude',
         ...(bare ? ['--bare'] : []),
@@ -165,7 +190,7 @@ export function claude(opts: ClaudeOptions = {}): Readonly<Runner> {
         ...(flags ?? []),
         ...ctx.extraArgs,
       ]
-      return { argv, env: buildClaudeEnv(ctx.env) }
+      return { argv, env: buildClaudeEnv(ctx.env, process.env) }
     },
 
     parseEvents: parseClaudeLine,
