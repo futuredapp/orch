@@ -62,7 +62,10 @@ export class BunGitService implements GitService {
   }
 
   async headSha(cwd: Path): Promise<string> {
-    const { stdout, stderr, exitCode } = await this.#runGit(cwd, ['git', 'rev-parse', 'HEAD', '--'])
+    // `git rev-parse` prints its arguments back out, so `HEAD --` would
+    // return "<sha>\n--". The `--` separator is only meaningful for
+    // commands that parse refs vs. paths — rev-parse doesn't need it.
+    const { stdout, stderr, exitCode } = await this.#runGit(cwd, ['git', 'rev-parse', 'HEAD'])
     if (exitCode !== 0) {
       throw new GitCommandError(
         exitCode,
@@ -70,7 +73,9 @@ export class BunGitService implements GitService {
         `git rev-parse HEAD failed (exit ${exitCode}): ${redactStderr(stderr)}`,
       )
     }
-    return stdout.trim()
+    // Defensively take only the first non-empty line.
+    const firstLine = stdout.split('\n').find((l) => l.trim().length > 0) ?? ''
+    return firstLine.trim()
   }
 
   async hasDiffSince(cwd: Path, sha: string): Promise<boolean> {

@@ -15,7 +15,7 @@ function makeGit(): { git: BunGitService; proc: FakeProcessService } {
 describe('BunGitService.headSha', () => {
   it('spawns `git rev-parse HEAD --` in the given cwd and returns stdout trimmed', async () => {
     const { git, proc } = makeGit()
-    proc.when(['git', 'rev-parse', 'HEAD', '--']).respondWith({
+    proc.when(['git', 'rev-parse', 'HEAD']).respondWith({
       stdout: ['abc1234def5678'],
       exit: 0,
     })
@@ -27,7 +27,7 @@ describe('BunGitService.headSha', () => {
 
   it('throws GitCommandError on non-zero exit', async () => {
     const { git, proc } = makeGit()
-    proc.when(['git', 'rev-parse', 'HEAD', '--']).respondWith({
+    proc.when(['git', 'rev-parse', 'HEAD']).respondWith({
       stdout: [],
       stderr: ['fatal: not a git repository'],
       exit: 128,
@@ -98,7 +98,7 @@ describe('BunGitService env hardening', () => {
     // Sanity check: all three methods push the `--` separator so that a
     // poisoned SHA cannot be reinterpreted as a flag or a path.
     const { git, proc } = makeGit()
-    proc.when(['git', 'rev-parse', 'HEAD', '--']).respondWith({ stdout: ['deadbeef'], exit: 0 })
+    proc.when(['git', 'rev-parse', 'HEAD']).respondWith({ stdout: ['deadbeef'], exit: 0 })
     proc.when(['git', 'diff', '--quiet', 'deadbeef', '--']).respondWith({ exit: 0 })
     proc.when(['git', 'diff', '--name-only', 'deadbeef', '--']).respondWith({ stdout: [], exit: 0 })
 
@@ -111,7 +111,7 @@ describe('BunGitService env hardening', () => {
 describe('BunGitService.redactStderr', () => {
   it('strips credential URLs from GitCommandError stderr', async () => {
     const { git, proc } = makeGit()
-    proc.when(['git', 'rev-parse', 'HEAD', '--']).respondWith({
+    proc.when(['git', 'rev-parse', 'HEAD']).respondWith({
       stderr: ['remote: fatal: cannot fetch https://user:s3cr3t@github.com/evil/repo.git'],
       exit: 128,
     })
