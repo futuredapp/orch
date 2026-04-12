@@ -115,6 +115,39 @@ async function safeHeadSha(git: GitService, cwd: Path): Promise<string | undefin
 }
 
 // ---------------------------------------------------------------------------
+// Schema helpers — extracted for cognitive complexity budget
+// ---------------------------------------------------------------------------
+
+function checkSchemaCapability(step: Step, key: StepName): void {
+  if (step.config.returns !== undefined && !step.config.agent.supports.structuredOutput) {
+    throw new Error(
+      `Runner "${step.config.agent.name}" does not support structured output; ` +
+        `remove "returns:" from step "${key}" or use a runner that supports it`,
+    )
+  }
+}
+
+function revalidateCachedValue(step: Step, key: StepName, cached: unknown): void {
+  if (step.config.returns === undefined) return
+  const reparse = step.config.returns.zodSchema.safeParse(cached)
+  if (!reparse.success) throw new SchemaValidationError(key, reparse.error)
+}
+
+function validateSchemaOutput(step: Step, key: StepName, rawValue: unknown): unknown {
+  if (step.config.returns === undefined) return rawValue
+
+  if (rawValue === undefined) {
+    throw new Error(
+      `Step "${key}": runner "${step.config.agent.name}" returned no structured_output ` +
+        'despite --json-schema being set. Check CLI version and flag compatibility.',
+    )
+  }
+  const parseResult = step.config.returns.zodSchema.safeParse(rawValue)
+  if (!parseResult.success) throw new SchemaValidationError(key, parseResult.error)
+  return parseResult.data
+}
+
+// ---------------------------------------------------------------------------
 // workflow — the core DSL entry point
 // ---------------------------------------------------------------------------
 
@@ -130,22 +163,11 @@ async function runStepOnce(
   const state = await deps.stateStore.loadRun(deps.runId)
   const cached = state?.steps[key]
   if (cached !== undefined) {
-    // Re-validate cached value when schema is present — catches schema
-    // drift without requiring the user to change step name or clear state.
-    if (s.config.returns !== undefined) {
-      const reparse = s.config.returns.zodSchema.safeParse(cached.value)
-      if (!reparse.success) throw new SchemaValidationError(key, reparse.error)
-    }
+    revalidateCachedValue(s, key, cached.value)
     return cached.value
   }
 
-  // Capability check: runner must support structured output when step declares returns.
-  if (s.config.returns !== undefined && !s.config.agent.supports.structuredOutput) {
-    throw new Error(
-      `Runner "${s.config.agent.name}" does not support structured output; ` +
-        `remove "returns:" from step "${key}" or use a runner that supports it`,
-    )
-  }
+  checkSchemaCapability(s, key)
 
   const normalized = normalizeValidators(s.config.validate, key)
   const headSha = anyNeedsHeadSha(normalized)
@@ -176,20 +198,8 @@ async function runStepOnce(
     throw new StepError(key, result.exitCode, msg)
   }
 
-  let value = s.config.agent.extractStructuredOutput(result.finalEvent)
-
-  // Structured output validation — Zod-parse when schema is declared.
-  if (s.config.returns !== undefined) {
-    if (value === undefined) {
-      throw new Error(
-        `Step "${key}": runner "${s.config.agent.name}" returned no structured_output ` +
-          'despite --json-schema being set. Check CLI version and flag compatibility.',
-      )
-    }
-    const parseResult = s.config.returns.zodSchema.safeParse(value)
-    if (!parseResult.success) throw new SchemaValidationError(key, parseResult.error)
-    value = parseResult.data
-  }
+  const rawValue = s.config.agent.extractStructuredOutput(result.finalEvent)
+  const value = validateSchemaOutput(s, key, rawValue)
 
   const validatorCtx: ValidatorCtx = {
     stepName: key,

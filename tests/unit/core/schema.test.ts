@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 import { z } from 'zod'
-import { schema, SchemaValidationError } from '../../../src/core/schema.ts'
+import { SchemaValidationError, schema } from '../../../src/core/schema.ts'
 import type { Step } from '../../../src/core/step.ts'
 import { step } from '../../../src/core/step.ts'
 import { stepName } from '../../../src/core/types.ts'

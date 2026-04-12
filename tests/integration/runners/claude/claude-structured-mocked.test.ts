@@ -1,13 +1,12 @@
+import { describe, expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { describe, expect, it } from 'bun:test'
 import { z } from 'zod'
-import { schema, SchemaValidationError } from '../../../../src/core/schema.ts'
+import { SchemaValidationError, schema } from '../../../../src/core/schema.ts'
 import { step } from '../../../../src/core/step.ts'
 import type { WorkflowDeps } from '../../../../src/core/workflow.ts'
 import { StepError, workflow } from '../../../../src/core/workflow.ts'
 import { claude, FakeRunner } from '../../../../src/runners/index.ts'
-import { check } from '../../../../src/validators/index.ts'
 import {
   FakeClock,
   FakeFsService,
@@ -16,6 +15,7 @@ import {
   path,
 } from '../../../../src/services/index.ts'
 import { FileStateStore, type RunId } from '../../../../src/state/index.ts'
+import { check } from '../../../../src/validators/index.ts'
 
 const rid = (s: string): RunId => s as RunId
 const BASE = path('/runs')

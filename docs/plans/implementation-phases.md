@@ -180,18 +180,25 @@ Legend: ☐ not started · ◐ in progress · ✓ landed
 
 ---
 
-### Phase 7 — Typed returns (`schema`) via Claude `--json-schema` ☐
+### Phase 7 — Typed returns (`schema`) via Claude `--json-schema` ✓
 
 **Goal:** typed handoffs between steps. The killer feature from the brainstorm.
 
 **Deliverables:**
-- `src/core/schema.ts` — `schema(zod)` wrapper; `returns:` key on steps.
-- Extend `ClaudeRunner` to accept a schema, append `--json-schema '<inline>'`, parse `structured_output` from the final envelope, validate against Zod.
-- `FakeRunner` gains `returns: 'fixture.json'` support.
+- `src/core/schema.ts` — `SchemaWrapper<T>`, `schema()`, `SchemaValidationError`.
+- Generic `Step<T>` / `StepConfig<T>` plumbing with compile-time type inference.
+- `RunnerContext.schema` field; `ClaudeRunner` appends `--json-schema`, prefers `structured_output`, `supports.structuredOutput: true`.
+- Executor capability check, schema threading, undefined guard, Zod validation, cache-hit re-validation.
+- Generic `RunFn` — `<T>(step: Step<T>) => Promise<T>`.
+- Extracted `src/core/validation-runner.ts` (keeps `workflow.ts` under 300 lines).
+- Removed dead `RunnerResult.structuredOutput` field from `execute.ts`.
 
 **Tests:**
-- **Unit** — schema → command-line flag → fixture NDJSON → parsed value. Invalid value throws a readable error pointing at the Zod path.
-- **Integration** — real Claude emits schema-conformant JSON for a simple 3-field schema.
+- **Unit** — schema module (JSON Schema shapes, frozen wrapper, no `$schema`/`$ref`), generic Step inference (`Expect<Equal<>>`), ClaudeRunner buildCommand/extractStructuredOutput, executor wiring (capability check, Zod parse, undefined guard, transform, cache re-validation, validators receive post-transform value, RunFn generics).
+- **Integration (mocked)** — full round-trip with JSONL fixtures (`structured-output-success`, `structured-output-invalid`, `structured-output-retries-exhausted`), memoization, validators, `--bare` + `--json-schema` coexistence.
+- **Integration (real, gated)** — `RUN_REAL_CLAUDE=1`: real Claude with `--json-schema` for a 3-field schema → Zod-parsed, type-safe value.
+
+**Landed:** 2026-04-12 · Plan: [`docs/plans/2026-04-12-feat-phase-7-typed-returns-plan.md`](2026-04-12-feat-phase-7-typed-returns-plan.md)
 
 ---
 

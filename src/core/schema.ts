@@ -1,4 +1,4 @@
-import type { ZodError, ZodType } from 'zod'
+import type { ZodError, ZodType, ZodTypeDef } from 'zod'
 import zodToJsonSchema from 'zod-to-json-schema'
 import type { StepName } from './types.ts'
 
@@ -7,7 +7,8 @@ import type { StepName } from './types.ts'
 // ---------------------------------------------------------------------------
 
 export interface SchemaWrapper<T = unknown> {
-  readonly zodSchema: ZodType<T>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- input type may differ from output (z.transform)
+  readonly zodSchema: ZodType<T, ZodTypeDef, unknown>
   readonly jsonSchema: string
 }
 
@@ -19,7 +20,7 @@ export interface SchemaWrapper<T = unknown> {
  * JSON Schema conversion happens once at wrap time (frozen, stable reference).
  * Uses `$refStrategy: 'none'` for flat inline JSON and strips `$schema`.
  */
-export function schema<T>(zodSchema: ZodType<T>): SchemaWrapper<T> {
+export function schema<T>(zodSchema: ZodType<T, ZodTypeDef, unknown>): SchemaWrapper<T> {
   const jsonSchemaObj = zodToJsonSchema(zodSchema, { $refStrategy: 'none' })
   const { $schema: _, ...rest } = jsonSchemaObj as Record<string, unknown>
   const jsonSchema = JSON.stringify(rest)

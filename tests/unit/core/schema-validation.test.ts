@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 import { z } from 'zod'
-import { schema, SchemaValidationError } from '../../../src/core/schema.ts'
-import type { Step } from '../../../src/core/step.ts'
+import { SchemaValidationError, schema } from '../../../src/core/schema.ts'
 import { step } from '../../../src/core/step.ts'
 import type { RunFn, WorkflowDeps } from '../../../src/core/workflow.ts'
 import { workflow } from '../../../src/core/workflow.ts'
