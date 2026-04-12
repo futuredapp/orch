@@ -1,3 +1,5 @@
+export type { SchemaWrapper } from './schema.ts'
+export { schema, SchemaValidationError } from './schema.ts'
 export type { Step, StepConfig } from './step.ts'
 export { step } from './step.ts'
 export type { Path, RunId, StepName } from './types.ts'

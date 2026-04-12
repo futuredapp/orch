@@ -1,0 +1,169 @@
+import { describe, expect, it } from 'bun:test'
+import { z } from 'zod'
+import { schema, SchemaValidationError } from '../../../src/core/schema.ts'
+import type { Step } from '../../../src/core/step.ts'
+import { step } from '../../../src/core/step.ts'
+import { stepName } from '../../../src/core/types.ts'
+import { FakeRunner } from '../../../src/runners/fake/fake-runner.ts'
+import { FakeProcessService } from '../../../src/services/process/fake-process-service.ts'
+import type { Equal, Expect } from '../../helpers/type-assertions.ts'
+
+const fps = new FakeProcessService()
+const fakeRunner = new FakeRunner(fps)
+
+describe('schema()', () => {
+  it('produces a SchemaWrapper with valid JSON Schema string for z.object', () => {
+    const wrapper = schema(z.object({ a: z.string(), b: z.number() }))
+
+    const parsed = JSON.parse(wrapper.jsonSchema)
+    expect(parsed.type).toBe('object')
+    expect(parsed.properties.a.type).toBe('string')
+    expect(parsed.properties.b.type).toBe('number')
+    expect(parsed.required).toContain('a')
+    expect(parsed.required).toContain('b')
+  })
+
+  it('returns a frozen wrapper', () => {
+    const wrapper = schema(z.string())
+
+    expect(Object.isFrozen(wrapper)).toBe(true)
+  })
+
+  it('produces stable jsonSchema string across reads', () => {
+    const wrapper = schema(z.object({ x: z.boolean() }))
+
+    expect(wrapper.jsonSchema).toBe(wrapper.jsonSchema)
+  })
+
+  it('does not include $schema key in JSON Schema output', () => {
+    const wrapper = schema(z.object({ a: z.string() }))
+    const parsed = JSON.parse(wrapper.jsonSchema)
+
+    expect(parsed.$schema).toBeUndefined()
+  })
+
+  it('uses inline definitions with no $ref pointers', () => {
+    const inner = z.object({ id: z.number() })
+    const wrapper = schema(z.object({ items: z.array(inner) }))
+
+    expect(wrapper.jsonSchema).not.toContain('$ref')
+  })
+
+  it('produces correct JSON Schema for z.array', () => {
+    const wrapper = schema(z.array(z.string()))
+    const parsed = JSON.parse(wrapper.jsonSchema)
+
+    expect(parsed.type).toBe('array')
+    expect(parsed.items.type).toBe('string')
+  })
+
+  it('produces correct JSON Schema for z.string', () => {
+    const wrapper = schema(z.string())
+    const parsed = JSON.parse(wrapper.jsonSchema)
+
+    expect(parsed.type).toBe('string')
+  })
+
+  it('produces correct JSON Schema for z.number', () => {
+    const wrapper = schema(z.number())
+    const parsed = JSON.parse(wrapper.jsonSchema)
+
+    expect(parsed.type).toBe('number')
+  })
+
+  it('produces correct JSON Schema for z.boolean', () => {
+    const wrapper = schema(z.boolean())
+    const parsed = JSON.parse(wrapper.jsonSchema)
+
+    expect(parsed.type).toBe('boolean')
+  })
+
+  it('produces correct JSON Schema for z.enum', () => {
+    const wrapper = schema(z.enum(['a', 'b', 'c']))
+    const parsed = JSON.parse(wrapper.jsonSchema)
+
+    expect(parsed.type).toBe('string')
+    expect(parsed.enum).toEqual(['a', 'b', 'c'])
+  })
+
+  it('produces correct JSON Schema for z.optional', () => {
+    const wrapper = schema(z.object({ req: z.string(), opt: z.number().optional() }))
+    const parsed = JSON.parse(wrapper.jsonSchema)
+
+    expect(parsed.required).toContain('req')
+    expect(parsed.required).not.toContain('opt')
+  })
+
+  it('produces correct JSON Schema for z.nullable', () => {
+    const wrapper = schema(z.string().nullable())
+    const parsed = JSON.parse(wrapper.jsonSchema)
+
+    expect(parsed.type).toContain('string')
+    expect(parsed.type).toContain('null')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Compile-time type assertions — Step<T> inference
+// ---------------------------------------------------------------------------
+
+const TYPED = step.define('typed', {
+  agent: fakeRunner,
+  returns: schema(z.object({ a: z.string() })),
+})
+type _1 = Expect<Equal<typeof TYPED, Step<{ a: string }>>>
+
+const PLAIN = step.define('plain', { agent: fakeRunner })
+type _2 = Expect<Equal<typeof PLAIN, Step<unknown>>>
+
+const SCALAR = step.define('scalar', {
+  agent: fakeRunner,
+  returns: schema(z.string()),
+})
+type _3 = Expect<Equal<typeof SCALAR, Step<string>>>
+
+describe('step.define generic inference', () => {
+  it('step with returns: schema(z.object) infers Step<{ a: string }>', () => {
+    expect(TYPED.config.returns).toBeDefined()
+    expect(TYPED.config.returns?.jsonSchema).toContain('"type":"object"')
+  })
+
+  it('step without returns infers Step<unknown>', () => {
+    expect(PLAIN.config.returns).toBeUndefined()
+  })
+
+  it('step with returns: schema(z.string()) infers Step<string>', () => {
+    expect(SCALAR.config.returns).toBeDefined()
+    expect(SCALAR.config.returns?.jsonSchema).toContain('"type":"string"')
+  })
+})
+
+describe('SchemaValidationError', () => {
+  it('message includes step name and Zod path details', () => {
+    const s = z.object({ name: z.string(), age: z.number() })
+    const result = s.safeParse({ name: 123, age: 'wrong' })
+
+    if (result.success) throw new Error('expected parse failure')
+
+    const err = new SchemaValidationError(stepName('research'), result.error)
+
+    expect(err.message).toContain('Step "research"')
+    expect(err.message).toContain('name')
+    expect(err.message).toContain('age')
+    expect(err.stepName).toBe('research')
+    expect(err.zodError).toBe(result.error)
+  })
+
+  it('instanceof works cross-transpile via Object.setPrototypeOf', () => {
+    const s = z.object({ x: z.string() })
+    const result = s.safeParse({ x: 42 })
+
+    if (result.success) throw new Error('expected parse failure')
+
+    const err = new SchemaValidationError(stepName('step1'), result.error)
+
+    expect(err).toBeInstanceOf(SchemaValidationError)
+    expect(err).toBeInstanceOf(Error)
+    expect(err.name).toBe('SchemaValidationError')
+  })
+})
