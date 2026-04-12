@@ -196,8 +196,7 @@ export function claude(opts: ClaudeOptions = {}): Readonly<Runner> {
 
   return defineRunner({
     name: 'claude',
-    // `supports` is a capability declaration of what this runner CAN do — not an instruction. Phase 7 will consume `structuredOutput` via a `schema` option.
-    supports: { interactive: false, structuredOutput: false },
+    supports: { interactive: false, structuredOutput: true },
 
     buildCommand(ctx: RunnerContext): RunnerCommand {
       for (const flag of flags ?? []) assertFlagAllowed(flag)
@@ -214,6 +213,7 @@ export function claude(opts: ClaudeOptions = {}): Readonly<Runner> {
         '--no-session-persistence',
         ...(model ? ['--model', model] : []),
         ...(maxTurns !== undefined ? ['--max-turns', String(maxTurns)] : []),
+        ...(ctx.schema ? ['--json-schema', ctx.schema.jsonSchema] : []),
         ...(flags ?? []),
         ...ctx.extraArgs,
       ]
@@ -225,7 +225,9 @@ export function claude(opts: ClaudeOptions = {}): Readonly<Runner> {
     extractStructuredOutput(finalEvent: TerminalEvent): unknown {
       if (finalEvent.type === 'error') return undefined
       const parsed = ClaudeResultSuccess.safeParse(finalEvent.data)
-      return parsed.success ? parsed.data.result : undefined
+      if (!parsed.success) return undefined
+      if (parsed.data.structured_output !== undefined) return parsed.data.structured_output
+      return parsed.data.result
     },
   })
 }

@@ -319,4 +319,115 @@ describe('extractStructuredOutput', () => {
 
     expect(output).toBeUndefined()
   })
+
+  it('returns structured_output when present in the result envelope', () => {
+    const runner = claude()
+    const finalEvent: TerminalEvent = {
+      kind: 'terminal',
+      type: 'turn-complete',
+      data: {
+        type: 'result',
+        subtype: 'success',
+        result: '{"title":"Analysis"}',
+        structured_output: { title: 'Analysis', items: ['a'], count: 1 },
+        session_id: 'sess-200',
+        duration_ms: 500,
+        duration_api_ms: 400,
+        is_error: false,
+        num_turns: 1,
+        total_cost_usd: 0.01,
+        usage: {
+          input_tokens: 100,
+          output_tokens: 30,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0,
+        },
+      },
+    }
+
+    const output = runner.extractStructuredOutput(finalEvent)
+
+    expect(output).toEqual({ title: 'Analysis', items: ['a'], count: 1 })
+  })
+
+  it('returns structured_output even if result is also present', () => {
+    const runner = claude()
+    const finalEvent: TerminalEvent = {
+      kind: 'terminal',
+      type: 'turn-complete',
+      data: {
+        type: 'result',
+        subtype: 'success',
+        result: 'plain text fallback',
+        structured_output: { picked: true },
+        session_id: 'sess-201',
+        duration_ms: 100,
+        duration_api_ms: 80,
+        is_error: false,
+        num_turns: 1,
+        total_cost_usd: 0,
+        usage: {
+          input_tokens: 10,
+          output_tokens: 5,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0,
+        },
+      },
+    }
+
+    const output = runner.extractStructuredOutput(finalEvent)
+
+    expect(output).toEqual({ picked: true })
+  })
+
+  it('returns null structured_output as-is without falling through to result', () => {
+    const runner = claude()
+    const finalEvent: TerminalEvent = {
+      kind: 'terminal',
+      type: 'turn-complete',
+      data: {
+        type: 'result',
+        subtype: 'success',
+        result: 'should not see this',
+        structured_output: null,
+        session_id: 'sess-202',
+        duration_ms: 100,
+        duration_api_ms: 80,
+        is_error: false,
+        num_turns: 1,
+        total_cost_usd: 0,
+        usage: {
+          input_tokens: 10,
+          output_tokens: 5,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0,
+        },
+      },
+    }
+
+    const output = runner.extractStructuredOutput(finalEvent)
+
+    expect(output).toBeNull()
+  })
+})
+
+describe('parseResultEnvelope — error_max_structured_output_retries', () => {
+  it('routes error_max_structured_output_retries to error terminal event', () => {
+    const line = JSON.stringify({
+      type: 'result',
+      subtype: 'error_max_structured_output_retries',
+      session_id: 'sess-300',
+      duration_ms: 3000,
+      is_error: true,
+      errors: ['Max structured output retries reached'],
+    })
+
+    const evt = parseClaudeLine(line)
+
+    expect(evt?.kind).toBe('terminal')
+    expect(evt?.type).toBe('error')
+    if (evt?.kind === 'terminal' && evt.type === 'error') {
+      expect(evt.message).toBe('Max structured output retries reached')
+    }
+  })
 })

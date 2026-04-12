@@ -10,6 +10,7 @@ export interface RunnerContext {
   readonly env: Readonly<Record<string, string>>
   readonly prompt: string
   readonly extraArgs: readonly string[]
+  readonly schema?: { readonly jsonSchema: string }
 }
 
 // ---------------------------------------------------------------------------

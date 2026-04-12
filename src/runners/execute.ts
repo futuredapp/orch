@@ -6,7 +6,6 @@ export interface RunnerResult {
   readonly finalEvent: TerminalEvent
   readonly exitCode: number
   readonly durationMs: number
-  readonly structuredOutput?: unknown
 }
 
 export async function runRunner(
@@ -62,7 +61,7 @@ export async function runRunner(
     }
   }
 
-  return { finalEvent, exitCode, durationMs, structuredOutput: undefined }
+  return { finalEvent, exitCode, durationMs }
 }
 
 async function drainStream(stream: AsyncIterable<string>): Promise<void> {

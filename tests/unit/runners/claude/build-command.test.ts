@@ -14,11 +14,11 @@ function ctxFor(prompt: string, overrides?: Partial<RunnerContext>): RunnerConte
 }
 
 describe('claude() factory', () => {
-  it('returns a runner with name "claude" and structuredOutput false', () => {
+  it('returns a runner with name "claude" and structuredOutput true', () => {
     const runner = claude()
 
     expect(runner.name).toBe('claude')
-    expect(runner.supports.structuredOutput).toBe(false)
+    expect(runner.supports.structuredOutput).toBe(true)
     expect(runner.supports.interactive).toBe(false)
   })
 
@@ -105,6 +105,49 @@ describe('buildCommand', () => {
     expect(turnsIdx).toBeGreaterThan(-1)
     expect(cmd.argv[modelIdx + 1]).toBe('claude-sonnet-4-20250514')
     expect(cmd.argv[turnsIdx + 1]).toBe('10')
+  })
+
+  it('appends --json-schema flag with serialized JSON Schema when schema is present', () => {
+    const runner = claude()
+    const ctx = ctxFor('test', { schema: { jsonSchema: '{"type":"object"}' } })
+    const cmd = runner.buildCommand(ctx)
+
+    const idx = cmd.argv.indexOf('--json-schema')
+    expect(idx).toBeGreaterThan(-1)
+    expect(cmd.argv[idx + 1]).toBe('{"type":"object"}')
+  })
+
+  it('does not append --json-schema flag when schema is absent', () => {
+    const runner = claude()
+    const cmd = runner.buildCommand(ctxFor('test'))
+
+    expect(cmd.argv).not.toContain('--json-schema')
+  })
+
+  it('places --json-schema before user flags and extraArgs', () => {
+    const runner = claude({ flags: ['--allowedTools', 'Read'] })
+    const ctx = ctxFor('test', {
+      schema: { jsonSchema: '{"type":"object"}' },
+      extraArgs: ['--extra'],
+    })
+    const cmd = runner.buildCommand(ctx)
+
+    const schemaIdx = cmd.argv.indexOf('--json-schema')
+    const flagsIdx = cmd.argv.indexOf('--allowedTools')
+    const extraIdx = cmd.argv.indexOf('--extra')
+
+    expect(schemaIdx).toBeGreaterThan(-1)
+    expect(schemaIdx).toBeLessThan(flagsIdx)
+    expect(schemaIdx).toBeLessThan(extraIdx)
+  })
+
+  it('includes both --bare and --json-schema when both are active', () => {
+    const runner = claude({ bare: true })
+    const ctx = ctxFor('test', { schema: { jsonSchema: '{"type":"string"}' } })
+    const cmd = runner.buildCommand(ctx)
+
+    expect(cmd.argv).toContain('--bare')
+    expect(cmd.argv).toContain('--json-schema')
   })
 })
 
