@@ -150,7 +150,7 @@ describe('SchemaValidationError', () => {
     expect(err.message).toContain('Step "research"')
     expect(err.message).toContain('name')
     expect(err.message).toContain('age')
-    expect(err.stepName).toBe('research')
+    expect(err.stepName).toBe(stepName('research'))
     expect(err.zodError).toBe(result.error)
   })
 

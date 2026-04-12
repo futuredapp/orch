@@ -5,16 +5,14 @@ import type { StateStore, StepEntry } from '../state/index.ts'
 import {
   anyNeedsHeadSha,
   normalizeValidators,
-  type PersistedValidation,
   ValidationError,
-  type ValidationFailure,
-  type ValidationOutcome,
-  type Validator,
   type ValidatorCtx,
   type ValidatorServices,
 } from '../validators/index.ts'
+import { SchemaValidationError } from './schema.ts'
 import type { Step } from './step.ts'
 import { type Path, type RunId, type StepName, stepName } from './types.ts'
+import { outcomesToFailures, outcomesToPersisted, runValidators } from './validation-runner.ts'
 
 // ---------------------------------------------------------------------------
 // JsonValue — compile-time serialization safety for extraContext
@@ -57,7 +55,7 @@ export interface WorkflowDeps {
 // RunFn — the signature of the `run` closure passed to workflow functions
 // ---------------------------------------------------------------------------
 
-export type RunFn = (step: Step, overrides?: RunOverrides) => Promise<unknown>
+export type RunFn = <T>(step: Step<T>, overrides?: RunOverrides) => Promise<T>
 
 // ---------------------------------------------------------------------------
 // WorkflowExecutor — returned by workflow()
@@ -116,72 +114,6 @@ async function safeHeadSha(git: GitService, cwd: Path): Promise<string | undefin
   }
 }
 
-function errorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err)
-}
-
-// ---------------------------------------------------------------------------
-// runValidators — serial execution, no fail-fast
-// ---------------------------------------------------------------------------
-//
-// Serial rather than Promise.all for deterministic failure ordering and
-// to avoid IO thrash on filesystem-heavy validators. All validators run
-// even if earlier ones fail — the whole point is multi-failure DX.
-async function runValidators(
-  validators: ReadonlyArray<Validator>,
-  services: ValidatorServices,
-  ctx: ValidatorCtx,
-): Promise<ReadonlyArray<ValidationOutcome>> {
-  const outcomes: ValidationOutcome[] = []
-  for (const v of validators) {
-    try {
-      const r = await v.run(services, ctx)
-      if (r.ok) {
-        outcomes.push({ name: v.name, ok: true })
-      } else {
-        outcomes.push({
-          name: v.name,
-          ok: false,
-          reason: r.reason,
-          ...(r.hint !== undefined ? { hint: r.hint } : {}),
-        })
-      }
-    } catch (err) {
-      outcomes.push({ name: v.name, ok: false, reason: errorMessage(err) })
-    }
-  }
-  return outcomes
-}
-
-function outcomesToFailures(
-  outcomes: ReadonlyArray<ValidationOutcome>,
-): ReadonlyArray<ValidationFailure> {
-  const failures: ValidationFailure[] = []
-  for (const o of outcomes) {
-    if (o.ok) continue
-    failures.push({
-      name: o.name,
-      reason: o.reason,
-      ...(o.hint !== undefined ? { hint: o.hint } : {}),
-    })
-  }
-  return failures
-}
-
-function outcomesToPersisted(
-  outcomes: ReadonlyArray<ValidationOutcome>,
-): ReadonlyArray<PersistedValidation> {
-  return outcomes.map((o): PersistedValidation => {
-    if (o.ok) return { name: o.name, ok: true }
-    return {
-      name: o.name,
-      ok: false,
-      reason: o.reason,
-      ...(o.hint !== undefined ? { hint: o.hint } : {}),
-    }
-  })
-}
-
 // ---------------------------------------------------------------------------
 // workflow — the core DSL entry point
 // ---------------------------------------------------------------------------
@@ -197,7 +129,23 @@ async function runStepOnce(
   // resume runs must do zero git subprocess calls.
   const state = await deps.stateStore.loadRun(deps.runId)
   const cached = state?.steps[key]
-  if (cached !== undefined) return cached.value
+  if (cached !== undefined) {
+    // Re-validate cached value when schema is present — catches schema
+    // drift without requiring the user to change step name or clear state.
+    if (s.config.returns !== undefined) {
+      const reparse = s.config.returns.zodSchema.safeParse(cached.value)
+      if (!reparse.success) throw new SchemaValidationError(key, reparse.error)
+    }
+    return cached.value
+  }
+
+  // Capability check: runner must support structured output when step declares returns.
+  if (s.config.returns !== undefined && !s.config.agent.supports.structuredOutput) {
+    throw new Error(
+      `Runner "${s.config.agent.name}" does not support structured output; ` +
+        `remove "returns:" from step "${key}" or use a runner that supports it`,
+    )
+  }
 
   const normalized = normalizeValidators(s.config.validate, key)
   const headSha = anyNeedsHeadSha(normalized)
@@ -213,6 +161,9 @@ async function runStepOnce(
       env: {},
       prompt: assemblePrompt(s.config.prompt, overrides),
       extraArgs: [],
+      ...(s.config.returns !== undefined
+        ? { schema: { jsonSchema: s.config.returns.jsonSchema } }
+        : {}),
     },
     { processService: deps.processService, clock: deps.clock },
   )
@@ -225,7 +176,20 @@ async function runStepOnce(
     throw new StepError(key, result.exitCode, msg)
   }
 
-  const value = s.config.agent.extractStructuredOutput(result.finalEvent)
+  let value = s.config.agent.extractStructuredOutput(result.finalEvent)
+
+  // Structured output validation — Zod-parse when schema is declared.
+  if (s.config.returns !== undefined) {
+    if (value === undefined) {
+      throw new Error(
+        `Step "${key}": runner "${s.config.agent.name}" returned no structured_output ` +
+          'despite --json-schema being set. Check CLI version and flag compatibility.',
+      )
+    }
+    const parseResult = s.config.returns.zodSchema.safeParse(value)
+    if (!parseResult.success) throw new SchemaValidationError(key, parseResult.error)
+    value = parseResult.data
+  }
 
   const validatorCtx: ValidatorCtx = {
     stepName: key,
@@ -259,8 +223,8 @@ export function workflow(name: string, fn: (run: RunFn) => Promise<void>): Workf
     async execute(deps: WorkflowDeps): Promise<void> {
       await deps.stateStore.initRun(deps.runId)
 
-      const run: RunFn = (s: Step, overrides?: RunOverrides): Promise<unknown> =>
-        runStepOnce(deps, s, overrides)
+      const run: RunFn = <T>(s: Step<T>, overrides?: RunOverrides): Promise<T> =>
+        runStepOnce(deps, s, overrides) as Promise<T>
 
       try {
         await fn(run)
