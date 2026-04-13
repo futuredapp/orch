@@ -31,8 +31,8 @@ describe('StepEntrySchema v2', () => {
       throw new Error('expected throw')
     } catch (err) {
       expect(err).toBeInstanceOf(StateCorruptionError)
-      expect((err as Error).message).toContain('Phase 6 bumped to v2')
-      expect((err as Error).message).toContain('delete .orch/state/')
+      expect((err as Error).message).toContain('unsupported schema version')
+      expect((err as Error).message).toContain('Delete .orch/state/')
     }
   })
 

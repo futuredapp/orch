@@ -9,6 +9,11 @@ import {
   type ValidatorCtx,
   type ValidatorServices,
 } from '../validators/index.ts'
+import { ResumeError, RunNotFoundError, StepError } from './errors.ts'
+
+// Re-export so existing imports from './workflow.ts' remain valid.
+export { ResumeError, RunNotFoundError, StepError }
+
 import { SchemaValidationError } from './schema.ts'
 import type { AgentStepConfig, CommitStepConfig, Step } from './step.ts'
 import { type Path, type RunId, type StepName, stepName } from './types.ts'
@@ -49,6 +54,7 @@ export interface WorkflowDeps {
   readonly cwd: Path
   readonly fsService: FsService
   readonly gitService: GitService
+  readonly workflowName?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -64,21 +70,11 @@ export type RunFn = <T>(step: Step<T>, overrides?: RunOverrides) => Promise<T>
 export interface WorkflowExecutor {
   readonly name: string
   execute(deps: WorkflowDeps): Promise<void>
-}
-
-// ---------------------------------------------------------------------------
-// StepError — thrown when a runner returns an error terminal event
-// ---------------------------------------------------------------------------
-
-export class StepError extends Error {
-  constructor(
-    readonly stepName: StepName,
-    readonly exitCode: number,
-    message: string,
-  ) {
-    super(`Step "${stepName}" failed (exit ${exitCode}): ${message}`)
-    this.name = 'StepError'
-  }
+  /** Resume a crashed or stuck run. Accepts 'crashed' or 'running' status.
+   *  Throws RunNotFoundError if the run does not exist.
+   *  Throws ResumeError if the run is already completed.
+   *  Single-process only — no cross-process locking. */
+  resume(deps: WorkflowDeps): Promise<void>
 }
 
 // ---------------------------------------------------------------------------
@@ -304,28 +300,54 @@ async function runStepOnce(
   return result.value
 }
 
+// ---------------------------------------------------------------------------
+// executeWorkflowFn — shared execution body for execute() and resume()
+// ---------------------------------------------------------------------------
+// Receives `fn` explicitly rather than capturing it in a closure — matches
+// the module-level convention of all other private helpers in this file.
+
+async function executeWorkflowFn(
+  fn: (run: RunFn) => Promise<void>,
+  deps: WorkflowDeps,
+): Promise<void> {
+  const run: RunFn = <T>(s: Step<T>, overrides?: RunOverrides): Promise<T> =>
+    runStepOnce(deps, s, overrides) as Promise<T>
+
+  try {
+    await fn(run)
+    await deps.stateStore.setStatus(deps.runId, 'completed', deps.clock.now())
+  } catch (err) {
+    try {
+      await deps.stateStore.setStatus(deps.runId, 'crashed', deps.clock.now())
+    } catch {
+      // Swallow setStatus failure — if initRun failed (disk full) or the state
+      // file was deleted mid-run, the catch tries setStatus which throws.
+      // Without this inner try-catch, the original error is lost.
+      // For the resume() path, the run is known to exist (loadRun succeeded),
+      // so this only fires on I/O errors (disk full, permissions).
+    }
+    throw err
+  }
+}
+
 export function workflow(name: string, fn: (run: RunFn) => Promise<void>): WorkflowExecutor {
   return {
     name,
     async execute(deps: WorkflowDeps): Promise<void> {
-      await deps.stateStore.initRun(deps.runId)
-
-      const run: RunFn = <T>(s: Step<T>, overrides?: RunOverrides): Promise<T> =>
-        runStepOnce(deps, s, overrides) as Promise<T>
-
-      try {
-        await fn(run)
-        await deps.stateStore.setStatus(deps.runId, 'completed')
-      } catch (err) {
-        try {
-          await deps.stateStore.setStatus(deps.runId, 'crashed')
-        } catch {
-          // Swallow setStatus failure — if initRun failed (disk full),
-          // the catch tries setStatus on a non-existent run, which throws.
-          // Without this inner try-catch, the original error is lost.
-        }
-        throw err
-      }
+      await deps.stateStore.initRun(deps.runId, {
+        workflowName: deps.workflowName,
+        startedAt: deps.clock.now(),
+      })
+      await executeWorkflowFn(fn, deps)
+    },
+    async resume(deps: WorkflowDeps): Promise<void> {
+      // Skip initRun() — resume validates existence and resets status directly.
+      // See initRun() in FileStateStore for the execute() path.
+      const state = await deps.stateStore.loadRun(deps.runId)
+      if (state === undefined) throw new RunNotFoundError(deps.runId)
+      if (state.status === 'completed') throw new ResumeError(deps.runId, state.status)
+      await deps.stateStore.setStatus(deps.runId, 'running')
+      await executeWorkflowFn(fn, deps)
     },
   }
 }

@@ -282,18 +282,25 @@ Legend: ☐ not started · ◐ in progress · ✓ landed
 
 ---
 
-### Phase 11 — Resume end-to-end ☐
+### Phase 11 — Resume end-to-end ✓
 
 **Goal:** crash + resume with zero hand-holding.
 
 **Deliverables:**
 - `workflow.resume(runId)` re-runs the function with a `StateStore` pre-loaded with the crashed state.
 - Resume skipping happens transparently inside `run(STEP)`.
+- `RunNotFoundError` and `ResumeError` error types in `src/core/errors.ts`.
+- `StepError` moved to `src/core/errors.ts` (line-count budget for `workflow.ts`).
+- `executeWorkflowFn` shared helper extracted at module level.
 
 **Tests:**
-- **Integration** — `FakeRunner` throws mid-phase; resume completes; crashed step re-runs from scratch; later steps hit the cache.
-- **Integration** — same pattern with `ClaudeRunner` + `FakeProcessService` scripted to fail.
-- **E2E (gated)** — resume against real Claude.
+- **Integration** — `FakeRunner` throws mid-phase; resume completes; crashed step re-runs from scratch; later steps hit the cache. Guards for completed, missing, and running. Double resume. Parallel branches. Commit steps. Zero completed steps. Status reset verification. (9 tests)
+- **Integration** — same pattern with `ClaudeRunner` + `FakeProcessService` scripted to fail. (1 test)
+- **E2E (gated `RUN_REAL_CLAUDE=1`)** — resume against real Claude. (1 test)
+
+**Detailed plan:** [`docs/plans/2026-04-13-feat-phase-11-resume-end-to-end-plan.md`](2026-04-13-feat-phase-11-resume-end-to-end-plan.md)
+
+**Landed:** 2026-04-13
 
 ---
 
