@@ -1,5 +1,7 @@
 export type { ClaudeOptions, ClaudeResultErrorT, ClaudeResultSuccessT } from './claude/index.ts'
 export { buildClaudeEnv, claude, parseClaudeLine } from './claude/index.ts'
+export type { CodexOptions } from './codex/index.ts'
+export { buildCodexEnv, CodexVersionError, codex, parseCodexLine } from './codex/index.ts'
 export type { RunnerResult } from './execute.ts'
 export { runRunner } from './execute.ts'
 export type { FakeScript } from './fake/index.ts'

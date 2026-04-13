@@ -20,8 +20,15 @@ import * as fs from 'node:fs/promises'
 import * as nodePath from 'node:path'
 import { step, workflow, type WorkflowDeps } from '../../src/core/index.ts'
 import { claude } from '../../src/runners/index.ts'
-import { BunClock, BunFsService, BunProcessService, path } from '../../src/services/index.ts'
+import {
+  BunClock,
+  BunFsService,
+  BunGitService,
+  BunProcessService,
+  path,
+} from '../../src/services/index.ts'
 import { FileStateStore, generateRunId, type RunId, runId } from '../../src/state/index.ts'
+import { check, fileProduced } from '../../src/validators/index.ts'
 
 const here = import.meta.dir
 const sandboxDir = nodePath.join(here, 'sandbox')
@@ -43,6 +50,8 @@ const solutionFile = `solution_${suffix}.txt`
 
 // `bare: false` and `bypassPermissions` mirror hello-file: subscription auth
 // works, and Claude can use Read/Write tools without per-call prompts.
+const bunFs = new BunFsService()
+
 const WRITE_RIDDLE = step.define('write-riddle', {
   agent: claude({
     bare: false,
@@ -51,6 +60,17 @@ const WRITE_RIDDLE = step.define('write-riddle', {
   prompt:
     `Invent one short original riddle (2-4 lines, in English) and write it to ./${riddleFile}. ` +
     `Write only the riddle text — no title, no preamble, no answer, no code fences, no trailing newline.`,
+  validate: [
+    fileProduced(riddleFile),
+    check(async (ctx) => {
+      const content = await bunFs.readFile(path(nodePath.join(ctx.cwd, riddleFile)))
+      const trimmed = content.trim()
+      if (trimmed.length === 0) return `${riddleFile} is empty`
+      const lineCount = trimmed.split('\n').length
+      if (lineCount > 8) return `${riddleFile} has ${lineCount} lines — expected a short riddle`
+      return true
+    }),
+  ],
 })
 
 const SOLVE_RIDDLE = step.define('solve-riddle', {
@@ -61,14 +81,27 @@ const SOLVE_RIDDLE = step.define('solve-riddle', {
   prompt:
     `Read the riddle in ./${riddleFile}, work out the answer, and write your answer to ./${solutionFile}. ` +
     `Write only the answer (one short line) — no preamble, no explanation, no code fences, no trailing newline.`,
+  validate: [
+    fileProduced(solutionFile),
+    check(async (ctx) => {
+      const content = await bunFs.readFile(path(nodePath.join(ctx.cwd, solutionFile)))
+      const trimmed = content.trim()
+      if (trimmed.length === 0) return `${solutionFile} is empty`
+      if (trimmed.split('\n').length > 1) return `${solutionFile} should be a single line`
+      return true
+    }),
+  ],
 })
 
+const processService = new BunProcessService()
 const deps: WorkflowDeps = {
-  stateStore: new FileStateStore({ fs: new BunFsService(), basePath: path(stateDir) }),
-  processService: new BunProcessService(),
+  stateStore: new FileStateStore({ fs: bunFs, basePath: path(stateDir) }),
+  processService,
   clock,
   runId: runIdVal,
   cwd: path(sandboxDir),
+  fsService: bunFs,
+  gitService: new BunGitService({ processService }),
 }
 
 const wf = workflow('riddle-solver-demo', async (run) => {

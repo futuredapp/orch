@@ -25,7 +25,7 @@ describe('ClaudeRunner mocked integration', () => {
     const runner = claude()
     const ctx = ctxFor('Reply with exactly: OK')
 
-    const cmd = runner.buildCommand(ctx)
+    const cmd = await runner.buildCommand(ctx)
     const fixtureLines = loadFixtureLines('simple-success.jsonl')
     fps.when(cmd.argv).respondWith({ stdout: fixtureLines, exit: 0 })
 
@@ -50,7 +50,7 @@ describe('ClaudeRunner mocked integration', () => {
     const runner = claude()
     const ctx = ctxFor('Do something complex')
 
-    const cmd = runner.buildCommand(ctx)
+    const cmd = await runner.buildCommand(ctx)
     const fixtureLines = loadFixtureLines('error-max-turns.jsonl')
     fps.when(cmd.argv).respondWith({ stdout: fixtureLines, exit: 1 })
 
@@ -68,11 +68,11 @@ describe('ClaudeRunner mocked integration', () => {
     expect(result.exitCode).toBe(1)
   })
 
-  it('produces the correct argv shape for the spawned process', () => {
+  it('produces the correct argv shape for the spawned process', async () => {
     const runner = claude({ model: 'claude-sonnet-4-20250514', maxTurns: 3 })
     const ctx = ctxFor('test prompt')
 
-    const cmd = runner.buildCommand(ctx)
+    const cmd = await runner.buildCommand(ctx)
 
     expect(cmd.argv[0]).toBe('claude')
     expect(cmd.argv).toContain('--bare')

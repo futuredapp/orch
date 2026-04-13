@@ -17,7 +17,7 @@ export async function runRunner(
   },
 ): Promise<RunnerResult> {
   const startedAt = deps.clock.now()
-  const cmd = runner.buildCommand(ctx)
+  const cmd = await runner.buildCommand(ctx)
   const handle = deps.processService.spawn({ argv: cmd.argv, env: cmd.env, cwd: ctx.cwd })
 
   // Drain stderr concurrently to prevent pipe deadlock.

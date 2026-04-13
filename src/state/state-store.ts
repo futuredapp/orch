@@ -120,10 +120,20 @@ export class FileStateStore implements StateStore {
   readonly #fs: FsService
   readonly #basePath: Path
   #tmpCounter = 0
+  // Per-runId promise-chain serializer. Prevents concurrent read-modify-write
+  // races in saveStep when parallel branches persist at the same time.
+  // The chain uses .catch(() => {}) so a failed write doesn't block subsequent
+  // writes — #doSaveStep re-reads from disk each time.
+  readonly #writeQueue = new Map<string, Promise<void>>()
 
   constructor(deps: { readonly fs: FsService; readonly basePath: Path }) {
     this.#fs = deps.fs
     this.#basePath = deps.basePath
+  }
+
+  /** Number of active write-queue entries. Exposed for testing cleanup. */
+  get writeQueueSize(): number {
+    return this.#writeQueue.size
   }
 
   async loadRun(rid: RunId): Promise<RunState | undefined> {
@@ -182,6 +192,21 @@ export class FileStateStore implements StateStore {
   }
 
   async saveStep(rid: RunId, entry: StepEntry): Promise<void> {
+    const prev = this.#writeQueue.get(rid) ?? Promise.resolve()
+    const next = prev.then(() => this.#doSaveStep(rid, entry))
+    // Swallow rejections on the chain reference so a failed write doesn't
+    // prevent subsequent writes from starting.
+    const swallowed = next.catch(() => {})
+    this.#writeQueue.set(rid, swallowed)
+    // Clean up when the chain goes idle (no new write was enqueued after us).
+    swallowed.then(() => {
+      if (this.#writeQueue.get(rid) === swallowed) this.#writeQueue.delete(rid)
+    })
+    // The caller awaits the real (unswallowed) promise — errors propagate.
+    await next
+  }
+
+  async #doSaveStep(rid: RunId, entry: StepEntry): Promise<void> {
     const dir = this.#runDir(rid)
     const file = this.#statePath(rid)
 

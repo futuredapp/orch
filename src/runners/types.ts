@@ -59,7 +59,12 @@ export interface RunnerCommand {
 export interface Runner {
   readonly name: string
   readonly supports: { readonly interactive: boolean; readonly structuredOutput: boolean }
-  buildCommand(ctx: RunnerContext): RunnerCommand
+  /**
+   * Build the CLI argv + env for this runner. May return a Promise when the
+   * adapter needs async preparation (e.g. writing a temp schema file).
+   * Consumers must always `await` the result.
+   */
+  buildCommand(ctx: RunnerContext): RunnerCommand | Promise<RunnerCommand>
   parseEvents(line: string): RunnerEvent | null
   extractStructuredOutput(finalEvent: TerminalEvent): unknown
 }

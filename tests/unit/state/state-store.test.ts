@@ -299,4 +299,54 @@ describe('FileStateStore', () => {
       expect(branded).toBe(id)
     }
   })
+
+  it('concurrent saveStep calls for the same runId do not lose entries', async () => {
+    const { store } = makeStore()
+    const id = rid('r-2026-04-10-000001')
+
+    await Promise.all([
+      store.saveStep(id, makeEntry({ name: 'step-a', value: 'a' })),
+      store.saveStep(id, makeEntry({ name: 'step-b', value: 'b' })),
+      store.saveStep(id, makeEntry({ name: 'step-c', value: 'c' })),
+    ])
+    const state = await store.loadRun(id)
+
+    expect(Object.keys(state?.steps ?? {})).toHaveLength(3)
+    expect(state?.steps['step-a']?.value).toBe('a')
+    expect(state?.steps['step-b']?.value).toBe('b')
+    expect(state?.steps['step-c']?.value).toBe('c')
+  })
+
+  it('concurrent saveStep calls for different runIds do not interfere', async () => {
+    const { store } = makeStore()
+    const id1 = rid('r-2026-04-10-000001')
+    const id2 = rid('r-2026-04-10-000002')
+
+    await Promise.all([
+      store.saveStep(id1, makeEntry({ name: 'step-x', value: 'x' })),
+      store.saveStep(id2, makeEntry({ name: 'step-y', value: 'y' })),
+    ])
+
+    const state1 = await store.loadRun(id1)
+    const state2 = await store.loadRun(id2)
+
+    expect(Object.keys(state1?.steps ?? {})).toHaveLength(1)
+    expect(state1?.steps['step-x']?.value).toBe('x')
+    expect(Object.keys(state2?.steps ?? {})).toHaveLength(1)
+    expect(state2?.steps['step-y']?.value).toBe('y')
+  })
+
+  it('write queue cleans up after chain goes idle', async () => {
+    const { store } = makeStore()
+    const id = rid('r-2026-04-10-000001')
+
+    await store.saveStep(id, makeEntry({ name: 'step-a' }))
+
+    // After awaiting saveStep, the swallowed promise's cleanup microtask
+    // fires and removes the idle entry from the write queue.
+    // Yield a microtask tick to let the cleanup `.then()` run.
+    await new Promise((resolve) => queueMicrotask(resolve))
+
+    expect(store.writeQueueSize).toBe(0)
+  })
 })

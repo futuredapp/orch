@@ -63,7 +63,7 @@ describe('ClaudeRunner structured output — mocked integration', () => {
       extraArgs: [] as string[],
       schema: { jsonSchema: schema(researchSchema).jsonSchema },
     }
-    const cmd = runner.buildCommand(ctx)
+    const cmd = await runner.buildCommand(ctx)
 
     const fixtureLines = loadFixtureLines('structured-output-success.jsonl')
     deps.processService.when(cmd.argv).respondWith({ stdout: fixtureLines, exit: 0 })
@@ -93,7 +93,7 @@ describe('ClaudeRunner structured output — mocked integration', () => {
       extraArgs: [] as string[],
       schema: { jsonSchema: schema(researchSchema).jsonSchema },
     }
-    const cmd = runner.buildCommand(ctx)
+    const cmd = await runner.buildCommand(ctx)
 
     const fixtureLines = loadFixtureLines('structured-output-invalid.jsonl')
     deps.processService.when(cmd.argv).respondWith({ stdout: fixtureLines, exit: 0 })
@@ -130,7 +130,7 @@ describe('ClaudeRunner structured output — mocked integration', () => {
       extraArgs: [] as string[],
       schema: { jsonSchema: schema(researchSchema).jsonSchema },
     }
-    const cmd = runner.buildCommand(ctx)
+    const cmd = await runner.buildCommand(ctx)
 
     const fixtureLines = loadFixtureLines('structured-output-retries-exhausted.jsonl')
     deps.processService.when(cmd.argv).respondWith({ stdout: fixtureLines, exit: 1 })
@@ -215,7 +215,7 @@ describe('ClaudeRunner structured output — mocked integration', () => {
       extraArgs: [] as string[],
       schema: { jsonSchema: s.jsonSchema },
     }
-    const cmd = runner.buildCommand(ctx)
+    const cmd = await runner.buildCommand(ctx)
 
     // Verify both flags are in argv
     expect(cmd.argv).toContain('--bare')

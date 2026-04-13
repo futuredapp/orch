@@ -41,9 +41,9 @@ describe('claude() factory', () => {
 })
 
 describe('buildCommand', () => {
-  it('produces correct argv with defaults (bare, stream-json, verbose, no-session-persistence)', () => {
+  it('produces correct argv with defaults (bare, stream-json, verbose, no-session-persistence)', async () => {
     const runner = claude()
-    const cmd = runner.buildCommand(ctxFor('hello world'))
+    const cmd = await runner.buildCommand(ctxFor('hello world'))
 
     expect(cmd.argv).toEqual([
       'claude',
@@ -57,34 +57,34 @@ describe('buildCommand', () => {
     ])
   })
 
-  it('includes --model when provided', () => {
+  it('includes --model when provided', async () => {
     const runner = claude({ model: 'claude-sonnet-4-20250514' })
-    const cmd = runner.buildCommand(ctxFor('test'))
+    const cmd = await runner.buildCommand(ctxFor('test'))
 
     expect(cmd.argv).toContain('--model')
     expect(cmd.argv).toContain('claude-sonnet-4-20250514')
   })
 
-  it('includes --max-turns when provided', () => {
+  it('includes --max-turns when provided', async () => {
     const runner = claude({ maxTurns: 3 })
-    const cmd = runner.buildCommand(ctxFor('test'))
+    const cmd = await runner.buildCommand(ctxFor('test'))
 
     expect(cmd.argv).toContain('--max-turns')
     expect(cmd.argv).toContain('3')
   })
 
-  it('omits --bare when bare is false', () => {
+  it('omits --bare when bare is false', async () => {
     const runner = claude({ bare: false })
-    const cmd = runner.buildCommand(ctxFor('test'))
+    const cmd = await runner.buildCommand(ctxFor('test'))
 
     expect(cmd.argv).not.toContain('--bare')
     expect(cmd.argv[0]).toBe('claude')
     expect(cmd.argv[1]).toBe('-p')
   })
 
-  it('appends flags before extraArgs, extraArgs last', () => {
+  it('appends flags before extraArgs, extraArgs last', async () => {
     const runner = claude({ flags: ['--allowedTools', 'Read'] })
-    const cmd = runner.buildCommand(ctxFor('test', { extraArgs: ['--extra-flag'] }))
+    const cmd = await runner.buildCommand(ctxFor('test', { extraArgs: ['--extra-flag'] }))
 
     const flagsIdx = cmd.argv.indexOf('--allowedTools')
     const extraIdx = cmd.argv.indexOf('--extra-flag')
@@ -94,9 +94,9 @@ describe('buildCommand', () => {
     expect(flagsIdx).toBeLessThan(extraIdx)
   })
 
-  it('includes --model and --max-turns together when both provided', () => {
+  it('includes --model and --max-turns together when both provided', async () => {
     const runner = claude({ model: 'claude-sonnet-4-20250514', maxTurns: 10 })
-    const cmd = runner.buildCommand(ctxFor('test'))
+    const cmd = await runner.buildCommand(ctxFor('test'))
 
     const modelIdx = cmd.argv.indexOf('--model')
     const turnsIdx = cmd.argv.indexOf('--max-turns')
@@ -107,30 +107,30 @@ describe('buildCommand', () => {
     expect(cmd.argv[turnsIdx + 1]).toBe('10')
   })
 
-  it('appends --json-schema flag with serialized JSON Schema when schema is present', () => {
+  it('appends --json-schema flag with serialized JSON Schema when schema is present', async () => {
     const runner = claude()
     const ctx = ctxFor('test', { schema: { jsonSchema: '{"type":"object"}' } })
-    const cmd = runner.buildCommand(ctx)
+    const cmd = await runner.buildCommand(ctx)
 
     const idx = cmd.argv.indexOf('--json-schema')
     expect(idx).toBeGreaterThan(-1)
     expect(cmd.argv[idx + 1]).toBe('{"type":"object"}')
   })
 
-  it('does not append --json-schema flag when schema is absent', () => {
+  it('does not append --json-schema flag when schema is absent', async () => {
     const runner = claude()
-    const cmd = runner.buildCommand(ctxFor('test'))
+    const cmd = await runner.buildCommand(ctxFor('test'))
 
     expect(cmd.argv).not.toContain('--json-schema')
   })
 
-  it('places --json-schema before user flags and extraArgs', () => {
+  it('places --json-schema before user flags and extraArgs', async () => {
     const runner = claude({ flags: ['--allowedTools', 'Read'] })
     const ctx = ctxFor('test', {
       schema: { jsonSchema: '{"type":"object"}' },
       extraArgs: ['--extra'],
     })
-    const cmd = runner.buildCommand(ctx)
+    const cmd = await runner.buildCommand(ctx)
 
     const schemaIdx = cmd.argv.indexOf('--json-schema')
     const flagsIdx = cmd.argv.indexOf('--allowedTools')
@@ -141,10 +141,10 @@ describe('buildCommand', () => {
     expect(schemaIdx).toBeLessThan(extraIdx)
   })
 
-  it('includes both --bare and --json-schema when both are active', () => {
+  it('includes both --bare and --json-schema when both are active', async () => {
     const runner = claude({ bare: true })
     const ctx = ctxFor('test', { schema: { jsonSchema: '{"type":"string"}' } })
-    const cmd = runner.buildCommand(ctx)
+    const cmd = await runner.buildCommand(ctx)
 
     expect(cmd.argv).toContain('--bare')
     expect(cmd.argv).toContain('--json-schema')
