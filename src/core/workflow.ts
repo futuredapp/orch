@@ -1,4 +1,5 @@
-import { runRunner } from '../runners/index.ts'
+import { randomUUID } from 'node:crypto'
+import { runInteractive, runRunner } from '../runners/index.ts'
 import type { Clock, FsService, GitService, ProcessService } from '../services/index.ts'
 import { GitCommandError } from '../services/index.ts'
 import type { StateStore, StepEntry } from '../state/index.ts'
@@ -9,15 +10,23 @@ import {
   type ValidatorCtx,
   type ValidatorServices,
 } from '../validators/index.ts'
-import { ResumeError, RunNotFoundError, StepError } from './errors.ts'
+import {
+  InteractiveParallelError,
+  ResumeError,
+  RunNotFoundError,
+  RunnerCapabilityError,
+  StepError,
+} from './errors.ts'
+import { currentParallelDepth } from './execution-context.ts'
 
 // Re-export so existing imports from './workflow.ts' remain valid.
-export { ResumeError, RunNotFoundError, StepError }
+export { InteractiveParallelError, ResumeError, RunNotFoundError, RunnerCapabilityError, StepError }
 
 import { SchemaValidationError } from './schema.ts'
 import type { AgentStepConfig, CommitStepConfig, Step } from './step.ts'
 import {
   type InteractiveResult,
+  InteractiveResultSchema,
   type Path,
   type RunId,
   type StepMode,
@@ -51,6 +60,27 @@ export interface RunOverrides {
 }
 
 // ---------------------------------------------------------------------------
+// StepLifecycleEvent — emitted via onStepEvent for observability
+// ---------------------------------------------------------------------------
+
+export type StepLifecycleEvent =
+  | { readonly type: 'step:start'; readonly stepName: StepName; readonly mode: StepMode }
+  | { readonly type: 'step:complete'; readonly stepName: StepName; readonly durationMs: number }
+  | { readonly type: 'step:failed'; readonly stepName: StepName; readonly error: unknown }
+  | { readonly type: 'step:cached'; readonly stepName: StepName }
+
+// ---------------------------------------------------------------------------
+// InteractiveContext — passed to onInteractive handler
+// ---------------------------------------------------------------------------
+
+export interface InteractiveContext {
+  readonly stepName: StepName
+  readonly prompt: string
+  readonly sessionId: string
+  readonly runner: import('../runners/index.ts').Runner
+}
+
+// ---------------------------------------------------------------------------
 // WorkflowDeps — everything the executor needs
 // ---------------------------------------------------------------------------
 
@@ -63,6 +93,12 @@ export interface WorkflowDeps {
   readonly fsService: FsService
   readonly gitService: GitService
   readonly workflowName?: string
+  /** Agent-native hook: decouples interactive from TTY. */
+  readonly onInteractive?: (ctx: InteractiveContext) => Promise<InteractiveResult>
+  /** Agent-native hook: real-time step lifecycle events. */
+  readonly onStepEvent?: (event: StepLifecycleEvent) => void
+  /** Injectable session ID generator. Defaults to crypto.randomUUID(). */
+  readonly generateSessionId?: () => string
 }
 
 // ---------------------------------------------------------------------------
@@ -110,12 +146,17 @@ function assemblePrompt(
 }
 
 // ---------------------------------------------------------------------------
+// resolveMode — override > config > autonomous
+// ---------------------------------------------------------------------------
+
+function resolveMode(config: AgentStepConfig, overrides: RunOverrides | undefined): StepMode {
+  return overrides?.mode ?? config.mode ?? 'autonomous'
+}
+
+// ---------------------------------------------------------------------------
 // safeHeadSha — best-effort baseline capture
 // ---------------------------------------------------------------------------
-//
-// Returns undefined when cwd is not a git repo. Only swallows GitCommandError;
-// other error classes (e.g. ProcessSpawnError when git is missing entirely)
-// propagate as real runtime errors.
+
 async function safeHeadSha(git: GitService, cwd: Path): Promise<string | undefined> {
   try {
     return await git.headSha(cwd)
@@ -159,7 +200,88 @@ function validateSchemaOutput(config: AgentStepConfig, key: StepName, rawValue: 
 }
 
 // ---------------------------------------------------------------------------
-// runAgentStep — executes a step via a Runner adapter
+// runInteractiveStep — executes an interactive step via foreground spawn
+// ---------------------------------------------------------------------------
+
+async function runInteractiveStep(
+  deps: WorkflowDeps,
+  config: AgentStepConfig,
+  key: StepName,
+  overrides: RunOverrides | undefined,
+): Promise<{ value: InteractiveResult; entry: StepEntry }> {
+  // Guard: interactive inside parallel()
+  if (currentParallelDepth() > 0) {
+    throw new InteractiveParallelError(key)
+  }
+
+  // Guard: runner capability
+  if (!config.agent.supports.interactive) {
+    throw new RunnerCapabilityError(key, config.agent.name)
+  }
+
+  const sessionId = deps.generateSessionId?.() ?? randomUUID()
+  const prompt = assemblePrompt(config.prompt, overrides)
+
+  deps.onStepEvent?.({ type: 'step:start', stepName: key, mode: 'interactive' })
+
+  // If an onInteractive handler is provided, delegate to it (agent-native).
+  // Otherwise, require a TTY and do foreground spawn.
+  let exitCode: number
+  let durationMs: number
+
+  if (deps.onInteractive) {
+    const result = await deps.onInteractive({
+      stepName: key,
+      prompt,
+      sessionId,
+      runner: config.agent,
+    })
+    exitCode = result.exitCode
+    durationMs = result.durationMs
+  } else {
+    if (typeof process !== 'undefined' && process.stdin && !process.stdin.isTTY) {
+      throw new Error(`Interactive step "${key}" requires a TTY or an onInteractive handler`)
+    }
+
+    const result = await runInteractive(
+      config.agent,
+      {
+        cwd: deps.cwd,
+        env: {},
+        prompt,
+        extraArgs: [],
+        mode: 'interactive',
+        sessionId,
+      },
+      { processService: deps.processService, clock: deps.clock },
+    )
+    exitCode = result.exitCode
+    durationMs = result.durationMs
+  }
+
+  if (exitCode !== 0) {
+    deps.onStepEvent?.({ type: 'step:failed', stepName: key, error: `exit ${exitCode}` })
+    throw new StepError(key, exitCode, `interactive session exited ${exitCode}`)
+  }
+
+  const value: InteractiveResult = { exitCode, durationMs, sessionId }
+
+  deps.onStepEvent?.({ type: 'step:complete', stepName: key, durationMs })
+
+  const entry: StepEntry = {
+    name: key,
+    value,
+    startedAt: deps.clock.now() - durationMs,
+    endedAt: deps.clock.now(),
+    artifacts: [],
+    validations: [],
+    mode: 'interactive',
+  }
+  return { value, entry }
+}
+
+// ---------------------------------------------------------------------------
+// runAgentStep — executes an autonomous step via a Runner adapter
 // ---------------------------------------------------------------------------
 
 async function runAgentStep(
@@ -169,6 +291,8 @@ async function runAgentStep(
   overrides: RunOverrides | undefined,
 ): Promise<{ value: unknown; entry: StepEntry }> {
   checkSchemaCapability(config, key)
+
+  deps.onStepEvent?.({ type: 'step:start', stepName: key, mode: 'autonomous' })
 
   const normalized = normalizeValidators(config.validate, key)
   const headSha = anyNeedsHeadSha(normalized)
@@ -196,6 +320,7 @@ async function runAgentStep(
       result.finalEvent.type === 'error'
         ? result.finalEvent.message
         : `runner exited ${result.exitCode}`
+    deps.onStepEvent?.({ type: 'step:failed', stepName: key, error: msg })
     throw new StepError(key, result.exitCode, msg)
   }
 
@@ -215,6 +340,9 @@ async function runAgentStep(
     throw new ValidationError(key, failures)
   }
 
+  const durationMs = deps.clock.now() - startedAt
+  deps.onStepEvent?.({ type: 'step:complete', stepName: key, durationMs })
+
   const entry: StepEntry = {
     name: key,
     value,
@@ -223,6 +351,7 @@ async function runAgentStep(
     artifacts: [],
     ...(preRunSnapshot !== undefined ? { preRunSnapshot } : {}),
     validations: outcomesToPersisted(outcomes),
+    mode: 'autonomous',
   }
   return { value, entry }
 }
@@ -293,15 +422,22 @@ async function runStepOnce(
   if (cached !== undefined) {
     const { config } = s
     if (config.kind === 'agent') revalidateCachedValue(config, key, cached.value)
+    deps.onStepEvent?.({ type: 'step:cached', stepName: key })
     return cached.value
   }
 
   const { config } = s
   let result: { value: unknown; entry: StepEntry }
   switch (config.kind) {
-    case 'agent':
-      result = await runAgentStep(deps, config, key, overrides)
+    case 'agent': {
+      const mode = resolveMode(config, overrides)
+      if (mode === 'interactive') {
+        result = await runInteractiveStep(deps, config, key, overrides)
+      } else {
+        result = await runAgentStep(deps, config, key, overrides)
+      }
       break
+    }
     case 'commit':
       result = await runCommitStep(deps, config, key, overrides)
       break
@@ -318,8 +454,6 @@ async function runStepOnce(
 // ---------------------------------------------------------------------------
 // executeWorkflowFn — shared execution body for execute() and resume()
 // ---------------------------------------------------------------------------
-// Receives `fn` explicitly rather than capturing it in a closure — matches
-// the module-level convention of all other private helpers in this file.
 
 async function executeWorkflowFn(
   fn: (run: RunFn) => Promise<void>,

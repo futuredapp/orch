@@ -8,6 +8,8 @@
 //
 // Both settle all branches before throwing. Cached branches skip on resume.
 
+import { currentParallelDepth, executionContext } from './execution-context.ts'
+
 // ---------------------------------------------------------------------------
 // Settled types
 // ---------------------------------------------------------------------------
@@ -112,6 +114,9 @@ async function parallelHomogeneous<I, R>(
   }
 
   const snapshot = Array.from(items)
+  const depth = currentParallelDepth() + 1
+  const wrappedFn = (item: I): Promise<R> =>
+    executionContext.run({ parallelDepth: depth }, () => fn(item))
 
   const isUnlimited =
     concurrency === undefined ||
@@ -119,8 +124,8 @@ async function parallelHomogeneous<I, R>(
     concurrency >= snapshot.length
 
   const settled = isUnlimited
-    ? await Promise.all(snapshot.map((item) => wrapSettled(() => fn(item))))
-    : await runWithConcurrencyLimit(snapshot, fn, concurrency)
+    ? await Promise.all(snapshot.map((item) => wrapSettled(() => wrappedFn(item))))
+    : await runWithConcurrencyLimit(snapshot, wrappedFn, concurrency)
 
   return unwrapSettled(settled)
 }

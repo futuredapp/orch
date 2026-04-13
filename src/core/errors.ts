@@ -28,3 +28,26 @@ export class ResumeError extends Error {
     this.name = 'ResumeError'
   }
 }
+
+export class InteractiveParallelError extends Error {
+  constructor(readonly stepName: StepName) {
+    super(
+      `Interactive step "${stepName}" cannot run inside parallel() — ` +
+        'interactive steps are inherently sequential',
+    )
+    this.name = 'InteractiveParallelError'
+  }
+}
+
+export class RunnerCapabilityError extends Error {
+  constructor(
+    readonly stepName: StepName,
+    readonly runnerName: string,
+  ) {
+    super(
+      `Runner "${runnerName}" does not support interactive mode; ` +
+        `step "${stepName}" requires a runner with supports.interactive = true`,
+    )
+    this.name = 'RunnerCapabilityError'
+  }
+}
