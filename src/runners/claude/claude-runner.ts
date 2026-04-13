@@ -196,12 +196,30 @@ export function claude(opts: ClaudeOptions = {}): Readonly<Runner> {
 
   return defineRunner({
     name: 'claude',
-    supports: { interactive: false, structuredOutput: true },
+    supports: { interactive: true, structuredOutput: true },
 
     buildCommand(ctx: RunnerContext): RunnerCommand {
       for (const flag of flags ?? []) assertFlagAllowed(flag)
       for (const flag of ctx.extraArgs) assertFlagAllowed(flag)
 
+      const env = buildClaudeEnv(ctx.env, process.env)
+
+      if (ctx.mode === 'interactive') {
+        // Interactive: no --bare, no -p, no --output-format, no --verbose.
+        // `--` flag terminator prevents prompt-as-flag injection.
+        const argv = [
+          'claude',
+          ...(ctx.sessionId ? ['--session-id', ctx.sessionId] : []),
+          ...(model ? ['--model', model] : []),
+          ...(flags ?? []),
+          ...ctx.extraArgs,
+          '--',
+          ctx.prompt,
+        ]
+        return { argv, env }
+      }
+
+      // Autonomous (default)
       const argv = [
         'claude',
         ...(bare ? ['--bare'] : []),
@@ -217,7 +235,7 @@ export function claude(opts: ClaudeOptions = {}): Readonly<Runner> {
         ...(flags ?? []),
         ...ctx.extraArgs,
       ]
-      return { argv, env: buildClaudeEnv(ctx.env, process.env) }
+      return { argv, env }
     },
 
     parseEvents: parseClaudeLine,

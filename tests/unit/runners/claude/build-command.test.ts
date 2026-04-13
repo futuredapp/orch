@@ -14,12 +14,12 @@ function ctxFor(prompt: string, overrides?: Partial<RunnerContext>): RunnerConte
 }
 
 describe('claude() factory', () => {
-  it('returns a runner with name "claude" and structuredOutput true', () => {
+  it('returns a runner with name "claude", structuredOutput true, and interactive true', () => {
     const runner = claude()
 
     expect(runner.name).toBe('claude')
     expect(runner.supports.structuredOutput).toBe(true)
-    expect(runner.supports.interactive).toBe(false)
+    expect(runner.supports.interactive).toBe(true)
   })
 
   it('returns a frozen runner object', () => {
@@ -208,6 +208,61 @@ describe('buildClaudeEnv', () => {
     for (const val of Object.values(env)) {
       expect(val).not.toBeUndefined()
     }
+  })
+})
+
+describe('buildCommand interactive mode', () => {
+  it('produces interactive argv with session-id and -- flag terminator', async () => {
+    const runner = claude()
+    const cmd = await runner.buildCommand(
+      ctxFor('brainstorm auth', { mode: 'interactive', sessionId: 'abc-123' }),
+    )
+
+    expect(cmd.argv).toEqual(['claude', '--session-id', 'abc-123', '--', 'brainstorm auth'])
+  })
+
+  it('omits --bare, -p, --output-format, --verbose, --no-session-persistence in interactive mode', async () => {
+    const runner = claude()
+    const cmd = await runner.buildCommand(ctxFor('hello', { mode: 'interactive' }))
+
+    expect(cmd.argv).not.toContain('--bare')
+    expect(cmd.argv).not.toContain('-p')
+    expect(cmd.argv).not.toContain('--output-format')
+    expect(cmd.argv).not.toContain('--verbose')
+    expect(cmd.argv).not.toContain('--no-session-persistence')
+  })
+
+  it('includes --model in interactive mode when configured', async () => {
+    const runner = claude({ model: 'claude-sonnet-4-20250514' })
+    const cmd = await runner.buildCommand(ctxFor('test', { mode: 'interactive' }))
+
+    expect(cmd.argv).toContain('--model')
+    expect(cmd.argv).toContain('claude-sonnet-4-20250514')
+  })
+
+  it('applies flag denylist in interactive mode', () => {
+    const runner = claude({ flags: ['--dangerously-skip-permissions'] })
+
+    expect(() => runner.buildCommand(ctxFor('test', { mode: 'interactive' }))).toThrow(/denylist/)
+  })
+
+  it('produces autonomous argv unchanged when mode is undefined', async () => {
+    const runner = claude()
+    const cmd = await runner.buildCommand(ctxFor('hello'))
+
+    expect(cmd.argv).toContain('--bare')
+    expect(cmd.argv).toContain('-p')
+    expect(cmd.argv).toContain('--output-format')
+  })
+
+  it('uses buildClaudeEnv for both interactive and autonomous modes', async () => {
+    const runner = claude()
+    const interactiveCmd = await runner.buildCommand(ctxFor('test', { mode: 'interactive' }))
+    const autonomousCmd = await runner.buildCommand(ctxFor('test'))
+
+    // Both should have env set (at minimum PATH/HOME from process.env)
+    expect(typeof interactiveCmd.env).toBe('object')
+    expect(typeof autonomousCmd.env).toBe('object')
   })
 })
 

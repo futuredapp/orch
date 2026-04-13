@@ -11,6 +11,9 @@ export interface RunnerContext {
   readonly prompt: string
   readonly extraArgs: readonly string[]
   readonly schema?: { readonly jsonSchema: string }
+  readonly mode?: 'interactive' | 'autonomous'
+  /** Session ID for interactive steps. Passed via --session-id. */
+  readonly sessionId?: string
 }
 
 // ---------------------------------------------------------------------------
