@@ -144,7 +144,7 @@ describe('runRunner', () => {
     const trailingLine = JSON.stringify({ kind: 'info', type: 'telemetry' })
     fps2.when([':fake:', nonce]).respondWith({
       stdout: [infoLine, terminalLine, trailingLine, trailingLine],
-      exit: 0,
+      exitCode: 0,
     })
 
     // Create a runner that uses the known nonce

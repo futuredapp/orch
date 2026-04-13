@@ -53,7 +53,7 @@ function noSchemaRunner(fps: FakeProcessService): Runner {
   const argv = [':no-schema:'] as const
   fps.when(argv).respondWith({
     stdout: [JSON.stringify({ kind: 'terminal', type: 'turn-complete', data: 'ok' })],
-    exit: 0,
+    exitCode: 0,
   })
   return defineRunner({
     name: 'no-schema-runner',

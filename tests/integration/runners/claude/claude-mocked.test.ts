@@ -27,7 +27,7 @@ describe('ClaudeRunner mocked integration', () => {
 
     const cmd = await runner.buildCommand(ctx)
     const fixtureLines = loadFixtureLines('simple-success.jsonl')
-    fps.when(cmd.argv).respondWith({ stdout: fixtureLines, exit: 0 })
+    fps.when(cmd.argv).respondWith({ stdout: fixtureLines, exitCode: 0 })
 
     const resultPromise = runRunner(runner, ctx, { processService: fps, clock })
     clock.advance(500)
@@ -52,7 +52,7 @@ describe('ClaudeRunner mocked integration', () => {
 
     const cmd = await runner.buildCommand(ctx)
     const fixtureLines = loadFixtureLines('error-max-turns.jsonl')
-    fps.when(cmd.argv).respondWith({ stdout: fixtureLines, exit: 1 })
+    fps.when(cmd.argv).respondWith({ stdout: fixtureLines, exitCode: 1 })
 
     const result = await runRunner(runner, ctx, { processService: fps, clock })
 

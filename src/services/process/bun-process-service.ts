@@ -1,6 +1,11 @@
 import { existsSync } from 'node:fs'
 import { frameLines } from './line-framer.ts'
-import type { ProcessService, SpawnHandle, SpawnOptions } from './process-service.ts'
+import type {
+  ForegroundHandle,
+  ProcessService,
+  SpawnHandle,
+  SpawnOptions,
+} from './process-service.ts'
 import { ProcessSpawnError } from './process-service.ts'
 
 const STDERR_TAIL_SIZE = 200
@@ -42,6 +47,36 @@ export class BunProcessService implements ProcessService {
         return { exitCode: proc.exitCode ?? -1 }
       },
 
+      kill(signal: NodeJS.Signals = 'SIGTERM') {
+        proc.kill(signal)
+      },
+    }
+  }
+
+  spawnForeground(opts: SpawnOptions): ForegroundHandle {
+    if (!existsSync(opts.cwd)) {
+      throw new ProcessSpawnError(`cwd does not exist: ${opts.cwd}`)
+    }
+
+    let proc: ReturnType<typeof Bun.spawn>
+    try {
+      proc = Bun.spawn({
+        cmd: [...opts.argv],
+        cwd: opts.cwd,
+        env: opts.env,
+        stdin: 'inherit',
+        stdout: 'inherit',
+        stderr: 'inherit',
+      })
+    } catch (err: unknown) {
+      throw new ProcessSpawnError(`Failed to spawn foreground: ${opts.argv.join(' ')}`, err)
+    }
+
+    return {
+      async wait() {
+        await proc.exited
+        return { exitCode: proc.exitCode ?? -1 }
+      },
       kill(signal: NodeJS.Signals = 'SIGTERM') {
         proc.kill(signal)
       },

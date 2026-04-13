@@ -271,7 +271,7 @@ describe('workflow run()', () => {
     // turn-complete terminal event AND then reports a non-zero exit code.
     const argv = [':noisy-exit:'] as const
     const terminalLine = JSON.stringify({ kind: 'terminal', type: 'turn-complete', data: 'ok' })
-    deps.processService.when(argv).respondWith({ stdout: [terminalLine], exit: 7 })
+    deps.processService.when(argv).respondWith({ stdout: [terminalLine], exitCode: 7 })
 
     const noisy: Runner = defineRunner({
       name: 'noisy',

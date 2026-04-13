@@ -52,7 +52,7 @@ export class FakeRunner implements Runner {
     }
 
     const exit = s.failWith ? (s.failWith.exitCode ?? 1) : 0
-    this.#fps.when([':fake:', this.#nonce]).respondWith({ stdout: lines, exit })
+    this.#fps.when([':fake:', this.#nonce]).respondWith({ stdout: lines, exitCode: exit })
     this.#scriptsEnqueued++
     return this
   }

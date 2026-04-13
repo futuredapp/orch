@@ -1,13 +1,23 @@
-import type { ProcessService, SpawnHandle, SpawnOptions } from './process-service.ts'
+import type {
+  ForegroundHandle,
+  ProcessService,
+  SpawnHandle,
+  SpawnOptions,
+} from './process-service.ts'
 
 export interface FakeResponse {
   readonly stdout?: readonly string[]
   readonly stderr?: readonly string[]
-  readonly exit: number
+  readonly exitCode: number
+}
+
+export interface FakeForegroundResponse {
+  readonly exitCode: number
 }
 
 export class FakeProcessService implements ProcessService {
   #queues = new Map<string, FakeResponse[]>()
+  #foregroundQueues = new Map<string, FakeForegroundResponse[]>()
 
   when(argv: readonly string[]): { respondWith(response: FakeResponse): void } {
     const key = JSON.stringify(argv)
@@ -17,6 +27,20 @@ export class FakeProcessService implements ProcessService {
         if (!queue) {
           queue = []
           this.#queues.set(key, queue)
+        }
+        queue.push(response)
+      },
+    }
+  }
+
+  whenForeground(argv: readonly string[]): { respondWith(response: FakeForegroundResponse): void } {
+    const key = JSON.stringify(argv)
+    return {
+      respondWith: (response: FakeForegroundResponse) => {
+        let queue = this.#foregroundQueues.get(key)
+        if (!queue) {
+          queue = []
+          this.#foregroundQueues.set(key, queue)
         }
         queue.push(response)
       },
@@ -77,13 +101,32 @@ export class FakeProcessService implements ProcessService {
       stderr: makeIterator(stderrLines),
       async wait() {
         await iterationPromise
-        return { exitCode: killed ? -1 : response.exit }
+        return { exitCode: killed ? -1 : response.exitCode }
       },
       kill() {
         if (!killed) {
           killed = true
           iterationDone()
         }
+      },
+    }
+  }
+
+  spawnForeground(opts: SpawnOptions): ForegroundHandle {
+    const key = JSON.stringify(opts.argv)
+    const queue = this.#foregroundQueues.get(key)
+    const response = queue?.shift()
+    if (!response) {
+      throw new Error(`FakeProcessService: no scripted foreground response for argv ${key}`)
+    }
+
+    let killed = false
+    return {
+      async wait() {
+        return { exitCode: killed ? -1 : response.exitCode }
+      },
+      kill() {
+        killed = true
       },
     }
   }

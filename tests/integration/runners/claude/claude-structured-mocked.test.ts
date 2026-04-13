@@ -66,7 +66,7 @@ describe('ClaudeRunner structured output — mocked integration', () => {
     const cmd = await runner.buildCommand(ctx)
 
     const fixtureLines = loadFixtureLines('structured-output-success.jsonl')
-    deps.processService.when(cmd.argv).respondWith({ stdout: fixtureLines, exit: 0 })
+    deps.processService.when(cmd.argv).respondWith({ stdout: fixtureLines, exitCode: 0 })
 
     const STEP = step.define('research', {
       agent: runner,
@@ -96,7 +96,7 @@ describe('ClaudeRunner structured output — mocked integration', () => {
     const cmd = await runner.buildCommand(ctx)
 
     const fixtureLines = loadFixtureLines('structured-output-invalid.jsonl')
-    deps.processService.when(cmd.argv).respondWith({ stdout: fixtureLines, exit: 0 })
+    deps.processService.when(cmd.argv).respondWith({ stdout: fixtureLines, exitCode: 0 })
 
     const STEP = step.define('research', {
       agent: runner,
@@ -133,7 +133,7 @@ describe('ClaudeRunner structured output — mocked integration', () => {
     const cmd = await runner.buildCommand(ctx)
 
     const fixtureLines = loadFixtureLines('structured-output-retries-exhausted.jsonl')
-    deps.processService.when(cmd.argv).respondWith({ stdout: fixtureLines, exit: 1 })
+    deps.processService.when(cmd.argv).respondWith({ stdout: fixtureLines, exitCode: 1 })
 
     const STEP = step.define('research', {
       agent: runner,
@@ -223,7 +223,7 @@ describe('ClaudeRunner structured output — mocked integration', () => {
 
     // Fixture has structured_output populated — verify round-trip works
     const fixtureLines = loadFixtureLines('structured-output-success.jsonl')
-    deps.processService.when(cmd.argv).respondWith({ stdout: fixtureLines, exit: 0 })
+    deps.processService.when(cmd.argv).respondWith({ stdout: fixtureLines, exitCode: 0 })
 
     const STEP = step.define('bare-schema', {
       agent: runner,

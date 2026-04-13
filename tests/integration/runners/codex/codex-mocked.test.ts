@@ -27,7 +27,7 @@ function makeDeps(): {
   const fs = new FakeFsService()
   const ps = new FakeProcessService()
   const clock = new FakeClock(1000)
-  ps.when(['codex', '--version']).respondWith({ stdout: ['codex 0.120.0'], exit: 0 })
+  ps.when(['codex', '--version']).respondWith({ stdout: ['codex 0.120.0'], exitCode: 0 })
   return { fs, ps, clock }
 }
 
@@ -39,7 +39,7 @@ describe('CodexRunner mocked integration', () => {
 
     const cmd = await runner.buildCommand(ctx)
     const fixtureLines = loadFixtureLines('simple-success.jsonl')
-    ps.when(cmd.argv).respondWith({ stdout: fixtureLines, exit: 0 })
+    ps.when(cmd.argv).respondWith({ stdout: fixtureLines, exitCode: 0 })
 
     const resultPromise = runRunner(runner, ctx, { processService: ps, clock })
     clock.advance(500)
@@ -76,7 +76,7 @@ describe('CodexRunner mocked integration', () => {
       'Analyze risks',
     ]
     const fixtureLines = loadFixtureLines('with-output-schema.jsonl')
-    ps.when(expectedArgv).respondWith({ stdout: fixtureLines, exit: 0 })
+    ps.when(expectedArgv).respondWith({ stdout: fixtureLines, exitCode: 0 })
 
     const resultPromise = runRunner(runner, ctx, { processService: ps, clock })
     clock.advance(300)
@@ -96,7 +96,7 @@ describe('CodexRunner mocked integration', () => {
 
     const cmd = await runner.buildCommand(ctx)
     const fixtureLines = loadFixtureLines('turn-failed.jsonl')
-    ps.when(cmd.argv).respondWith({ stdout: fixtureLines, exit: 1 })
+    ps.when(cmd.argv).respondWith({ stdout: fixtureLines, exitCode: 1 })
 
     const result = await runRunner(runner, ctx, { processService: ps, clock })
 

@@ -64,7 +64,7 @@ describe('ClaudeRunner crash+resume (mocked)', () => {
     })
     fps1.when(cmd1.argv).respondWith({
       stdout: loadFixtureLines('simple-success.jsonl'),
-      exit: 0,
+      exitCode: 0,
     })
 
     const cmd2 = await runner.buildCommand({
@@ -75,7 +75,7 @@ describe('ClaudeRunner crash+resume (mocked)', () => {
     })
     fps1.when(cmd2.argv).respondWith({
       stdout: loadFixtureLines('error-max-turns.jsonl'),
-      exit: 1,
+      exitCode: 1,
     })
 
     const wf = workflow('claude-resume', async (run) => {
@@ -101,7 +101,7 @@ describe('ClaudeRunner crash+resume (mocked)', () => {
     // Only script step 2's response — step 1 should not be invoked
     fps2.when(cmd2.argv).respondWith({
       stdout: loadFixtureLines('simple-success.jsonl'),
-      exit: 0,
+      exitCode: 0,
     })
 
     await wf.resume(deps2)

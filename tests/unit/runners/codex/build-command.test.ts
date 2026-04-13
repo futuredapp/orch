@@ -18,7 +18,7 @@ function ctxFor(prompt: string, overrides?: Partial<RunnerContext>): RunnerConte
 function makeDeps(): { fs: FakeFsService; ps: FakeProcessService } {
   const fs = new FakeFsService()
   const ps = new FakeProcessService()
-  ps.when(['codex', '--version']).respondWith({ stdout: ['codex 0.120.0'], exit: 0 })
+  ps.when(['codex', '--version']).respondWith({ stdout: ['codex 0.120.0'], exitCode: 0 })
   return { fs, ps }
 }
 
@@ -337,7 +337,7 @@ describe('checkCodexVersion (via buildCommand)', () => {
   it('throws CodexVersionError when version is too old', async () => {
     const fs = new FakeFsService()
     const ps = new FakeProcessService()
-    ps.when(['codex', '--version']).respondWith({ stdout: ['codex 0.117.0'], exit: 0 })
+    ps.when(['codex', '--version']).respondWith({ stdout: ['codex 0.117.0'], exitCode: 0 })
     const runner = codex({}, { fs, ps })
 
     expect(runner.buildCommand(ctxFor('test'))).rejects.toThrow(CodexVersionError)
@@ -346,7 +346,7 @@ describe('checkCodexVersion (via buildCommand)', () => {
   it('throws CodexVersionError with actionable message for old version', async () => {
     const fs = new FakeFsService()
     const ps = new FakeProcessService()
-    ps.when(['codex', '--version']).respondWith({ stdout: ['codex 0.117.0'], exit: 0 })
+    ps.when(['codex', '--version']).respondWith({ stdout: ['codex 0.117.0'], exitCode: 0 })
     const runner = codex({}, { fs, ps })
 
     expect(runner.buildCommand(ctxFor('test'))).rejects.toThrow(
@@ -357,7 +357,7 @@ describe('checkCodexVersion (via buildCommand)', () => {
   it('throws CodexVersionError when version output is unparseable', async () => {
     const fs = new FakeFsService()
     const ps = new FakeProcessService()
-    ps.when(['codex', '--version']).respondWith({ stdout: ['unknown'], exit: 0 })
+    ps.when(['codex', '--version']).respondWith({ stdout: ['unknown'], exitCode: 0 })
     const runner = codex({}, { fs, ps })
 
     expect(runner.buildCommand(ctxFor('test'))).rejects.toThrow(CodexVersionError)

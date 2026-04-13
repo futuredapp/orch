@@ -136,7 +136,7 @@ describe('extractStructuredOutput', () => {
   function makeDeps(): { fs: FakeFsService; ps: FakeProcessService } {
     const fs = new FakeFsService()
     const ps = new FakeProcessService()
-    ps.when(['codex', '--version']).respondWith({ stdout: ['codex 0.120.0'], exit: 0 })
+    ps.when(['codex', '--version']).respondWith({ stdout: ['codex 0.120.0'], exitCode: 0 })
     return { fs, ps }
   }
 
