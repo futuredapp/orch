@@ -114,6 +114,7 @@ describe('StepEntrySchema v2', () => {
       name: 'plan',
       preRunSnapshot: { headSha: 'deadbeefcafe1234' },
       validations: [{ name: 'x', ok: true }],
+      mode: 'autonomous',
     })
 
     await store.saveStep(RID, entry)

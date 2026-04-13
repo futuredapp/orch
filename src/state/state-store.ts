@@ -24,6 +24,8 @@ export interface StepEntry {
    * so Phase 14 consumers can iterate without branching on absence.
    */
   readonly validations: ReadonlyArray<PersistedValidation>
+  /** How this step was executed. Absent for pre-13a steps (implies autonomous). */
+  readonly mode?: 'interactive' | 'autonomous'
 }
 
 export interface RunState {
@@ -90,6 +92,7 @@ export const StepEntrySchema = z.object({
   artifacts: z.array(z.string()),
   preRunSnapshot: PreRunSnapshotSchema.optional(),
   validations: z.array(PersistedValidationSchema),
+  mode: z.enum(['interactive', 'autonomous']).optional(),
 })
 
 const RunStateV2Schema = z.object({
@@ -135,6 +138,7 @@ function rebuildSteps(
       artifacts: s.artifacts,
       ...(s.preRunSnapshot !== undefined ? { preRunSnapshot: s.preRunSnapshot } : {}),
       validations: s.validations,
+      ...(s.mode !== undefined ? { mode: s.mode } : {}),
     }
   }
   return steps
