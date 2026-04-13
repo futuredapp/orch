@@ -5,7 +5,7 @@ export { generateRunId, runId } from '../state/index.ts'
 
 export type StepName = string & { readonly __brand: 'StepName' }
 
-const STEP_NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/
+const STEP_NAME_PATTERN = /^[a-z0-9][a-z0-9:-]*$/
 
 const MAX_STEP_NAME_LENGTH = 128
 

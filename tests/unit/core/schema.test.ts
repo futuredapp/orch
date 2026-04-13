@@ -124,17 +124,23 @@ type _3 = Expect<Equal<typeof SCALAR, Step<string>>>
 
 describe('step.define generic inference', () => {
   it('step with returns: schema(z.object) infers Step<{ a: string }>', () => {
-    expect(TYPED.config.returns).toBeDefined()
-    expect(TYPED.config.returns?.jsonSchema).toContain('"type":"object"')
+    const { config } = TYPED
+    if (config.kind !== 'agent') throw new Error('expected agent config')
+    expect(config.returns).toBeDefined()
+    expect(config.returns?.jsonSchema).toContain('"type":"object"')
   })
 
   it('step without returns infers Step<unknown>', () => {
-    expect(PLAIN.config.returns).toBeUndefined()
+    const { config } = PLAIN
+    if (config.kind !== 'agent') throw new Error('expected agent config')
+    expect(config.returns).toBeUndefined()
   })
 
   it('step with returns: schema(z.string()) infers Step<string>', () => {
-    expect(SCALAR.config.returns).toBeDefined()
-    expect(SCALAR.config.returns?.jsonSchema).toContain('"type":"string"')
+    const { config } = SCALAR
+    if (config.kind !== 'agent') throw new Error('expected agent config')
+    expect(config.returns).toBeDefined()
+    expect(config.returns?.jsonSchema).toContain('"type":"string"')
   })
 })
 

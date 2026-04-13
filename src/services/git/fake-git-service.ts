@@ -18,6 +18,8 @@ export class FakeGitService implements GitService {
   #headSha = new Map<string, string>()
   #hasDiff = new Map<string, boolean>()
   #diff = new Map<string, string>()
+  #isClean = new Map<string, boolean>()
+  #commitSha = new Map<string, string>()
 
   setHeadSha(cwd: Path, sha: string): void {
     this.#headSha.set(cwd, sha)
@@ -59,6 +61,33 @@ export class FakeGitService implements GitService {
       )
     }
     return val
+  }
+
+  setIsClean(cwd: Path, isClean: boolean): void {
+    this.#isClean.set(cwd, isClean)
+  }
+
+  setCommitSha(cwd: Path, sha: string): void {
+    this.#commitSha.set(cwd, sha)
+  }
+
+  async isClean(cwd: Path): Promise<boolean> {
+    const val = this.#isClean.get(cwd)
+    if (val === undefined) {
+      throw new Error(`FakeGitService: no isClean scripted for cwd "${cwd}"`)
+    }
+    return val
+  }
+
+  // stageAll is a no-op — void return, nothing to script
+  async stageAll(_cwd: Path): Promise<void> {}
+
+  async commit(cwd: Path, _message: string): Promise<string> {
+    const sha = this.#commitSha.get(cwd)
+    if (sha === undefined) {
+      throw new Error(`FakeGitService: no commit SHA scripted for cwd "${cwd}"`)
+    }
+    return sha
   }
 
   #diffKey(cwd: Path, sha: string): string {

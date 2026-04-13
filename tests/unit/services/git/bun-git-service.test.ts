@@ -108,6 +108,105 @@ describe('BunGitService env hardening', () => {
   })
 })
 
+describe('BunGitService.isClean', () => {
+  it('returns true when git status --porcelain stdout is empty', async () => {
+    const { git, proc } = makeGit()
+    proc.when(['git', 'status', '--porcelain']).respondWith({
+      stdout: [],
+      exit: 0,
+    })
+
+    expect(await git.isClean(path('/repo'))).toBe(true)
+  })
+
+  it('returns false for a modified file', async () => {
+    const { git, proc } = makeGit()
+    proc.when(['git', 'status', '--porcelain']).respondWith({
+      stdout: [' M src/foo.ts'],
+      exit: 0,
+    })
+
+    expect(await git.isClean(path('/repo'))).toBe(false)
+  })
+
+  it('returns false for an untracked file', async () => {
+    const { git, proc } = makeGit()
+    proc.when(['git', 'status', '--porcelain']).respondWith({
+      stdout: ['?? new-file.ts'],
+      exit: 0,
+    })
+
+    expect(await git.isClean(path('/repo'))).toBe(false)
+  })
+
+  it('throws GitCommandError on non-zero exit', async () => {
+    const { git, proc } = makeGit()
+    proc.when(['git', 'status', '--porcelain']).respondWith({
+      stderr: ['fatal: not a git repository'],
+      exit: 128,
+    })
+
+    await expect(git.isClean(path('/repo'))).rejects.toThrow(GitCommandError)
+  })
+})
+
+describe('BunGitService.stageAll', () => {
+  it('spawns git add . with correct argv and cwd', async () => {
+    const { git, proc } = makeGit()
+    proc.when(['git', 'add', '.']).respondWith({ exit: 0 })
+
+    await git.stageAll(path('/repo'))
+
+    // If we got here without throwing, the correct argv was matched
+  })
+
+  it('throws GitCommandError when git add fails', async () => {
+    const { git, proc } = makeGit()
+    proc.when(['git', 'add', '.']).respondWith({
+      stderr: ['fatal: not a git repository'],
+      exit: 128,
+    })
+
+    await expect(git.stageAll(path('/repo'))).rejects.toThrow(GitCommandError)
+  })
+})
+
+describe('BunGitService.commit', () => {
+  it('spawns git commit -m then git rev-parse HEAD and returns the SHA', async () => {
+    const { git, proc } = makeGit()
+    proc.when(['git', 'commit', '-m', 'checkpoint']).respondWith({ exit: 0 })
+    proc.when(['git', 'rev-parse', 'HEAD']).respondWith({
+      stdout: ['abc1234def5678'],
+      exit: 0,
+    })
+
+    const sha = await git.commit(path('/repo'), 'checkpoint')
+
+    expect(sha).toBe('abc1234def5678')
+  })
+
+  it('throws GitCommandError when git commit fails', async () => {
+    const { git, proc } = makeGit()
+    proc.when(['git', 'commit', '-m', 'bad']).respondWith({
+      stderr: ['nothing to commit'],
+      exit: 1,
+    })
+
+    await expect(git.commit(path('/repo'), 'bad')).rejects.toThrow(GitCommandError)
+  })
+
+  it('propagates GitCommandError when rev-parse HEAD fails after successful commit', async () => {
+    const { git, proc } = makeGit()
+    proc.when(['git', 'commit', '-m', 'ok']).respondWith({ exit: 0 })
+    proc.when(['git', 'rev-parse', 'HEAD']).respondWith({
+      stderr: ['fatal: ambiguous argument'],
+      exit: 128,
+    })
+
+    await expect(git.commit(path('/repo'), 'ok')).rejects.toThrow(GitCommandError)
+  })
+})
+
 describe('BunGitService.redactStderr', () => {
   it('strips credential URLs from GitCommandError stderr', async () => {
     const { git, proc } = makeGit()

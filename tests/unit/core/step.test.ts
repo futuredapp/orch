@@ -15,9 +15,20 @@ describe('step.define', () => {
     const s = step.define('plan', config)
 
     expect(s.name as string).toBe('plan')
-    expect(s.config.agent).toBe(agent)
-    expect(s.config.prompt).toBe('do the thing')
+    expect(s.config.kind).toBe('agent')
     expect(Object.isFrozen(s)).toBe(true)
+  })
+
+  it('produces config with kind agent', () => {
+    const agent = makeFakeRunner()
+
+    const s = step.define('plan', { agent, prompt: 'go' })
+
+    expect(s.config.kind).toBe('agent')
+    if (s.config.kind === 'agent') {
+      expect(s.config.agent).toBe(agent)
+      expect(s.config.prompt).toBe('go')
+    }
   })
 
   it('validates the name as a StepName', () => {
@@ -44,5 +55,11 @@ describe('step.define', () => {
     const agent = makeFakeRunner()
 
     expect(() => step.define('my/step', { agent })).toThrow('must match')
+  })
+
+  it('rejects names starting with the reserved commit: prefix', () => {
+    const agent = makeFakeRunner()
+
+    expect(() => step.define('commit:foo', { agent })).toThrow('commit:')
   })
 })

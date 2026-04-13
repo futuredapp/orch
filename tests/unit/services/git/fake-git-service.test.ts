@@ -69,3 +69,50 @@ describe('FakeGitService.diffSinceSha', () => {
     )
   })
 })
+
+describe('FakeGitService.isClean', () => {
+  it('returns the scripted boolean for the matching cwd', async () => {
+    const git = new FakeGitService()
+    git.setIsClean(path('/repo'), true)
+
+    expect(await git.isClean(path('/repo'))).toBe(true)
+  })
+
+  it('returns false when scripted as dirty', async () => {
+    const git = new FakeGitService()
+    git.setIsClean(path('/repo'), false)
+
+    expect(await git.isClean(path('/repo'))).toBe(false)
+  })
+
+  it('throws a loud error when no isClean is scripted for the cwd', async () => {
+    const git = new FakeGitService()
+
+    await expect(git.isClean(path('/repo/unknown'))).rejects.toThrow('no isClean scripted')
+  })
+})
+
+describe('FakeGitService.stageAll', () => {
+  it('is a no-op that resolves without error', async () => {
+    const git = new FakeGitService()
+
+    await git.stageAll(path('/repo'))
+  })
+})
+
+describe('FakeGitService.commit', () => {
+  it('returns the scripted SHA for the matching cwd', async () => {
+    const git = new FakeGitService()
+    git.setCommitSha(path('/repo'), 'deadbeef1234')
+
+    const sha = await git.commit(path('/repo'), 'some message')
+
+    expect(sha).toBe('deadbeef1234')
+  })
+
+  it('throws a loud error when no commit SHA is scripted for the cwd', async () => {
+    const git = new FakeGitService()
+
+    await expect(git.commit(path('/repo'), 'msg')).rejects.toThrow('no commit SHA scripted')
+  })
+})

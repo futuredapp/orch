@@ -202,7 +202,7 @@ Legend: ☐ not started · ◐ in progress · ✓ landed
 
 ---
 
-### Phase 8 — `parallel()` helper ☐
+### Phase 8 — `parallel()` helper ✓
 
 **Goal:** deterministic concurrency with resume support.
 
@@ -210,45 +210,75 @@ Legend: ☐ not started · ◐ in progress · ✓ landed
 - `src/core/parallel.ts` — both forms (`parallel([promises])`, `parallel(items, fn)`).
 - Concurrency cap (`{ concurrency }`).
 - Stable per-branch names for memoization.
+- `ParallelError` with settle-all semantics and `.settled` array.
+- Per-runId write-queue mutex in `FileStateStore.saveStep()` to prevent concurrent read-modify-write races.
 
 **Tests:**
-- **Unit** — heterogeneous: two fake runners run concurrently, both persist, second invocation returns cached.
-- **Unit** — homogeneous: three items, three step entries with `as: 'review-<item>'`.
-- **Unit** — concurrency cap never exceeds the configured limit (measured via a fake that blocks on a latch).
+- **Unit** — heterogeneous: tuple inference, empty, partial/total failure, settled order (6 tests).
+- **Unit** — homogeneous: map callback, single item, empty, failure, sync throw capture (5 tests).
+- **Unit** — concurrency: cap never exceeded, sequential at 1, unlimited paths, Infinity, continue after failure (5 tests).
+- **Unit** — validation: RangeError for 0, negative, non-integer (3 tests).
+- **Unit** — nesting: inner ParallelError in outer settled (1 test).
+- **Unit** — compile-time type assertions: AwaitedTuple, empty tuple, homogeneous return (3 tests).
+- **Unit** — error shape: message format, settled readonly, name (3 tests).
+- **Unit** — state-store: concurrent same-runId, different-runId, write queue cleanup (3 tests).
+- **Integration (mocked)** — heterogeneous persists, homogeneous with as-override, resume, concurrency cap, schema steps (5 tests).
 - **Integration** — parallel with two different real runners is gated by Phase 9.
 
----
+**Detailed plan:** [`docs/plans/2026-04-12-feat-phase-8-parallel-helper-plan.md`](2026-04-12-feat-phase-8-parallel-helper-plan.md)
 
-### Phase 9 — Real `CodexRunner` ☐
-
-**Goal:** second real runner so parallel multi-agent works.
-
-**Deliverables:**
-- `src/runners/codex/codex-runner.ts` — `codex exec --json --skip-git-repo-check --sandbox workspace-write -c approval_policy='"never"' --output-schema <file>` command shape.
-- Session ID capture from first `thread.started` event.
-- End-of-run on `turn.completed` / `turn.failed`.
-- Preflight: `codex --version` parsed, fail fast if `< 0.118.0`.
-
-**Tests:**
-- **Unit** — `FakeProcessService` + fixture `codex/with-output-schema.jsonl` → parsed structured output.
-- **Integration (auto-skipped)** — real `codex exec` with a tiny prompt.
-- **Integration** — `parallel()` with `ClaudeRunner` and `CodexRunner` against real CLIs (gated by both env vars).
+**Landed:** 2026-04-12
 
 ---
 
-### Phase 10 — `GitService` + `commit()` primitive ☐
+### Phase 9 — Real `CodexRunner` ✓
 
-**Goal:** commits as first-class workflow entries.
+**Goal:** second real runner — proves the `Runner` abstraction generalises beyond Claude. Gate for the cross-runner `parallel()` integration test.
 
 **Deliverables:**
-- `src/services/git/git-service.ts` port.
-- `src/services/git/real-git-service.ts` adapter.
-- `src/services/git/fake-git-service.ts`.
-- `src/core/commit.ts` — `commit(message, opts)` builds a step under a reserved name prefix (`commit:<message>`).
+- **Prerequisite:** `Runner.buildCommand` return type widened to `RunnerCommand | Promise<RunnerCommand>` (backwards-compatible; `await syncValue === syncValue`). `runRunner` updated with `await`.
+- `src/runners/codex/codex-runner.ts` — Zod schemas (terminal events only), standalone `parseCodexLine` (exported), `buildCodexEnv` with allowlist + ctxEnv filtering (exported), expanded flag denylist (`--yolo`, `--config`, `--sandbox`, `-c`, `--approval-mode`), `CodexVersionError`, lazy version preflight, `codex()` factory via `defineRunner()`. Command shape: `codex exec --json --full-auto --skip-git-repo-check --ephemeral [--output-schema <tmpfile>] [-m <model>] -- <prompt>`.
+- `src/runners/codex/index.ts` — module barrel.
+- Security: ctxEnv filtered through allowlist (no `LD_PRELOAD`/`NODE_OPTIONS` passthrough); `OPENAI_*` narrowed to explicit allowlist (`OPENAI_API_KEY`, `OPENAI_ORG_ID`); `--` separator before prompt.
+- NDJSON test fixtures: `tests/fixtures/codex/{simple-success,with-output-schema,turn-failed}.jsonl`.
 
 **Tests:**
-- **Unit** — `commit()` calls `GitService.stageAll` then `GitService.commit`; memoized by commit name.
-- **Integration** — real git in a temp repo.
+- **Unit** — `buildCommand` argv (default, model, sandbox modes, schema temp file, flags, extraArgs, `--` separator), flag denylist (7 denied flags), env allowlist (CODEX_*, OPENAI_API_KEY, excludes OPENAI_BASE_URL, filters ctxEnv), closure state reset, version preflight (valid/old/missing/unparseable), factory shape — 48 tests across 2 files.
+- **Integration (mocked)** — full round-trip `CodexRunner → runRunner → FakeProcessService` from 3 NDJSON fixtures (simple success, structured output, turn failed), argv shape verification — 4 tests.
+- **Integration (real, gated `RUN_REAL_CODEX=1`)** — real `codex exec` with tiny prompt — 1 test.
+- **Integration (real, gated `RUN_REAL_CLAUDE=1` + `RUN_REAL_CODEX=1`)** — cross-runner `parallel()` with both real CLIs — 1 test.
+
+**Detailed plan:** [`docs/plans/2026-04-12-feat-phase-9-codex-runner-plan.md`](2026-04-12-feat-phase-9-codex-runner-plan.md)
+
+**Landed:** 2026-04-12
+
+---
+
+### Phase 10 — `GitService` expansion + `commit()` primitive ✓
+
+**Goal:** commits as first-class workflow entries. `commit('msg')` returns `Step<CommitResult | null>` that composes with `run()`, memoization, and resume.
+
+**Deliverables:**
+- `src/services/git/git-service.ts` — expanded port with `isClean`, `stageAll`, `commit` write methods.
+- `src/services/git/bun-git-service.ts` — `BunGitService` adapters for the three new methods.
+- `src/services/git/fake-git-service.ts` — `FakeGitService` with `setIsClean`/`setCommitSha` setters.
+- `src/core/step.ts` — `StepConfig` refactored into `AgentStepConfig | CommitStepConfig` discriminated union with `kind` tag. `step.define()` rejects reserved `commit:` prefix and injects `kind: 'agent'`.
+- `src/core/types.ts` — `STEP_NAME_PATTERN` updated to allow colons (`/^[a-z0-9][a-z0-9:-]*$/`).
+- `src/core/commit.ts` — `CommitResult` type + `commit()` factory with slugification, validation, frozen Step.
+- `src/core/workflow.ts` — `runStepOnce` refactored into thin dispatcher; extracted `runAgentStep` and `runCommitStep` helpers; exhaustive switch on `config.kind`.
+- `src/core/index.ts` — barrel exports `commit`, `CommitResult`, `AgentStepConfig`, `CommitStepConfig`.
+
+**Tests:**
+- **Unit** — GitService methods: `isClean` clean/dirty/untracked/error, `stageAll` argv/error, `commit` argv+sha/error/rev-parse-error (7 tests). FakeGitService: `isClean`/`stageAll`/`commit` scripting (5 tests).
+- **Unit** — `StepName` colon support, multi-segment names (6 tests). `step.define` reserved prefix rejection, `kind: 'agent'` injection (2 tests).
+- **Unit** — `commit()` factory: name derivation, empty/whitespace/punctuation/null-byte/newline rejection, length boundary, frozen output (13 tests).
+- **Unit** — executor commit branch: dirty/clean/memoized/override-rejection/no-runner/error-propagation (10 tests).
+- **Integration (mocked)** — full agent+commit round-trip, clean-tree null, resume caching, state.json shape verification (3 tests).
+- **Integration (real)** — real git in temp repo: dirty commit, clean tree null, resume caching (3 tests).
+
+**Detailed plan:** [`docs/plans/2026-04-13-feat-phase-10-git-commit-primitive-plan.md`](2026-04-13-feat-phase-10-git-commit-primitive-plan.md)
+
+**Landed:** 2026-04-13
 
 ---
 

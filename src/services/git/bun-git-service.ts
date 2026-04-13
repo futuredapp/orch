@@ -110,6 +110,41 @@ export class BunGitService implements GitService {
     return stdout
   }
 
+  async isClean(cwd: Path): Promise<boolean> {
+    const { stdout, stderr, exitCode } = await this.#runGit(cwd, ['git', 'status', '--porcelain'])
+    if (exitCode !== 0) {
+      throw new GitCommandError(
+        exitCode,
+        redactStderr(stderr),
+        `git status --porcelain failed (exit ${exitCode}): ${redactStderr(stderr)}`,
+      )
+    }
+    return stdout.trim().length === 0
+  }
+
+  async stageAll(cwd: Path): Promise<void> {
+    const { stderr, exitCode } = await this.#runGit(cwd, ['git', 'add', '.'])
+    if (exitCode !== 0) {
+      throw new GitCommandError(
+        exitCode,
+        redactStderr(stderr),
+        `git add . failed (exit ${exitCode}): ${redactStderr(stderr)}`,
+      )
+    }
+  }
+
+  async commit(cwd: Path, message: string): Promise<string> {
+    const commitResult = await this.#runGit(cwd, ['git', 'commit', '-m', message])
+    if (commitResult.exitCode !== 0) {
+      throw new GitCommandError(
+        commitResult.exitCode,
+        redactStderr(commitResult.stderr),
+        `git commit failed (exit ${commitResult.exitCode}): ${redactStderr(commitResult.stderr)}`,
+      )
+    }
+    return this.headSha(cwd)
+  }
+
   async #runGit(
     cwd: Path,
     argv: readonly string[],

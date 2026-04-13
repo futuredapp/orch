@@ -10,7 +10,7 @@ import {
   type ValidatorServices,
 } from '../validators/index.ts'
 import { SchemaValidationError } from './schema.ts'
-import type { Step } from './step.ts'
+import type { AgentStepConfig, CommitStepConfig, Step } from './step.ts'
 import { type Path, type RunId, type StepName, stepName } from './types.ts'
 import { outcomesToFailures, outcomesToPersisted, runValidators } from './validation-runner.ts'
 
@@ -118,58 +118,48 @@ async function safeHeadSha(git: GitService, cwd: Path): Promise<string | undefin
 // Schema helpers — extracted for cognitive complexity budget
 // ---------------------------------------------------------------------------
 
-function checkSchemaCapability(step: Step, key: StepName): void {
-  if (step.config.returns !== undefined && !step.config.agent.supports.structuredOutput) {
+function checkSchemaCapability(config: AgentStepConfig, key: StepName): void {
+  if (config.returns !== undefined && !config.agent.supports.structuredOutput) {
     throw new Error(
-      `Runner "${step.config.agent.name}" does not support structured output; ` +
+      `Runner "${config.agent.name}" does not support structured output; ` +
         `remove "returns:" from step "${key}" or use a runner that supports it`,
     )
   }
 }
 
-function revalidateCachedValue(step: Step, key: StepName, cached: unknown): void {
-  if (step.config.returns === undefined) return
-  const reparse = step.config.returns.zodSchema.safeParse(cached)
+function revalidateCachedValue(config: AgentStepConfig, key: StepName, cached: unknown): void {
+  if (config.returns === undefined) return
+  const reparse = config.returns.zodSchema.safeParse(cached)
   if (!reparse.success) throw new SchemaValidationError(key, reparse.error)
 }
 
-function validateSchemaOutput(step: Step, key: StepName, rawValue: unknown): unknown {
-  if (step.config.returns === undefined) return rawValue
+function validateSchemaOutput(config: AgentStepConfig, key: StepName, rawValue: unknown): unknown {
+  if (config.returns === undefined) return rawValue
 
   if (rawValue === undefined) {
     throw new Error(
-      `Step "${key}": runner "${step.config.agent.name}" returned no structured_output ` +
+      `Step "${key}": runner "${config.agent.name}" returned no structured_output ` +
         'despite --json-schema being set. Check CLI version and flag compatibility.',
     )
   }
-  const parseResult = step.config.returns.zodSchema.safeParse(rawValue)
+  const parseResult = config.returns.zodSchema.safeParse(rawValue)
   if (!parseResult.success) throw new SchemaValidationError(key, parseResult.error)
   return parseResult.data
 }
 
 // ---------------------------------------------------------------------------
-// workflow — the core DSL entry point
+// runAgentStep — executes a step via a Runner adapter
 // ---------------------------------------------------------------------------
 
-async function runStepOnce(
+async function runAgentStep(
   deps: WorkflowDeps,
-  s: Step,
+  config: AgentStepConfig,
+  key: StepName,
   overrides: RunOverrides | undefined,
-): Promise<unknown> {
-  const key = stepName(overrides?.as ?? s.name)
+): Promise<{ value: unknown; entry: StepEntry }> {
+  checkSchemaCapability(config, key)
 
-  // Cache-hit early return MUST come before any git/baseline work —
-  // resume runs must do zero git subprocess calls.
-  const state = await deps.stateStore.loadRun(deps.runId)
-  const cached = state?.steps[key]
-  if (cached !== undefined) {
-    revalidateCachedValue(s, key, cached.value)
-    return cached.value
-  }
-
-  checkSchemaCapability(s, key)
-
-  const normalized = normalizeValidators(s.config.validate, key)
+  const normalized = normalizeValidators(config.validate, key)
   const headSha = anyNeedsHeadSha(normalized)
     ? await safeHeadSha(deps.gitService, deps.cwd)
     : undefined
@@ -177,14 +167,14 @@ async function runStepOnce(
 
   const startedAt = deps.clock.now()
   const result = await runRunner(
-    s.config.agent,
+    config.agent,
     {
       cwd: deps.cwd,
       env: {},
-      prompt: assemblePrompt(s.config.prompt, overrides),
+      prompt: assemblePrompt(config.prompt, overrides),
       extraArgs: [],
-      ...(s.config.returns !== undefined
-        ? { schema: { jsonSchema: s.config.returns.jsonSchema } }
+      ...(config.returns !== undefined
+        ? { schema: { jsonSchema: config.returns.jsonSchema } }
         : {}),
     },
     { processService: deps.processService, clock: deps.clock },
@@ -198,8 +188,8 @@ async function runStepOnce(
     throw new StepError(key, result.exitCode, msg)
   }
 
-  const rawValue = s.config.agent.extractStructuredOutput(result.finalEvent)
-  const value = validateSchemaOutput(s, key, rawValue)
+  const rawValue = config.agent.extractStructuredOutput(result.finalEvent)
+  const value = validateSchemaOutput(config, key, rawValue)
 
   const validatorCtx: ValidatorCtx = {
     stepName: key,
@@ -223,8 +213,95 @@ async function runStepOnce(
     ...(preRunSnapshot !== undefined ? { preRunSnapshot } : {}),
     validations: outcomesToPersisted(outcomes),
   }
-  await deps.stateStore.saveStep(deps.runId, entry)
-  return value
+  return { value, entry }
+}
+
+// ---------------------------------------------------------------------------
+// runCommitStep — executes a commit step via GitService
+// ---------------------------------------------------------------------------
+
+async function runCommitStep(
+  deps: WorkflowDeps,
+  config: CommitStepConfig,
+  key: StepName,
+  overrides: RunOverrides | undefined,
+): Promise<{ value: unknown; entry: StepEntry }> {
+  if (overrides?.prompt !== undefined) {
+    throw new Error(`Commit step "${key}" does not accept prompt overrides`)
+  }
+  if (overrides?.extraContext !== undefined) {
+    throw new Error(`Commit step "${key}" does not accept extraContext overrides`)
+  }
+  if (overrides?.extraPrompt !== undefined) {
+    throw new Error(`Commit step "${key}" does not accept extraPrompt overrides`)
+  }
+
+  const startedAt = deps.clock.now()
+  const clean = await deps.gitService.isClean(deps.cwd)
+
+  if (clean) {
+    const entry: StepEntry = {
+      name: key,
+      value: null,
+      startedAt,
+      endedAt: deps.clock.now(),
+      artifacts: [],
+      validations: [],
+    }
+    return { value: null, entry }
+  }
+
+  await deps.gitService.stageAll(deps.cwd)
+  const sha = await deps.gitService.commit(deps.cwd, config.message)
+  const value = { sha }
+
+  const entry: StepEntry = {
+    name: key,
+    value,
+    startedAt,
+    endedAt: deps.clock.now(),
+    artifacts: [],
+    validations: [],
+  }
+  return { value, entry }
+}
+
+// ---------------------------------------------------------------------------
+// runStepOnce — thin dispatcher with exhaustive switch
+// ---------------------------------------------------------------------------
+
+async function runStepOnce(
+  deps: WorkflowDeps,
+  s: Step,
+  overrides: RunOverrides | undefined,
+): Promise<unknown> {
+  const key = stepName(overrides?.as ?? s.name)
+
+  const state = await deps.stateStore.loadRun(deps.runId)
+  const cached = state?.steps[key]
+  if (cached !== undefined) {
+    const { config } = s
+    if (config.kind === 'agent') revalidateCachedValue(config, key, cached.value)
+    return cached.value
+  }
+
+  const { config } = s
+  let result: { value: unknown; entry: StepEntry }
+  switch (config.kind) {
+    case 'agent':
+      result = await runAgentStep(deps, config, key, overrides)
+      break
+    case 'commit':
+      result = await runCommitStep(deps, config, key, overrides)
+      break
+    default: {
+      const _exhaustive: never = config
+      throw new Error(`Unexpected step kind: ${JSON.stringify(_exhaustive)}`)
+    }
+  }
+
+  await deps.stateStore.saveStep(deps.runId, result.entry)
+  return result.value
 }
 
 export function workflow(name: string, fn: (run: RunFn) => Promise<void>): WorkflowExecutor {

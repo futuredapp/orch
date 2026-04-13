@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test'
+import { commit } from '../../../src/core/commit.ts'
 import { step } from '../../../src/core/step.ts'
 import { StepError, type WorkflowDeps, workflow } from '../../../src/core/workflow.ts'
 import {
@@ -12,6 +13,7 @@ import {
   FakeFsService,
   FakeGitService,
   FakeProcessService,
+  GitCommandError,
   path,
 } from '../../../src/services/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
@@ -316,5 +318,167 @@ describe('workflow run()', () => {
     expect(state).toBeDefined()
     expect(state?.id).toBe(deps.runId)
     expect(state?.status).toBe('completed')
+  })
+})
+
+describe('workflow run() with commit steps', () => {
+  it('commit step stages and commits when tree is dirty', async () => {
+    const deps = makeDeps()
+    deps.gitService.setIsClean(deps.cwd, false)
+    deps.gitService.setCommitSha(deps.cwd, 'abc1234')
+
+    let result: unknown
+    const wf = workflow('test', async (run) => {
+      result = await run(commit('checkpoint'))
+    })
+    await wf.execute(deps)
+
+    expect(result).toEqual({ sha: 'abc1234' })
+  })
+
+  it('commit step returns null when tree is clean', async () => {
+    const deps = makeDeps()
+    deps.gitService.setIsClean(deps.cwd, true)
+
+    let result: unknown
+    const wf = workflow('test', async (run) => {
+      result = await run(commit('checkpoint'))
+    })
+    await wf.execute(deps)
+
+    expect(result).toBeNull()
+  })
+
+  it('commit step is memoized on resume', async () => {
+    const sharedRunId = rid('r-2026-04-13-000001')
+    const fs = new FakeFsService()
+
+    // First execution: commit succeeds
+    const deps1 = makeDeps({ fs, runId: sharedRunId })
+    deps1.gitService.setIsClean(deps1.cwd, false)
+    deps1.gitService.setCommitSha(deps1.cwd, 'abc1234')
+
+    const fr1 = new FakeRunner(deps1.processService)
+    fr1.script({ failWith: { message: 'crash' } })
+
+    const wf1 = workflow('test', async (run) => {
+      await run(commit('checkpoint'))
+      await run(step.define('crash', { agent: fr1 }))
+    })
+
+    try {
+      await wf1.execute(deps1)
+    } catch {
+      // expected crash
+    }
+
+    // Second execution: commit step should be cached, agent step succeeds
+    const fps2 = new FakeProcessService()
+    const deps2 = makeDeps({ fs, processService: fps2, runId: sharedRunId })
+    const fr2 = new FakeRunner(fps2)
+    fr2.script({ structuredOutput: 'done' })
+
+    let commitResult: unknown
+    const wf2 = workflow('test', async (run) => {
+      commitResult = await run(commit('checkpoint'))
+      await run(step.define('crash', { agent: fr2 }))
+    })
+    await wf2.execute(deps2)
+
+    expect(commitResult).toEqual({ sha: 'abc1234' })
+  })
+
+  it('commit step uses overrides.as for memoization key', async () => {
+    const deps = makeDeps()
+    deps.gitService.setIsClean(deps.cwd, false)
+    deps.gitService.setCommitSha(deps.cwd, 'sha-a')
+
+    let resultA: unknown
+    let resultB: unknown
+    const wf = workflow('test', async (run) => {
+      resultA = await run(commit('checkpoint'), { as: 'commit:first' })
+      // Second call with same commit message but different key — re-executes
+      deps.gitService.setCommitSha(deps.cwd, 'sha-b')
+      resultB = await run(commit('checkpoint'), { as: 'commit:second' })
+    })
+    await wf.execute(deps)
+
+    expect(resultA).toEqual({ sha: 'sha-a' })
+    expect(resultB).toEqual({ sha: 'sha-b' })
+  })
+
+  it('commit step does not invoke any Runner', async () => {
+    const deps = makeDeps()
+    deps.gitService.setIsClean(deps.cwd, false)
+    deps.gitService.setCommitSha(deps.cwd, 'abc1234')
+
+    const fr = new FakeRunner(deps.processService)
+
+    const wf = workflow('test', async (run) => {
+      await run(commit('checkpoint'))
+    })
+    await wf.execute(deps)
+
+    expect(fr.invocationCount).toBe(0)
+  })
+
+  it('commit step throws when prompt override is provided', async () => {
+    const deps = makeDeps()
+
+    const wf = workflow('test', async (run) => {
+      await run(commit('checkpoint'), { prompt: 'override' })
+    })
+
+    await expect(wf.execute(deps)).rejects.toThrow('does not accept prompt overrides')
+  })
+
+  it('commit step throws when extraContext override is provided', async () => {
+    const deps = makeDeps()
+
+    const wf = workflow('test', async (run) => {
+      await run(commit('checkpoint'), { extraContext: { key: 'val' } })
+    })
+
+    await expect(wf.execute(deps)).rejects.toThrow('does not accept extraContext overrides')
+  })
+
+  it('commit step throws when extraPrompt override is provided', async () => {
+    const deps = makeDeps()
+
+    const wf = workflow('test', async (run) => {
+      await run(commit('checkpoint'), { extraPrompt: 'extra' })
+    })
+
+    await expect(wf.execute(deps)).rejects.toThrow('does not accept extraPrompt overrides')
+  })
+
+  it('commit step propagates GitCommandError from stageAll', async () => {
+    const deps = makeDeps()
+    deps.gitService.setIsClean(deps.cwd, false)
+    // stageAll is a no-op in FakeGitService; override to throw
+    deps.gitService.stageAll = async () => {
+      throw new GitCommandError(128, 'fatal', 'git add . failed')
+    }
+
+    const wf = workflow('test', async (run) => {
+      await run(commit('checkpoint'))
+    })
+
+    await expect(wf.execute(deps)).rejects.toThrow(GitCommandError)
+  })
+
+  it('commit step propagates GitCommandError from commit', async () => {
+    const deps = makeDeps()
+    deps.gitService.setIsClean(deps.cwd, false)
+    // Override commit to throw
+    deps.gitService.commit = async () => {
+      throw new GitCommandError(1, 'nothing to commit', 'git commit failed')
+    }
+
+    const wf = workflow('test', async (run) => {
+      await run(commit('checkpoint'))
+    })
+
+    await expect(wf.execute(deps)).rejects.toThrow(GitCommandError)
   })
 })
