@@ -59,6 +59,10 @@ class StubProcessService implements ProcessService {
     this.#handle = null
     return h
   }
+
+  spawnForeground(): import('../../../src/services/process/process-service.ts').ForegroundHandle {
+    throw new Error('StubProcessService: spawnForeground not implemented')
+  }
 }
 
 function ctxFor(prompt: string): RunnerContext {

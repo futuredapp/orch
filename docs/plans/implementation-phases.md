@@ -320,7 +320,29 @@ Legend: ☐ not started · ◐ in progress · ✓ landed
 
 ---
 
-### Phase 13 — Tmux observability ☐
+### Phase 13a — Interactive step mode ✅
+
+**Goal:** step-level interactivity — foreground takeover, no tmux dependency.
+
+**Deliverables:**
+- `ProcessService.spawnForeground()` with `ProcessHandle` base type + `ForegroundHandle` alias.
+- `StepMode`, `InteractiveResult`, `InteractiveResultSchema` in `src/core/types.ts`.
+- `step.define` overloads: interactive (no `returns`) → `Step<InteractiveResult>`, autonomous → `Step<T>`.
+- `ClaudeRunner.buildCommand` branches: interactive argv (`--session-id`, `--` terminator), autonomous unchanged.
+- `runInteractive` executor in `src/runners/execute.ts` — foreground spawn, no NDJSON.
+- `AsyncLocalStorage`-based parallel guard (`InteractiveParallelError`), `RunnerCapabilityError`.
+- Agent-native hooks: `onInteractive`, `onStepEvent`, `generateSessionId` on `WorkflowDeps`.
+- `FakeResponse.exit` → `exitCode` unification.
+
+**Tests:**
+- **Unit** — foreground fake (5), InteractiveResult schema (4), step overloads (4), interactive argv (6), executor (2), mode resolution (3), parallel guard (1), capability guard (1), non-zero exit (1), lifecycle events (2), execution context (2).
+- **Integration** — interactive workflow round-trip with ClaudeRunner (2).
+
+### Phase 13b — Tmux pane management ☐
+
+**Goal:** two-pane tmux layout, all tmux in one service.
+
+### Phase 13c — Status pane + observe polish ☐
 
 **Goal:** left status pane + right agent pane on a dedicated socket.
 

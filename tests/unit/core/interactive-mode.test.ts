@@ -6,7 +6,7 @@ import {
 } from '../../../src/core/errors.ts'
 import { currentParallelDepth, executionContext } from '../../../src/core/execution-context.ts'
 import { step } from '../../../src/core/step.ts'
-import type { InteractiveResult, StepMode } from '../../../src/core/types.ts'
+import type { InteractiveResult } from '../../../src/core/types.ts'
 import type { WorkflowDeps } from '../../../src/core/workflow.ts'
 import { workflow } from '../../../src/core/workflow.ts'
 import {

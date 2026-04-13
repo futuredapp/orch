@@ -26,7 +26,6 @@ import { SchemaValidationError } from './schema.ts'
 import type { AgentStepConfig, CommitStepConfig, Step } from './step.ts'
 import {
   type InteractiveResult,
-  InteractiveResultSchema,
   type Path,
   type RunId,
   type StepMode,

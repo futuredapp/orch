@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import {
-  InteractiveResultSchema,
   type InteractiveResult,
+  InteractiveResultSchema,
   type StepMode,
   stepName,
 } from '../../../src/core/types.ts'

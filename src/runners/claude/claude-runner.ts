@@ -188,6 +188,46 @@ export function parseClaudeLine(line: string): import('../types.ts').RunnerEvent
 }
 
 // ---------------------------------------------------------------------------
+// Argv builders — extracted for cognitive complexity budget
+// ---------------------------------------------------------------------------
+
+function buildInteractiveArgv(
+  ctx: RunnerContext,
+  opts: { model?: string; flags?: readonly string[] },
+): readonly string[] {
+  return [
+    'claude',
+    ...(ctx.sessionId ? ['--session-id', ctx.sessionId] : []),
+    ...(opts.model ? ['--model', opts.model] : []),
+    ...(opts.flags ?? []),
+    ...ctx.extraArgs,
+    '--',
+    ctx.prompt,
+  ]
+}
+
+function buildAutonomousArgv(
+  ctx: RunnerContext,
+  opts: { model?: string; maxTurns?: number; bare: boolean; flags?: readonly string[] },
+): readonly string[] {
+  return [
+    'claude',
+    ...(opts.bare ? ['--bare'] : []),
+    '-p',
+    ctx.prompt,
+    '--output-format',
+    'stream-json',
+    '--verbose',
+    '--no-session-persistence',
+    ...(opts.model ? ['--model', opts.model] : []),
+    ...(opts.maxTurns !== undefined ? ['--max-turns', String(opts.maxTurns)] : []),
+    ...(ctx.schema ? ['--json-schema', ctx.schema.jsonSchema] : []),
+    ...(opts.flags ?? []),
+    ...ctx.extraArgs,
+  ]
+}
+
+// ---------------------------------------------------------------------------
 // Factory
 // ---------------------------------------------------------------------------
 
@@ -203,38 +243,10 @@ export function claude(opts: ClaudeOptions = {}): Readonly<Runner> {
       for (const flag of ctx.extraArgs) assertFlagAllowed(flag)
 
       const env = buildClaudeEnv(ctx.env, process.env)
-
-      if (ctx.mode === 'interactive') {
-        // Interactive: no --bare, no -p, no --output-format, no --verbose.
-        // `--` flag terminator prevents prompt-as-flag injection.
-        const argv = [
-          'claude',
-          ...(ctx.sessionId ? ['--session-id', ctx.sessionId] : []),
-          ...(model ? ['--model', model] : []),
-          ...(flags ?? []),
-          ...ctx.extraArgs,
-          '--',
-          ctx.prompt,
-        ]
-        return { argv, env }
-      }
-
-      // Autonomous (default)
-      const argv = [
-        'claude',
-        ...(bare ? ['--bare'] : []),
-        '-p',
-        ctx.prompt,
-        '--output-format',
-        'stream-json',
-        '--verbose',
-        '--no-session-persistence',
-        ...(model ? ['--model', model] : []),
-        ...(maxTurns !== undefined ? ['--max-turns', String(maxTurns)] : []),
-        ...(ctx.schema ? ['--json-schema', ctx.schema.jsonSchema] : []),
-        ...(flags ?? []),
-        ...ctx.extraArgs,
-      ]
+      const argv =
+        ctx.mode === 'interactive'
+          ? buildInteractiveArgv(ctx, { model, flags })
+          : buildAutonomousArgv(ctx, { model, maxTurns, bare, flags })
       return { argv, env }
     },
 
