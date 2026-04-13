@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'bun:test'
+import { z } from 'zod'
+import { schema } from '../../../src/core/schema.ts'
 import { step } from '../../../src/core/step.ts'
 import { FakeRunner } from '../../../src/runners/index.ts'
 import { FakeProcessService } from '../../../src/services/index.ts'
@@ -61,5 +63,53 @@ describe('step.define', () => {
     const agent = makeFakeRunner()
 
     expect(() => step.define('commit:foo', { agent })).toThrow('commit:')
+  })
+
+  it('defaults mode to undefined when not specified', () => {
+    const agent = makeFakeRunner()
+
+    const s = step.define('plan', { agent })
+
+    expect(s.config.kind).toBe('agent')
+    if (s.config.kind === 'agent') {
+      expect(s.config.mode).toBeUndefined()
+    }
+  })
+
+  it('accepts mode interactive and produces a Step', () => {
+    const agent = makeFakeRunner()
+
+    const s = step.define('brainstorm', { agent, mode: 'interactive' })
+
+    expect(s.config.kind).toBe('agent')
+    if (s.config.kind === 'agent') {
+      expect(s.config.mode).toBe('interactive')
+    }
+  })
+
+  it('accepts mode autonomous explicitly', () => {
+    const agent = makeFakeRunner()
+
+    const s = step.define('work', { agent, mode: 'autonomous' })
+
+    expect(s.config.kind).toBe('agent')
+    if (s.config.kind === 'agent') {
+      expect(s.config.mode).toBe('autonomous')
+    }
+  })
+
+  it('throws at runtime when interactive mode is combined with returns', () => {
+    const agent = makeFakeRunner()
+
+    // Cast to bypass compile-time overload guard — testing the runtime belt-and-suspenders check
+    const badConfig = {
+      agent,
+      mode: 'interactive' as const,
+      returns: schema(z.object({ title: z.string() })),
+    }
+
+    expect(() => step.define('brainstorm', badConfig as never)).toThrow(
+      'interactive steps cannot have "returns:"',
+    )
   })
 })

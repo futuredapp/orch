@@ -16,7 +16,14 @@ export { ResumeError, RunNotFoundError, StepError }
 
 import { SchemaValidationError } from './schema.ts'
 import type { AgentStepConfig, CommitStepConfig, Step } from './step.ts'
-import { type Path, type RunId, type StepName, stepName } from './types.ts'
+import {
+  type InteractiveResult,
+  type Path,
+  type RunId,
+  type StepMode,
+  type StepName,
+  stepName,
+} from './types.ts'
 import { outcomesToFailures, outcomesToPersisted, runValidators } from './validation-runner.ts'
 
 // ---------------------------------------------------------------------------
@@ -40,6 +47,7 @@ export interface RunOverrides {
   readonly prompt?: string
   readonly extraContext?: JsonValue
   readonly extraPrompt?: string
+  readonly mode?: StepMode
 }
 
 // ---------------------------------------------------------------------------
@@ -61,7 +69,14 @@ export interface WorkflowDeps {
 // RunFn — the signature of the `run` closure passed to workflow functions
 // ---------------------------------------------------------------------------
 
-export type RunFn = <T>(step: Step<T>, overrides?: RunOverrides) => Promise<T>
+/** Override with `mode: 'interactive'` always yields InteractiveResult. */
+export interface RunFn {
+  <T>(
+    step: Step<T>,
+    overrides: RunOverrides & { readonly mode: 'interactive' },
+  ): Promise<InteractiveResult>
+  <T>(step: Step<T>, overrides?: RunOverrides): Promise<T>
+}
 
 // ---------------------------------------------------------------------------
 // WorkflowExecutor — returned by workflow()
