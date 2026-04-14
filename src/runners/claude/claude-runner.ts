@@ -87,6 +87,11 @@ const CLAUDE_ENV_ALLOWLIST = [
   'HTTPS_PROXY',
   'NO_PROXY',
   'NODE_EXTRA_CA_CERTS',
+  // TERM/COLORTERM carry terminal capability info used by Ink/chalk/supports-color
+  // inside the Claude CLI. Without them, even a forced-color mode can't pick the
+  // right ANSI level.
+  'TERM',
+  'COLORTERM',
 ] as const
 
 // processEnv is injected for testability; the `process.env` default only
@@ -243,6 +248,20 @@ export function claude(opts: ClaudeOptions = {}): Readonly<Runner> {
       for (const flag of ctx.extraArgs) assertFlagAllowed(flag)
 
       const env = buildClaudeEnv(ctx.env, process.env)
+      // Interactive mode note (2026-04-14): BunProcessService.spawnForeground
+      // spawns the child with `stdio: 'inherit'`. `inherit` shares file
+      // descriptors but does NOT allocate a PTY, so inside the Claude CLI
+      // `process.stdout.isTTY === false`. Ink/chalk/supports-color then fall
+      // back to a monochrome renderer — the "black-and-white" session we saw
+      // in docs/solutions/interactive-mode-colors.md.
+      // Forcing FORCE_COLOR=3 re-enables truecolor ANSI output via chalk even
+      // without a real TTY. This is a targeted fix for colors only; a full PTY
+      // passthrough (Bun.Terminal) would also restore interactive features
+      // like cursor movement and resize, but costs ~30 LoC of plumbing. See
+      // the solutions doc before escalating.
+      if (ctx.mode === 'interactive') {
+        env.FORCE_COLOR = '3'
+      }
       const argv =
         ctx.mode === 'interactive'
           ? buildInteractiveArgv(ctx, { model, flags })

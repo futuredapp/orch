@@ -1,0 +1,116 @@
+---
+date: 2026-04-14
+topic: interactive-mode-colors
+status: shipped-partial
+---
+
+# Interactive mode: restoring colors without a PTY
+
+## Symptom
+
+Running an interactive Claude step through the orchestrator (e.g., `bun run examples/riddle-solver/index.ts`) produced a **completely black-and-white** Claude REPL — no blue banner, no dim greys, no colored diff blocks. Running `claude` directly from the same terminal rendered normally.
+
+## Root cause
+
+`BunProcessService.spawnForeground` (`src/services/process/bun-process-service.ts`) spawns the child with:
+
+```ts
+Bun.spawn({
+  cmd: [...opts.argv],
+  cwd: opts.cwd,
+  env: opts.env,
+  stdin: 'inherit',
+  stdout: 'inherit',
+  stderr: 'inherit',
+})
+```
+
+`stdio: 'inherit'` shares the parent's file descriptors with the child but does **not** allocate a pseudo-terminal. Inside the Claude CLI:
+
+- `process.stdout.isTTY === false`
+- Ink's `supports-color` returns level 0
+- chalk strips all ANSI escapes → the monochrome output we saw
+
+Setting `TERM` and `COLORTERM` alone isn't enough because `supports-color` gates on `isTTY` first. `FORCE_COLOR`, however, **overrides the isTTY check** and directly selects an ANSI level.
+
+## What we shipped (partial fix)
+
+Two small changes in `src/runners/claude/claude-runner.ts`:
+
+1. Added `TERM` and `COLORTERM` to `CLAUDE_ENV_ALLOWLIST` so they flow from the parent env into the sandboxed Claude env.
+2. In `buildCommand`, when `ctx.mode === 'interactive'`, inject `FORCE_COLOR=3` into the env. chalk level 3 = truecolor.
+
+```ts
+if (ctx.mode === 'interactive') {
+  env.FORCE_COLOR = '3'
+}
+```
+
+Autonomous mode is untouched — it pipes NDJSON and doesn't need colors.
+
+## What this fix does NOT restore
+
+`FORCE_COLOR=3` only brings back colors. The child still sees `isTTY === false`, which means Ink stays in its "static" (non-interactive) render mode. If you notice any of the following, escalate to a full PTY passthrough:
+
+- Arrow-key line editing feels broken inside the REPL
+- Ctrl-R / Ctrl-C handling inside the Claude UI misbehaves
+- Terminal-resize doesn't reflow the Claude UI
+- Spinner / progress animations render as static text
+
+## Full fix (if needed later): Bun PTY passthrough
+
+Bun 1.3.5+ exposes a `terminal` option on `Bun.spawn` that allocates a real PTY. It is **not** a boolean; it's a managed terminal where the parent must forward stdin and handle resize.
+
+Rough sketch for `spawnForeground`:
+
+```ts
+const proc = Bun.spawn({
+  cmd: [...opts.argv],
+  cwd: opts.cwd,
+  env: opts.env,
+  terminal: {
+    cols: process.stdout.columns ?? 80,
+    rows: process.stdout.rows ?? 24,
+    data: (_term, chunk) => {
+      process.stdout.write(chunk)
+    },
+  },
+})
+
+// Forward parent stdin → child PTY
+const wasRaw = process.stdin.isRaw
+process.stdin.setRawMode?.(true)
+const onData = (chunk: Buffer) => proc.terminal?.write(chunk)
+process.stdin.on('data', onData)
+
+// Resize
+const onResize = () => {
+  proc.terminal?.resize(process.stdout.columns ?? 80, process.stdout.rows ?? 24)
+}
+process.stdout.on('resize', onResize)
+
+// Cleanup (wrap in the returned ForegroundHandle)
+const cleanup = () => {
+  process.stdin.off('data', onData)
+  process.stdout.off('resize', onResize)
+  process.stdin.setRawMode?.(wasRaw ?? false)
+}
+```
+
+Notes before doing this:
+
+- POSIX only — we'd need a fallback or a runtime guard for Windows.
+- `proc.terminal.write`/`resize` return `undefined` when the PTY is closed; guard accordingly.
+- `setRawMode` must be restored on ALL exit paths (normal exit, `kill()`, uncaught errors).
+- This breaks the `stdio: 'inherit'` symmetry with the autonomous spawn — a clear seam is needed so autonomous mode keeps its piped stdout capture.
+
+## Why we didn't ship the full PTY fix now
+
+The brainstorm assumed `terminal: true` was a boolean flag (it isn't), so the initial one-line estimate was wrong. `FORCE_COLOR=3` covers the reported symptom with three lines and no new platform concerns. The PTY passthrough is a real feature worth a separate plan if users hit the gaps above.
+
+## Related
+
+- Brainstorm: [`docs/brainstorms/2026-04-14-interactive-mode-tty-colors-brainstorm.md`](../brainstorms/2026-04-14-interactive-mode-tty-colors-brainstorm.md)
+- Upstream: [anthropics/claude-code#29706](https://github.com/anthropics/claude-code/issues/29706)
+- Bun PTY docs: https://bun.com/reference/bun/Terminal
+- chalk / supports-color FORCE_COLOR behavior: https://github.com/chalk/supports-color#info

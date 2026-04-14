@@ -209,6 +209,13 @@ describe('buildClaudeEnv', () => {
       expect(val).not.toBeUndefined()
     }
   })
+
+  it('propagates TERM and COLORTERM from processEnv so Claude can pick the right ANSI level', () => {
+    const env = buildClaudeEnv({}, { TERM: 'xterm-256color', COLORTERM: 'truecolor' })
+
+    expect(env.TERM).toBe('xterm-256color')
+    expect(env.COLORTERM).toBe('truecolor')
+  })
 })
 
 describe('buildCommand interactive mode', () => {
@@ -263,6 +270,20 @@ describe('buildCommand interactive mode', () => {
     // Both should have env set (at minimum PATH/HOME from process.env)
     expect(typeof interactiveCmd.env).toBe('object')
     expect(typeof autonomousCmd.env).toBe('object')
+  })
+
+  it('sets FORCE_COLOR=3 in interactive mode so Ink keeps colors under inherit stdio', async () => {
+    const runner = claude()
+    const cmd = await runner.buildCommand(ctxFor('test', { mode: 'interactive' }))
+
+    expect(cmd.env.FORCE_COLOR).toBe('3')
+  })
+
+  it('does not set FORCE_COLOR in autonomous mode where stdout is piped NDJSON', async () => {
+    const runner = claude()
+    const cmd = await runner.buildCommand(ctxFor('test'))
+
+    expect(cmd.env.FORCE_COLOR).toBeUndefined()
   })
 })
 
