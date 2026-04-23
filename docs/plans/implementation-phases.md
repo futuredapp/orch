@@ -56,7 +56,7 @@ Legend: ☐ not started · ◐ in progress · ✓ landed
 **Goal:** the single seam between the codebase and every subprocess it will ever spawn.
 
 **Deliverables:**
-- `src/services/process/process-service.ts` — `interface ProcessService { spawn(opts): SpawnHandle }` where `SpawnHandle` exposes `stdout` (`AsyncIterable<string>`), `stderr`, `wait(): Promise<{ exitCode: number }>`, `kill()`.
+- `src/services/process/process-service.ts` — `interface ProcessService { spawn(opts): SpawnHandle }` where `SpawnHandle` exposes `stdout` (`AsyncIterable<string>`), `stderr`, `wait(): Promise<{ exitCode: number }>`, `kill()`.  
 - `src/services/process/bun-process-service.ts` — real adapter wrapping `Bun.spawn` with line-framed stdout.
 - `src/services/process/fake-process-service.ts` — scriptable: `.when(cmd).respondWith({ stdout: [...], exit: 0 })`.
 - `src/services/fs/` and `src/services/clock/` stubs (needed by later phases).
@@ -338,23 +338,61 @@ Legend: ☐ not started · ◐ in progress · ✓ landed
 - **Unit** — foreground fake (5), InteractiveResult schema (4), step overloads (4), interactive argv (6), executor (2), mode resolution (3), parallel guard (1), capability guard (1), non-zero exit (1), lifecycle events (2), execution context (2).
 - **Integration** — interactive workflow round-trip with ClaudeRunner (2).
 
-### Phase 13b — Tmux pane management ☐
+### Phase 13b — Tmux pane management ✅
 
 **Goal:** two-pane tmux layout, all tmux in one service.
 
-### Phase 13c — Status pane + observe polish ☐
+**Deliverables:**
+- `src/services/tmux/tmux-service.ts` — 11-method `TmuxService` port, branded `PaneId`/`SocketName`, `TmuxCommandError`.
+- `src/services/tmux/real-tmux-service.ts` — adapter via `ProcessService`; hardcoded argv; dedicated tmux env (PATH/HOME/LANG); `-f /dev/null` + `-L <socket>`; empty-stdout guard on `displayMessage`; `waitFor` races against a timer.
+- `src/services/tmux/fake-tmux-service.ts` — hybrid recorder + scriptable returns (`nextPaneId`, `setDisplayResult`).
+- `src/services/tmux/session-init.ts` — `initOrchSession` helper composing createSession + `remain-on-exit failed` + global `pane-died` hook.
+- `src/cli/detect-tmux.ts` — `isInsideTmux`, `probeTmuxVersion`, `meetsMinimumTmuxVersion` (>= 3.2).
+- `parseArgv` gains `--tmux` and `--observe` flags (`--observe` implies `--tmux`).
+- Barrel exports on `src/services/tmux/index.ts` and `src/services/index.ts`.
+
+**Tests:**
+- **Unit** — branded constructors (11), `TmuxCommandError` shape (2), FakeTmuxService recording + scripted returns (6), `initOrchSession` lifecycle ordering (3), `isInsideTmux` + version predicates (6), `probeTmuxVersion` + FakeProcessService (3), new argv flags (4).
+- **Integration (mocked)** — RealTmuxService argv construction for every method incl. injection safety for sendKeys (12).
+- **Integration (real, gated by `tmux -V`)** — createSession + splitPane returns `%\d+`, displayMessage round-trip, invalid-pane empty-output guard, sendKeys with metacharacter payload, concurrent-socket isolation (5). `afterEach` kills each per-test socket.
+
+### Phase 13c — Status pane + observe polish ✅
 
 **Goal:** left status pane + right agent pane on a dedicated socket.
 
 **Deliverables:**
-- `src/services/tmux/tmux-service.ts` port + `real-tmux-service.ts` + `fake-tmux-service.ts`.
-- `src/observability/status-pane.ts` — renders from `state.json` + small in-memory tail.
-- Pane lifecycle (create, split, `remain-on-exit`, poll `#{pane_dead}`).
+- `src/observability/status-pane.ts` — pure `renderStatusPane`, `stepGlyph`, `stripAnsi`, `StepStatusRecord`, `toStatusRecords`.
+- `src/observability/status-loop.ts` — event-driven loop bridging `StepLifecycleEvent` to `TmuxService.sendKeys`; returns `{ stop, onStepEvent, records }` handle with rendering guard + clear-before-render.
+- `src/observability/index.ts` — barrel.
+- `TmuxService` additions: `capturePane`, `pipePane`, `listPanes` on the interface, `RealTmuxService`, and `FakeTmuxService` (with `setCaptureResult`/`setListPanesResult` scripting).
+- `runRunner` gains an `onEvent?: (event: RunnerEvent) => void` dep for observe mode — fires for every parsed runner event before the terminal check.
 
 **Tests:**
-- **Unit** — status pane text rendering is a pure function of state + tail; snapshot tests for every glyph (`●`, `○`, `✓`, `⟳`, `✗`, `↯`, `↺`).
-- **Integration** — `FakeTmuxService` records commands; assertions about lifecycle.
-- **Integration (gated by `tmux -V`)** — real tmux on the dedicated `-L orchestrator` socket.
+- **Unit** — `status-pane`: glyphs (unicode + ascii), `formatElapsed`, `stripAnsi` (CSI + OSC + cursor motion), `toStatusRecords` (persisted + live override), `renderStatusPane` (empty, running, completed, pending, title, mixed) — 19 tests.
+- **Unit** — `FakeTmuxService.capturePane`/`pipePane`/`listPanes` recording + scripted returns — 6 tests.
+- **Unit** — `runRunner.onEvent` forwards every parsed event in order — 1 test.
+- **Integration (mocked)** — `status-loop` against `FakeTmuxService`: clear-and-redraw payload, re-render on completion with frozen duration, stop() ignores later events, onError routing, records() snapshot, `applyEvent` state transitions — 9 tests.
+- **Integration (mocked)** — `RealTmuxService` argv for `capturePane` (with/without `-e`/`-J`), `pipePane` (`-O` + teardown), `listPanes` (format split + failure) — 6 tests.
+- **Integration (real, gated `tmux -V`)** — real `startStatusLoop` drives `capturePane`, confirms rendered step name reaches the live pane — 1 test.
+
+**Landed:** 2026-04-14
+
+### Phase 13d — CLI wiring for `--tmux` / `--observe` ✅
+
+**Goal:** the flags the CLI parses actually activate the tmux session + status loop.
+
+**Deliverables:**
+- `src/cli/tmux-wiring.ts` — `setupTmux()` composes `probeTmuxVersion` → `initOrchSession` → `listPanes` → `sendKeys('exec cat')` → optional observe `splitPane` → `startStatusLoop`. Exports `maybeSetupTmux` + `tmuxDepsFromHandles` so `runCmd` / `resumeCmd` stay thin.
+- `src/core/workflow.ts` — `WorkflowDeps` gains `onEvent` (forwarded into `runRunner` from `runAgentStep`) and `tmuxActive` (interactive steps refuse to run when set).
+- `src/cli/main.ts` — `CliOpts` struct forwarded from `parseArgv` to every command handler.
+- `src/cli/commands/{run,resume,dry-run,runs,status}.ts` — signatures accept `CliOpts`; `run`/`resume` call `setupTmux` before `workflow.execute`/`resume` and tear it down in `finally`.
+
+**Tests:**
+- **Unit** — `workflow-tmux-guards.test.ts`: interactive-under-tmux guard + `onEvent` forwarding (4). `tmux-wiring.test.ts`: version probe rejection, call ordering via FakeTmuxService, observe pane split, attach hint, status event propagation, teardown idempotence (6).
+- **Integration (mocked)** — `tests/integration/cli/tmux-wiring.integration.test.ts`: two-step workflow renders both step names to status pane; observe mode routes runner events to observe pane (2).
+- **Integration (real, gated by `tmux -V`)** — `tests/integration/cli/tmux-real.integration.test.ts`: setupTmux + FakeRunner workflow, `capturePane` confirms step name reached the live pane (1).
+
+**Landed:** 2026-04-14
 
 ---
 

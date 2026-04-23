@@ -12,6 +12,12 @@
  * Usage:
  *   bun run examples/riddle-solver/index.ts
  *   bun run examples/riddle-solver/index.ts --run-id=r-2026-04-11-abc123
+ *   bun run examples/riddle-solver/index.ts --prompt="about the moon"
+ *
+ * The optional --prompt seeds a theme for the riddle. This demonstrates
+ * the two-arg workflow signature: `workflow(name, async (run, args) => ...)`.
+ * Via the `orch` CLI, the same value is passed positionally:
+ *   orch run riddle-solver "about the moon"
  *
  * Requirements: `claude` must be on PATH.
  */
@@ -40,6 +46,11 @@ await fs.mkdir(stateDir, { recursive: true })
 const RUN_ID_FLAG = '--run-id='
 const forcedId = process.argv.find((a) => a.startsWith(RUN_ID_FLAG))?.slice(RUN_ID_FLAG.length)
 
+const PROMPT_FLAG = '--prompt='
+const promptSeed = process.argv
+  .find((a) => a.startsWith(PROMPT_FLAG))
+  ?.slice(PROMPT_FLAG.length)
+
 const clock = new BunClock()
 const runIdVal: RunId = forcedId !== undefined ? runId(forcedId) : generateRunId({ clock })
 
@@ -52,13 +63,16 @@ const solutionFile = `solution_${suffix}.txt`
 // works, and Claude can use Read/Write tools without per-call prompts.
 const bunFs = new BunFsService()
 
+const themeClause = promptSeed ? ` The riddle should be about: ${promptSeed}.` : ''
+
 const WRITE_RIDDLE = step.define('write-riddle', {
   agent: claude({
     bare: false,
     flags: ['--permission-mode', 'bypassPermissions'],
   }),
+  mode: 'interactive',
   prompt:
-    `Invent one short original riddle (2-4 lines, in English) and write it to ./${riddleFile}. ` +
+    `Invent one short original riddle (2-4 lines, in English) and write it to ./${riddleFile}.${themeClause} ` +
     `Write only the riddle text — no title, no preamble, no answer, no code fences, no trailing newline.`,
   validate: [
     fileProduced(riddleFile),
@@ -102,9 +116,16 @@ const deps: WorkflowDeps = {
   cwd: path(sandboxDir),
   fsService: bunFs,
   gitService: new BunGitService({ processService }),
+  ...(promptSeed !== undefined ? { args: { prompt: promptSeed } } : {}),
 }
 
-const wf = workflow('riddle-solver-demo', async (run) => {
+// The two-arg `(run, args)` signature is the Phase 13a.1 CLI-args form.
+// `args.prompt` is populated either by `orch run riddle-solver "theme"` or
+// by this script's own `--prompt=...` passthrough above. Workflows that don't
+// care about args can still write `async (run) => ...` — the second param
+// is silently ignored by JS.
+const wf = workflow('riddle-solver-demo', async (run, args) => {
+  if (args.prompt !== undefined) console.log('[orch] theme prompt:', args.prompt)
   const riddle = await run(WRITE_RIDDLE)
   console.log('[orch] riddle step returned:', riddle)
   const solution = await run(SOLVE_RIDDLE)
