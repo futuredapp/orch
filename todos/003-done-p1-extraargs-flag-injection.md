@@ -44,3 +44,4 @@ dependencies: []
 |------|--------|-----------|
 | 2026-04-11 | Created from code review | |
 | 2026-04-11 | G3: added CLAUDE_FLAG_DENYLIST with prefix-match guard in buildCommand | Denies --dangerously-skip-permissions, --settings, --mcp-config |
+| 2026-04-14 | Policy change: removed --dangerously-skip-permissions from the denylist so sandboxed workflows (see `examples/compound`) can opt into unattended runs. --settings and --mcp-config stay denied as genuine config-injection vectors. | Permission bypass is now surfaced as a normal flag, not a secret denylist. |

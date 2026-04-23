@@ -12,10 +12,12 @@ build/
 
 # orchestrator runtime state
 .orchestrator/
+.orch/
 
 # claude local overrides
 .claude/settings.local.json
 .claude/worktrees/
+.claude/scheduled_tasks.lock
 
 # editors
 .vscode/
