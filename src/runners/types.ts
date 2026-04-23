@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { ViewDefault } from '../core/view.ts'
 import type { Path } from '../services/types.ts'
 
 // ---------------------------------------------------------------------------
@@ -63,6 +64,13 @@ export interface Runner {
   readonly name: string
   readonly supports: { readonly interactive: boolean; readonly structuredOutput: boolean }
   /**
+   * What view + pane this runner declares for autonomous steps by default.
+   * Optional so third-party runners written against the Phase 1 interface
+   * stay source-compatible; the layered resolver in core falls back to
+   * `{ kind: 'transcript', pane: 'right' }` when absent.
+   */
+  readonly defaultView?: ViewDefault
+  /**
    * Build the CLI argv + env for this runner. May return a Promise when the
    * adapter needs async preparation (e.g. writing a temp schema file).
    * Consumers must always `await` the result.
@@ -86,6 +94,15 @@ const RunnerAdapterSchema = z.object({
     interactive: z.boolean(),
     structuredOutput: z.boolean(),
   }),
+  // View kind stays a bare string at the schema layer so v2 plugins that widen
+  // `ViewKindRegistry` via interface augmentation can ship custom kinds
+  // without editing core; pane is locked to the two v1 slots.
+  defaultView: z
+    .object({
+      kind: z.string().min(1),
+      pane: z.enum(['left', 'right']),
+    })
+    .optional(),
   buildCommand: z.custom<Runner['buildCommand']>((v) => typeof v === 'function', {
     message: 'expected function',
   }),

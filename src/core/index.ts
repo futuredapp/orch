@@ -26,6 +26,24 @@ export { step } from './step.ts'
 export type { InteractiveResult, Path, RunId, StepMode, StepName } from './types.ts'
 export { generateRunId, InteractiveResultSchema, path, runId, stepName } from './types.ts'
 export type {
+  PaneRole,
+  StepView,
+  ViewDefault,
+  ViewKind,
+  ViewKindRegistry,
+  ViewResolution,
+} from './view.ts'
+export {
+  BUILTIN_VIEW_KINDS,
+  isBuiltinViewKind,
+  isPaneRole,
+  PANE_ROLES,
+  ViewResolutionError,
+  ViewUnsupportedInModeError,
+} from './view.ts'
+export type { ResolveViewInputs } from './view-registry.ts'
+export { resolveView } from './view-registry.ts'
+export type {
   InteractiveContext,
   JsonValue,
   RunFn,

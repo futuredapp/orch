@@ -246,6 +246,7 @@ export function claude(opts: ClaudeOptions = {}): Readonly<Runner> {
   return defineRunner({
     name: 'claude',
     supports: { interactive: true, structuredOutput: true },
+    defaultView: { kind: 'transcript', pane: 'right' },
 
     buildCommand(ctx: RunnerContext): RunnerCommand {
       for (const flag of flags ?? []) assertFlagAllowed(flag)

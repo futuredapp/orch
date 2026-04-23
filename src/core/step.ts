@@ -3,6 +3,7 @@ import type { Validator } from '../validators/index.ts'
 import type { SchemaWrapper } from './schema.ts'
 import type { InteractiveResult, StepMode } from './types.ts'
 import { type StepName, stepName } from './types.ts'
+import { BUILTIN_VIEW_KINDS, isBuiltinViewKind, type PaneRole, type ViewKind } from './view.ts'
 
 // ---------------------------------------------------------------------------
 // AgentStepConfig — the config stored on a Step
@@ -22,6 +23,22 @@ export interface AgentStepConfig<T = unknown> {
   /** Zod schema for structured CLI output. Enables `--json-schema` and Zod validation. */
   readonly returns?: SchemaWrapper<T>
   readonly mode?: StepMode
+  /**
+   * Step-level view override. Wins over the runner's `defaultView.kind`.
+   * Mutually exclusive with `silent: true`.
+   */
+  readonly view?: ViewKind
+  /**
+   * Step-level pane override. Wins over the runner's `defaultView.pane`.
+   * Mutually exclusive with `silent: true`.
+   */
+  readonly pane?: PaneRole
+  /**
+   * Opt out of rendering entirely. The step still runs; the host never
+   * receives `RunnerEvent`s for it. Lifecycle events still fire so status
+   * rollups (Phase D) see `step:start` / `step:complete`.
+   */
+  readonly silent?: boolean
 }
 
 export interface CommitStepConfig {
@@ -49,6 +66,9 @@ type InteractiveStepInput = {
   readonly validate?: Validator | ReadonlyArray<Validator>
   readonly mode: 'interactive'
   readonly returns?: never
+  readonly view?: ViewKind
+  readonly pane?: PaneRole
+  readonly silent?: boolean
 }
 
 /** Autonomous overload input: optional `returns` for structured output. */
@@ -78,7 +98,26 @@ function defineStep(
         'structured output is not available in interactive mode',
     )
   }
+  assertViewFieldsValid(name, config)
   return Object.freeze({ name: stepName(name), config: { kind: 'agent' as const, ...config } })
+}
+
+function assertViewFieldsValid(
+  name: string,
+  config: InteractiveStepInput | AutonomousStepInput<unknown>,
+): void {
+  if (config.silent === true && (config.view !== undefined || config.pane !== undefined)) {
+    throw new Error(
+      `step.define("${name}"): silent:true is mutually exclusive with view/pane — ` +
+        'pick either "silent:true" or a view/pane override',
+    )
+  }
+  if (config.view !== undefined && !isBuiltinViewKind(config.view)) {
+    throw new Error(
+      `step.define("${name}"): unknown view "${config.view}"; ` +
+        `expected one of ${BUILTIN_VIEW_KINDS.join(' | ')}`,
+    )
+  }
 }
 
 export const step: StepFactory = {

@@ -1,3 +1,4 @@
+import type { ViewDefault } from '../../core/view.ts'
 import type { FakeProcessService } from '../../services/process/fake-process-service.ts'
 import type {
   InfoEvent,
@@ -17,6 +18,7 @@ export interface FakeScript {
 export class FakeRunner implements Runner {
   readonly name = 'fake'
   readonly supports = { interactive: true, structuredOutput: true } as const
+  readonly defaultView: ViewDefault = { kind: 'transcript', pane: 'right' }
 
   #fps: FakeProcessService
   #nonce: string

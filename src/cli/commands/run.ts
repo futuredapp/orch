@@ -1,4 +1,9 @@
-import { ParallelError, SchemaValidationError, StepError } from '../../core/index.ts'
+import {
+  ParallelError,
+  SchemaValidationError,
+  StepError,
+  ViewResolutionError,
+} from '../../core/index.ts'
 import type { WorkflowArgs, WorkflowDeps } from '../../core/workflow.ts'
 import { generateRunId } from '../../state/index.ts'
 import type { CliDeps } from '../deps.ts'
@@ -14,6 +19,10 @@ function formatPromptPreview(prompt: string): string {
 }
 
 function mapRunError(err: unknown): number | undefined {
+  if (err instanceof ViewResolutionError) {
+    process.stderr.write(`${err.message}\n`)
+    return EXIT.CONFIG_ERROR
+  }
   if (
     err instanceof StepError ||
     err instanceof SchemaValidationError ||

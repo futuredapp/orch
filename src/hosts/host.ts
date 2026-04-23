@@ -19,12 +19,15 @@
 
 import type { RunMode } from '../core/run-mode.ts'
 import type { StepName } from '../core/types.ts'
+import type { PaneRole } from '../core/view.ts'
 import type { StepLifecycleEvent } from '../core/workflow.ts'
 import type { RunnerEvent } from '../runners/index.ts'
 
-// v1 panes. `left` == status rollup, `right` == active step's view. Single
-// literal union — no brand wrapping until v2 needs more panes.
-export type PaneRole = 'left' | 'right'
+// v1 panes. `left` == status rollup, `right` == active step's view. The
+// canonical definition lives in core/view.ts so workflow and hosts can agree
+// without circular imports; re-exported here for back-compat with existing
+// Host-consumer imports from `src/hosts/index.ts`.
+export type { PaneRole }
 
 /**
  * Handle returned from `host.attach(...)`. Hosts that physically own a pane

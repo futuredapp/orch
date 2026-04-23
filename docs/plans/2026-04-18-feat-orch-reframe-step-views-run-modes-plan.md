@@ -335,11 +335,11 @@ Add as a full table row in Acceptance Criteria.
 
 **Acceptance:**
 
-- [ ] `step.define('refresh', { agent: claude(), silent: true })` compiles and produces no output in any mode.
-- [ ] `step.define('plan', { agent: claude(), view: 'transcript', pane: 'left' })` is accepted; override resolves against agent + built-in defaults correctly.
-- [ ] Interactive step in `--mode=plain` errors with the brainstorm's verbatim message and exits 2.
-- [ ] Existing workflows (compound, riddle-solver) compile and run unchanged — the new fields are all optional.
-- [ ] `bun run check` green.
+- [x] `step.define('refresh', { agent: claude(), silent: true })` compiles and produces no output in any mode.
+- [x] `step.define('plan', { agent: claude(), view: 'transcript', pane: 'left' })` is accepted; override resolves against agent + built-in defaults correctly.
+- [x] Interactive step in `--mode=plain` errors with the brainstorm's verbatim message and exits 2.
+- [x] Existing workflows (compound, riddle-solver) compile and run unchanged — the new fields are all optional.
+- [x] `bun run check` green.
 
 **Out of scope:** any host other than `plain`; `files` / `approval` / `exec` view kinds; tmux anything.
 

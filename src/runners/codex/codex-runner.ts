@@ -252,6 +252,7 @@ export function codex(
   return defineRunner({
     name: 'codex',
     supports: { interactive: false, structuredOutput: true },
+    defaultView: { kind: 'transcript', pane: 'right' },
 
     async buildCommand(ctx: RunnerContext): Promise<RunnerCommand> {
       lastAgentMessage = undefined // Reset per invocation

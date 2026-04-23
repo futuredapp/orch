@@ -112,4 +112,69 @@ describe('step.define', () => {
       'interactive steps cannot have "returns:"',
     )
   })
+
+  it('accepts a step-level view override of transcript', () => {
+    const agent = makeFakeRunner()
+
+    const s = step.define('plan', { agent, view: 'transcript' })
+
+    expect(s.config.kind).toBe('agent')
+    if (s.config.kind === 'agent') {
+      expect(s.config.view).toBe('transcript')
+    }
+  })
+
+  it('accepts a step-level pane override of left', () => {
+    const agent = makeFakeRunner()
+
+    const s = step.define('plan', { agent, pane: 'left' })
+
+    expect(s.config.kind).toBe('agent')
+    if (s.config.kind === 'agent') {
+      expect(s.config.pane).toBe('left')
+    }
+  })
+
+  it('accepts silent:true on an otherwise-default step', () => {
+    const agent = makeFakeRunner()
+
+    const s = step.define('refresh', { agent, silent: true })
+
+    expect(s.config.kind).toBe('agent')
+    if (s.config.kind === 'agent') {
+      expect(s.config.silent).toBe(true)
+    }
+  })
+
+  it('rejects silent:true combined with view', () => {
+    const agent = makeFakeRunner()
+
+    expect(() => step.define('bad', { agent, silent: true, view: 'transcript' } as never)).toThrow(
+      'mutually exclusive',
+    )
+  })
+
+  it('rejects silent:true combined with pane', () => {
+    const agent = makeFakeRunner()
+
+    expect(() => step.define('bad', { agent, silent: true, pane: 'left' } as never)).toThrow(
+      'mutually exclusive',
+    )
+  })
+
+  it('rejects an unknown view kind and lists the accepted values', () => {
+    const agent = makeFakeRunner()
+
+    let caught: unknown
+    try {
+      step.define('bad', { agent, view: 'approval' as unknown as 'transcript' })
+    } catch (err) {
+      caught = err
+    }
+
+    expect(caught).toBeInstanceOf(Error)
+    expect((caught as Error).message).toContain('unknown view "approval"')
+    expect((caught as Error).message).toContain('interactive')
+    expect((caught as Error).message).toContain('transcript')
+  })
 })

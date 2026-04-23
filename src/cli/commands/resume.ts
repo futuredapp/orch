@@ -4,6 +4,7 @@ import {
   RunNotFoundError,
   SchemaValidationError,
   StepError,
+  ViewResolutionError,
   type WorkflowArgs,
 } from '../../core/index.ts'
 import type { WorkflowDeps } from '../../core/workflow.ts'
@@ -56,7 +57,7 @@ function mapResumeError(err: unknown): number | undefined {
     process.stderr.write(`${err.message}\n`)
     return EXIT.CANNOT_RESUME
   }
-  if (err instanceof StateCorruptionError) {
+  if (err instanceof ViewResolutionError || err instanceof StateCorruptionError) {
     process.stderr.write(`${err.message}\n`)
     return EXIT.CONFIG_ERROR
   }

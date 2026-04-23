@@ -19,6 +19,7 @@ import {
   StepError,
 } from './errors.ts'
 import { currentParallelDepth } from './execution-context.ts'
+import { resolveView } from './view-registry.ts'
 
 // Re-export so existing imports from './workflow.ts' remain valid.
 export { InteractiveParallelError, ResumeError, RunNotFoundError, RunnerCapabilityError, StepError }
@@ -241,6 +242,20 @@ async function runInteractiveStep(
     throw new RunnerCapabilityError(key, config.agent.name)
   }
 
+  // View resolution surfaces the "interactive step under --mode=plain" error
+  // before we try to spawn a foreground process. Skipped when an
+  // `onInteractive` handler is wired — that path is agent-native and owns
+  // rendering externally.
+  if (deps.onInteractive === undefined) {
+    resolveView({
+      stepConfig: config,
+      runner: config.agent,
+      runMode: deps.host.mode,
+      stepName: key,
+      stepMode: 'interactive',
+    })
+  }
+
   const sessionId = deps.generateSessionId?.() ?? randomUUID()
   const prompt = assemblePrompt(config.prompt, overrides)
 
@@ -314,6 +329,18 @@ async function runAgentStep(
 ): Promise<{ value: unknown; entry: StepEntry }> {
   checkSchemaCapability(config, key)
 
+  // Resolve the step's view early so we know whether to pipe RunnerEvents
+  // through the host. `silent: true` short-circuits the pipe (the step still
+  // runs and emits lifecycle events); non-silent still flows into the host.
+  const resolution = resolveView({
+    stepConfig: config,
+    runner: config.agent,
+    runMode: deps.host.mode,
+    stepName: key,
+    stepMode: 'autonomous',
+  })
+  const isSilent = resolution.kind === 'silent'
+
   deps.host.onLifecycleEvent({ type: 'step:start', stepName: key, mode: 'autonomous' })
 
   const normalized = normalizeValidators(config.validate, key)
@@ -323,6 +350,17 @@ async function runAgentStep(
   const preRunSnapshot = headSha !== undefined ? { headSha } : undefined
 
   const startedAt = deps.clock.now()
+  const runnerDeps: {
+    readonly processService: ProcessService
+    readonly clock: Clock
+    readonly onEvent?: (evt: import('../runners/index.ts').RunnerEvent) => void
+  } = isSilent
+    ? { processService: deps.processService, clock: deps.clock }
+    : {
+        processService: deps.processService,
+        clock: deps.clock,
+        onEvent: (evt) => deps.host.onRunnerEvent(evt, key),
+      }
   const result = await runRunner(
     config.agent,
     {
@@ -334,11 +372,7 @@ async function runAgentStep(
         ? { schema: { jsonSchema: config.returns.jsonSchema } }
         : {}),
     },
-    {
-      processService: deps.processService,
-      clock: deps.clock,
-      onEvent: (evt) => deps.host.onRunnerEvent(evt, key),
-    },
+    runnerDeps,
   )
 
   if (result.finalEvent.type === 'error' || result.exitCode !== 0) {
