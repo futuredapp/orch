@@ -27,7 +27,7 @@ describe('FileStateStore (integration)', () => {
 
     expect(state).toBeDefined()
     expect(state?.id).toBe(id)
-    expect(state?.schemaVersion).toBe(3)
+    expect(state?.schemaVersion).toBe(4)
     expect(state?.steps['step-a']).toEqual(entry)
   })
 

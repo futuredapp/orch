@@ -1,6 +1,6 @@
-// 364 lines — over 300-line soft limit because v3 schema migration
-// (v2 discriminator + transform) lives alongside the store implementation.
-// Extracting to a separate file would split read/write concerns.
+// Over the 300-line soft limit because schema migrations (v2 + v3 discriminator
+// + transforms) live alongside the store implementation. Extracting to a
+// separate file would split read/write concerns.
 import { z } from 'zod'
 import type { FsService, Path } from '../services/index.ts'
 import { path } from '../services/index.ts'
@@ -28,13 +28,20 @@ export interface StepEntry {
   readonly mode?: 'interactive' | 'autonomous'
 }
 
+/** Mirrors `WorkflowArgs` from `src/core/workflow.ts`. Kept structural here
+ *  so `src/state` can stay dependency-free of `src/core`. */
+export interface PersistedWorkflowArgs {
+  readonly prompt?: string
+}
+
 export interface RunState {
-  readonly schemaVersion: 3
+  readonly schemaVersion: 4
   readonly id: RunId
   readonly status: 'running' | 'completed' | 'crashed'
   readonly workflowName?: string
   readonly startedAt: number
   readonly endedAt?: number
+  readonly args?: PersistedWorkflowArgs
   readonly steps: Readonly<Record<string, StepEntry>>
 }
 
@@ -43,9 +50,16 @@ export interface StateStore {
   saveStep(runId: RunId, entry: StepEntry): Promise<void>
   initRun(
     runId: RunId,
-    meta?: { readonly workflowName?: string; readonly startedAt: number },
+    meta?: {
+      readonly workflowName?: string
+      readonly startedAt: number
+      readonly args?: PersistedWorkflowArgs
+    },
   ): Promise<void>
   setStatus(runId: RunId, status: RunState['status'], endedAt?: number): Promise<void>
+  /** Overwrite the persisted `args` of an existing run (used by `orch resume
+   *  <id> "new-prompt"`). Throws if the run does not exist. */
+  setArgs(runId: RunId, args: PersistedWorkflowArgs): Promise<void>
 }
 
 export class StateCorruptionError extends Error {
@@ -112,6 +126,21 @@ const RunStateV3Schema = z.object({
   steps: z.record(z.string(), StepEntrySchema),
 })
 
+const PersistedWorkflowArgsSchema = z.object({
+  prompt: z.string().optional(),
+})
+
+const RunStateV4Schema = z.object({
+  schemaVersion: z.literal(4),
+  id: z.string().regex(RUN_ID_PATTERN),
+  status: z.enum(['running', 'completed', 'crashed']),
+  workflowName: z.string().optional(),
+  startedAt: z.number(),
+  endedAt: z.number().optional(),
+  args: PersistedWorkflowArgsSchema.optional(),
+  steps: z.record(z.string(), StepEntrySchema),
+})
+
 function errorMessage(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause)
 }
@@ -144,6 +173,53 @@ function rebuildSteps(
   return steps
 }
 
+function parseV2(parsed: unknown, filePath: Path): RunState {
+  const r = RunStateV2Schema.safeParse(parsed)
+  if (!r.success) throw wrapSchemaError(filePath, r.error.issues, issueSummary(r.error.issues))
+  const v2 = r.data
+  const entries = Object.values(v2.steps)
+  return {
+    schemaVersion: 4,
+    id: runId(v2.id),
+    status: v2.status,
+    workflowName: undefined,
+    startedAt: entries.length > 0 ? Math.min(...entries.map((s) => s.startedAt)) : 0,
+    endedAt: undefined,
+    steps: rebuildSteps(v2.steps),
+  }
+}
+
+function parseV3(parsed: unknown, filePath: Path): RunState {
+  const r = RunStateV3Schema.safeParse(parsed)
+  if (!r.success) throw wrapSchemaError(filePath, r.error.issues, issueSummary(r.error.issues))
+  const d = r.data
+  return {
+    schemaVersion: 4,
+    id: runId(d.id),
+    status: d.status,
+    workflowName: d.workflowName,
+    startedAt: d.startedAt,
+    endedAt: d.endedAt,
+    steps: rebuildSteps(d.steps),
+  }
+}
+
+function parseV4(parsed: unknown, filePath: Path): RunState {
+  const r = RunStateV4Schema.safeParse(parsed)
+  if (!r.success) throw wrapSchemaError(filePath, r.error.issues, issueSummary(r.error.issues))
+  const d = r.data
+  return {
+    schemaVersion: 4,
+    id: runId(d.id),
+    status: d.status,
+    workflowName: d.workflowName,
+    startedAt: d.startedAt,
+    endedAt: d.endedAt,
+    ...(d.args !== undefined ? { args: d.args } : {}),
+    steps: rebuildSteps(d.steps),
+  }
+}
+
 /**
  * O(1) version discriminator — checks `schemaVersion` field before full Zod
  * validation. Equivalent to `z.discriminatedUnion` but works with `.transform()`
@@ -155,39 +231,12 @@ function parseVersionedState(parsed: unknown, filePath: Path): RunState {
       ? (parsed as { schemaVersion: unknown }).schemaVersion
       : undefined
 
-  if (version === 2) {
-    const r = RunStateV2Schema.safeParse(parsed)
-    if (!r.success) throw wrapSchemaError(filePath, r.error.issues, issueSummary(r.error.issues))
-    const v2 = r.data
-    const entries = Object.values(v2.steps)
-    return {
-      schemaVersion: 3,
-      id: runId(v2.id),
-      status: v2.status,
-      workflowName: undefined,
-      startedAt: entries.length > 0 ? Math.min(...entries.map((s) => s.startedAt)) : 0,
-      endedAt: undefined,
-      steps: rebuildSteps(v2.steps),
-    }
-  }
+  if (version === 2) return parseV2(parsed, filePath)
+  if (version === 3) return parseV3(parsed, filePath)
+  if (version === 4) return parseV4(parsed, filePath)
 
-  if (version === 3) {
-    const r = RunStateV3Schema.safeParse(parsed)
-    if (!r.success) throw wrapSchemaError(filePath, r.error.issues, issueSummary(r.error.issues))
-    const d = r.data
-    return {
-      schemaVersion: 3,
-      id: runId(d.id),
-      status: d.status,
-      workflowName: d.workflowName,
-      startedAt: d.startedAt,
-      endedAt: d.endedAt,
-      steps: rebuildSteps(d.steps),
-    }
-  }
-
-  // Unknown or missing version — try v3 schema for a structured error
-  const r = RunStateV3Schema.safeParse(parsed)
+  // Unknown or missing version — try v4 schema for a structured error
+  const r = RunStateV4Schema.safeParse(parsed)
   const summary = r.success ? 'unknown version' : issueSummary(r.error.issues)
   throw wrapSchemaError(filePath, r.success ? [] : r.error.issues, summary)
 }
@@ -200,7 +249,7 @@ function wrapSchemaError(
   const versionIssue = issues.find((i) => i.path[0] === 'schemaVersion')
   if (versionIssue) {
     return new StateCorruptionError(
-      `State file at ${filePath} has an unsupported schema version; current is v3. ` +
+      `State file at ${filePath} has an unsupported schema version; current is v4. ` +
         `Delete .orch/state/ to reset. (Zod: ${summary})`,
       filePath,
       issues,
@@ -281,12 +330,13 @@ export class FileStateStore implements StateStore {
 
     const existing = await this.loadRun(rid)
     const state: RunState = {
-      schemaVersion: 3,
+      schemaVersion: 4,
       id: rid,
       status: existing?.status ?? 'running',
       workflowName: existing?.workflowName,
       startedAt: existing?.startedAt ?? 0,
       endedAt: existing?.endedAt,
+      ...(existing?.args !== undefined ? { args: existing.args } : {}),
       steps: { ...existing?.steps, [entry.name]: entry },
     }
 
@@ -307,7 +357,11 @@ export class FileStateStore implements StateStore {
   // If this method gains side effects, update resume() accordingly.
   async initRun(
     rid: RunId,
-    meta?: { readonly workflowName?: string; readonly startedAt: number },
+    meta?: {
+      readonly workflowName?: string
+      readonly startedAt: number
+      readonly args?: PersistedWorkflowArgs
+    },
   ): Promise<void> {
     const existing = await this.loadRun(rid)
     if (existing !== undefined) return
@@ -315,15 +369,31 @@ export class FileStateStore implements StateStore {
     const dir = this.#runDir(rid)
     const file = this.#statePath(rid)
     const state: RunState = {
-      schemaVersion: 3,
+      schemaVersion: 4,
       id: rid,
       status: 'running',
       workflowName: meta?.workflowName,
       startedAt: meta?.startedAt ?? 0,
+      ...(meta?.args !== undefined ? { args: meta.args } : {}),
       steps: {},
     }
 
     await this.#fs.mkdir(dir, { recursive: true })
+    await this.#atomicWrite(file, JSON.stringify(state, null, 2))
+  }
+
+  async setArgs(rid: RunId, args: PersistedWorkflowArgs): Promise<void> {
+    const existing = await this.loadRun(rid)
+    if (existing === undefined) {
+      throw new Error(`Cannot set args: run "${rid}" does not exist`)
+    }
+
+    const file = this.#statePath(rid)
+    const state: RunState = {
+      ...existing,
+      args,
+    }
+
     await this.#atomicWrite(file, JSON.stringify(state, null, 2))
   }
 

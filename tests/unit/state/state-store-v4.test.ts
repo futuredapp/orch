@@ -12,22 +12,22 @@ function makeStore() {
   return { fs, store }
 }
 
-describe('RunState schema v3', () => {
-  it('round-trips a v3 state file with all new fields', async () => {
+describe('RunState schema v4 + legacy migrations', () => {
+  it('round-trips a v4 state file with all current fields', async () => {
     const { store } = makeStore()
 
     await store.initRun(RID, { workflowName: 'deploy', startedAt: 5000 })
     const state = await store.loadRun(RID)
 
     expect(state).toBeDefined()
-    expect(state?.schemaVersion).toBe(3)
+    expect(state?.schemaVersion).toBe(4)
     expect(state?.workflowName).toBe('deploy')
     expect(state?.startedAt).toBe(5000)
     expect(state?.endedAt).toBeUndefined()
     expect(state?.status).toBe('running')
   })
 
-  it('reads a v2 state file on disk and transforms it to v3 in memory', async () => {
+  it('reads a v2 state file on disk and transforms it to v4 in memory', async () => {
     const { fs, store } = makeStore()
 
     // Write a raw v2 state file
@@ -61,7 +61,7 @@ describe('RunState schema v3', () => {
 
     const state = await store.loadRun(RID)
 
-    expect(state?.schemaVersion).toBe(3)
+    expect(state?.schemaVersion).toBe(4)
     expect(state?.workflowName).toBeUndefined()
     expect(state?.startedAt).toBe(100) // min of step startedAt values
     expect(state?.endedAt).toBeUndefined()
@@ -175,12 +175,12 @@ describe('RunState schema v3', () => {
     await store.initRun(RID)
     const state = await store.loadRun(RID)
 
-    expect(state?.schemaVersion).toBe(3)
+    expect(state?.schemaVersion).toBe(4)
     expect(state?.workflowName).toBeUndefined()
     expect(state?.startedAt).toBe(0)
   })
 
-  it('saveStep preserves v3 fields through write cycle', async () => {
+  it('saveStep preserves v4 fields through write cycle', async () => {
     const { store } = makeStore()
 
     await store.initRun(RID, { workflowName: 'pipeline', startedAt: 1000 })
@@ -190,5 +190,100 @@ describe('RunState schema v3', () => {
     expect(state?.workflowName).toBe('pipeline')
     expect(state?.startedAt).toBe(1000)
     expect(state?.steps['step-a']).toBeDefined()
+  })
+
+  it('reads a v3 state file on disk and transforms it to v4 in memory', async () => {
+    const { fs, store } = makeStore()
+
+    await fs.mkdir(path('/runs/r-2026-04-10-000001'), { recursive: true })
+    await fs.writeFile(
+      path('/runs/r-2026-04-10-000001/state.json'),
+      JSON.stringify({
+        schemaVersion: 3,
+        id: 'r-2026-04-10-000001',
+        status: 'running',
+        workflowName: 'deploy',
+        startedAt: 5000,
+        steps: {},
+      }),
+    )
+
+    const state = await store.loadRun(RID)
+
+    expect(state?.schemaVersion).toBe(4)
+    expect(state?.workflowName).toBe('deploy')
+    expect(state?.startedAt).toBe(5000)
+    expect(state?.args).toBeUndefined()
+  })
+
+  it('initRun persists args when supplied', async () => {
+    const { store } = makeStore()
+
+    await store.initRun(RID, {
+      workflowName: 'brainstorm',
+      startedAt: 1000,
+      args: { prompt: 'think hard' },
+    })
+    const state = await store.loadRun(RID)
+
+    expect(state?.args).toEqual({ prompt: 'think hard' })
+  })
+
+  it('initRun omits args when not supplied', async () => {
+    const { store } = makeStore()
+
+    await store.initRun(RID, { workflowName: 'brainstorm', startedAt: 1000 })
+    const state = await store.loadRun(RID)
+
+    expect(state?.args).toBeUndefined()
+  })
+
+  it('initRun persists empty-string prompt as distinct from undefined', async () => {
+    const { store } = makeStore()
+
+    await store.initRun(RID, { startedAt: 1000, args: { prompt: '' } })
+    const state = await store.loadRun(RID)
+
+    expect(state?.args).toEqual({ prompt: '' })
+  })
+
+  it('setArgs overwrites persisted args on an existing run', async () => {
+    const { store } = makeStore()
+
+    await store.initRun(RID, {
+      workflowName: 'brainstorm',
+      startedAt: 1000,
+      args: { prompt: 'original' },
+    })
+    await store.setArgs(RID, { prompt: 'updated' })
+    const state = await store.loadRun(RID)
+
+    expect(state?.args).toEqual({ prompt: 'updated' })
+  })
+
+  it('setArgs throws when the run does not exist', async () => {
+    const { store } = makeStore()
+
+    await expect(store.setArgs(RID, { prompt: 'x' })).rejects.toThrow(/does not exist/)
+  })
+
+  it('saveStep preserves args across write cycles', async () => {
+    const { store } = makeStore()
+
+    await store.initRun(RID, { startedAt: 1000, args: { prompt: 'keep me' } })
+    await store.saveStep(RID, makeStepEntry({ name: 'step-a' }))
+    const state = await store.loadRun(RID)
+
+    expect(state?.args).toEqual({ prompt: 'keep me' })
+  })
+
+  it('setStatus preserves args', async () => {
+    const { store } = makeStore()
+
+    await store.initRun(RID, { startedAt: 1000, args: { prompt: 'keep me' } })
+    await store.setStatus(RID, 'completed', 2000)
+    const state = await store.loadRun(RID)
+
+    expect(state?.args).toEqual({ prompt: 'keep me' })
   })
 })

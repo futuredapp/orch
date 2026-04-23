@@ -19,12 +19,12 @@ export function makeStepEntry(overrides: Partial<StepEntry> = {}): StepEntry {
 }
 
 /**
- * Shared factory for v3 RunState fixtures. Tests that assemble states by
- * hand (rather than via `FileStateStore.saveStep`) call this.
+ * Shared factory for current-schema RunState fixtures. Tests that assemble
+ * states by hand (rather than via `FileStateStore.saveStep`) call this.
  */
 export function makeRunState(overrides: Partial<RunState> = {}): RunState {
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     id: 'r-2026-04-10-000001' as RunId,
     status: 'running',
     startedAt: 0,

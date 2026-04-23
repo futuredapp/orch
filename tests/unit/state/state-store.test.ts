@@ -89,7 +89,7 @@ describe('FileStateStore', () => {
 
     expect(state).toBeDefined()
     expect(state?.id).toBe(id)
-    expect(state?.schemaVersion).toBe(3)
+    expect(state?.schemaVersion).toBe(4)
     expect(state?.status).toBe('running')
     expect(state?.steps['step-a']).toEqual(entry)
   })
@@ -189,7 +189,7 @@ describe('FileStateStore', () => {
 
     expect(state).toBeDefined()
     expect(state?.id).toBe(id)
-    expect(state?.schemaVersion).toBe(3)
+    expect(state?.schemaVersion).toBe(4)
     expect(state?.status).toBe('running')
     expect(state?.steps).toEqual({})
   })
