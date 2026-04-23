@@ -396,7 +396,43 @@ Legend: ☐ not started · ◐ in progress · ✓ landed
 
 ---
 
+### Workflow CLI args (feat, landed alongside Phase 13d) ✅
+
+**Goal:** the CLI accepts a prompt and threads it into the workflow callback.
+
+**Deliverables:**
+- `WorkflowArgs` / `WorkflowFn` on `src/core/workflow.ts`; `workflow(name, (run, args) => ...)` with legacy single-arg callback still compiling.
+- `PersistedWorkflowArgs` on state v4 (bumped `schemaVersion: 3 → 4`); `StateStore.initRun` persists args; `StateStore.setArgs` overwrites on resume.
+- `parseArgv` accepts `--prompt <text>` and a positional prompt; `resume` CLI-arg wins over persisted; dry-run/runs/status carry the signature without wiring.
+
+**Tests:** `workflow-args.test.ts` (4), state-store v4 schema round-trip (3), resume prompt-overwrite (2), argv coverage (4).
+
+**Landed:** 2026-04-14 (bundled with Phase 13d; not a separately numbered roadmap phase).
+
+---
+
+### Reframe — step-declared views + run modes ◐
+
+**Queued.** See [`docs/plans/2026-04-18-feat-orch-reframe-step-views-run-modes-plan.md`](2026-04-18-feat-orch-reframe-step-views-run-modes-plan.md) for the full plan and the starting-state section (baseline commit range `15f8ef3..1d45c4b`).
+
+v1 ships four phases, each a PR-sized chunk:
+
+| Phase | Scope | Status |
+|---|---|---|
+| **A** — run-mode scaffolding + `plain` host | `RunMode` discriminant, autodetect, mode banner, stdout renderer; deletes `--tmux` / `--observe` flags outright | ☐ not started |
+| **B** — view abstraction | `StepView`, `ViewKind`, `silent: true`; agent-default + step-override resolution; still stdout only | ☐ not started |
+| **C** — `single-pane` alt-screen host | **Deferred to v2.** `RunMode` union keeps the slot; explicit `--mode=single-pane` exits 2 with a deferral message. Revisit with a TUI library (opentui / Ink / blessed) rather than hand-rolling alt-screen machinery. | ⊘ deferred |
+| **D** — `two-pane` mode (tmux host) | Ports `TmuxService` + `status-{pane,loop}` into a `TmuxHost`; deletes `src/cli/tmux-wiring.ts` and `workflow.ts:244-250` refusal; readable `TranscriptView` replaces the raw JSON pane dump; interactive via `respawn-pane -k`; per-pane serial send queue | ☐ not started |
+| **E** — plugin seam + `orch.config.ts` + `orch logs` + cleanup | `ViewRegistry` + `HostRegistry` with side-effect-free built-in registration; config discovery upward from cwd; `orch logs <runId>` with path-traversal guard; schema v4 → v5 (prerelease rewrite, legacy parsers deleted); tail demos folded or deleted | ☐ not started |
+
+**Blockers flagged in the reframe plan (all verified against the landed baseline):** schema collision with existing v4 (bump to v5), `orch logs` path-traversal guard via existing `runId()` smart constructor, no import-time registry side effects, per-pane serial chain for `sendKeys` / `respawn-pane -k`.
+
+---
+
 ### Phase 14 — Claude escalation (`PreToolUse` defer + MCP fallback) ☐
+
+*Queued after the reframe lands. Phase numbering here predates the reframe and is kept for continuity; practical execution order is A → B → D → E → this.*
+
 
 **Goal:** human-in-loop for Claude.
 

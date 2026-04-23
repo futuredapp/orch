@@ -18,6 +18,53 @@ sources:
 
 **Prerelease posture:** orch has no external users yet. This plan **rewrites things directly** — no schema migrations, no deprecation aliases, no back-compat shims. If state shape changes, old `.orch/state/` is wiped by the user; if flags change, the old ones are removed outright.
 
+### Starting state (as of 2026-04-23)
+
+The pre-Phase-13 WIP was wrapped into seven commits on `feat/phase-5-claude-runner` and is the baseline this plan builds on. No `origin` remote is configured; this is local-only history.
+
+**Baseline commit range:** `15f8ef3..1d45c4b` (after `983f094` "restore colors in interactive Claude sessions").
+
+| Commit | Scope |
+|---|---|
+| `15f8ef3` | docs: Phase 13/14 plans + reframe brainstorms + tmux-commands reference |
+| `7fae790` | Phase 13b: `TmuxService` port + `detect-tmux` |
+| `ce1594d` | Phase 13c: `status-pane` + `status-loop` |
+| `c118867` | Phase 14: state schema v4 with `PersistedWorkflowArgs` |
+| `f1432ee` | `WorkflowArgs` + `onEvent` / `tmuxActive` on `WorkflowDeps`, `IS_SANDBOX` env allowlist, relaxed `CLAUDE_FLAG_DENYLIST` |
+| `40f2125` | Phase 13d + 14: `--tmux`/`--observe` CLI wiring (`src/cli/tmux-wiring.ts`), `--prompt` positional, resume prompt overwrite |
+| `1d45c4b` | Examples (`compound`, `riddle-solver-proper`, `two-pane-demo`, `multi-task-demo`, `orch.config.ts`), riddle-solver prompt seed, `implementation-phases.md` updates |
+
+**Surface area that exists on this baseline (and is already touched by the reframe):**
+
+| Reframe touchpoint | Current form on baseline | Reframe's move |
+|---|---|---|
+| `--tmux`, `--observe` flags | Accepted in `parseArgv` (`src/cli/main.ts`); exposed via `CliOpts` | Phase A **removes outright** → `--mode=two-pane` |
+| `src/cli/tmux-wiring.ts` | Composes `maybeSetupTmux` + `tmuxDepsFromHandles` | Phase D **deletes**; logic migrates into `src/hosts/two-pane/tmux-host.ts` |
+| `WorkflowDeps.onEvent` + `.tmuxActive` + `onStepEvent` | Parallel callback hooks on the deps bag | Phase A **removes all three** — the new `Host` port replaces them |
+| Interactive-under-tmux refusal (`src/core/workflow.ts:244-250`) | `throw new Error(...)` when `deps.tmuxActive === true` | Phase D **deletes** — interactive steps go through `respawn-pane -k` |
+| Raw `runnerEvent:JSON` line to right pane (`src/cli/tmux-wiring.ts:158`) | `tmux.sendKeys` with `${evt.kind}:${evt.type} ${JSON.stringify(evt)}` | Phase D **deletes** — replaced by `renderTranscriptLine` output |
+| `src/services/tmux/*` (11-method service) | `TmuxService` port + `RealTmuxService` + `FakeTmuxService` + `initOrchSession` | Phase D **reuses** as-is via `TmuxHost`; no port changes |
+| `src/observability/status-{pane,loop}.ts` | Pure `renderStatusPane` + event-driven loop | Phase D **reuses** as the default `StatusView` implementation |
+| `src/state/state-store.ts` | `schemaVersion: 4` with `parseV2`/`parseV3`/`parseV4` branches | Phase E **bumps to v5** and deletes all three legacy parsers (prerelease rewrite; no migration) |
+| `examples/{compound,riddle-solver-proper,two-pane-demo,multi-task-demo}` | All present, documented; `two-pane-demo` / `multi-task-demo` bypass the workflow DSL on purpose | Phase E decides per example: fold into `examples/compound` or delete |
+| `src/core/workflow.ts` `WorkflowArgs` / `WorkflowFn` | `workflow(name, (run, args) => ...)` with optional two-arg callback | **Untouched.** Reframe doesn't alter the DSL shape. |
+
+**What the reframe does *not* touch on this baseline:** `Runner` interface, `runRunner` / `runInteractive` signatures, `ProcessService`, `GitService`, `FsService`, `AsyncLocalStorage` parallel guard, `step.define` overloads, validators, config discovery (extended, not replaced), CLI commands `runs` / `status` / `dry-run`.
+
+**Blockers on the baseline that the plan's 🔴 list already flagged:**
+
+1. `src/state/state-store.ts:39` is at `schemaVersion: z.literal(4)` — the plan's "v5" bump is exactly right (confirmed, not speculative). `parseV2` / `parseV3` / `parseV4` all live at `state-store.ts:176-222`; Phase E deletes all three.
+2. Runner validation via `runId()` smart constructor exists at `src/state/run-id.ts:7-18` — Phase E just has to call it before any fs access in `orch logs`.
+3. No import-time registry side effects exist yet — nothing to fix, only a shape to keep.
+4. Fire-and-forget `void tmux.sendKeys(...).catch(...)` is live at `src/cli/tmux-wiring.ts:158` — Phase D's per-pane serial chain is required before the `respawn-pane -k` interactive path can land.
+
+**Notes for the next session starting Phase A:**
+
+- `bun run check` is green on the baseline (668 pass / 5 skip / 0 fail).
+- Branch to cut from: `feat/phase-5-claude-runner` at `1d45c4b`. Name suggestion: `feat/phase-a-run-modes`.
+- No `origin` is configured; running `git push` requires adding one first.
+- `CLAUDE_FLAG_DENYLIST` no longer denies `--dangerously-skip-permissions`; sandboxed workflows opt in explicitly. Keep this in mind when reading Phase A's banner / mode resolution copy.
+
 ### 🔴 Blockers (must fix before Phase A lands)
 
 1. **Schema version must be v5, not v3.** Plan originally said bump `schemaVersion` 2 → 3, but `src/state/state-store.ts:39` already defines v4. Using version `3` would collide with the existing v3 parser. **Change every "v2 → v3" in this plan to "v5" (direct rewrite)** (risk table, Phase E deliverables, ERD). Since prerelease, **delete** the v2/v3/v4 parser branches at `state-store.ts:228–242` and replace with a single `parseV5`. Users with pre-v5 state nuke `.orch/state/` and re-run.
