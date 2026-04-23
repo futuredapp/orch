@@ -10,6 +10,15 @@ export {
 export { currentParallelDepth, executionContext } from './execution-context.ts'
 export type { AwaitedTuple, SettledEntry } from './parallel.ts'
 export { ParallelError, parallel } from './parallel.ts'
+export type { RunMode, RunModeInputs, RunModeResolution, RunModeSource } from './run-mode.ts'
+export {
+  detectCi,
+  isRunMode,
+  RUN_MODES,
+  RunModeError,
+  resolveRunMode,
+  SINGLE_PANE_DEFERRED_MESSAGE,
+} from './run-mode.ts'
 export type { SchemaWrapper } from './schema.ts'
 export { SchemaValidationError, schema } from './schema.ts'
 export type { AgentStepConfig, CommitStepConfig, Step, StepConfig } from './step.ts'

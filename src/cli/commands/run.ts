@@ -2,8 +2,7 @@ import { ParallelError, SchemaValidationError, StepError } from '../../core/inde
 import type { WorkflowArgs, WorkflowDeps } from '../../core/workflow.ts'
 import { generateRunId } from '../../state/index.ts'
 import type { CliDeps } from '../deps.ts'
-import { type CliOpts, EXIT } from '../main.ts'
-import { maybeSetupTmux, type TmuxHandles, tmuxDepsFromHandles } from '../tmux-wiring.ts'
+import { type CliOpts, EXIT, type HostFactory } from '../main.ts'
 import { isLoadError, loadWorkflow } from './load-workflow.ts'
 
 const PROMPT_PREVIEW_MAX = 80
@@ -30,7 +29,8 @@ export async function runCmd(
   deps: CliDeps,
   name: string,
   args: WorkflowArgs,
-  opts: CliOpts = { tmux: false, observe: false },
+  _opts: CliOpts,
+  hostFactory: HostFactory,
 ): Promise<number> {
   if (!name) {
     process.stderr.write('Usage: orch run <name> [prompt]\n')
@@ -43,19 +43,15 @@ export async function runCmd(
   const runId = generateRunId({ clock: deps.clock })
   const promptSuffix =
     args.prompt !== undefined ? ` with prompt: "${formatPromptPreview(args.prompt)}"` : ''
-  process.stdout.write(`Running workflow "${name}" (${runId})${promptSuffix}...\n`)
+  process.stderr.write(`Running workflow "${name}" (${runId})${promptSuffix}...\n`)
 
-  const tmuxResult = await maybeSetupTmux({
-    enabled: opts.tmux,
-    processService: deps.processService,
-    clock: deps.clock,
+  const host = hostFactory({
     runId,
     workflowName: name,
-    observe: opts.observe,
+    stdout: process.stdout,
     stderr: process.stderr,
+    clock: deps.clock,
   })
-  if (tmuxResult === 'argv-error') return EXIT.CONFIG_ERROR
-  const tmuxHandles: TmuxHandles | undefined = tmuxResult
 
   const wfDeps: WorkflowDeps = {
     stateStore: deps.stateStore,
@@ -67,7 +63,7 @@ export async function runCmd(
     gitService: deps.gitService,
     workflowName: name,
     args,
-    ...(tmuxHandles !== undefined ? tmuxDepsFromHandles(tmuxHandles) : {}),
+    host,
   }
 
   try {
@@ -77,11 +73,9 @@ export async function runCmd(
     if (code !== undefined) return code
     throw err
   } finally {
-    if (tmuxHandles !== undefined) {
-      await tmuxHandles.teardown()
-    }
+    await host.teardown()
   }
 
-  process.stdout.write(`Workflow "${name}" completed.\n`)
+  process.stderr.write(`Workflow "${name}" completed.\n`)
   return EXIT.OK
 }

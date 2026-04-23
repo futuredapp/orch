@@ -12,6 +12,7 @@ import {
   path,
 } from '../../src/services/index.ts'
 import { FileStateStore, type RunId } from '../../src/state/index.ts'
+import { createFakeHost } from '../helpers/fake-host.ts'
 
 const canRun = process.env.RUN_REAL_CLAUDE === '1' && Bun.which('claude') !== null
 
@@ -54,6 +55,7 @@ describe.skipIf(!canRun)('resume with real Claude (e2e)', () => {
       cwd: path(process.cwd()),
       fsService: bunFs,
       gitService: new BunGitService({ processService: realProcessService }),
+      host: createFakeHost(),
     }
 
     const wf1 = workflow('resume-e2e', async (run) => {
@@ -89,6 +91,7 @@ describe.skipIf(!canRun)('resume with real Claude (e2e)', () => {
       cwd: path(process.cwd()),
       fsService: bunFs,
       gitService: new BunGitService({ processService: realProcessService }),
+      host: createFakeHost(),
     }
 
     const wf2 = workflow('resume-e2e', async (run) => {

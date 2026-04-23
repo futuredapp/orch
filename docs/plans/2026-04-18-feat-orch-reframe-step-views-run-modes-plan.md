@@ -232,11 +232,11 @@ Key seam: `StepView` (new) is the thing steps declare; `Host` (new) is the thing
 
 **Acceptance:**
 
-- [ ] `orch run compound "task" --mode=plain` produces the stdout shape in Story 2 / Mode 1 for a `FakeRunner`-backed workflow.
-- [ ] `orch run compound "task" --mode=plain --format=json` emits valid NDJSON, one event per line, `--format=json` suppresses the banner.
-- [ ] `--tmux` and `--observe` are removed outright; passing either exits 2 with `unknown flag "--tmux"; use --mode=two-pane` (prerelease — no alias/deprecation period).
-- [ ] First-run banner prints on every TTY invocation with the auto-detected mode, source, and override hint.
-- [ ] `bun run check` green.
+- [x] `orch run compound "task" --mode=plain` produces the stdout shape in Story 2 / Mode 1 for a `FakeRunner`-backed workflow.
+- [x] `orch run compound "task" --mode=plain --format=json` emits valid NDJSON, one event per line, `--format=json` suppresses the banner.
+- [x] `--tmux` and `--observe` are removed outright; passing either exits 2 with `unknown flag "--tmux"; use --mode=two-pane` (prerelease — no alias/deprecation period).
+- [x] First-run banner prints on every TTY invocation with the auto-detected mode, source, and override hint.
+- [x] `bun run check` green.
 
 **Out of scope for Phase A:** any `StepView` interface, any pane concept, any host other than `plain`, any non-text transcript.
 

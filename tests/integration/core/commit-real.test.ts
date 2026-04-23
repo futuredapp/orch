@@ -11,6 +11,7 @@ import {
   path as orchPath,
 } from '../../../src/services/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
+import { createFakeHost } from '../../helpers/fake-host.ts'
 
 const canRun = Bun.which('git') !== null
 
@@ -68,6 +69,7 @@ async function makeDeps(
     stateStore: new FileStateStore({ fs: bunFs, basePath: orchPath(stateDir) }),
     runId: runId ?? ('r-2026-04-13-re0001' as RunId),
     cwd: orchPath(repoDir),
+    host: createFakeHost(),
   }
 }
 
@@ -135,6 +137,7 @@ describe.skipIf(!canRun)('commit step with real git', () => {
         stateStore: new FileStateStore({ fs: bunFs, basePath: orchPath(stateDir) }),
         runId,
         cwd: orchPath(repoDir),
+        host: createFakeHost(),
       }
     }
 

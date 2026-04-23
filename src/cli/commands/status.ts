@@ -11,7 +11,7 @@ export async function statusCmd(
   deps: CliDeps,
   idArg: string,
   _args: WorkflowArgs = {},
-  _opts: CliOpts = { tmux: false, observe: false },
+  _opts: CliOpts = { mode: undefined, format: 'text' },
 ): Promise<number> {
   if (!idArg) {
     process.stderr.write('Usage: orch status <id>\n')

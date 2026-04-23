@@ -16,6 +16,7 @@ import {
 } from '../../../../src/services/index.ts'
 import { FileStateStore, type RunId } from '../../../../src/state/index.ts'
 import { check } from '../../../../src/validators/index.ts'
+import { createFakeHost } from '../../../helpers/fake-host.ts'
 
 const rid = (s: string): RunId => s as RunId
 const BASE = path('/runs')
@@ -43,6 +44,7 @@ function makeDeps(overrides?: {
     stateStore: new FileStateStore({ fs, basePath: BASE }),
     runId: overrides?.runId ?? rid('r-2026-04-12-int001'),
     cwd: path('/workspace'),
+    host: createFakeHost(),
   }
 }
 

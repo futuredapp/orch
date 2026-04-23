@@ -12,6 +12,7 @@ import {
   path,
 } from '../../../src/services/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
+import { createFakeHost } from '../../helpers/fake-host.ts'
 
 let tmpDir: string
 
@@ -40,6 +41,7 @@ function makeIntegrationDeps(overrides?: {
     stateStore: new FileStateStore({ fs: bunFs, basePath: path(tmpDir) }),
     runId: overrides?.runId ?? ('r-2026-04-10-000001' as RunId),
     cwd: path('/workspace'),
+    host: createFakeHost(),
     basePath: tmpDir,
   }
 }

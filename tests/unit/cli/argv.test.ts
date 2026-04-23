@@ -109,32 +109,75 @@ describe('parseArgv prompt handling', () => {
   })
 })
 
-describe('parseArgv tmux and observe flags', () => {
-  it('defaults both tmux and observe to false', () => {
+describe('parseArgv mode and format flags', () => {
+  it('defaults mode to undefined (auto-detected) and format to text', () => {
     const result = parseArgv(['run', 'brainstorm'])
 
-    expect(result.tmux).toBe(false)
-    expect(result.observe).toBe(false)
+    expect(result.mode).toBeUndefined()
+    expect(result.format).toBe('text')
   })
 
-  it('sets tmux to true when --tmux is given', () => {
-    const result = parseArgv(['run', 'brainstorm', '--tmux'])
+  it('accepts --mode=plain', () => {
+    const result = parseArgv(['run', 'brainstorm', '--mode=plain'])
 
-    expect(result.tmux).toBe(true)
-    expect(result.observe).toBe(false)
+    expect(result.mode).toBe('plain')
   })
 
-  it('treats --observe as implying --tmux', () => {
-    const result = parseArgv(['run', 'brainstorm', '--observe'])
+  it('accepts --mode=two-pane', () => {
+    const result = parseArgv(['run', 'brainstorm', '--mode=two-pane'])
 
-    expect(result.observe).toBe(true)
-    expect(result.tmux).toBe(true)
+    expect(result.mode).toBe('two-pane')
   })
 
-  it('allows --tmux and --observe together without conflict', () => {
-    const result = parseArgv(['run', 'brainstorm', '--tmux', '--observe'])
+  it('accepts --mode=single-pane at parse time (deferral handled later)', () => {
+    const result = parseArgv(['run', 'brainstorm', '--mode=single-pane'])
 
-    expect(result.observe).toBe(true)
-    expect(result.tmux).toBe(true)
+    expect(result.mode).toBe('single-pane')
+  })
+
+  it('rejects unknown --mode value', () => {
+    expect(() => parseArgv(['run', 'brainstorm', '--mode=bogus'])).toThrow(ArgvError)
+  })
+
+  it('accepts --format=json', () => {
+    const result = parseArgv(['run', 'brainstorm', '--mode=plain', '--format=json'])
+
+    expect(result.format).toBe('json')
+  })
+
+  it('rejects --format=json with --mode=two-pane', () => {
+    expect(() => parseArgv(['run', 'brainstorm', '--mode=two-pane', '--format=json'])).toThrow(
+      ArgvError,
+    )
+  })
+
+  it('rejects unknown --format value', () => {
+    expect(() => parseArgv(['run', 'brainstorm', '--format=xml'])).toThrow(ArgvError)
+  })
+})
+
+describe('parseArgv rejects removed flags', () => {
+  it('rejects --tmux with a message pointing at --mode=two-pane', () => {
+    let caught: unknown
+    try {
+      parseArgv(['run', 'brainstorm', '--tmux'])
+    } catch (err) {
+      caught = err
+    }
+    expect(caught).toBeInstanceOf(ArgvError)
+    expect((caught as Error).message).toContain('--tmux')
+    expect((caught as Error).message).toContain('--mode=two-pane')
+  })
+
+  it('rejects --observe with a message pointing at --mode=two-pane', () => {
+    let caught: unknown
+    try {
+      parseArgv(['run', 'brainstorm', '--observe'])
+    } catch (err) {
+      caught = err
+    }
+    expect(caught).toBeInstanceOf(ArgvError)
+    expect((caught as Error).message).toContain('--observe')
+    expect((caught as Error).message).toContain('--mode=two-pane')
   })
 })

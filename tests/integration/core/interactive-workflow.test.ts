@@ -12,6 +12,7 @@ import {
   path,
 } from '../../../src/services/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
+import { createFakeHost, type FakeHost } from '../../helpers/fake-host.ts'
 
 const rid = (s: string): RunId => s as RunId
 const BASE = path('/runs')
@@ -22,15 +23,17 @@ function makeDeps(overrides?: {
   runId?: RunId
   generateSessionId?: () => string
   onInteractive?: WorkflowDeps['onInteractive']
-  onStepEvent?: WorkflowDeps['onStepEvent']
+  host?: FakeHost
 }): WorkflowDeps & {
   processService: FakeProcessService
   clock: FakeClock
   stateStore: FileStateStore
+  host: FakeHost
 } {
   const fs = overrides?.fs ?? new FakeFsService()
   const processService = overrides?.processService ?? new FakeProcessService()
   const clock = new FakeClock(1000)
+  const host = overrides?.host ?? createFakeHost()
   return {
     fsService: fs,
     gitService: new FakeGitService(),
@@ -39,15 +42,14 @@ function makeDeps(overrides?: {
     stateStore: new FileStateStore({ fs, basePath: BASE }),
     runId: overrides?.runId ?? rid('r-2026-04-14-iwf001'),
     cwd: path('/workspace'),
+    host,
     generateSessionId: overrides?.generateSessionId,
     onInteractive: overrides?.onInteractive,
-    onStepEvent: overrides?.onStepEvent,
   }
 }
 
 describe('interactive workflow mocked round-trip', () => {
   it('interactive step followed by autonomous step produces correct state', async () => {
-    const events: StepLifecycleEvent[] = []
     const deps = makeDeps({
       generateSessionId: () => 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
       onInteractive: async () => ({
@@ -55,7 +57,6 @@ describe('interactive workflow mocked round-trip', () => {
         durationMs: 10000,
         sessionId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
       }),
-      onStepEvent: (e) => events.push(e),
     })
 
     const runner = claude()
@@ -122,8 +123,10 @@ describe('interactive workflow mocked round-trip', () => {
     expect(state?.steps.brainstorm?.mode).toBe('interactive')
     expect(state?.steps.work?.mode).toBe('autonomous')
 
-    // Verify lifecycle events — compare type and stepName individually
-    // because StepName is a branded type that won't match plain strings in toEqual
+    // Verify lifecycle events — pulled from the FakeHost's recorded buffer.
+    const events: StepLifecycleEvent[] = deps.host.recorded
+      .filter((r): r is { kind: 'lifecycle'; event: StepLifecycleEvent } => r.kind === 'lifecycle')
+      .map((r) => r.event)
     expect(events).toHaveLength(4)
     expect(events[0]?.type).toBe('step:start')
     expect(events[0]?.stepName as string).toBe('brainstorm')

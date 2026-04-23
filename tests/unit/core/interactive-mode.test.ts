@@ -23,6 +23,7 @@ import {
   path,
 } from '../../../src/services/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
+import { createFakeHost, type FakeHost } from '../../helpers/fake-host.ts'
 
 const rid = (s: string): RunId => s as RunId
 const BASE = path('/runs')
@@ -34,11 +35,16 @@ function makeDeps(overrides?: {
   runId?: RunId
   generateSessionId?: () => string
   onInteractive?: WorkflowDeps['onInteractive']
-  onStepEvent?: WorkflowDeps['onStepEvent']
-}): WorkflowDeps & { processService: FakeProcessService; clock: FakeClock } {
+  host?: FakeHost
+}): WorkflowDeps & {
+  processService: FakeProcessService
+  clock: FakeClock
+  host: FakeHost
+} {
   const fs = overrides?.fs ?? new FakeFsService()
   const processService = overrides?.processService ?? new FakeProcessService()
   const clock = overrides?.clock ?? new FakeClock(1000)
+  const host = overrides?.host ?? createFakeHost()
   return {
     fsService: fs,
     gitService: new FakeGitService(),
@@ -47,9 +53,9 @@ function makeDeps(overrides?: {
     stateStore: new FileStateStore({ fs, basePath: BASE }),
     runId: overrides?.runId ?? rid('r-2026-04-13-int001'),
     cwd: path('/workspace'),
+    host,
     generateSessionId: overrides?.generateSessionId,
     onInteractive: overrides?.onInteractive,
-    onStepEvent: overrides?.onStepEvent,
   }
 }
 
@@ -290,9 +296,8 @@ describe('interactive step caching on resume', () => {
   })
 })
 
-describe('onStepEvent lifecycle hooks', () => {
+describe('host lifecycle events', () => {
   it('emits step:start and step:complete for a successful interactive step', async () => {
-    const events: unknown[] = []
     const deps = makeDeps({
       generateSessionId: () => '44444444-4444-4444-4444-444444444444',
       onInteractive: async () => ({
@@ -300,7 +305,6 @@ describe('onStepEvent lifecycle hooks', () => {
         durationMs: 2000,
         sessionId: '44444444-4444-4444-4444-444444444444',
       }),
-      onStepEvent: (e) => events.push(e),
     })
     const agent = new FakeRunner(deps.processService)
     const STEP = step.define('brainstorm', { agent, mode: 'interactive' })
@@ -310,6 +314,9 @@ describe('onStepEvent lifecycle hooks', () => {
     })
     await wf.execute(deps)
 
+    const events = deps.host.recorded
+      .filter((r) => r.kind === 'lifecycle')
+      .map((r) => (r as { kind: 'lifecycle'; event: unknown }).event)
     expect(events).toEqual([
       { type: 'step:start', stepName: 'brainstorm', mode: 'interactive' },
       { type: 'step:complete', stepName: 'brainstorm', durationMs: 2000 },
@@ -332,13 +339,11 @@ describe('onStepEvent lifecycle hooks', () => {
     await wf.execute(deps1)
 
     // Second run — should hit cache
-    const events: unknown[] = []
     const fps2 = new FakeProcessService()
     const deps2 = makeDeps({
       fs: sharedFs,
       processService: fps2,
       runId: sharedRunId,
-      onStepEvent: (e) => events.push(e),
     })
 
     const wf2 = workflow('test', async (run) => {
@@ -346,6 +351,9 @@ describe('onStepEvent lifecycle hooks', () => {
     })
     await wf2.execute(deps2)
 
+    const events = deps2.host.recorded
+      .filter((r) => r.kind === 'lifecycle')
+      .map((r) => (r as { kind: 'lifecycle'; event: unknown }).event)
     expect(events).toEqual([{ type: 'step:cached', stepName: 'plan' }])
   })
 })

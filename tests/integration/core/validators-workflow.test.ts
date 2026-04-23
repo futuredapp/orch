@@ -19,6 +19,7 @@ import {
   ValidationError,
   type Validator,
 } from '../../../src/validators/index.ts'
+import { createFakeHost } from '../../helpers/fake-host.ts'
 
 let tmpDir: string
 
@@ -39,6 +40,7 @@ function makeDeps(cwd: string, basePath: string): WorkflowDeps {
     cwd: path(cwd),
     fsService: bunFs,
     gitService: new FakeGitService(),
+    host: createFakeHost(),
   }
 }
 

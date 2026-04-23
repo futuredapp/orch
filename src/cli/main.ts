@@ -1,12 +1,24 @@
 #!/usr/bin/env bun
 import { parseArgs } from 'node:util'
-import type { WorkflowArgs } from '../core/index.ts'
+import {
+  detectCi,
+  isRunMode,
+  type RunMode,
+  RunModeError,
+  type RunModeResolution,
+  resolveRunMode,
+  type WorkflowArgs,
+} from '../core/index.ts'
+import { createPlainHost, type Host, type PlainFormat } from '../hosts/index.ts'
+import type { Clock } from '../services/clock/index.ts'
+import type { RunId } from '../state/index.ts'
 import { dryRunCmd } from './commands/dry-run.ts'
 import { resumeCmd } from './commands/resume.ts'
 import { runCmd } from './commands/run.ts'
 import { runsCmd } from './commands/runs.ts'
 import { statusCmd } from './commands/status.ts'
 import { createDeps } from './deps.ts'
+import { meetsMinimumTmuxVersion, probeTmuxVersion } from './detect-tmux.ts'
 
 export class ArgvError extends Error {
   constructor(message: string) {
@@ -24,6 +36,8 @@ export const EXIT = {
   STEP_FAILURE: 1,
   CONFIG_ERROR: 2,
   CANNOT_RESUME: 3,
+  SIGINT: 130,
+  SIGTERM: 143,
 } as const
 
 // ---------------------------------------------------------------------------
@@ -31,9 +45,25 @@ export const EXIT = {
 // ---------------------------------------------------------------------------
 
 export interface CliOpts {
-  readonly tmux: boolean
-  readonly observe: boolean
+  readonly mode: RunMode | undefined
+  readonly format: PlainFormat
 }
+
+// ---------------------------------------------------------------------------
+// HostFactory — command handlers own run-id creation but don't know how to
+// pick a host. The entry point hands them a factory that resolves the mode
+// once per invocation and builds the right Host implementation.
+// ---------------------------------------------------------------------------
+
+export interface HostFactoryArgs {
+  readonly runId: RunId
+  readonly workflowName: string
+  readonly stdout: NodeJS.WritableStream
+  readonly stderr: NodeJS.WritableStream
+  readonly clock: Clock
+}
+
+export type HostFactory = (args: HostFactoryArgs) => Host
 
 // ---------------------------------------------------------------------------
 // Help text
@@ -51,8 +81,8 @@ Commands:
 Options:
   -h, --help               Show this help message
   --prompt <text>          Alias for the inline prompt positional
-  --tmux                   Run steps inside a dedicated tmux session
-  --observe                Show agent output in a tmux pane (implies --tmux)
+  --mode <m>               plain | single-pane | two-pane (single-pane deferred to v2)
+  --format <f>             text | json — plain mode only; json suppresses the banner
 `
 
 // ---------------------------------------------------------------------------
@@ -64,20 +94,29 @@ export function parseArgv(argv: string[]): {
   positional: string
   args: WorkflowArgs
   help: boolean
-  tmux: boolean
-  observe: boolean
+  mode: RunMode | undefined
+  format: PlainFormat
 } {
   const { values, positionals } = parseArgs({
     args: argv,
     options: {
       help: { type: 'boolean', short: 'h', default: false },
       prompt: { type: 'string' },
-      tmux: { type: 'boolean', default: false },
-      observe: { type: 'boolean', default: false },
+      mode: { type: 'string' },
+      format: { type: 'string' },
+      tmux: { type: 'boolean' },
+      observe: { type: 'boolean' },
     },
     strict: false,
     allowPositionals: true,
   })
+
+  if (values.tmux !== undefined) {
+    throw new ArgvError('unknown flag "--tmux"; use --mode=two-pane')
+  }
+  if (values.observe !== undefined) {
+    throw new ArgvError('unknown flag "--observe"; use --mode=two-pane')
+  }
 
   if (positionals.length > 3) {
     throw new ArgvError(`Unexpected extra positional arguments: ${positionals.slice(3).join(' ')}`)
@@ -93,17 +132,73 @@ export function parseArgv(argv: string[]): {
   const prompt = flagPrompt ?? inlinePrompt
   const args: WorkflowArgs = prompt !== undefined ? { prompt } : {}
 
-  const observe = values.observe === true
-  const tmux = observe || values.tmux === true
+  const mode = parseModeFlag(values.mode)
+  const format = parseFormatFlag(values.format)
+
+  if (format === 'json' && mode !== undefined && mode !== 'plain') {
+    throw new ArgvError(`--format=json is only valid with --mode=plain (got --mode=${mode})`)
+  }
 
   return {
     command: positionals[0],
     positional: positionals[1] ?? '',
     args,
     help: values.help as boolean,
-    tmux,
-    observe,
+    mode,
+    format,
   }
+}
+
+function parseModeFlag(raw: unknown): RunMode | undefined {
+  if (raw === undefined) return undefined
+  if (typeof raw !== 'string') throw new ArgvError('--mode requires a value')
+  if (!isRunMode(raw)) {
+    throw new ArgvError(`unknown --mode=${raw}; expected plain | single-pane | two-pane`)
+  }
+  return raw
+}
+
+function parseFormatFlag(raw: unknown): PlainFormat {
+  if (raw === undefined) return 'text'
+  if (raw === 'text' || raw === 'json') return raw
+  throw new ArgvError(`unknown --format=${String(raw)}; expected text | json`)
+}
+
+// ---------------------------------------------------------------------------
+// Mode + host wiring
+// ---------------------------------------------------------------------------
+
+async function resolveMode(
+  flag: RunMode | undefined,
+  deps: ReturnType<typeof createDeps>,
+): Promise<RunModeResolution> {
+  const tmuxProbe = await probeTmuxVersion(deps.processService)
+  const tmuxAvailable = tmuxProbe !== undefined
+  const tmuxVersionOk = tmuxAvailable && meetsMinimumTmuxVersion(tmuxProbe)
+  const tty = typeof process.stdout !== 'undefined' && process.stdout.isTTY === true
+  const ci = detectCi(process.env)
+  return resolveRunMode({
+    ...(flag !== undefined ? { flag } : {}),
+    ci,
+    tty,
+    tmuxAvailable,
+    tmuxVersionOk,
+  })
+}
+
+export function buildBanner(resolution: RunModeResolution): string {
+  return `[orch] mode=${resolution.mode} (${resolution.source}: ${resolution.reason}) · --mode=... to override`
+}
+
+function makePlainHostFactory(format: PlainFormat): HostFactory {
+  return (args) =>
+    createPlainHost({
+      stdout: args.stdout,
+      stderr: args.stderr,
+      format,
+      clock: args.clock,
+      runId: args.runId,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -117,13 +212,33 @@ const COMMANDS: Record<
     positional: string,
     args: WorkflowArgs,
     opts: CliOpts,
+    hostFactory: HostFactory,
   ) => Promise<number>
 > = {
   run: runCmd,
   resume: resumeCmd,
-  runs: runsCmd,
-  status: statusCmd,
-  'dry-run': dryRunCmd,
+  runs: commandWithoutHost(runsCmd),
+  status: commandWithoutHost(statusCmd),
+  'dry-run': commandWithoutHost(dryRunCmd),
+}
+
+type NoHostCmd = (
+  deps: ReturnType<typeof createDeps>,
+  positional: string,
+  args: WorkflowArgs,
+  opts: CliOpts,
+) => Promise<number>
+
+function commandWithoutHost(
+  fn: NoHostCmd,
+): (
+  deps: ReturnType<typeof createDeps>,
+  positional: string,
+  args: WorkflowArgs,
+  opts: CliOpts,
+  _hostFactory: HostFactory,
+) => Promise<number> {
+  return (deps, positional, args, opts) => fn(deps, positional, args, opts)
 }
 
 async function main(): Promise<never> {
@@ -157,8 +272,34 @@ async function main(): Promise<never> {
   }
 
   const deps = createDeps(process.cwd())
-  const opts: CliOpts = { tmux: parsed.tmux, observe: parsed.observe }
-  const code = await handler(deps, parsed.positional, parsed.args, opts)
+
+  let resolution: RunModeResolution
+  try {
+    resolution = await resolveMode(parsed.mode, deps)
+  } catch (err) {
+    if (err instanceof RunModeError) {
+      process.stderr.write(`${err.message}\n`)
+      process.exit(EXIT.CONFIG_ERROR)
+    }
+    throw err
+  }
+
+  // Two-pane is Phase D; accepted by the type system but not yet wired at the
+  // CLI boundary. Exit cleanly with the deferral message so the user knows.
+  if (resolution.mode === 'two-pane') {
+    process.stderr.write(
+      'two-pane mode is not yet wired in Phase A — pending Phase D. Use --mode=plain.\n',
+    )
+    process.exit(EXIT.CONFIG_ERROR)
+  }
+
+  if (parsed.format !== 'json') {
+    process.stderr.write(`${buildBanner(resolution)}\n`)
+  }
+
+  const opts: CliOpts = { mode: resolution.mode, format: parsed.format }
+  const hostFactory = makePlainHostFactory(parsed.format)
+  const code = await handler(deps, parsed.positional, parsed.args, opts, hostFactory)
   process.exit(code)
 }
 

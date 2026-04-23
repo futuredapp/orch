@@ -10,8 +10,7 @@ import type { WorkflowDeps } from '../../core/workflow.ts'
 import type { RunId } from '../../state/index.ts'
 import { StateCorruptionError } from '../../state/index.ts'
 import type { CliDeps } from '../deps.ts'
-import { type CliOpts, EXIT } from '../main.ts'
-import { maybeSetupTmux, type TmuxHandles, tmuxDepsFromHandles } from '../tmux-wiring.ts'
+import { type CliOpts, EXIT, type HostFactory } from '../main.ts'
 import { isLoadError, loadWorkflow } from './load-workflow.ts'
 
 const SCAN_CAP = 50
@@ -76,7 +75,8 @@ export async function resumeCmd(
   deps: CliDeps,
   idArg: string,
   cliArgs: WorkflowArgs,
-  opts: CliOpts = { tmux: false, observe: false },
+  _opts: CliOpts,
+  hostFactory: HostFactory,
 ): Promise<number> {
   const targetId = idArg ? await findByPrefix(deps, idArg) : await findResumableRun(deps)
 
@@ -94,7 +94,7 @@ export async function resumeCmd(
     return EXIT.CANNOT_RESUME
   }
 
-  process.stdout.write(`Resuming run ${targetId}...\n`)
+  process.stderr.write(`Resuming run ${targetId}...\n`)
 
   const workflowName = state.workflowName
   if (!workflowName) {
@@ -110,17 +110,13 @@ export async function resumeCmd(
   const loaded = await loadWorkflow(deps.cwd, workflowName)
   if (isLoadError(loaded)) return loaded.code
 
-  const tmuxResult = await maybeSetupTmux({
-    enabled: opts.tmux,
-    processService: deps.processService,
-    clock: deps.clock,
+  const host = hostFactory({
     runId: targetId,
     workflowName,
-    observe: opts.observe,
+    stdout: process.stdout,
     stderr: process.stderr,
+    clock: deps.clock,
   })
-  if (tmuxResult === 'argv-error') return EXIT.CONFIG_ERROR
-  const tmuxHandles: TmuxHandles | undefined = tmuxResult
 
   const wfDeps: WorkflowDeps = {
     stateStore: deps.stateStore,
@@ -132,7 +128,7 @@ export async function resumeCmd(
     gitService: deps.gitService,
     workflowName,
     args: effectiveArgs,
-    ...(tmuxHandles !== undefined ? tmuxDepsFromHandles(tmuxHandles) : {}),
+    host,
   }
 
   try {
@@ -142,11 +138,9 @@ export async function resumeCmd(
     if (code !== undefined) return code
     throw err
   } finally {
-    if (tmuxHandles !== undefined) {
-      await tmuxHandles.teardown()
-    }
+    await host.teardown()
   }
 
-  process.stdout.write(`Run ${targetId} completed.\n`)
+  process.stderr.write(`Run ${targetId} completed.\n`)
   return EXIT.OK
 }

@@ -18,7 +18,7 @@ export async function dryRunCmd(
   deps: CliDeps,
   name: string,
   args: WorkflowArgs,
-  _opts: CliOpts = { tmux: false, observe: false },
+  _opts: CliOpts = { mode: undefined, format: 'text' },
 ): Promise<number> {
   if (!name) {
     process.stderr.write('Usage: orch dry-run <name> [prompt]\n')

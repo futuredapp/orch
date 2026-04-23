@@ -11,6 +11,7 @@ import {
   path,
 } from '../../../../src/services/index.ts'
 import { FileStateStore, type RunId } from '../../../../src/state/index.ts'
+import { createFakeHost } from '../../../helpers/fake-host.ts'
 
 const canRun = process.env.RUN_REAL_CLAUDE === '1' && Bun.which('claude') !== null
 
@@ -41,6 +42,7 @@ describe.skipIf(!canRun)('ClaudeRunner e2e-lite (workflow DSL + real CLI)', () =
       cwd: path(process.cwd()),
       fsService: bunFs,
       gitService: new BunGitService({ processService }),
+      host: createFakeHost(),
     }
 
     const wf = workflow('e2e-lite', async (run) => {

@@ -10,6 +10,7 @@ import { FakeFsService, FakeGitService } from '../../../../src/services/index.ts
 import { BunProcessService } from '../../../../src/services/process/index.ts'
 import { path } from '../../../../src/services/types.ts'
 import { FileStateStore, type RunId } from '../../../../src/state/index.ts'
+import { createFakeHost } from '../../../helpers/fake-host.ts'
 
 const canRun = process.env.RUN_REAL_CLAUDE === '1' && Bun.which('claude') !== null
 
@@ -31,6 +32,7 @@ function makeDeps(): WorkflowDeps {
     stateStore: new FileStateStore({ fs, basePath: path('/runs') }),
     runId: rid('r-2026-04-12-real1'),
     cwd: path(process.cwd()),
+    host: createFakeHost(),
   }
 }
 

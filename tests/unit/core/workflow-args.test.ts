@@ -11,6 +11,7 @@ import {
   path,
 } from '../../../src/services/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
+import { createFakeHost } from '../../helpers/fake-host.ts'
 
 const rid = (s: string): RunId => s as RunId
 const BASE = path('/runs')
@@ -26,6 +27,7 @@ function makeDeps(args?: WorkflowArgs): WorkflowDeps {
     stateStore: new FileStateStore({ fs, basePath: BASE }),
     runId: rid('r-2026-04-14-aaaaaa'),
     cwd: path('/workspace'),
+    host: createFakeHost(),
     ...(args !== undefined ? { args } : {}),
   } as WorkflowDeps
 }

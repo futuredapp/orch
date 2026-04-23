@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { RunnerEvent } from '../runners/index.ts'
+import type { Host } from '../hosts/index.ts'
 import { runInteractive, runRunner } from '../runners/index.ts'
 import type { Clock, FsService, GitService, ProcessService } from '../services/index.ts'
 import { GitCommandError } from '../services/index.ts'
@@ -102,22 +102,14 @@ export interface WorkflowDeps {
   readonly fsService: FsService
   readonly gitService: GitService
   readonly workflowName?: string
+  /**
+   * Sole observability seam. Lifecycle events and runner events fan out
+   * through this port; the CLI chooses the implementation (`PlainHost` for
+   * `--mode=plain`, `TmuxHost` for `two-pane` once Phase D lands).
+   */
+  readonly host: Host
   /** Agent-native hook: decouples interactive from TTY. */
   readonly onInteractive?: (ctx: InteractiveContext) => Promise<InteractiveResult>
-  /** Agent-native hook: real-time step lifecycle events. */
-  readonly onStepEvent?: (event: StepLifecycleEvent) => void
-  /**
-   * Agent-native hook: fires for every RunnerEvent parsed from an autonomous
-   * step's stdout. Wired by observe mode to tee runner output into a tmux
-   * pane; forwarded straight through to `runRunner`.
-   */
-  readonly onEvent?: (event: RunnerEvent) => void
-  /**
-   * Set by the CLI when `--tmux`/`--observe` activates a session. Interactive
-   * steps currently conflict with the tmux pane layout (they take over the
-   * parent TTY), so `runInteractiveStep` refuses to run while this is `true`.
-   */
-  readonly tmuxActive?: boolean
   /** Injectable session ID generator. Defaults to crypto.randomUUID(). */
   readonly generateSessionId?: () => string
   /** CLI-supplied arguments. When omitted, the workflow callback sees `{}`. */
@@ -244,15 +236,6 @@ async function runInteractiveStep(
     throw new InteractiveParallelError(key)
   }
 
-  // Guard: interactive inside an active tmux session — not supported yet
-  // because foreground takeover collides with the status-pane layout.
-  if (deps.tmuxActive === true) {
-    throw new Error(
-      `Interactive step "${key}" is not yet supported with --tmux. ` +
-        'Run the workflow without --tmux/--observe, or mark the step autonomous.',
-    )
-  }
-
   // Guard: runner capability
   if (!config.agent.supports.interactive) {
     throw new RunnerCapabilityError(key, config.agent.name)
@@ -261,7 +244,7 @@ async function runInteractiveStep(
   const sessionId = deps.generateSessionId?.() ?? randomUUID()
   const prompt = assemblePrompt(config.prompt, overrides)
 
-  deps.onStepEvent?.({ type: 'step:start', stepName: key, mode: 'interactive' })
+  deps.host.onLifecycleEvent({ type: 'step:start', stepName: key, mode: 'interactive' })
 
   // If an onInteractive handler is provided, delegate to it (agent-native).
   // Otherwise, require a TTY and do foreground spawn.
@@ -299,13 +282,13 @@ async function runInteractiveStep(
   }
 
   if (exitCode !== 0) {
-    deps.onStepEvent?.({ type: 'step:failed', stepName: key, error: `exit ${exitCode}` })
+    deps.host.onLifecycleEvent({ type: 'step:failed', stepName: key, error: `exit ${exitCode}` })
     throw new StepError(key, exitCode, `interactive session exited ${exitCode}`)
   }
 
   const value: InteractiveResult = { exitCode, durationMs, sessionId }
 
-  deps.onStepEvent?.({ type: 'step:complete', stepName: key, durationMs })
+  deps.host.onLifecycleEvent({ type: 'step:complete', stepName: key, durationMs })
 
   const entry: StepEntry = {
     name: key,
@@ -331,7 +314,7 @@ async function runAgentStep(
 ): Promise<{ value: unknown; entry: StepEntry }> {
   checkSchemaCapability(config, key)
 
-  deps.onStepEvent?.({ type: 'step:start', stepName: key, mode: 'autonomous' })
+  deps.host.onLifecycleEvent({ type: 'step:start', stepName: key, mode: 'autonomous' })
 
   const normalized = normalizeValidators(config.validate, key)
   const headSha = anyNeedsHeadSha(normalized)
@@ -354,7 +337,7 @@ async function runAgentStep(
     {
       processService: deps.processService,
       clock: deps.clock,
-      ...(deps.onEvent !== undefined ? { onEvent: deps.onEvent } : {}),
+      onEvent: (evt) => deps.host.onRunnerEvent(evt, key),
     },
   )
 
@@ -363,7 +346,7 @@ async function runAgentStep(
       result.finalEvent.type === 'error'
         ? result.finalEvent.message
         : `runner exited ${result.exitCode}`
-    deps.onStepEvent?.({ type: 'step:failed', stepName: key, error: msg })
+    deps.host.onLifecycleEvent({ type: 'step:failed', stepName: key, error: msg })
     throw new StepError(key, result.exitCode, msg)
   }
 
@@ -384,7 +367,7 @@ async function runAgentStep(
   }
 
   const durationMs = deps.clock.now() - startedAt
-  deps.onStepEvent?.({ type: 'step:complete', stepName: key, durationMs })
+  deps.host.onLifecycleEvent({ type: 'step:complete', stepName: key, durationMs })
 
   const entry: StepEntry = {
     name: key,
@@ -465,7 +448,7 @@ async function runStepOnce(
   if (cached !== undefined) {
     const { config } = s
     if (config.kind === 'agent') revalidateCachedValue(config, key, cached.value)
-    deps.onStepEvent?.({ type: 'step:cached', stepName: key })
+    deps.host.onLifecycleEvent({ type: 'step:cached', stepName: key })
     return cached.value
   }
 

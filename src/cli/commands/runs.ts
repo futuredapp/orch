@@ -11,7 +11,7 @@ export async function runsCmd(
   deps: CliDeps,
   _positional: string,
   _args: WorkflowArgs = {},
-  _opts: CliOpts = { tmux: false, observe: false },
+  _opts: CliOpts = { mode: undefined, format: 'text' },
 ): Promise<number> {
   const allRuns = await deps.registry.listRuns()
   const recentIds = allRuns.slice(-DEFAULT_LIMIT)
