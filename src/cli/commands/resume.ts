@@ -9,7 +9,7 @@ import {
 } from '../../core/index.ts'
 import type { WorkflowDeps } from '../../core/workflow.ts'
 import type { RunId } from '../../state/index.ts'
-import { StateCorruptionError } from '../../state/index.ts'
+import { createTranscriptSidecar, StateCorruptionError } from '../../state/index.ts'
 import type { CliDeps } from '../deps.ts'
 import { type CliOpts, EXIT, type HostFactory } from '../main.ts'
 import { isLoadError, loadWorkflow } from './load-workflow.ts'
@@ -89,7 +89,16 @@ export async function resumeCmd(
     return EXIT.CANNOT_RESUME
   }
 
-  const state = await deps.stateStore.loadRun(targetId)
+  let state: Awaited<ReturnType<typeof deps.stateStore.loadRun>>
+  try {
+    state = await deps.stateStore.loadRun(targetId)
+  } catch (err) {
+    if (err instanceof StateCorruptionError) {
+      process.stderr.write(`${err.message}\n`)
+      return EXIT.CONFIG_ERROR
+    }
+    throw err
+  }
   if (!state) {
     process.stderr.write(`Run "${targetId}" not found\n`)
     return EXIT.CANNOT_RESUME
@@ -119,6 +128,12 @@ export async function resumeCmd(
     clock: deps.clock,
   })
 
+  const transcriptSidecar = createTranscriptSidecar({
+    fs: deps.fsService,
+    runId: targetId,
+    basePath: deps.statePath,
+  })
+
   const wfDeps: WorkflowDeps = {
     stateStore: deps.stateStore,
     processService: deps.processService,
@@ -130,6 +145,7 @@ export async function resumeCmd(
     workflowName,
     args: effectiveArgs,
     host,
+    transcriptSidecar,
   }
 
   try {

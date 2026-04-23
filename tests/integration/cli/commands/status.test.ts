@@ -32,6 +32,7 @@ function makeDeps(): CliDeps {
     stateStore: new FileStateStore({ fs: bunFs, basePath }),
     registry: new FileRunRegistry({ fs: bunFs, basePath }),
     cwd: path('/workspace'),
+    statePath: basePath,
   }
 }
 

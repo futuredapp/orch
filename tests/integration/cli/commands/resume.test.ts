@@ -31,6 +31,7 @@ function makeDeps(): CliDeps {
     stateStore: new FileStateStore({ fs: bunFs, basePath }),
     registry: new FileRunRegistry({ fs: bunFs, basePath }),
     cwd: path(tmpDir),
+    statePath: basePath,
   }
 }
 
@@ -171,12 +172,13 @@ describe('resumeCmd state-finding (integration)', () => {
     expect(state?.args).toEqual({ prompt: 'keep me' })
   })
 
-  it('returns CANNOT_RESUME for v2 state without workflowName', async () => {
+  it('returns CONFIG_ERROR for pre-v5 state (prerelease — no migrations)', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-resume-test-')
     const deps = makeDeps()
     const { resumeCmd } = await import('../../../../src/cli/commands/resume.ts')
 
-    // Write a raw v2 state file (no workflowName)
+    // Write a raw v2 state file — v2/v3/v4 are all rejected with a wipe hint
+    // after the prerelease direct-rewrite schema bump.
     const rid = 'r-2026-04-13-abc001' as RunId
     const ridDir = `${tmpDir}/${rid}`
     await fs.mkdir(ridDir, { recursive: true })
@@ -192,6 +194,6 @@ describe('resumeCmd state-finding (integration)', () => {
 
     const code = await resumeCmd(deps, rid, {}, DEFAULT_OPTS, DEFAULT_HOST_FACTORY)
 
-    expect(code).toBe(EXIT.CANNOT_RESUME)
+    expect(code).toBe(EXIT.CONFIG_ERROR)
   })
 })

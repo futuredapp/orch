@@ -36,6 +36,16 @@ export class FakeFsService implements FsService {
     this.#files.set(p, { data, mtimeMs: this.#clock?.now() ?? Date.now() })
   }
 
+  async appendFile(p: Path, data: string): Promise<void> {
+    const parent = parentDir(p)
+    if (parent && !this.#dirs.has(parent)) {
+      throw new Error(`ENOENT: parent directory does not exist: ${parent}`)
+    }
+    const existing = this.#files.get(p)
+    const next = (existing?.data ?? '') + data
+    this.#files.set(p, { data: next, mtimeMs: this.#clock?.now() ?? Date.now() })
+  }
+
   async rename(from: Path, to: Path): Promise<void> {
     const entry = this.#files.get(from)
     if (!entry) {

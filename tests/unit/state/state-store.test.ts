@@ -37,6 +37,10 @@ class RecordingFsService implements FsService {
     await this.inner.writeFile(p, data)
   }
 
+  appendFile(p: Path, data: string): Promise<void> {
+    return this.inner.appendFile(p, data)
+  }
+
   rename(from: Path, to: Path): Promise<void> {
     return this.inner.rename(from, to)
   }
@@ -89,7 +93,7 @@ describe('FileStateStore', () => {
 
     expect(state).toBeDefined()
     expect(state?.id).toBe(id)
-    expect(state?.schemaVersion).toBe(4)
+    expect(state?.schemaVersion).toBe(5)
     expect(state?.status).toBe('running')
     expect(state?.steps['step-a']).toEqual(entry)
   })
@@ -189,7 +193,7 @@ describe('FileStateStore', () => {
 
     expect(state).toBeDefined()
     expect(state?.id).toBe(id)
-    expect(state?.schemaVersion).toBe(4)
+    expect(state?.schemaVersion).toBe(5)
     expect(state?.status).toBe('running')
     expect(state?.steps).toEqual({})
   })

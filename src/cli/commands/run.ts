@@ -5,7 +5,7 @@ import {
   ViewResolutionError,
 } from '../../core/index.ts'
 import type { WorkflowArgs, WorkflowDeps } from '../../core/workflow.ts'
-import { generateRunId } from '../../state/index.ts'
+import { createTranscriptSidecar, generateRunId } from '../../state/index.ts'
 import type { CliDeps } from '../deps.ts'
 import { type CliOpts, EXIT, type HostFactory } from '../main.ts'
 import { isLoadError, loadWorkflow } from './load-workflow.ts'
@@ -62,6 +62,12 @@ export async function runCmd(
     clock: deps.clock,
   })
 
+  const transcriptSidecar = createTranscriptSidecar({
+    fs: deps.fsService,
+    runId,
+    basePath: deps.statePath,
+  })
+
   const wfDeps: WorkflowDeps = {
     stateStore: deps.stateStore,
     processService: deps.processService,
@@ -73,6 +79,7 @@ export async function runCmd(
     workflowName: name,
     args,
     host,
+    transcriptSidecar,
   }
 
   try {

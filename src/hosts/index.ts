@@ -13,6 +13,17 @@ export type {
   PaneAttachment,
   PaneRole,
 } from './host.ts'
+export type {
+  HostFactory,
+  HostFactoryInputs,
+  HostRegistry,
+  RegisterBuiltinHostsDeps,
+} from './host-registry.ts'
+export {
+  createHostRegistry,
+  HostResolutionError,
+  registerBuiltinHosts,
+} from './host-registry.ts'
 export type { PlainFormat, PlainHostOptions } from './plain/plain-host.ts'
 export { createPlainHost } from './plain/plain-host.ts'
 export { stripAnsi } from './plain/strip-ansi.ts'

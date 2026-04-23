@@ -14,6 +14,8 @@ export function makeStepEntry(overrides: Partial<StepEntry> = {}): StepEntry {
     endedAt: 2000,
     artifacts: [],
     validations: [],
+    transcriptEventCount: 0,
+    transcriptTruncated: false,
     ...overrides,
   }
 }
@@ -24,7 +26,7 @@ export function makeStepEntry(overrides: Partial<StepEntry> = {}): StepEntry {
  */
 export function makeRunState(overrides: Partial<RunState> = {}): RunState {
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     id: 'r-2026-04-10-000001' as RunId,
     status: 'running',
     startedAt: 0,

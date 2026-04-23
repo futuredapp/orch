@@ -42,6 +42,13 @@ export class RunModeError extends Error {
 
 export interface RunModeInputs {
   readonly flag?: RunMode | undefined
+  /**
+   * `defaultMode` from an `orch.config.ts` discovered upward from cwd. Used
+   * when no explicit flag is set and neither CI nor TTY+tmux lead the
+   * resolver to a more specific mode. Lets users whose autodetect guesses
+   * wrong (e.g. Codespaces without a TTY) opt into two-pane from config.
+   */
+  readonly configDefault?: RunMode | undefined
   readonly ci: boolean
   readonly tty: boolean
   readonly tmuxAvailable: boolean
@@ -55,6 +62,10 @@ export function isRunMode(value: string): value is RunMode {
 export function resolveRunMode(inputs: RunModeInputs): RunModeResolution {
   if (inputs.flag !== undefined) {
     return resolveExplicitFlag(inputs)
+  }
+
+  if (inputs.configDefault !== undefined) {
+    return resolveConfigDefault(inputs.configDefault, inputs)
   }
 
   if (inputs.ci) {
@@ -74,6 +85,24 @@ export function resolveRunMode(inputs: RunModeInputs): RunModeResolution {
   }
 
   return { mode: 'plain', source: 'auto', reason: 'no TTY' }
+}
+
+function resolveConfigDefault(mode: RunMode, inputs: RunModeInputs): RunModeResolution {
+  if (mode === 'single-pane') {
+    throw new RunModeError(SINGLE_PANE_DEFERRED_MESSAGE)
+  }
+  if (mode === 'two-pane') {
+    if (!inputs.tmuxAvailable) {
+      throw new RunModeError(
+        'orch.config.ts defaultMode=two-pane requires tmux in PATH, but none was found',
+      )
+    }
+    if (!inputs.tmuxVersionOk) {
+      throw new RunModeError('orch.config.ts defaultMode=two-pane requires tmux >= 3.2')
+    }
+    return { mode: 'two-pane', source: 'env', reason: 'orch.config.ts defaultMode' }
+  }
+  return { mode: 'plain', source: 'env', reason: 'orch.config.ts defaultMode' }
 }
 
 function resolveExplicitFlag(inputs: RunModeInputs): RunModeResolution {

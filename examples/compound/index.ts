@@ -26,7 +26,10 @@
  *   - Slash commands in autonomous mode depend on the Claude CLI resolving
  *     skills inside `-p` / `--print`. If a step returns no structured output,
  *     check `claude --disable-slash-commands` semantics.
- *   - Interactive brainstorm conflicts with `--tmux`. Run without it.
+ *   - Interactive brainstorm under `--mode=two-pane` takes the right pane
+ *     via `tmux respawn-pane -k`; autonomous steps stream a readable
+ *     transcript in the same pane. `--mode=plain` errors on the interactive
+ *     step with the documented `ViewResolutionError`.
  */
 
 import * as nodePath from 'node:path'

@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { parseArgs } from 'node:util'
+import { ConfigLoadError, loadConfig } from '../config/index.ts'
 import {
   detectCi,
   isRunMode,
@@ -9,11 +10,16 @@ import {
   resolveRunMode,
   type WorkflowArgs,
 } from '../core/index.ts'
-import { createPlainHost, createTmuxHost, type Host, type PlainFormat } from '../hosts/index.ts'
-import type { Clock } from '../services/clock/index.ts'
+import {
+  createHostRegistry,
+  type HostFactory,
+  type HostFactoryInputs,
+  type PlainFormat,
+  registerBuiltinHosts,
+} from '../hosts/index.ts'
 import type { ProcessService } from '../services/process/index.ts'
-import type { RunId } from '../state/index.ts'
 import { dryRunCmd } from './commands/dry-run.ts'
+import { logsCmd } from './commands/logs.ts'
 import { resumeCmd } from './commands/resume.ts'
 import { runCmd } from './commands/run.ts'
 import { runsCmd } from './commands/runs.ts'
@@ -52,19 +58,11 @@ export interface CliOpts {
 
 // ---------------------------------------------------------------------------
 // HostFactory — command handlers own run-id creation but don't know how to
-// pick a host. The entry point hands them a factory that resolves the mode
-// once per invocation and builds the right Host implementation.
+// pick a host. The entry point hands them a factory (resolved from the host
+// registry) that takes per-invocation args and returns the right Host.
 // ---------------------------------------------------------------------------
 
-export interface HostFactoryArgs {
-  readonly runId: RunId
-  readonly workflowName: string
-  readonly stdout: NodeJS.WritableStream
-  readonly stderr: NodeJS.WritableStream
-  readonly clock: Clock
-}
-
-export type HostFactory = (args: HostFactoryArgs) => Promise<Host>
+export type { HostFactory, HostFactoryInputs as HostFactoryArgs }
 
 // ---------------------------------------------------------------------------
 // Help text
@@ -77,6 +75,7 @@ Commands:
   resume [id] [prompt]     Resume a run; optional prompt overrides persisted args
   runs                     List recent runs
   status <id>              Show status of a run
+  logs <runId>             Stream the per-step transcript for a run
   dry-run <name> [prompt]  Preflight check + first-step peek
 
 Options:
@@ -178,8 +177,10 @@ async function resolveMode(
   const tmuxVersionOk = tmuxAvailable && meetsMinimumTmuxVersion(tmuxProbe)
   const tty = typeof process.stdout !== 'undefined' && process.stdout.isTTY === true
   const ci = detectCi(process.env)
+  const configDefault = flag === undefined ? await loadConfigDefaultMode(deps.cwd) : undefined
   return resolveRunMode({
     ...(flag !== undefined ? { flag } : {}),
+    ...(configDefault !== undefined ? { configDefault } : {}),
     ci,
     tty,
     tmuxAvailable,
@@ -187,31 +188,34 @@ async function resolveMode(
   })
 }
 
+async function loadConfigDefaultMode(
+  cwd: ReturnType<typeof createDeps>['cwd'],
+): Promise<RunMode | undefined> {
+  try {
+    const cfg = await loadConfig(cwd)
+    return cfg.defaultMode
+  } catch (err) {
+    // A missing/invalid config is not fatal for mode resolution — commands
+    // that actually need the config will surface the error. Falling through
+    // preserves the "orch commands that don't read config keep working"
+    // contract (runs, status).
+    if (err instanceof ConfigLoadError) return undefined
+    throw err
+  }
+}
+
 export function buildBanner(resolution: RunModeResolution): string {
   return `[orch] mode=${resolution.mode} (${resolution.source}: ${resolution.reason}) · --mode=... to override`
 }
 
-function makePlainHostFactory(format: PlainFormat, processService: ProcessService): HostFactory {
-  return async (args) =>
-    createPlainHost({
-      stdout: args.stdout,
-      stderr: args.stderr,
-      format,
-      clock: args.clock,
-      runId: args.runId,
-      processService,
-    })
-}
-
-function makeTmuxHostFactory(processService: ProcessService): HostFactory {
-  return (args) =>
-    createTmuxHost({
-      processService,
-      clock: args.clock,
-      runId: args.runId,
-      workflowName: args.workflowName,
-      stderr: args.stderr,
-    })
+function pickHostFactory(
+  mode: RunMode,
+  format: PlainFormat,
+  processService: ProcessService,
+): HostFactory {
+  const registry = createHostRegistry()
+  registerBuiltinHosts(registry, { processService, format })
+  return registry.resolve(mode)
 }
 
 // ---------------------------------------------------------------------------
@@ -232,6 +236,7 @@ const COMMANDS: Record<
   resume: resumeCmd,
   runs: commandWithoutHost(runsCmd),
   status: commandWithoutHost(statusCmd),
+  logs: commandWithoutHost(logsCmd),
   'dry-run': commandWithoutHost(dryRunCmd),
 }
 
@@ -302,10 +307,7 @@ async function main(): Promise<never> {
   }
 
   const opts: CliOpts = { mode: resolution.mode, format: parsed.format }
-  const hostFactory: HostFactory =
-    resolution.mode === 'two-pane'
-      ? makeTmuxHostFactory(deps.processService)
-      : makePlainHostFactory(parsed.format, deps.processService)
+  const hostFactory = pickHostFactory(resolution.mode, parsed.format, deps.processService)
   const code = await handler(deps, parsed.positional, parsed.args, opts, hostFactory)
   process.exit(code)
 }

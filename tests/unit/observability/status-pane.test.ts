@@ -94,7 +94,7 @@ describe('stripAnsi', () => {
 
 function runState(overrides: Partial<RunState> = {}): RunState {
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     id: 'r-2026-04-14-000001' as RunId,
     status: 'running',
     startedAt: 0,

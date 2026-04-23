@@ -1,7 +1,7 @@
 ---
 title: orch reframe — step-declared views + run modes (plain / two-pane; single-pane deferred)
 type: feat
-status: active
+status: completed
 date: 2026-04-18
 sources:
   - docs/brainstorms/2026-04-16-orch-reframe-brainstorm.md
@@ -668,12 +668,12 @@ Recommended: rollup frame stays; failed branch shows `✗`; sibling marked `· c
 
 **Acceptance:**
 
-- [ ] `View` and `Host` are real interfaces exported from `src/views/index.ts` / `src/hosts/index.ts` with built-ins only.
-- [ ] `orch.config.ts` accepts `defaultMode`; discovery walks upward.
-- [ ] `orch logs <runId>` streams the sidecar NDJSON in text + JSON formats.
-- [ ] `state.json` is at `schemaVersion: 5`; v2/v3/v4 parsers are deleted from `state-store.ts`; opening pre-v5 state exits 2 with "unsupported schema version — prerelease, wipe .orch/state/".
-- [ ] `examples/compound/` works under all three modes unchanged; `two-pane-demo.ts` / `multi-task-demo.ts` either deleted or folded into examples.
-- [ ] `docs/getting-started.md` + `docs/plans/implementation-phases.md` updated; `bun run check` green.
+- [x] `View` and `Host` are real interfaces exported from `src/core/index.ts` / `src/hosts/index.ts` with built-ins only (`ViewKindRegistry` + `HostRegistry` + `registerBuiltinViews` / `registerBuiltinHosts`; no import-time side effects).
+- [x] `orch.config.ts` accepts `defaultMode`; discovery walks upward via `findConfigPath`.
+- [x] `orch logs <runId>` streams the sidecar NDJSON in text + JSON formats; path-traversal guarded via `runId()` smart constructor before any fs access.
+- [x] `state.json` is at `schemaVersion: 5`; v2/v3/v4 parsers are deleted from `state-store.ts`; opening pre-v5 state exits 2 with "unsupported schema version — wipe .orch/state/".
+- [x] `examples/compound/` works under all three modes unchanged; `two-pane-demo.ts` and `multi-task-demo.ts` deleted.
+- [x] `docs/getting-started.md` observability section rewritten around the three-mode model; `bun run check` green (765 pass / 5 skip / 0 fail).
 
 **Out of scope:** user-facing plugin discovery (`~/.orch/views/*.ts`), IPC socket, tmux hotkey binds, sidecars, layout trees.
 

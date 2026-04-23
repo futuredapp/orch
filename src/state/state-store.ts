@@ -1,6 +1,3 @@
-// Over the 300-line soft limit because schema migrations (v2 + v3 discriminator
-// + transforms) live alongside the store implementation. Extracting to a
-// separate file would split read/write concerns.
 import { z } from 'zod'
 import type { FsService, Path } from '../services/index.ts'
 import { path } from '../services/index.ts'
@@ -26,6 +23,20 @@ export interface StepEntry {
   readonly validations: ReadonlyArray<PersistedValidation>
   /** How this step was executed. Absent for pre-13a steps (implies autonomous). */
   readonly mode?: 'interactive' | 'autonomous'
+  /**
+   * Relative path (within `.orch/state/<runId>/`) to the step's append-only
+   * RunnerEvent sidecar — one JSON object per line. Absent when the step
+   * emitted no events (silent steps, commit steps, interactive steps).
+   */
+  readonly transcriptPath?: string
+  /** Total RunnerEvents appended to the sidecar. Zero when absent. */
+  readonly transcriptEventCount: number
+  /**
+   * Whether the in-memory ring buffer dropped events before they hit disk.
+   * Always false today (writer flushes every event); reserved for the v2
+   * bounded-buffer mode.
+   */
+  readonly transcriptTruncated: boolean
 }
 
 /** Mirrors `WorkflowArgs` from `src/core/workflow.ts`. Kept structural here
@@ -35,7 +46,7 @@ export interface PersistedWorkflowArgs {
 }
 
 export interface RunState {
-  readonly schemaVersion: 4
+  readonly schemaVersion: 5
   readonly id: RunId
   readonly status: 'running' | 'completed' | 'crashed'
   readonly workflowName?: string
@@ -107,31 +118,17 @@ export const StepEntrySchema = z.object({
   preRunSnapshot: PreRunSnapshotSchema.optional(),
   validations: z.array(PersistedValidationSchema),
   mode: z.enum(['interactive', 'autonomous']).optional(),
-})
-
-const RunStateV2Schema = z.object({
-  schemaVersion: z.literal(2),
-  id: z.string().regex(RUN_ID_PATTERN),
-  status: z.enum(['running', 'completed', 'crashed']),
-  steps: z.record(z.string(), StepEntrySchema),
-})
-
-const RunStateV3Schema = z.object({
-  schemaVersion: z.literal(3),
-  id: z.string().regex(RUN_ID_PATTERN),
-  status: z.enum(['running', 'completed', 'crashed']),
-  workflowName: z.string().optional(),
-  startedAt: z.number(),
-  endedAt: z.number().optional(),
-  steps: z.record(z.string(), StepEntrySchema),
+  transcriptPath: z.string().optional(),
+  transcriptEventCount: z.number().int().nonnegative().default(0),
+  transcriptTruncated: z.boolean().default(false),
 })
 
 const PersistedWorkflowArgsSchema = z.object({
   prompt: z.string().optional(),
 })
 
-const RunStateV4Schema = z.object({
-  schemaVersion: z.literal(4),
+const RunStateV5Schema = z.object({
+  schemaVersion: z.literal(5),
   id: z.string().regex(RUN_ID_PATTERN),
   status: z.enum(['running', 'completed', 'crashed']),
   workflowName: z.string().optional(),
@@ -145,11 +142,6 @@ function errorMessage(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause)
 }
 
-/**
- * Wraps a Zod parse failure with an actionable message when the schema
- * version mismatch is the root cause. Prevents blind `rm -rf .orch/`
- * reflexes during the v1→v2 transition.
- */
 function issueSummary(issues: readonly z.ZodIssue[]): string {
   return issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')
 }
@@ -168,48 +160,23 @@ function rebuildSteps(
       ...(s.preRunSnapshot !== undefined ? { preRunSnapshot: s.preRunSnapshot } : {}),
       validations: s.validations,
       ...(s.mode !== undefined ? { mode: s.mode } : {}),
+      ...(s.transcriptPath !== undefined ? { transcriptPath: s.transcriptPath } : {}),
+      transcriptEventCount: s.transcriptEventCount,
+      transcriptTruncated: s.transcriptTruncated,
     }
   }
   return steps
 }
 
-function parseV2(parsed: unknown, filePath: Path): RunState {
-  const r = RunStateV2Schema.safeParse(parsed)
-  if (!r.success) throw wrapSchemaError(filePath, r.error.issues, issueSummary(r.error.issues))
-  const v2 = r.data
-  const entries = Object.values(v2.steps)
-  return {
-    schemaVersion: 4,
-    id: runId(v2.id),
-    status: v2.status,
-    workflowName: undefined,
-    startedAt: entries.length > 0 ? Math.min(...entries.map((s) => s.startedAt)) : 0,
-    endedAt: undefined,
-    steps: rebuildSteps(v2.steps),
-  }
-}
-
-function parseV3(parsed: unknown, filePath: Path): RunState {
-  const r = RunStateV3Schema.safeParse(parsed)
+// Prerelease: no v2/v3/v4 migration paths. A pre-v5 state file is rejected
+// with a wipe hint rather than silently upgraded — orch has no external
+// users, and every breaking change is one `rm -rf .orch/state` away.
+function parseV5(parsed: unknown, filePath: Path): RunState {
+  const r = RunStateV5Schema.safeParse(parsed)
   if (!r.success) throw wrapSchemaError(filePath, r.error.issues, issueSummary(r.error.issues))
   const d = r.data
   return {
-    schemaVersion: 4,
-    id: runId(d.id),
-    status: d.status,
-    workflowName: d.workflowName,
-    startedAt: d.startedAt,
-    endedAt: d.endedAt,
-    steps: rebuildSteps(d.steps),
-  }
-}
-
-function parseV4(parsed: unknown, filePath: Path): RunState {
-  const r = RunStateV4Schema.safeParse(parsed)
-  if (!r.success) throw wrapSchemaError(filePath, r.error.issues, issueSummary(r.error.issues))
-  const d = r.data
-  return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     id: runId(d.id),
     status: d.status,
     workflowName: d.workflowName,
@@ -220,25 +187,23 @@ function parseV4(parsed: unknown, filePath: Path): RunState {
   }
 }
 
-/**
- * O(1) version discriminator — checks `schemaVersion` field before full Zod
- * validation. Equivalent to `z.discriminatedUnion` but works with `.transform()`
- * (Zod 3.x discriminatedUnion requires ZodObject branches, not ZodEffects).
- */
 function parseVersionedState(parsed: unknown, filePath: Path): RunState {
   const version =
     typeof parsed === 'object' && parsed !== null && 'schemaVersion' in parsed
       ? (parsed as { schemaVersion: unknown }).schemaVersion
       : undefined
 
-  if (version === 2) return parseV2(parsed, filePath)
-  if (version === 3) return parseV3(parsed, filePath)
-  if (version === 4) return parseV4(parsed, filePath)
+  if (version === 5) return parseV5(parsed, filePath)
 
-  // Unknown or missing version — try v4 schema for a structured error
-  const r = RunStateV4Schema.safeParse(parsed)
-  const summary = r.success ? 'unknown version' : issueSummary(r.error.issues)
-  throw wrapSchemaError(filePath, r.success ? [] : r.error.issues, summary)
+  // Any non-5 version is unsupported. Fail fast with a wipe hint rather
+  // than silently attempting a v4-shaped parse.
+  throw new StateCorruptionError(
+    `State file at ${filePath} has unsupported schema version ${
+      version === undefined ? '(missing)' : JSON.stringify(version)
+    }; current is v5. Wipe .orch/state/ and re-run (prerelease, no migrations).`,
+    filePath,
+    [],
+  )
 }
 
 function wrapSchemaError(
@@ -249,8 +214,8 @@ function wrapSchemaError(
   const versionIssue = issues.find((i) => i.path[0] === 'schemaVersion')
   if (versionIssue) {
     return new StateCorruptionError(
-      `State file at ${filePath} has an unsupported schema version; current is v4. ` +
-        `Delete .orch/state/ to reset. (Zod: ${summary})`,
+      `State file at ${filePath} has an unsupported schema version; current is v5. ` +
+        `Wipe .orch/state/ and re-run (prerelease, no migrations). (Zod: ${summary})`,
       filePath,
       issues,
     )
@@ -330,7 +295,7 @@ export class FileStateStore implements StateStore {
 
     const existing = await this.loadRun(rid)
     const state: RunState = {
-      schemaVersion: 4,
+      schemaVersion: 5,
       id: rid,
       status: existing?.status ?? 'running',
       workflowName: existing?.workflowName,
@@ -369,7 +334,7 @@ export class FileStateStore implements StateStore {
     const dir = this.#runDir(rid)
     const file = this.#statePath(rid)
     const state: RunState = {
-      schemaVersion: 4,
+      schemaVersion: 5,
       id: rid,
       status: 'running',
       workflowName: meta?.workflowName,

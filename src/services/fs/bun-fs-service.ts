@@ -39,6 +39,10 @@ export class BunFsService implements FsService {
     await Bun.write(p, data)
   }
 
+  async appendFile(p: Path, data: string): Promise<void> {
+    await fs.appendFile(p, data)
+  }
+
   async rename(from: Path, to: Path): Promise<void> {
     await fs.rename(from, to)
   }

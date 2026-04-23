@@ -497,7 +497,21 @@ Lossy on branches — a stub replay only goes down one side of an `if`. It's a "
 
 ## 12. Observability: what you see while it runs
 
-The orchestrator uses tmux on a dedicated socket (`tmux -L orchestrator`) so it doesn't clobber your own tmux sessions. Two panes:
+### Run modes — where views render
+
+`orch` ships three run modes (v1 wires only `plain` and `two-pane`; `single-pane` is reserved for v2):
+
+| Mode | When it fires | What you see |
+|---|---|---|
+| `plain` | `CI=true`, piped, no-TTY, or `--mode=plain` | `[orch] step:start plan` / `[plan] assistant> …` lines on stdout. `--format=json` emits one NDJSON envelope per event — structured for log ingestion. |
+| `two-pane` | TTY + tmux ≥ 3.2, or `--mode=two-pane` | Dedicated tmux session on `-L orchestrator`: left = status rollup, right = active step's view. Interactive steps take the right pane via `tmux respawn-pane -k`; autonomous steps stream a readable transcript. |
+| `single-pane` | *(v2 — deferred)* | Alt-screen TUI. Explicit `--mode=single-pane` exits 2 in v1 with the deferral message; autodetect never picks it. |
+
+Resolution precedence: `--mode=<x>` > `orch.config.ts` `defaultMode` > `CI=true → plain` > TTY + tmux ≥ 3.2 → `two-pane` > fallback `plain`. The first-run banner prints on stderr with the chosen mode + why, unless `--format=json` suppresses stdout-noise for log consumers.
+
+### `two-pane` — the tmux layout
+
+`--mode=two-pane` uses tmux on a dedicated socket (`tmux -L orchestrator`) so it doesn't clobber your own tmux sessions. Two panes:
 
 - **Left — status pane.** Persistent. Shows current step, elapsed time, running token count, running cost, the list of completed/pending steps, and any pending escalation. Orchestrator paints this; agents never touch it.
 - **Right — agent pane.** Either (a) an interactive agent TUI you talk to directly, or (b) a live pretty-printed stream of tool calls for headless steps. Stays open after failure (`remain-on-exit on`) so you can read the transcript.

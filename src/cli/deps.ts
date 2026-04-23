@@ -22,6 +22,9 @@ export interface CliDeps {
   readonly stateStore: StateStore
   readonly registry: RunRegistry
   readonly cwd: Path
+  /** `<cwd>/.orch/state` — exposed so per-run consumers (transcript sidecar,
+   *  `orch logs`) can derive `<basePath>/<runId>` without re-reading config. */
+  readonly statePath: Path
 }
 
 // ---------------------------------------------------------------------------
@@ -41,5 +44,6 @@ export function createDeps(cwd: string): CliDeps {
     stateStore: new FileStateStore({ fs, basePath }),
     registry: new FileRunRegistry({ fs, basePath }),
     cwd: cwdPath,
+    statePath: basePath,
   }
 }

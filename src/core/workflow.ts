@@ -3,7 +3,7 @@ import type { Host } from '../hosts/index.ts'
 import { runRunner } from '../runners/index.ts'
 import type { Clock, FsService, GitService, ProcessService } from '../services/index.ts'
 import { GitCommandError } from '../services/index.ts'
-import type { StateStore, StepEntry } from '../state/index.ts'
+import type { StateStore, StepEntry, TranscriptSidecar } from '../state/index.ts'
 import {
   anyNeedsHeadSha,
   normalizeValidators,
@@ -139,6 +139,13 @@ export interface WorkflowDeps {
    * `--mode=plain`, `TmuxHost` for `two-pane` once Phase D lands).
    */
   readonly host: Host
+  /**
+   * Writes autonomous steps' RunnerEvents to append-only NDJSON sidecars
+   * under `.orch/state/<runId>/steps/*.transcript.ndjson`. The `StepEntry`
+   * carries only a relative path + event count; `orch logs` streams the
+   * sidecar. Absent in tests that don't care about persistence.
+   */
+  readonly transcriptSidecar?: TranscriptSidecar
   /** Agent-native hook: decouples interactive from TTY. */
   readonly onInteractive?: (ctx: InteractiveContext) => Promise<InteractiveResult>
   /** Injectable session ID generator. Defaults to crypto.randomUUID(). */
@@ -376,6 +383,8 @@ async function runInteractiveStep(
     artifacts: [],
     validations: [],
     mode: 'interactive',
+    transcriptEventCount: 0,
+    transcriptTruncated: false,
   }
   return { value, entry }
 }
@@ -383,6 +392,22 @@ async function runInteractiveStep(
 // ---------------------------------------------------------------------------
 // runAgentStep — executes an autonomous step via a Runner adapter
 // ---------------------------------------------------------------------------
+
+function makeAgentEventHandler(
+  deps: WorkflowDeps,
+  key: StepName,
+  stepTranscript: ReturnType<NonNullable<WorkflowDeps['transcriptSidecar']>['forStep']> | undefined,
+  isSilent: boolean,
+): (evt: import('../runners/index.ts').RunnerEvent) => void {
+  return (evt) => {
+    if (stepTranscript !== undefined) {
+      // Fire-and-forget: events arrive synchronously; the append is awaited
+      // on the background chain inside the sidecar so ordering stays stable.
+      void stepTranscript.append(evt).catch(() => {})
+    }
+    if (!isSilent) deps.host.onRunnerEvent(evt, key)
+  }
+}
 
 async function runAgentStep(
   deps: WorkflowDeps,
@@ -421,17 +446,16 @@ async function runAgentStep(
   const preRunSnapshot = headSha !== undefined ? { headSha } : undefined
 
   const startedAt = deps.clock.now()
-  const runnerDeps: {
-    readonly processService: ProcessService
-    readonly clock: Clock
-    readonly onEvent?: (evt: import('../runners/index.ts').RunnerEvent) => void
-  } = isSilent
-    ? { processService: deps.processService, clock: deps.clock }
-    : {
-        processService: deps.processService,
-        clock: deps.clock,
-        onEvent: (evt) => deps.host.onRunnerEvent(evt, key),
-      }
+  // Sidecar captures every RunnerEvent (silent steps included — `orch logs`
+  // needs the trace even when the host renders nothing). Errors are logged
+  // to stderr but do not abort the step; transcript loss is recoverable,
+  // a step failure from a fs hiccup is not.
+  const stepTranscript = deps.transcriptSidecar?.forStep(key)
+  const runnerDeps = {
+    processService: deps.processService,
+    clock: deps.clock,
+    onEvent: makeAgentEventHandler(deps, key, stepTranscript, isSilent),
+  }
   const result = await runRunner(
     config.agent,
     {
@@ -490,17 +514,45 @@ async function runAgentStep(
     })
   }
 
-  const entry: StepEntry = {
-    name: key,
+  const entry = buildAgentEntry({
+    key,
     value,
     startedAt,
     endedAt: deps.clock.now(),
+    preRunSnapshot,
+    outcomes,
+    transcriptMeta: stepTranscript?.snapshot(),
+  })
+  return { value, entry }
+}
+
+function buildAgentEntry(inputs: {
+  readonly key: StepName
+  readonly value: unknown
+  readonly startedAt: number
+  readonly endedAt: number
+  readonly preRunSnapshot: { readonly headSha: string } | undefined
+  readonly outcomes: ReturnType<typeof runValidators> extends Promise<infer T> ? T : never
+  readonly transcriptMeta:
+    | { readonly transcriptPath: string; readonly transcriptEventCount: number }
+    | undefined
+}): StepEntry {
+  const { transcriptMeta, preRunSnapshot } = inputs
+  return {
+    name: inputs.key,
+    value: inputs.value,
+    startedAt: inputs.startedAt,
+    endedAt: inputs.endedAt,
     artifacts: [],
     ...(preRunSnapshot !== undefined ? { preRunSnapshot } : {}),
-    validations: outcomesToPersisted(outcomes),
+    validations: outcomesToPersisted(inputs.outcomes),
     mode: 'autonomous',
+    ...(transcriptMeta !== undefined && transcriptMeta.transcriptEventCount > 0
+      ? { transcriptPath: transcriptMeta.transcriptPath }
+      : {}),
+    transcriptEventCount: transcriptMeta?.transcriptEventCount ?? 0,
+    transcriptTruncated: false,
   }
-  return { value, entry }
 }
 
 // ---------------------------------------------------------------------------
@@ -534,6 +586,8 @@ async function runCommitStep(
       endedAt: deps.clock.now(),
       artifacts: [],
       validations: [],
+      transcriptEventCount: 0,
+      transcriptTruncated: false,
     }
     return { value: null, entry }
   }
@@ -549,6 +603,8 @@ async function runCommitStep(
     endedAt: deps.clock.now(),
     artifacts: [],
     validations: [],
+    transcriptEventCount: 0,
+    transcriptTruncated: false,
   }
   return { value, entry }
 }

@@ -238,6 +238,8 @@ describe('workflow validator wiring', () => {
       endedAt: 1,
       artifacts: [],
       validations: [],
+      transcriptEventCount: 0,
+      transcriptTruncated: false,
     })
 
     const counting = new CountingGit()

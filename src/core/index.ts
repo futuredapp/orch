@@ -43,6 +43,12 @@ export {
   ViewResolutionError,
   ViewUnsupportedInModeError,
 } from './view.ts'
+export type {
+  StepViewFactory,
+  StepViewFactoryInputs,
+  ViewKindRegistry as ViewKindRegistryPort,
+} from './view-kind-registry.ts'
+export { createViewKindRegistry, registerBuiltinViews } from './view-kind-registry.ts'
 export type { ResolveViewInputs } from './view-registry.ts'
 export { resolveView } from './view-registry.ts'
 export type {

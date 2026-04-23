@@ -33,6 +33,7 @@ function makeDeps(): CliDeps {
     stateStore: new FileStateStore({ fs: bunFs, basePath }),
     registry: new FileRunRegistry({ fs: bunFs, basePath }),
     cwd: path(tmpDir),
+    statePath: basePath,
   }
 }
 
@@ -52,7 +53,7 @@ describe('CLI run-resume cycle (integration)', () => {
     const raw = await fs.readFile(`${tmpDir}/${rid}/state.json`, 'utf-8')
     const state = JSON.parse(raw)
 
-    expect(state.schemaVersion).toBe(4)
+    expect(state.schemaVersion).toBe(5)
     expect(state.workflowName).toBe('deploy')
     expect(state.startedAt).toBe(1000)
     expect(state.endedAt).toBe(5000)
