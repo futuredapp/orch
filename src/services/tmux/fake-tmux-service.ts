@@ -1,0 +1,156 @@
+import type {
+  AttachSessionOptions,
+  CapturePaneOptions,
+  CreateSessionOptions,
+  DisplayMessageOptions,
+  KillPaneOptions,
+  ListPanesOptions,
+  PaneId,
+  PipePaneOptions,
+  SelectPaneOptions,
+  SendKeysOptions,
+  SetHookOptions,
+  SetOptionOptions,
+  SignalChannelOptions,
+  SplitPaneOptions,
+  TmuxService,
+  WaitForOptions,
+} from './tmux-service.ts'
+import { paneId } from './tmux-service.ts'
+
+// ---------------------------------------------------------------------------
+// FakeTmuxService — hybrid command-recorder + scriptable returns
+// ---------------------------------------------------------------------------
+//
+// Most TmuxService methods are side-effect-only, so the default shape is a
+// command recorder: every call is appended to `recordedCalls` so assertions
+// can verify argv construction. A few methods need scripted return values
+// (`splitPane` returns a PaneId, `displayMessage` returns a string), so we
+// expose setter-style helpers (`nextPaneId`, `setDisplayResult`) on top of
+// the recorder.
+//
+// This hybrid is intentional — matches the plan's "command-recording hybrid
+// (setter + spy)" requirement. FakeProcessService uses a fluent builder;
+// FakeGitService uses per-key setters. Both idioms are tolerated as long as
+// the pattern is self-consistent per fake.
+
+export type RecordedCall =
+  | { readonly method: 'createSession'; readonly opts: CreateSessionOptions }
+  | { readonly method: 'splitPane'; readonly opts: SplitPaneOptions }
+  | { readonly method: 'sendKeys'; readonly opts: SendKeysOptions }
+  | { readonly method: 'waitFor'; readonly opts: WaitForOptions }
+  | { readonly method: 'signalChannel'; readonly opts: SignalChannelOptions }
+  | { readonly method: 'setOption'; readonly opts: SetOptionOptions }
+  | { readonly method: 'setHook'; readonly opts: SetHookOptions }
+  | { readonly method: 'displayMessage'; readonly opts: DisplayMessageOptions }
+  | { readonly method: 'killPane'; readonly opts: KillPaneOptions }
+  | { readonly method: 'attachSession'; readonly opts: AttachSessionOptions }
+  | { readonly method: 'selectPane'; readonly opts: SelectPaneOptions }
+  | { readonly method: 'capturePane'; readonly opts: CapturePaneOptions }
+  | { readonly method: 'pipePane'; readonly opts: PipePaneOptions }
+  | { readonly method: 'listPanes'; readonly opts: ListPanesOptions }
+
+export class FakeTmuxService implements TmuxService {
+  readonly #calls: RecordedCall[] = []
+  readonly #paneIds: PaneId[] = []
+  readonly #displayResults: string[] = []
+  readonly #captureResults: string[] = []
+  readonly #listPanesResults: (readonly string[])[] = []
+  #nextSplitPaneCounter = 1
+
+  /** Read-only view of every call received, in order. */
+  get recordedCalls(): readonly RecordedCall[] {
+    return this.#calls
+  }
+
+  /** Script the next `splitPane` return value. Queue, consumed FIFO. */
+  nextPaneId(id: PaneId): void {
+    this.#paneIds.push(id)
+  }
+
+  /** Script the next `displayMessage` return value. Queue, consumed FIFO. */
+  setDisplayResult(value: string): void {
+    this.#displayResults.push(value)
+  }
+
+  /** Script the next `capturePane` return value. Queue, consumed FIFO. */
+  setCaptureResult(value: string): void {
+    this.#captureResults.push(value)
+  }
+
+  /** Script the next `listPanes` return value. Queue, consumed FIFO. */
+  setListPanesResult(value: readonly string[]): void {
+    this.#listPanesResults.push(value)
+  }
+
+  async createSession(opts: CreateSessionOptions): Promise<void> {
+    this.#calls.push({ method: 'createSession', opts })
+  }
+
+  async splitPane(opts: SplitPaneOptions): Promise<PaneId> {
+    this.#calls.push({ method: 'splitPane', opts })
+    const scripted = this.#paneIds.shift()
+    if (scripted !== undefined) return scripted
+    const synthetic = paneId(`%${this.#nextSplitPaneCounter++}`)
+    return synthetic
+  }
+
+  async sendKeys(opts: SendKeysOptions): Promise<void> {
+    this.#calls.push({ method: 'sendKeys', opts })
+  }
+
+  async waitFor(opts: WaitForOptions): Promise<void> {
+    this.#calls.push({ method: 'waitFor', opts })
+  }
+
+  async signalChannel(opts: SignalChannelOptions): Promise<void> {
+    this.#calls.push({ method: 'signalChannel', opts })
+  }
+
+  async setOption(opts: SetOptionOptions): Promise<void> {
+    this.#calls.push({ method: 'setOption', opts })
+  }
+
+  async setHook(opts: SetHookOptions): Promise<void> {
+    this.#calls.push({ method: 'setHook', opts })
+  }
+
+  async displayMessage(opts: DisplayMessageOptions): Promise<string> {
+    this.#calls.push({ method: 'displayMessage', opts })
+    const scripted = this.#displayResults.shift()
+    if (scripted === undefined) {
+      throw new Error(
+        `FakeTmuxService: no displayMessage result scripted (target=${opts.target}, format=${JSON.stringify(opts.format)})`,
+      )
+    }
+    return scripted
+  }
+
+  async killPane(opts: KillPaneOptions): Promise<void> {
+    this.#calls.push({ method: 'killPane', opts })
+  }
+
+  async attachSession(opts: AttachSessionOptions): Promise<void> {
+    this.#calls.push({ method: 'attachSession', opts })
+  }
+
+  async selectPane(opts: SelectPaneOptions): Promise<void> {
+    this.#calls.push({ method: 'selectPane', opts })
+  }
+
+  async capturePane(opts: CapturePaneOptions): Promise<string> {
+    this.#calls.push({ method: 'capturePane', opts })
+    const scripted = this.#captureResults.shift()
+    return scripted ?? ''
+  }
+
+  async pipePane(opts: PipePaneOptions): Promise<void> {
+    this.#calls.push({ method: 'pipePane', opts })
+  }
+
+  async listPanes(opts: ListPanesOptions): Promise<readonly string[]> {
+    this.#calls.push({ method: 'listPanes', opts })
+    const scripted = this.#listPanesResults.shift()
+    return scripted ?? []
+  }
+}

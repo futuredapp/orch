@@ -1,0 +1,295 @@
+// Named `RealTmuxService` (not `BunTmuxService`) because it wraps
+// `ProcessService`, not `Bun.spawn` directly. The runtime seam lives in
+// `ProcessService` — `RealTmuxService` only composes tmux argv.
+
+import type { ProcessService } from '../process/index.ts'
+import { path } from '../types.ts'
+import type {
+  AttachSessionOptions,
+  CapturePaneOptions,
+  CreateSessionOptions,
+  DisplayMessageOptions,
+  KillPaneOptions,
+  ListPanesOptions,
+  PaneId,
+  PipePaneOptions,
+  SelectPaneOptions,
+  SendKeysOptions,
+  SetHookOptions,
+  SetOptionOptions,
+  SignalChannelOptions,
+  SplitPaneOptions,
+  TmuxService,
+  WaitForOptions,
+} from './tmux-service.ts'
+import { paneId, TmuxCommandError } from './tmux-service.ts'
+
+// ---------------------------------------------------------------------------
+// Environment
+// ---------------------------------------------------------------------------
+//
+// Dedicated env for tmux subprocesses. We never forward the full process env
+// because tmux servers are long-lived and per-socket — leaking `TMUX`,
+// `TMUX_PANE`, `TERM_PROGRAM`, or user-configured shell rc-loaders into the
+// orchestrator's server would confuse the layout machinery.
+
+const buildTmuxEnv = (): Readonly<Record<string, string>> => ({
+  PATH: process.env.PATH ?? '',
+  HOME: process.env.HOME ?? '',
+  LANG: process.env.LANG ?? 'C',
+})
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+const MAX_STDERR_LEN = 500
+
+const truncateStderr = (stderr: string): string =>
+  stderr.length > MAX_STDERR_LEN ? `${stderr.slice(0, MAX_STDERR_LEN)}…` : stderr
+
+const fail = (exitCode: number, stderr: string, prefix: string): TmuxCommandError => {
+  const redacted = truncateStderr(stderr)
+  return new TmuxCommandError(exitCode, redacted, `${prefix} (exit ${exitCode}): ${redacted}`)
+}
+
+// ---------------------------------------------------------------------------
+// RealTmuxService
+// ---------------------------------------------------------------------------
+
+export class RealTmuxService implements TmuxService {
+  readonly #processService: ProcessService
+
+  constructor(deps: { readonly processService: ProcessService }) {
+    this.#processService = deps.processService
+  }
+
+  async createSession(opts: CreateSessionOptions): Promise<void> {
+    // `-f /dev/null` — ignore user's `.tmux.conf`. Deterministic layout.
+    // `-d` — detached. Orchestrator attaches later from a different call.
+    const argv = [
+      'tmux',
+      '-L',
+      opts.socket,
+      '-f',
+      '/dev/null',
+      'new-session',
+      '-d',
+      '-s',
+      opts.session,
+      '-x',
+      String(opts.width),
+      '-y',
+      String(opts.height),
+    ]
+    const { stderr, exitCode } = await this.#run(argv)
+    if (exitCode !== 0) throw fail(exitCode, stderr, 'tmux new-session failed')
+  }
+
+  async splitPane(opts: SplitPaneOptions): Promise<PaneId> {
+    const orientationFlag = opts.orientation === 'h' ? '-h' : '-v'
+    const argv = [
+      'tmux',
+      '-L',
+      opts.socket,
+      'split-window',
+      '-t',
+      opts.session,
+      orientationFlag,
+      '-p',
+      String(opts.percent),
+      '-P',
+      '-F',
+      '#{pane_id}',
+    ]
+    if (opts.command !== undefined) argv.push(opts.command)
+
+    const { stdout, stderr, exitCode } = await this.#run(argv)
+    if (exitCode !== 0) throw fail(exitCode, stderr, 'tmux split-window failed')
+
+    const first = stdout.split('\n').find((l) => l.trim().length > 0) ?? ''
+    const trimmed = first.trim()
+    try {
+      return paneId(trimmed)
+    } catch {
+      throw new TmuxCommandError(
+        exitCode,
+        truncateStderr(stderr),
+        `tmux split-window returned unexpected pane id: ${JSON.stringify(trimmed)}`,
+      )
+    }
+  }
+
+  async sendKeys(opts: SendKeysOptions): Promise<void> {
+    const argv = ['tmux', '-L', opts.socket, 'send-keys', '-t', opts.target, '-l', ...opts.keys]
+    const { stderr, exitCode } = await this.#run(argv)
+    if (exitCode !== 0) throw fail(exitCode, stderr, 'tmux send-keys failed')
+
+    if (opts.enter === true) {
+      const enterArgv = ['tmux', '-L', opts.socket, 'send-keys', '-t', opts.target, 'Enter']
+      const enterResult = await this.#run(enterArgv)
+      if (enterResult.exitCode !== 0) {
+        throw fail(enterResult.exitCode, enterResult.stderr, 'tmux send-keys Enter failed')
+      }
+    }
+  }
+
+  async waitFor(opts: WaitForOptions): Promise<void> {
+    // tmux `wait-for` has no native timeout. Race against a timer so we can
+    // fail loud instead of hanging the workflow forever.
+    const argv = ['tmux', '-L', opts.socket, 'wait-for', opts.channel]
+    const run = this.#run(argv)
+
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const timeout = new Promise<'timeout'>((resolve) => {
+      timer = setTimeout(() => resolve('timeout'), opts.timeoutMs)
+    })
+
+    const winner = await Promise.race([run.then(() => 'done' as const), timeout])
+    if (timer !== undefined) clearTimeout(timer)
+
+    if (winner === 'timeout') {
+      throw new TmuxCommandError(
+        -1,
+        '',
+        `tmux wait-for ${opts.channel} timed out after ${opts.timeoutMs}ms`,
+      )
+    }
+
+    const { stderr, exitCode } = await run
+    if (exitCode !== 0) throw fail(exitCode, stderr, 'tmux wait-for failed')
+  }
+
+  async signalChannel(opts: SignalChannelOptions): Promise<void> {
+    const argv = ['tmux', '-L', opts.socket, 'wait-for', '-S', opts.channel]
+    const { stderr, exitCode } = await this.#run(argv)
+    if (exitCode !== 0) throw fail(exitCode, stderr, 'tmux wait-for -S failed')
+  }
+
+  async setOption(opts: SetOptionOptions): Promise<void> {
+    const argv = ['tmux', '-L', opts.socket, 'set-option']
+    if (opts.global === true) {
+      argv.push('-g')
+    } else {
+      argv.push('-t', opts.target)
+    }
+    argv.push(opts.name, opts.value)
+
+    const { stderr, exitCode } = await this.#run(argv)
+    if (exitCode !== 0) throw fail(exitCode, stderr, 'tmux set-option failed')
+  }
+
+  async setHook(opts: SetHookOptions): Promise<void> {
+    const argv = ['tmux', '-L', opts.socket, 'set-hook', '-g', opts.hook, opts.command]
+    const { stderr, exitCode } = await this.#run(argv)
+    if (exitCode !== 0) throw fail(exitCode, stderr, 'tmux set-hook failed')
+  }
+
+  async displayMessage(opts: DisplayMessageOptions): Promise<string> {
+    const argv = [
+      'tmux',
+      '-L',
+      opts.socket,
+      'display-message',
+      '-p',
+      '-t',
+      opts.target,
+      opts.format,
+    ]
+    const { stdout, stderr, exitCode } = await this.#run(argv)
+    if (exitCode !== 0) throw fail(exitCode, stderr, 'tmux display-message failed')
+
+    // tmux returns exit 0 with EMPTY stdout when the target pane is gone.
+    // Treat empty output as a structural error — callers rely on non-empty
+    // strings to make lifecycle decisions.
+    const trimmed = stdout.replace(/\n$/, '')
+    if (trimmed.length === 0) {
+      throw new TmuxCommandError(
+        0,
+        '',
+        `tmux display-message returned empty output — target pane ${opts.target} is not valid`,
+      )
+    }
+    return trimmed
+  }
+
+  async killPane(opts: KillPaneOptions): Promise<void> {
+    const argv = ['tmux', '-L', opts.socket, 'kill-pane', '-t', opts.target]
+    const { stderr, exitCode } = await this.#run(argv)
+    if (exitCode !== 0) throw fail(exitCode, stderr, 'tmux kill-pane failed')
+  }
+
+  async attachSession(opts: AttachSessionOptions): Promise<void> {
+    // Note: this is used from inside workflows where stdin/stdout are not
+    // inherited — tmux still works over the control socket. For a real
+    // interactive attach we expect callers to use `spawnForeground` directly.
+    const argv = ['tmux', '-L', opts.socket, 'attach-session', '-t', opts.session]
+    const { stderr, exitCode } = await this.#run(argv)
+    if (exitCode !== 0) throw fail(exitCode, stderr, 'tmux attach-session failed')
+  }
+
+  async selectPane(opts: SelectPaneOptions): Promise<void> {
+    const argv = ['tmux', '-L', opts.socket, 'select-pane', '-t', opts.target]
+    const { stderr, exitCode } = await this.#run(argv)
+    if (exitCode !== 0) throw fail(exitCode, stderr, 'tmux select-pane failed')
+  }
+
+  async capturePane(opts: CapturePaneOptions): Promise<string> {
+    const argv = ['tmux', '-L', opts.socket, 'capture-pane', '-p', '-t', opts.target]
+    if (opts.escapeCodes === true) argv.push('-e')
+    if (opts.joinWrapped === true) argv.push('-J')
+
+    const { stdout, stderr, exitCode } = await this.#run(argv)
+    if (exitCode !== 0) throw fail(exitCode, stderr, 'tmux capture-pane failed')
+    return stdout
+  }
+
+  async pipePane(opts: PipePaneOptions): Promise<void> {
+    // Empty command removes an existing pipe (tmux's native semantics). We
+    // still pass it positionally so the shape stays uniform.
+    const argv = ['tmux', '-L', opts.socket, 'pipe-pane']
+    if (opts.append === true) argv.push('-O')
+    argv.push('-t', opts.target, opts.command)
+
+    const { stderr, exitCode } = await this.#run(argv)
+    if (exitCode !== 0) throw fail(exitCode, stderr, 'tmux pipe-pane failed')
+  }
+
+  async listPanes(opts: ListPanesOptions): Promise<readonly string[]> {
+    const argv = ['tmux', '-L', opts.socket, 'list-panes', '-t', opts.session, '-F', opts.format]
+    const { stdout, stderr, exitCode } = await this.#run(argv)
+    if (exitCode !== 0) throw fail(exitCode, stderr, 'tmux list-panes failed')
+    return stdout.split('\n').filter((line) => line.length > 0)
+  }
+
+  async #run(
+    argv: readonly string[],
+  ): Promise<{ readonly stdout: string; readonly stderr: string; readonly exitCode: number }> {
+    const handle = this.#processService.spawn({
+      argv,
+      // tmux commands run against the server socket, not a filesystem path;
+      // any existing directory works. `/` is always valid.
+      cwd: path('/'),
+      env: buildTmuxEnv(),
+    })
+
+    const stdoutPromise = (async () => {
+      const parts: string[] = []
+      for await (const line of handle.stdout) parts.push(line)
+      return parts.join('\n')
+    })()
+
+    const stderrPromise = (async () => {
+      const parts: string[] = []
+      for await (const line of handle.stderr) parts.push(line)
+      return parts.join('\n')
+    })()
+
+    const [stdout, stderr, waitResult] = await Promise.all([
+      stdoutPromise,
+      stderrPromise,
+      handle.wait(),
+    ])
+    return { stdout, stderr, exitCode: waitResult.exitCode }
+  }
+}

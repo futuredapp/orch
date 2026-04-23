@@ -19,5 +19,34 @@ export {
   frameLines,
   ProcessSpawnError,
 } from './process/index.ts'
+export type {
+  AttachSessionOptions,
+  CapturePaneOptions,
+  CreateSessionOptions,
+  DisplayMessageOptions,
+  InitSessionOptions,
+  KillPaneOptions,
+  ListPanesOptions,
+  PaneId,
+  PipePaneOptions,
+  RecordedCall,
+  SelectPaneOptions,
+  SendKeysOptions,
+  SetHookOptions,
+  SetOptionOptions,
+  SignalChannelOptions,
+  SocketName,
+  SplitPaneOptions,
+  TmuxService,
+  WaitForOptions,
+} from './tmux/index.ts'
+export {
+  FakeTmuxService,
+  initOrchSession,
+  paneId,
+  RealTmuxService,
+  socketName,
+  TmuxCommandError,
+} from './tmux/index.ts'
 export type { Path } from './types.ts'
 export { path } from './types.ts'
