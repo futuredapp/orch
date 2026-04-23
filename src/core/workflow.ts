@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import type { RunnerEvent } from '../runners/index.ts'
 import { runInteractive, runRunner } from '../runners/index.ts'
 import type { Clock, FsService, GitService, ProcessService } from '../services/index.ts'
 import { GitCommandError } from '../services/index.ts'
@@ -45,6 +46,15 @@ export type JsonValue =
   | null
   | readonly JsonValue[]
   | { readonly [key: string]: JsonValue }
+
+// ---------------------------------------------------------------------------
+// WorkflowArgs — CLI-supplied arguments handed to the workflow callback.
+// ---------------------------------------------------------------------------
+// Only `prompt` is reserved today. Callers use `args.prompt !== undefined`
+// for presence checks — an empty string is a valid, distinct value.
+export interface WorkflowArgs {
+  readonly prompt?: string
+}
 
 // ---------------------------------------------------------------------------
 // RunOverrides — per-call overrides for run()
@@ -96,9 +106,30 @@ export interface WorkflowDeps {
   readonly onInteractive?: (ctx: InteractiveContext) => Promise<InteractiveResult>
   /** Agent-native hook: real-time step lifecycle events. */
   readonly onStepEvent?: (event: StepLifecycleEvent) => void
+  /**
+   * Agent-native hook: fires for every RunnerEvent parsed from an autonomous
+   * step's stdout. Wired by observe mode to tee runner output into a tmux
+   * pane; forwarded straight through to `runRunner`.
+   */
+  readonly onEvent?: (event: RunnerEvent) => void
+  /**
+   * Set by the CLI when `--tmux`/`--observe` activates a session. Interactive
+   * steps currently conflict with the tmux pane layout (they take over the
+   * parent TTY), so `runInteractiveStep` refuses to run while this is `true`.
+   */
+  readonly tmuxActive?: boolean
   /** Injectable session ID generator. Defaults to crypto.randomUUID(). */
   readonly generateSessionId?: () => string
+  /** CLI-supplied arguments. When omitted, the workflow callback sees `{}`. */
+  readonly args?: WorkflowArgs
 }
+
+// ---------------------------------------------------------------------------
+// WorkflowFn — the function a workflow author writes. `args` is optional
+// in the signature so legacy `async (run) => ...` callbacks still compile.
+// ---------------------------------------------------------------------------
+
+export type WorkflowFn = (run: RunFn, args: WorkflowArgs) => Promise<void>
 
 // ---------------------------------------------------------------------------
 // RunFn — the signature of the `run` closure passed to workflow functions
@@ -213,6 +244,15 @@ async function runInteractiveStep(
     throw new InteractiveParallelError(key)
   }
 
+  // Guard: interactive inside an active tmux session — not supported yet
+  // because foreground takeover collides with the status-pane layout.
+  if (deps.tmuxActive === true) {
+    throw new Error(
+      `Interactive step "${key}" is not yet supported with --tmux. ` +
+        'Run the workflow without --tmux/--observe, or mark the step autonomous.',
+    )
+  }
+
   // Guard: runner capability
   if (!config.agent.supports.interactive) {
     throw new RunnerCapabilityError(key, config.agent.name)
@@ -311,7 +351,11 @@ async function runAgentStep(
         ? { schema: { jsonSchema: config.returns.jsonSchema } }
         : {}),
     },
-    { processService: deps.processService, clock: deps.clock },
+    {
+      processService: deps.processService,
+      clock: deps.clock,
+      ...(deps.onEvent !== undefined ? { onEvent: deps.onEvent } : {}),
+    },
   )
 
   if (result.finalEvent.type === 'error' || result.exitCode !== 0) {
@@ -454,15 +498,12 @@ async function runStepOnce(
 // executeWorkflowFn — shared execution body for execute() and resume()
 // ---------------------------------------------------------------------------
 
-async function executeWorkflowFn(
-  fn: (run: RunFn) => Promise<void>,
-  deps: WorkflowDeps,
-): Promise<void> {
+async function executeWorkflowFn(fn: WorkflowFn, deps: WorkflowDeps): Promise<void> {
   const run: RunFn = <T>(s: Step<T>, overrides?: RunOverrides): Promise<T> =>
     runStepOnce(deps, s, overrides) as Promise<T>
 
   try {
-    await fn(run)
+    await fn(run, deps.args ?? {})
     await deps.stateStore.setStatus(deps.runId, 'completed', deps.clock.now())
   } catch (err) {
     try {
@@ -478,13 +519,14 @@ async function executeWorkflowFn(
   }
 }
 
-export function workflow(name: string, fn: (run: RunFn) => Promise<void>): WorkflowExecutor {
+export function workflow(name: string, fn: WorkflowFn): WorkflowExecutor {
   return {
     name,
     async execute(deps: WorkflowDeps): Promise<void> {
       await deps.stateStore.initRun(deps.runId, {
         workflowName: deps.workflowName,
         startedAt: deps.clock.now(),
+        ...(deps.args !== undefined ? { args: deps.args } : {}),
       })
       await executeWorkflowFn(fn, deps)
     },

@@ -151,3 +151,45 @@ describe('runRunner cleanup on failure paths', () => {
     expect(handle.killed).toBe(true)
   })
 })
+
+describe('runRunner onEvent hook (phase 13c observe mode)', () => {
+  it('forwards every parsed RunnerEvent to the onEvent callback in order', async () => {
+    const lines = ['info-1', 'info-2', 'terminal']
+    const stdout: AsyncIterable<string> = {
+      [Symbol.asyncIterator]() {
+        let i = 0
+        return {
+          async next(): Promise<IteratorResult<string>> {
+            if (i < lines.length) {
+              const value = lines[i++] ?? ''
+              return { value, done: false }
+            }
+            return { value: undefined, done: true }
+          },
+        }
+      },
+    }
+
+    const handle = makeHandle(stdout)
+    const ps = new StubProcessService()
+    ps.setNext(handle)
+
+    const runner = dummyRunner((line): RunnerEvent | null => {
+      if (line === 'terminal') return { kind: 'terminal', type: 'turn-complete' }
+      return { kind: 'info', type: line }
+    })
+
+    const observed: RunnerEvent[] = []
+    await runRunner(runner, ctxFor('x'), {
+      processService: ps,
+      clock: new FakeClock(),
+      onEvent: (e) => observed.push(e),
+    })
+
+    expect(observed.map((e) => (e.kind === 'info' ? e.type : `T:${e.type}`))).toEqual([
+      'info-1',
+      'info-2',
+      'T:turn-complete',
+    ])
+  })
+})

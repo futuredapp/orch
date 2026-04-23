@@ -1,5 +1,5 @@
 import type { Clock, ProcessHandle, ProcessService } from '../services/index.ts'
-import type { Runner, RunnerContext, TerminalEvent } from './types.ts'
+import type { Runner, RunnerContext, RunnerEvent, TerminalEvent } from './types.ts'
 import { isTerminalEvent } from './types.ts'
 
 // ---------------------------------------------------------------------------
@@ -34,6 +34,11 @@ export async function runRunner(
   deps: {
     readonly processService: ProcessService
     readonly clock: Clock
+    /**
+     * Agent-native hook: fires for every RunnerEvent parsed from stdout
+     * (terminal + info). Used by observe mode to tee the event stream.
+     */
+    readonly onEvent?: (event: RunnerEvent) => void
   },
 ): Promise<RunnerResult> {
   const startedAt = deps.clock.now()
@@ -51,6 +56,7 @@ export async function runRunner(
       if (finalEvent !== null) continue // drain trailing output without processing
       const evt = runner.parseEvents(line)
       if (evt === null) continue
+      deps.onEvent?.(evt)
       if (isTerminalEvent(evt)) {
         finalEvent = evt
       }

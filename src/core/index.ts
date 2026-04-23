@@ -22,7 +22,9 @@ export type {
   RunFn,
   RunOverrides,
   StepLifecycleEvent,
+  WorkflowArgs,
   WorkflowDeps,
   WorkflowExecutor,
+  WorkflowFn,
 } from './workflow.ts'
 export { workflow } from './workflow.ts'

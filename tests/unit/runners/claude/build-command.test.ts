@@ -216,6 +216,12 @@ describe('buildClaudeEnv', () => {
     expect(env.TERM).toBe('xterm-256color')
     expect(env.COLORTERM).toBe('truecolor')
   })
+
+  it('propagates IS_SANDBOX from processEnv so sandboxed workflows can signal it', () => {
+    const env = buildClaudeEnv({}, { IS_SANDBOX: '1' })
+
+    expect(env.IS_SANDBOX).toBe('1')
+  })
 })
 
 describe('buildCommand interactive mode', () => {
@@ -248,9 +254,16 @@ describe('buildCommand interactive mode', () => {
   })
 
   it('applies flag denylist in interactive mode', () => {
-    const runner = claude({ flags: ['--dangerously-skip-permissions'] })
+    const runner = claude({ flags: ['--settings', '{"evil":true}'] })
 
     expect(() => runner.buildCommand(ctxFor('test', { mode: 'interactive' }))).toThrow(/denylist/)
+  })
+
+  it('passes --dangerously-skip-permissions through to argv (denylist removed by policy)', async () => {
+    const runner = claude({ flags: ['--dangerously-skip-permissions'] })
+    const cmd = await runner.buildCommand(ctxFor('hi'))
+
+    expect(cmd.argv).toContain('--dangerously-skip-permissions')
   })
 
   it('produces autonomous argv unchanged when mode is undefined', async () => {
@@ -288,12 +301,17 @@ describe('buildCommand interactive mode', () => {
 })
 
 describe('claude() flag denylist', () => {
-  it('rejects --dangerously-skip-permissions in flags', () => {
-    const runner = claude({ flags: ['--dangerously-skip-permissions'] })
+  it('rejects --settings in flags', () => {
+    const runner = claude({ flags: ['--settings', '/tmp/evil.json'] })
 
-    expect(() => runner.buildCommand(ctxFor('hi'))).toThrow(
-      /flag "--dangerously-skip-permissions" is on the denylist/,
-    )
+    expect(() => runner.buildCommand(ctxFor('hi'))).toThrow(/flag "--settings" is on the denylist/)
+  })
+
+  it('no longer rejects --dangerously-skip-permissions (removed by policy)', async () => {
+    const runner = claude({ flags: ['--dangerously-skip-permissions'] })
+    const cmd = await runner.buildCommand(ctxFor('hi'))
+
+    expect(cmd.argv).toContain('--dangerously-skip-permissions')
   })
 
   it('rejects --settings in ctx.extraArgs', () => {

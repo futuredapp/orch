@@ -92,6 +92,10 @@ const CLAUDE_ENV_ALLOWLIST = [
   // right ANSI level.
   'TERM',
   'COLORTERM',
+  // IS_SANDBOX=1 is the convention Claude Code uses to signal the process is
+  // running in a sandboxed environment. Allow workflows (e.g. the `compound`
+  // example) to opt into it by exporting the variable before the run.
+  'IS_SANDBOX',
 ] as const
 
 // processEnv is injected for testability; the `process.env` default only
@@ -114,13 +118,13 @@ export function buildClaudeEnv(
   return { ...ctxEnv, ...base }
 }
 
-// Flags that would let a caller escape the sandbox or inject arbitrary
-// config. Denied whether they appear in `flags` or `ctx.extraArgs`.
-const CLAUDE_FLAG_DENYLIST = [
-  '--dangerously-skip-permissions',
-  '--settings',
-  '--mcp-config',
-] as const
+// Flags that would let a caller inject arbitrary config or MCP servers —
+// genuine code-execution vectors. Denied whether they appear in `flags` or
+// `ctx.extraArgs`. Note: `--dangerously-skip-permissions` used to live here
+// but was removed by explicit product decision so sandboxed workflows can
+// opt into unattended runs. Permission bypass is surfaced to the caller as
+// a regular flag, not a secret denylist.
+const CLAUDE_FLAG_DENYLIST = ['--settings', '--mcp-config'] as const
 
 function assertFlagAllowed(flag: string): void {
   for (const deny of CLAUDE_FLAG_DENYLIST) {
