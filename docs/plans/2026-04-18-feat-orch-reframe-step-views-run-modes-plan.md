@@ -500,12 +500,14 @@ Consistent with `RunnerCapabilityError`, `InteractiveParallelError`, `RunNotFoun
 
 **Acceptance:**
 
-- [ ] `orch run compound "task" --mode=two-pane` produces Story 1 / Moments A–C frame shape.
-- [ ] Observing a step's progress in the right pane shows `claude> …` / `▸ tool: …` / `codex> …` — **zero raw JSON**.
-- [ ] `workflow.ts:249` is deleted; an interactive step under `--mode=two-pane` actually runs and takes the right pane via `respawn-pane`.
-- [ ] A failing step renders the Story 1.5 inline failure frame; run exits non-zero.
-- [ ] A `parallel([a, b])` step renders the compact rollup from Story 3 / Moment A; the interactive review step takes the right pane for Moment B.
-- [ ] `bun run check` green, `tmux -V` gated real tests green on the dev machine.
+- [x] **(D1)** Observing a step's progress in the right pane shows readable transcript lines (`[step] assistant> …`, `▸ tool: …`) — **zero raw JSON**. Covered by `tests/unit/hosts/tmux-host.test.ts` + `tests/integration/hosts/two-pane-mocked.test.ts`.
+- [x] **(D1)** Interactive step under `--mode=two-pane` runs; the right pane is taken over via `respawn-pane -k`, and on exit the `cat` placeholder is restored. Covered by `tests/integration/hosts/two-pane-interactive.test.ts`.
+- [x] **(D1)** Per-pane serial write queue (`src/hosts/two-pane/pane-queue.ts`) prevents transcript keystrokes from racing `respawn-pane -k`.
+- [x] **(D1)** `src/cli/tmux-wiring.ts` deleted; logic migrated into `src/hosts/two-pane/tmux-host.ts`. `--mode=two-pane` wired via `makeTmuxHostFactory` in `src/cli/main.ts`.
+- [x] **(D1)** `bun run check` green (742 pass / 5 skip / 0 fail).
+- [ ] **(D1)** `orch run compound "task" --mode=two-pane` produces Story 1 / Moments A–C frame shape end-to-end on a real tmux session. — Pending real-tmux gated integration test (follow-up).
+- [ ] **(D2)** A failing step renders the Story 1.5 inline failure frame; run exits non-zero. — Phase D2.
+- [ ] **(D2)** A `parallel([a, b])` step renders the compact rollup from Story 3 / Moment A; the interactive review step takes the right pane for Moment B. — Phase D2.
 
 **Out of scope:** per-step sidecars, global sidecars, hotkeys, layout trees, non-tmux multiplexers, split-pane-per-branch.
 

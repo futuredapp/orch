@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { Host } from '../hosts/index.ts'
-import { runInteractive, runRunner } from '../runners/index.ts'
+import { runRunner } from '../runners/index.ts'
 import type { Clock, FsService, GitService, ProcessService } from '../services/index.ts'
 import { GitCommandError } from '../services/index.ts'
 import type { StateStore, StepEntry } from '../state/index.ts'
@@ -70,7 +70,8 @@ export interface RunOverrides {
 }
 
 // ---------------------------------------------------------------------------
-// StepLifecycleEvent — emitted via onStepEvent for observability
+// StepLifecycleEvent — fans out through `host.onLifecycleEvent` for every
+// observer (status rollup, plain-host line printer, future plugins).
 // ---------------------------------------------------------------------------
 
 export type StepLifecycleEvent =
@@ -276,22 +277,31 @@ async function runInteractiveStep(
     exitCode = result.exitCode
     durationMs = result.durationMs
   } else {
-    if (typeof process !== 'undefined' && process.stdin && !process.stdin.isTTY) {
+    // Plain host requires a TTY (inherits stdio); tmux host takes the pane
+    // over via respawn-pane, so the parent-process TTY is irrelevant there.
+    if (
+      deps.host.mode === 'plain' &&
+      typeof process !== 'undefined' &&
+      process.stdin &&
+      !process.stdin.isTTY
+    ) {
       throw new Error(`Interactive step "${key}" requires a TTY or an onInteractive handler`)
     }
 
-    const result = await runInteractive(
-      config.agent,
-      {
-        cwd: deps.cwd,
-        env: {},
-        prompt,
-        extraArgs: [],
-        mode: 'interactive',
-        sessionId,
-      },
-      { processService: deps.processService, clock: deps.clock },
-    )
+    const cmd = await config.agent.buildCommand({
+      cwd: deps.cwd,
+      env: {},
+      prompt,
+      extraArgs: [],
+      mode: 'interactive',
+      sessionId,
+    })
+    const result = await deps.host.runInteractive({
+      argv: cmd.argv,
+      env: cmd.env,
+      cwd: deps.cwd,
+      stepName: key,
+    })
     exitCode = result.exitCode
     durationMs = result.durationMs
   }

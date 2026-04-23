@@ -179,6 +179,20 @@ export interface ListPanesOptions {
   readonly format: string
 }
 
+export interface RespawnPaneOptions {
+  readonly socket: SocketName
+  readonly target: PaneId
+  /**
+   * Argv for the replacement process. Array-only, never a shell string — tmux
+   * passes each element verbatim as argv, so step names containing `;`, `$()`,
+   * `\n`, or backticks cannot inject. The array shape is load-bearing for Phase
+   * D's `respawn-pane -k` interactive handoff.
+   */
+  readonly argv: readonly string[]
+  /** `-k` — terminate any running process in the target pane before respawning. */
+  readonly killRunning: boolean
+}
+
 // ---------------------------------------------------------------------------
 // TmuxService
 // ---------------------------------------------------------------------------
@@ -249,4 +263,16 @@ export interface TmuxService {
    * pane ids without hand-tracking them.
    */
   listPanes(opts: ListPanesOptions): Promise<readonly string[]>
+
+  /**
+   * `tmux -L <socket> respawn-pane [-k] -t <pane> <argv...>` — replace the
+   * process running inside an existing pane. Phase D's interactive hand-off
+   * uses `-k` to kill any running process (the default `cat` placeholder)
+   * before launching the runner argv; on step end the host respawns back to
+   * `cat` to restore the placeholder for the next transcript stream.
+   *
+   * Argv is passed array-first; tmux never shells it out, so inputs containing
+   * metacharacters are safe.
+   */
+  respawnPane(opts: RespawnPaneOptions): Promise<void>
 }

@@ -9,8 +9,9 @@ import {
   resolveRunMode,
   type WorkflowArgs,
 } from '../core/index.ts'
-import { createPlainHost, type Host, type PlainFormat } from '../hosts/index.ts'
+import { createPlainHost, createTmuxHost, type Host, type PlainFormat } from '../hosts/index.ts'
 import type { Clock } from '../services/clock/index.ts'
+import type { ProcessService } from '../services/process/index.ts'
 import type { RunId } from '../state/index.ts'
 import { dryRunCmd } from './commands/dry-run.ts'
 import { resumeCmd } from './commands/resume.ts'
@@ -63,7 +64,7 @@ export interface HostFactoryArgs {
   readonly clock: Clock
 }
 
-export type HostFactory = (args: HostFactoryArgs) => Host
+export type HostFactory = (args: HostFactoryArgs) => Promise<Host>
 
 // ---------------------------------------------------------------------------
 // Help text
@@ -190,14 +191,26 @@ export function buildBanner(resolution: RunModeResolution): string {
   return `[orch] mode=${resolution.mode} (${resolution.source}: ${resolution.reason}) · --mode=... to override`
 }
 
-function makePlainHostFactory(format: PlainFormat): HostFactory {
-  return (args) =>
+function makePlainHostFactory(format: PlainFormat, processService: ProcessService): HostFactory {
+  return async (args) =>
     createPlainHost({
       stdout: args.stdout,
       stderr: args.stderr,
       format,
       clock: args.clock,
       runId: args.runId,
+      processService,
+    })
+}
+
+function makeTmuxHostFactory(processService: ProcessService): HostFactory {
+  return (args) =>
+    createTmuxHost({
+      processService,
+      clock: args.clock,
+      runId: args.runId,
+      workflowName: args.workflowName,
+      stderr: args.stderr,
     })
 }
 
@@ -284,21 +297,15 @@ async function main(): Promise<never> {
     throw err
   }
 
-  // Two-pane is Phase D; accepted by the type system but not yet wired at the
-  // CLI boundary. Exit cleanly with the deferral message so the user knows.
-  if (resolution.mode === 'two-pane') {
-    process.stderr.write(
-      'two-pane mode is not yet wired in Phase A — pending Phase D. Use --mode=plain.\n',
-    )
-    process.exit(EXIT.CONFIG_ERROR)
-  }
-
   if (parsed.format !== 'json') {
     process.stderr.write(`${buildBanner(resolution)}\n`)
   }
 
   const opts: CliOpts = { mode: resolution.mode, format: parsed.format }
-  const hostFactory = makePlainHostFactory(parsed.format)
+  const hostFactory: HostFactory =
+    resolution.mode === 'two-pane'
+      ? makeTmuxHostFactory(deps.processService)
+      : makePlainHostFactory(parsed.format, deps.processService)
   const code = await handler(deps, parsed.positional, parsed.args, opts, hostFactory)
   process.exit(code)
 }

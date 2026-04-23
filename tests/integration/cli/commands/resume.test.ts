@@ -36,7 +36,7 @@ function makeDeps(): CliDeps {
 
 const DEFAULT_OPTS: CliOpts = { mode: 'plain', format: 'text' }
 
-const DEFAULT_HOST_FACTORY: HostFactory = (args) =>
+const DEFAULT_HOST_FACTORY: HostFactory = async (args) =>
   createPlainHost({
     stdout: args.stdout,
     stderr: args.stderr,

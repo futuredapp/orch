@@ -13,6 +13,7 @@ import type {
   ListPanesOptions,
   PaneId,
   PipePaneOptions,
+  RespawnPaneOptions,
   SelectPaneOptions,
   SendKeysOptions,
   SetHookOptions,
@@ -260,6 +261,18 @@ export class RealTmuxService implements TmuxService {
     const { stdout, stderr, exitCode } = await this.#run(argv)
     if (exitCode !== 0) throw fail(exitCode, stderr, 'tmux list-panes failed')
     return stdout.split('\n').filter((line) => line.length > 0)
+  }
+
+  async respawnPane(opts: RespawnPaneOptions): Promise<void> {
+    // Array-only argv — tmux passes each element verbatim to execvp so
+    // metacharacters in step names or prompts can never inject. `-k` kills
+    // any running process (the default `cat` placeholder) before respawn.
+    const argv: string[] = ['tmux', '-L', opts.socket, 'respawn-pane']
+    if (opts.killRunning) argv.push('-k')
+    argv.push('-t', opts.target, ...opts.argv)
+
+    const { stderr, exitCode } = await this.#run(argv)
+    if (exitCode !== 0) throw fail(exitCode, stderr, 'tmux respawn-pane failed')
   }
 
   async #run(

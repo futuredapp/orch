@@ -18,7 +18,7 @@
 // stdout stream is a single sink regardless of which pane a view claims.
 
 import type { RunMode } from '../core/run-mode.ts'
-import type { StepName } from '../core/types.ts'
+import type { Path, StepName } from '../core/types.ts'
 import type { PaneRole } from '../core/view.ts'
 import type { StepLifecycleEvent } from '../core/workflow.ts'
 import type { RunnerEvent } from '../runners/index.ts'
@@ -41,6 +41,24 @@ export interface PaneAttachment {
   detach(): Promise<void>
 }
 
+/**
+ * Arguments for running an interactive process on the host. The plain host
+ * maps this to `spawnForeground`; the tmux host maps it to `respawn-pane -k`
+ * on the right pane and then waits on `wait-for pane-exit-<paneId>`.
+ */
+export interface InteractiveSpawn {
+  readonly argv: readonly string[]
+  readonly env: Readonly<Record<string, string>>
+  readonly cwd: Path
+  /** Step name — used by hosts for logging / pane hints. */
+  readonly stepName: StepName
+}
+
+export interface InteractiveResult {
+  readonly exitCode: number
+  readonly durationMs: number
+}
+
 export interface Host {
   readonly mode: RunMode
   /** First-run banner; emitted once per invocation by the CLI entry point. */
@@ -56,5 +74,15 @@ export interface Host {
    * panes when interactive steps begin.
    */
   attach(pane: PaneRole): Promise<PaneAttachment>
+  /**
+   * Run an interactive process on the host's own terms.
+   *
+   * - Plain host spawns in the foreground (inherited stdio); exit code flows
+   *   back when the process ends.
+   * - Tmux host respawns the right pane with the runner argv, then waits for
+   *   `pane-exit-<paneId>`; on exit, the pane is respawned back to `cat` so
+   *   the next transcript stream has a clean placeholder.
+   */
+  runInteractive(opts: InteractiveSpawn): Promise<InteractiveResult>
   teardown(): Promise<void>
 }

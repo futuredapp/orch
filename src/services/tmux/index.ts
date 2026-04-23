@@ -12,6 +12,7 @@ export type {
   ListPanesOptions,
   PaneId,
   PipePaneOptions,
+  RespawnPaneOptions,
   SelectPaneOptions,
   SendKeysOptions,
   SetHookOptions,

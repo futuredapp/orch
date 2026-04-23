@@ -14,7 +14,13 @@
 import type { RunMode } from '../../src/core/run-mode.ts'
 import type { StepName } from '../../src/core/types.ts'
 import type { StepLifecycleEvent } from '../../src/core/workflow.ts'
-import type { Host, PaneAttachment, PaneRole } from '../../src/hosts/index.ts'
+import type {
+  Host,
+  InteractiveResult,
+  InteractiveSpawn,
+  PaneAttachment,
+  PaneRole,
+} from '../../src/hosts/index.ts'
 import type { RunnerEvent } from '../../src/runners/index.ts'
 
 export interface RecordedRunnerEvent {
@@ -34,23 +40,37 @@ export interface FakeHostOptions {
   readonly mode?: RunMode
 }
 
+export interface RecordedInteractiveSpawn {
+  readonly argv: readonly string[]
+  readonly env: Readonly<Record<string, string>>
+  readonly stepName: StepName
+}
+
 export interface FakeHost extends Host {
   readonly recorded: readonly RecordedHostEvent[]
   readonly banners: readonly string[]
   readonly attachments: readonly PaneRole[]
+  readonly interactiveSpawns: readonly RecordedInteractiveSpawn[]
+  setInteractiveResult(result: InteractiveResult): void
 }
 
 export function createFakeHost(opts: FakeHostOptions = {}): FakeHost {
   const recorded: RecordedHostEvent[] = []
   const banners: string[] = []
   const attachments: PaneRole[] = []
+  const interactiveSpawns: RecordedInteractiveSpawn[] = []
   const mode: RunMode = opts.mode ?? 'plain'
+  let nextInteractive: InteractiveResult = { exitCode: 0, durationMs: 0 }
 
   const host: FakeHost = {
     mode,
     recorded,
     banners,
     attachments,
+    interactiveSpawns,
+    setInteractiveResult(result: InteractiveResult): void {
+      nextInteractive = result
+    },
     writeBanner(line: string): void {
       banners.push(line)
     },
@@ -68,6 +88,14 @@ export function createFakeHost(opts: FakeHostOptions = {}): FakeHost {
           /* no-op */
         },
       }
+    },
+    async runInteractive(spawn: InteractiveSpawn): Promise<InteractiveResult> {
+      interactiveSpawns.push({
+        argv: spawn.argv,
+        env: spawn.env,
+        stepName: spawn.stepName,
+      })
+      return nextInteractive
     },
     async teardown(): Promise<void> {
       /* no-op */

@@ -54,7 +54,7 @@ export async function runCmd(
     args.prompt !== undefined ? ` with prompt: "${formatPromptPreview(args.prompt)}"` : ''
   process.stderr.write(`Running workflow "${name}" (${runId})${promptSuffix}...\n`)
 
-  const host = hostFactory({
+  const host = await hostFactory({
     runId,
     workflowName: name,
     stdout: process.stdout,

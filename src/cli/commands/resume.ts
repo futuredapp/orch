@@ -111,7 +111,7 @@ export async function resumeCmd(
   const loaded = await loadWorkflow(deps.cwd, workflowName)
   if (isLoadError(loaded)) return loaded.code
 
-  const host = hostFactory({
+  const host = await hostFactory({
     runId: targetId,
     workflowName,
     stdout: process.stdout,

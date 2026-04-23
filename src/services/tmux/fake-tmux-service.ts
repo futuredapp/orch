@@ -7,6 +7,7 @@ import type {
   ListPanesOptions,
   PaneId,
   PipePaneOptions,
+  RespawnPaneOptions,
   SelectPaneOptions,
   SendKeysOptions,
   SetHookOptions,
@@ -49,6 +50,7 @@ export type RecordedCall =
   | { readonly method: 'capturePane'; readonly opts: CapturePaneOptions }
   | { readonly method: 'pipePane'; readonly opts: PipePaneOptions }
   | { readonly method: 'listPanes'; readonly opts: ListPanesOptions }
+  | { readonly method: 'respawnPane'; readonly opts: RespawnPaneOptions }
 
 export class FakeTmuxService implements TmuxService {
   readonly #calls: RecordedCall[] = []
@@ -152,5 +154,9 @@ export class FakeTmuxService implements TmuxService {
     this.#calls.push({ method: 'listPanes', opts })
     const scripted = this.#listPanesResults.shift()
     return scripted ?? []
+  }
+
+  async respawnPane(opts: RespawnPaneOptions): Promise<void> {
+    this.#calls.push({ method: 'respawnPane', opts })
   }
 }

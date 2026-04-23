@@ -334,3 +334,43 @@ describe('FakeTmuxService.listPanes', () => {
     expect(out).toEqual([])
   })
 })
+
+describe('FakeTmuxService.respawnPane', () => {
+  it('records argv verbatim even when entries contain shell metacharacters', async () => {
+    const tmux = new FakeTmuxService()
+    const socket = socketName('orch-1')
+    const target = paneId('%2')
+
+    // A step name crafted to inject if tmux ever ran argv through a shell.
+    // FakeTmuxService proves the recording contract; RealTmuxService relies
+    // on array argv so execvp never sees a shell.
+    await tmux.respawnPane({
+      socket,
+      target,
+      argv: ['claude', '--prompt', 'plan; rm -rf ~'],
+      killRunning: true,
+    })
+
+    const call = tmux.recordedCalls[0]
+    expect(call?.method).toBe('respawnPane')
+    if (call?.method !== 'respawnPane') throw new Error('expected respawnPane call')
+    expect(call.opts.killRunning).toBe(true)
+    expect(call.opts.argv).toEqual(['claude', '--prompt', 'plan; rm -rf ~'])
+    expect(call.opts.target).toBe(target)
+  })
+
+  it('records killRunning=false when the caller opts out of -k', async () => {
+    const tmux = new FakeTmuxService()
+
+    await tmux.respawnPane({
+      socket: socketName('orch-1'),
+      target: paneId('%3'),
+      argv: ['cat'],
+      killRunning: false,
+    })
+
+    const call = tmux.recordedCalls[0]
+    if (call?.method !== 'respawnPane') throw new Error('expected respawnPane call')
+    expect(call.opts.killRunning).toBe(false)
+  })
+})

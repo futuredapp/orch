@@ -16,7 +16,14 @@ import type { RunId, StepName } from '../../core/types.ts'
 import type { StepLifecycleEvent } from '../../core/workflow.ts'
 import type { RunnerEvent } from '../../runners/index.ts'
 import type { Clock } from '../../services/clock/index.ts'
-import type { Host, PaneAttachment, PaneRole } from '../host.ts'
+import type { ProcessService } from '../../services/process/index.ts'
+import type {
+  Host,
+  InteractiveResult,
+  InteractiveSpawn,
+  PaneAttachment,
+  PaneRole,
+} from '../host.ts'
 import { renderTranscriptLine } from './transcript-text.ts'
 
 export type PlainFormat = 'text' | 'json'
@@ -27,6 +34,12 @@ export interface PlainHostOptions {
   readonly format: PlainFormat
   readonly clock: Clock
   readonly runId: RunId
+  /**
+   * Needed only for `runInteractive` (interactive steps under `--mode=plain`).
+   * Other host methods never reach for it. The CLI wiring always passes it;
+   * kept optional so tests that only exercise text/JSON output can omit it.
+   */
+  readonly processService?: ProcessService
 }
 
 export function createPlainHost(opts: PlainHostOptions): Host {
@@ -71,11 +84,27 @@ export function createPlainHost(opts: PlainHostOptions): Host {
     },
   })
 
+  const runInteractive = async (spawn: InteractiveSpawn): Promise<InteractiveResult> => {
+    if (opts.processService === undefined) {
+      throw new Error(
+        `PlainHost: cannot run interactive step "${spawn.stepName}" without processService`,
+      )
+    }
+    const startedAt = opts.clock.now()
+    const handle = opts.processService.spawnForeground({
+      argv: spawn.argv,
+      env: spawn.env,
+      cwd: spawn.cwd,
+    })
+    const { exitCode } = await handle.wait()
+    return { exitCode, durationMs: opts.clock.now() - startedAt }
+  }
+
   const teardown = async (): Promise<void> => {
     /* plain writes are synchronous; nothing to flush. */
   }
 
-  return { mode, writeBanner, onRunnerEvent, onLifecycleEvent, attach, teardown }
+  return { mode, writeBanner, onRunnerEvent, onLifecycleEvent, attach, runInteractive, teardown }
 }
 
 function textLifecycle(event: StepLifecycleEvent): string {

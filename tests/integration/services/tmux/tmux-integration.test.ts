@@ -365,3 +365,65 @@ describe('RealTmuxService.listPanes', () => {
     ).rejects.toBeInstanceOf(TmuxCommandError)
   })
 })
+
+describe('RealTmuxService.respawnPane', () => {
+  it('composes tmux respawn-pane -k -t <pane> <argv...> with no shell interpretation', async () => {
+    const proc = new FakeProcessService()
+    // The argv entries include a shell-meta step name. If the composer ever
+    // collapses argv to a string, this test would fail to match and explode.
+    proc
+      .when([
+        'tmux',
+        '-L',
+        'orch-1',
+        'respawn-pane',
+        '-k',
+        '-t',
+        '%2',
+        'claude',
+        '--prompt',
+        'plan; rm -rf ~',
+      ])
+      .respondWith({ exitCode: 0 })
+    const tmux = new RealTmuxService({ processService: proc })
+
+    await tmux.respawnPane({
+      socket: socketName('orch-1'),
+      target: paneId('%2'),
+      argv: ['claude', '--prompt', 'plan; rm -rf ~'],
+      killRunning: true,
+    })
+  })
+
+  it('omits -k when killRunning is false', async () => {
+    const proc = new FakeProcessService()
+    proc
+      .when(['tmux', '-L', 'orch-1', 'respawn-pane', '-t', '%3', 'cat'])
+      .respondWith({ exitCode: 0 })
+    const tmux = new RealTmuxService({ processService: proc })
+
+    await tmux.respawnPane({
+      socket: socketName('orch-1'),
+      target: paneId('%3'),
+      argv: ['cat'],
+      killRunning: false,
+    })
+  })
+
+  it('throws TmuxCommandError on non-zero exit', async () => {
+    const proc = new FakeProcessService()
+    proc
+      .when(['tmux', '-L', 'orch-1', 'respawn-pane', '-k', '-t', '%9', 'cat'])
+      .respondWith({ exitCode: 1, stderr: ['pane not found'] })
+    const tmux = new RealTmuxService({ processService: proc })
+
+    await expect(
+      tmux.respawnPane({
+        socket: socketName('orch-1'),
+        target: paneId('%9'),
+        argv: ['cat'],
+        killRunning: true,
+      }),
+    ).rejects.toBeInstanceOf(TmuxCommandError)
+  })
+})
