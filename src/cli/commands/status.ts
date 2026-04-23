@@ -1,12 +1,18 @@
+import type { WorkflowArgs } from '../../core/index.ts'
 import type { RunId } from '../../state/index.ts'
 import { StateCorruptionError } from '../../state/index.ts'
 import type { CliDeps } from '../deps.ts'
 import { glyphs } from '../format.ts'
-import { EXIT } from '../main.ts'
+import { type CliOpts, EXIT } from '../main.ts'
 
 const GLYPH = glyphs(process.stdout.isTTY ?? false)
 
-export async function statusCmd(deps: CliDeps, idArg: string): Promise<number> {
+export async function statusCmd(
+  deps: CliDeps,
+  idArg: string,
+  _args: WorkflowArgs = {},
+  _opts: CliOpts = { tmux: false, observe: false },
+): Promise<number> {
   if (!idArg) {
     process.stderr.write('Usage: orch status <id>\n')
     return EXIT.CONFIG_ERROR

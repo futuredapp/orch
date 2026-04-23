@@ -44,7 +44,7 @@ describe('resumeCmd state-finding (integration)', () => {
     const deps = makeDeps()
     const { resumeCmd } = await import('../../../../src/cli/commands/resume.ts')
 
-    const code = await resumeCmd(deps, '')
+    const code = await resumeCmd(deps, '', {})
 
     expect(code).toBe(EXIT.CANNOT_RESUME)
   })
@@ -58,7 +58,7 @@ describe('resumeCmd state-finding (integration)', () => {
     await deps.stateStore.initRun(rid, { workflowName: 'test', startedAt: 1000 })
     await deps.stateStore.setStatus(rid, 'completed', 2000)
 
-    const code = await resumeCmd(deps, '')
+    const code = await resumeCmd(deps, '', {})
 
     expect(code).toBe(EXIT.CANNOT_RESUME)
   })
@@ -74,7 +74,7 @@ describe('resumeCmd state-finding (integration)', () => {
 
     // Will find the crashed run, then fail on loadConfig (no orch.config.ts)
     // — which is CONFIG_ERROR, not CANNOT_RESUME
-    const code = await resumeCmd(deps, '')
+    const code = await resumeCmd(deps, '', {})
 
     expect(code).toBe(EXIT.CONFIG_ERROR)
   })
@@ -84,7 +84,7 @@ describe('resumeCmd state-finding (integration)', () => {
     const deps = makeDeps()
     const { resumeCmd } = await import('../../../../src/cli/commands/resume.ts')
 
-    const code = await resumeCmd(deps, 'r-2026-04-13-nope00')
+    const code = await resumeCmd(deps, 'r-2026-04-13-nope00', {})
 
     expect(code).toBe(EXIT.CANNOT_RESUME)
   })
@@ -101,9 +101,50 @@ describe('resumeCmd state-finding (integration)', () => {
     await deps.stateStore.initRun(rid2, { startedAt: 3000 })
     await deps.stateStore.setStatus(rid2, 'crashed', 4000)
 
-    const code = await resumeCmd(deps, 'r-2026-04-13-abc')
+    const code = await resumeCmd(deps, 'r-2026-04-13-abc', {})
 
     expect(code).toBe(EXIT.CANNOT_RESUME)
+  })
+
+  it('CLI prompt override is persisted before loadConfig is attempted', async () => {
+    tmpDir = await fs.mkdtemp('/tmp/orch-resume-test-')
+    const deps = makeDeps()
+    const { resumeCmd } = await import('../../../../src/cli/commands/resume.ts')
+
+    const rid = 'r-2026-04-13-arg001' as RunId
+    await deps.stateStore.initRun(rid, {
+      workflowName: 'brainstorm',
+      startedAt: 1000,
+      args: { prompt: 'original' },
+    })
+    await deps.stateStore.setStatus(rid, 'crashed', 2000)
+
+    // loadConfig will fail (no orch.config.ts) -> CONFIG_ERROR, but setArgs
+    // has already persisted by then.
+    const code = await resumeCmd(deps, rid, { prompt: 'overridden' })
+    expect(code).toBe(EXIT.CONFIG_ERROR)
+
+    const state = await deps.stateStore.loadRun(rid)
+    expect(state?.args).toEqual({ prompt: 'overridden' })
+  })
+
+  it('preserves persisted args when CLI supplies none', async () => {
+    tmpDir = await fs.mkdtemp('/tmp/orch-resume-test-')
+    const deps = makeDeps()
+    const { resumeCmd } = await import('../../../../src/cli/commands/resume.ts')
+
+    const rid = 'r-2026-04-13-arg002' as RunId
+    await deps.stateStore.initRun(rid, {
+      workflowName: 'brainstorm',
+      startedAt: 1000,
+      args: { prompt: 'keep me' },
+    })
+    await deps.stateStore.setStatus(rid, 'crashed', 2000)
+
+    await resumeCmd(deps, rid, {})
+
+    const state = await deps.stateStore.loadRun(rid)
+    expect(state?.args).toEqual({ prompt: 'keep me' })
   })
 
   it('returns CANNOT_RESUME for v2 state without workflowName', async () => {
@@ -125,7 +166,7 @@ describe('resumeCmd state-finding (integration)', () => {
       }),
     )
 
-    const code = await resumeCmd(deps, rid)
+    const code = await resumeCmd(deps, rid, {})
 
     expect(code).toBe(EXIT.CANNOT_RESUME)
   })

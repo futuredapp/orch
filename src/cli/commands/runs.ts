@@ -1,12 +1,18 @@
+import type { WorkflowArgs } from '../../core/index.ts'
 import type { CliDeps } from '../deps.ts'
 import { formatDuration, glyphs } from '../format.ts'
-import { EXIT } from '../main.ts'
+import { type CliOpts, EXIT } from '../main.ts'
 
 const DEFAULT_LIMIT = 20
 
 const GLYPH = glyphs(process.stdout.isTTY ?? false)
 
-export async function runsCmd(deps: CliDeps, _positional: string): Promise<number> {
+export async function runsCmd(
+  deps: CliDeps,
+  _positional: string,
+  _args: WorkflowArgs = {},
+  _opts: CliOpts = { tmux: false, observe: false },
+): Promise<number> {
   const allRuns = await deps.registry.listRuns()
   const recentIds = allRuns.slice(-DEFAULT_LIMIT)
 
