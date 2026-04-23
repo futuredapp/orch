@@ -125,6 +125,110 @@ describe('TmuxHost.onRunnerEvent', () => {
   })
 })
 
+describe('TmuxHost.onLifecycleEvent — step:failed', () => {
+  it('writes the Story 1.5 failure frame into the right pane, after pending transcript writes', async () => {
+    const tmux = new FakeTmuxService()
+    tmux.setListPanesResult(['%0'])
+    tmux.nextPaneId(paneId('%42'))
+
+    const { host } = await buildHost(tmux)
+
+    // Queue one transcript line first so we can assert ordering.
+    host.onRunnerEvent(
+      { kind: 'info', type: 'assistant', payload: { text: 'thinking' } },
+      stepName('plan'),
+    )
+    host.onLifecycleEvent({
+      type: 'step:failed',
+      stepName: stepName('plan'),
+      error: new Error('boom'),
+    })
+
+    await host.teardown()
+
+    const rightSendKeys = tmux.recordedCalls.filter(
+      (c) => c.method === 'sendKeys' && c.opts.target === paneId('%42'),
+    )
+    // One transcript line + one failure frame.
+    expect(rightSendKeys).toHaveLength(2)
+    const framePayload = (
+      rightSendKeys[1] as { method: 'sendKeys'; opts: { keys: readonly string[] } }
+    ).opts.keys[0] as string
+    expect(framePayload).toContain('✗ step "plan" failed')
+    expect(framePayload).toContain('  boom')
+    expect(framePayload).toContain('resume:  orch resume')
+    expect(framePayload).toContain('logs:    orch logs')
+  })
+
+  it('forwards the event to the status loop so the left pane marks failed', async () => {
+    const tmux = new FakeTmuxService()
+    tmux.setListPanesResult(['%0'])
+    tmux.nextPaneId(paneId('%42'))
+
+    const { host } = await buildHost(tmux)
+
+    host.onLifecycleEvent({ type: 'step:start', stepName: stepName('plan'), mode: 'autonomous' })
+    host.onLifecycleEvent({
+      type: 'step:failed',
+      stepName: stepName('plan'),
+      error: 'exit 1',
+    })
+
+    // StatusLoop.onStepEvent is fire-and-forget; the best we can check at
+    // this granularity is that some left-pane sendKeys has happened after
+    // the failure event.
+    await host.teardown()
+    const leftSendKeys = tmux.recordedCalls.filter(
+      (c) => c.method === 'sendKeys' && c.opts.target === paneId('%0'),
+    )
+    expect(leftSendKeys.length).toBeGreaterThan(0)
+  })
+})
+
+describe('TmuxHost.onLifecycleEvent — step:parallel-branch-update', () => {
+  it('renders the compact parallel rollup into the right pane on each update', async () => {
+    const tmux = new FakeTmuxService()
+    tmux.setListPanesResult(['%0'])
+    tmux.nextPaneId(paneId('%42'))
+
+    const { host } = await buildHost(tmux)
+
+    host.onLifecycleEvent({
+      type: 'step:parallel-branch-update',
+      stepName: stepName('plan'),
+      branchStatus: 'running',
+    })
+    host.onLifecycleEvent({
+      type: 'step:parallel-branch-update',
+      stepName: stepName('build'),
+      branchStatus: 'running',
+    })
+    host.onLifecycleEvent({
+      type: 'step:parallel-branch-update',
+      stepName: stepName('plan'),
+      branchStatus: 'completed',
+      elapsedMs: 500,
+    })
+
+    await host.teardown()
+
+    const rightFrames = tmux.recordedCalls.filter(
+      (c) => c.method === 'sendKeys' && c.opts.target === paneId('%42'),
+    )
+    // One frame per update. The latest frame contains the final rollup
+    // with `✓ plan` and `● build`.
+    expect(rightFrames.length).toBeGreaterThanOrEqual(3)
+    const last = rightFrames[rightFrames.length - 1] as {
+      method: 'sendKeys'
+      opts: { keys: readonly string[] }
+    }
+    const payload = last.opts.keys[0] as string
+    expect(payload).toContain('parallel branches:')
+    expect(payload).toContain('✓ plan')
+    expect(payload).toContain('● build')
+  })
+})
+
 describe('TmuxHost.runInteractive', () => {
   it('respawns the right pane with the runner argv, then restores the cat placeholder on exit', async () => {
     const tmux = new FakeTmuxService()

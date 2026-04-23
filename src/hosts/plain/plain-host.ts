@@ -11,6 +11,7 @@
 // (Phase A)" for rationale). No banner is emitted on stdout under `json`; the
 // banner still goes to stderr.
 
+import { summarizeFailure } from '../../core/failure-summary.ts'
 import type { RunMode } from '../../core/run-mode.ts'
 import type { RunId, StepName } from '../../core/types.ts'
 import type { StepLifecycleEvent } from '../../core/workflow.ts'
@@ -24,6 +25,7 @@ import type {
   PaneAttachment,
   PaneRole,
 } from '../host.ts'
+import { renderFailureText } from './failure-text.ts'
 import { renderTranscriptLine } from './transcript-text.ts'
 
 export type PlainFormat = 'text' | 'json'
@@ -70,6 +72,18 @@ export function createPlainHost(opts: PlainHostOptions): Host {
       return
     }
     opts.stdout.write(`[orch] ${textLifecycle(event)}\n`)
+    // Story 1.5 frame follows the step:failed line on stderr so TTY users see
+    // the copy-paste resume/logs hints immediately. JSON consumers get the
+    // same info via the structured `ev: step.failed` envelope.
+    if (event.type === 'step:failed') {
+      const summary = summarizeFailure({
+        stepName: event.stepName,
+        runId: opts.runId,
+        error: event.error,
+        failedAt: opts.clock.now(),
+      })
+      opts.stderr.write(renderFailureText(summary))
+    }
   }
 
   const writeBanner = (line: string): void => {
@@ -117,6 +131,8 @@ function textLifecycle(event: StepLifecycleEvent): string {
       return `${event.type} ${event.stepName}: ${formatError(event.error)}`
     case 'step:cached':
       return `${event.type} ${event.stepName}`
+    case 'step:parallel-branch-update':
+      return `${event.type} ${event.stepName} [${event.branchStatus}]`
   }
 }
 
@@ -130,6 +146,14 @@ function jsonLifecycle(event: StepLifecycleEvent): Record<string, unknown> {
       return { ev: 'step.failed', step: event.stepName, error: formatError(event.error) }
     case 'step:cached':
       return { ev: 'step.cached', step: event.stepName }
+    case 'step:parallel-branch-update':
+      return {
+        ev: 'step.parallel-branch-update',
+        step: event.stepName,
+        branchStatus: event.branchStatus,
+        ...(event.elapsedMs !== undefined ? { elapsedMs: event.elapsedMs } : {}),
+        ...(event.toolCount !== undefined ? { toolCount: event.toolCount } : {}),
+      }
   }
 }
 

@@ -90,6 +90,60 @@ describe('--mode=plain --format=text', () => {
   })
 })
 
+describe('--mode=plain — step:failed frame', () => {
+  it('writes the Story 1.5 failure frame to stderr and exits via StepError', async () => {
+    const fs = new FakeFsService()
+    const processService = new FakeProcessService()
+    const clock = new FakeClock(1_700_000_000_000)
+    const stdout = bufferStream()
+    const stderr = bufferStream()
+
+    const host = createPlainHost({
+      stdout: stdout.stream,
+      stderr: stderr.stream,
+      format: 'text',
+      clock,
+      runId: RUN_ID,
+    })
+
+    const agent = new FakeRunner(processService)
+    agent.script({ failWith: { message: 'model timed out' } })
+
+    const deps: WorkflowDeps = {
+      stateStore: new FileStateStore({ fs, basePath: path('/runs') }),
+      processService,
+      clock,
+      runId: RUN_ID,
+      cwd: path('/workspace'),
+      fsService: fs,
+      gitService: new FakeGitService(),
+      host,
+    }
+
+    let caught: unknown
+    try {
+      await workflow('demo', async (run) => {
+        await run(step.define('plan', { agent }))
+      }).execute(deps)
+    } catch (err) {
+      caught = err
+    }
+    await host.teardown()
+
+    expect(caught).toBeDefined()
+
+    // Single-line header on stdout as before.
+    expect(stdout.text()).toContain('[orch] step:failed plan')
+
+    // Inline Story 1.5 frame on stderr.
+    const err = stderr.text()
+    expect(err).toContain('✗ step "plan" failed')
+    expect(err).toContain('model timed out')
+    expect(err).toContain(`orch resume ${RUN_ID}`)
+    expect(err).toContain(`orch logs ${RUN_ID}`)
+  })
+})
+
 describe('--mode=plain --format=json', () => {
   it('emits one NDJSON envelope per event with ts/run/ev/step', async () => {
     const { stdout, stderr } = await runTwoStepPlainWorkflow('json')

@@ -506,8 +506,8 @@ Consistent with `RunnerCapabilityError`, `InteractiveParallelError`, `RunNotFoun
 - [x] **(D1)** `src/cli/tmux-wiring.ts` deleted; logic migrated into `src/hosts/two-pane/tmux-host.ts`. `--mode=two-pane` wired via `makeTmuxHostFactory` in `src/cli/main.ts`.
 - [x] **(D1)** `bun run check` green (742 pass / 5 skip / 0 fail).
 - [ ] **(D1)** `orch run compound "task" --mode=two-pane` produces Story 1 / Moments A–C frame shape end-to-end on a real tmux session. — Pending real-tmux gated integration test (follow-up).
-- [ ] **(D2)** A failing step renders the Story 1.5 inline failure frame; run exits non-zero. — Phase D2.
-- [ ] **(D2)** A `parallel([a, b])` step renders the compact rollup from Story 3 / Moment A; the interactive review step takes the right pane for Moment B. — Phase D2.
+- [x] **(D2)** A failing step renders the Story 1.5 inline failure frame; run exits non-zero. — Covered by `tests/unit/core/failure-summary.test.ts`, `tests/unit/hosts/failure-text.test.ts`, `tests/unit/hosts/plain-host.test.ts`, `tests/unit/hosts/tmux-host.test.ts`, `tests/integration/hosts/plain-mode.test.ts`, `tests/integration/hosts/two-pane-failure-and-parallel.test.ts`.
+- [x] **(D2)** A `parallel([a, b])` step renders the compact rollup from Story 3 / Moment A; the interactive review step takes the right pane for Moment B. — Homogeneous `parallel()` emits `step:parallel-branch-update`; tmux host aggregates via `src/hosts/two-pane/parallel-rollup.ts`. Heterogeneous `parallel([run(A), run(B)])` remains a known limitation (documented on the `StepLifecycleEvent` type); Moment B (interactive takeover) rides unchanged on the existing `respawn-pane` path from D1. Covered by `tests/unit/hosts/parallel-rollup.test.ts`, `tests/unit/hosts/tmux-host.test.ts`, `tests/integration/hosts/two-pane-failure-and-parallel.test.ts`.
 
 **Out of scope:** per-step sidecars, global sidecars, hotkeys, layout trees, non-tmux multiplexers, split-pane-per-branch.
 

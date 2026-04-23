@@ -74,11 +74,40 @@ export interface RunOverrides {
 // observer (status rollup, plain-host line printer, future plugins).
 // ---------------------------------------------------------------------------
 
+/**
+ * Per-branch status updates for the Story 3 parallel rollup. Emitted by the
+ * executor as a *supplement* to `step:start`/`step:complete`/`step:failed`
+ * whenever a step runs inside a `parallel()` call — hosts that know how to
+ * render a compact rollup (two-pane) consume them; hosts that don't (plain)
+ * can safely ignore them because the step:* events already carry the full
+ * lifecycle.
+ *
+ * Limitation: `parallel([run(A), run(B)])` (heterogeneous form) starts each
+ * branch promise before `parallel()` takes over, so `currentParallelDepth()`
+ * is 0 inside those branches and this event does NOT fire. The homogeneous
+ * form `parallel(items, fn)` wraps each call in an AsyncLocalStorage context
+ * and works as designed.
+ */
+export type ParallelBranchStatus = 'running' | 'completed' | 'failed' | 'cancelled'
+
 export type StepLifecycleEvent =
   | { readonly type: 'step:start'; readonly stepName: StepName; readonly mode: StepMode }
   | { readonly type: 'step:complete'; readonly stepName: StepName; readonly durationMs: number }
   | { readonly type: 'step:failed'; readonly stepName: StepName; readonly error: unknown }
   | { readonly type: 'step:cached'; readonly stepName: StepName }
+  | {
+      readonly type: 'step:parallel-branch-update'
+      readonly stepName: StepName
+      readonly branchStatus: ParallelBranchStatus
+      /** ms since the branch started — `undefined` on the first running event. */
+      readonly elapsedMs?: number
+      /**
+       * Best-effort count of tool invocations observed so far. `undefined`
+       * when the executor cannot determine it (e.g. before the runner wires
+       * tool tracking — v2 concern). Hosts treat `undefined` as "unknown".
+       */
+      readonly toolCount?: number
+    }
 
 // ---------------------------------------------------------------------------
 // InteractiveContext — passed to onInteractive handler
@@ -261,6 +290,14 @@ async function runInteractiveStep(
   const prompt = assemblePrompt(config.prompt, overrides)
 
   deps.host.onLifecycleEvent({ type: 'step:start', stepName: key, mode: 'interactive' })
+  const inParallel = currentParallelDepth() > 0
+  if (inParallel) {
+    deps.host.onLifecycleEvent({
+      type: 'step:parallel-branch-update',
+      stepName: key,
+      branchStatus: 'running',
+    })
+  }
 
   // If an onInteractive handler is provided, delegate to it (agent-native).
   // Otherwise, require a TTY and do foreground spawn.
@@ -308,12 +345,28 @@ async function runInteractiveStep(
 
   if (exitCode !== 0) {
     deps.host.onLifecycleEvent({ type: 'step:failed', stepName: key, error: `exit ${exitCode}` })
+    if (inParallel) {
+      deps.host.onLifecycleEvent({
+        type: 'step:parallel-branch-update',
+        stepName: key,
+        branchStatus: 'failed',
+        elapsedMs: durationMs,
+      })
+    }
     throw new StepError(key, exitCode, `interactive session exited ${exitCode}`)
   }
 
   const value: InteractiveResult = { exitCode, durationMs, sessionId }
 
   deps.host.onLifecycleEvent({ type: 'step:complete', stepName: key, durationMs })
+  if (inParallel) {
+    deps.host.onLifecycleEvent({
+      type: 'step:parallel-branch-update',
+      stepName: key,
+      branchStatus: 'completed',
+      elapsedMs: durationMs,
+    })
+  }
 
   const entry: StepEntry = {
     name: key,
@@ -350,8 +403,16 @@ async function runAgentStep(
     stepMode: 'autonomous',
   })
   const isSilent = resolution.kind === 'silent'
+  const inParallel = currentParallelDepth() > 0
 
   deps.host.onLifecycleEvent({ type: 'step:start', stepName: key, mode: 'autonomous' })
+  if (inParallel) {
+    deps.host.onLifecycleEvent({
+      type: 'step:parallel-branch-update',
+      stepName: key,
+      branchStatus: 'running',
+    })
+  }
 
   const normalized = normalizeValidators(config.validate, key)
   const headSha = anyNeedsHeadSha(normalized)
@@ -391,6 +452,14 @@ async function runAgentStep(
         ? result.finalEvent.message
         : `runner exited ${result.exitCode}`
     deps.host.onLifecycleEvent({ type: 'step:failed', stepName: key, error: msg })
+    if (inParallel) {
+      deps.host.onLifecycleEvent({
+        type: 'step:parallel-branch-update',
+        stepName: key,
+        branchStatus: 'failed',
+        elapsedMs: deps.clock.now() - startedAt,
+      })
+    }
     throw new StepError(key, result.exitCode, msg)
   }
 
@@ -412,6 +481,14 @@ async function runAgentStep(
 
   const durationMs = deps.clock.now() - startedAt
   deps.host.onLifecycleEvent({ type: 'step:complete', stepName: key, durationMs })
+  if (inParallel) {
+    deps.host.onLifecycleEvent({
+      type: 'step:parallel-branch-update',
+      stepName: key,
+      branchStatus: 'completed',
+      elapsedMs: durationMs,
+    })
+  }
 
   const entry: StepEntry = {
     name: key,

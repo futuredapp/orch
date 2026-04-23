@@ -8,6 +8,8 @@ export {
   StepError,
 } from './errors.ts'
 export { currentParallelDepth, executionContext } from './execution-context.ts'
+export type { FailureSummary, SummarizeFailureInputs } from './failure-summary.ts'
+export { summarizeFailure } from './failure-summary.ts'
 export type { AwaitedTuple, SettledEntry } from './parallel.ts'
 export { ParallelError, parallel } from './parallel.ts'
 export type { RunMode, RunModeInputs, RunModeResolution, RunModeSource } from './run-mode.ts'
@@ -46,6 +48,7 @@ export { resolveView } from './view-registry.ts'
 export type {
   InteractiveContext,
   JsonValue,
+  ParallelBranchStatus,
   RunFn,
   RunOverrides,
   StepLifecycleEvent,

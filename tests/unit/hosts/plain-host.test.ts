@@ -87,6 +87,40 @@ describe('PlainHost — text format', () => {
   })
 })
 
+describe('PlainHost — step:failed frame', () => {
+  it('writes the Story 1.5 failure frame to stderr after the [orch] line', () => {
+    const { host, stdout, stderr } = makeTextHost()
+    host.onLifecycleEvent({ type: 'step:failed', stepName: STEP, error: new Error('boom') })
+
+    // The single-line summary still goes to stdout as before.
+    expect(stdout.text()).toBe('[orch] step:failed plan: boom\n')
+
+    // The inline failure frame follows on stderr with copy-paste hints.
+    const err = stderr.text()
+    expect(err).toContain('✗ step "plan" failed')
+    expect(err).toContain('  boom')
+    expect(err).toContain(`resume:  orch resume ${RUN_ID}`)
+    expect(err).toContain(`logs:    orch logs ${RUN_ID}`)
+  })
+
+  it('renders a string error message without a stack block', () => {
+    const { host, stderr } = makeTextHost()
+    host.onLifecycleEvent({ type: 'step:failed', stepName: STEP, error: 'exit 137' })
+
+    const err = stderr.text()
+    expect(err).toContain('  exit 137')
+    // No trailing "at …" frames when the error has no stack.
+    expect(err).not.toMatch(/^\s{4}at /m)
+  })
+
+  it('suppresses the stderr failure frame when --format=json', () => {
+    const { host, stderr } = makeJsonHost()
+    host.onLifecycleEvent({ type: 'step:failed', stepName: STEP, error: new Error('boom') })
+
+    expect(stderr.text()).toBe('')
+  })
+})
+
 describe('PlainHost — json format', () => {
   it('suppresses the banner on stderr when --format=json', () => {
     const { host, stdout, stderr } = makeJsonHost()

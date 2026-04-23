@@ -15,6 +15,7 @@
 // transcript keystroke can never land on an interactive process that just
 // took the pane over.
 
+import { summarizeFailure } from '../../core/failure-summary.ts'
 import type { RunMode } from '../../core/run-mode.ts'
 import type { RunId, StepName } from '../../core/types.ts'
 import type { StepLifecycleEvent } from '../../core/workflow.ts'
@@ -32,7 +33,13 @@ import type {
   PaneRole,
 } from '../host.ts'
 import { renderTranscriptLine } from '../plain/transcript-text.ts'
+import { renderFailurePanePayload } from './failure-pane.ts'
 import { createPaneQueue, type PaneQueue } from './pane-queue.ts'
+import {
+  createRollupAggregator,
+  type RollupAggregator,
+  renderRollupPayload,
+} from './parallel-rollup.ts'
 
 // Defaults mirror the old `src/cli/tmux-wiring.ts`. Kept in-file because they
 // are pane-geometry choices, not user-facing config; a v2 layout-tree surface
@@ -130,6 +137,7 @@ export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
     statusLoop,
     stderr: opts.stderr,
     clock: opts.clock,
+    runId: opts.runId,
   })
 }
 
@@ -142,11 +150,13 @@ interface BuildHostDeps {
   readonly statusLoop: StatusLoop
   readonly stderr: NodeJS.WritableStream
   readonly clock: Clock
+  readonly runId: RunId
 }
 
 function buildHost(deps: BuildHostDeps): Host {
   const mode: RunMode = 'two-pane'
   let torndown = false
+  const rollup: RollupAggregator = createRollupAggregator()
 
   const handleSendError = (err: unknown): void => {
     if (torndown) return
@@ -157,8 +167,45 @@ function buildHost(deps: BuildHostDeps): Host {
     deps.stderr.write(`${line}\n`)
   }
 
+  const enqueueRight = (payload: string): void => {
+    if (torndown) return
+    void deps.queue
+      .enqueue(deps.rightPaneId, () =>
+        deps.tmux.sendKeys({
+          socket: deps.socket,
+          target: deps.rightPaneId,
+          keys: [payload],
+        }),
+      )
+      .catch(handleSendError)
+  }
+
   const onLifecycleEvent = (event: StepLifecycleEvent): void => {
     deps.statusLoop.onStepEvent(event)
+    if (event.type === 'step:failed' && !torndown) {
+      const summary = summarizeFailure({
+        stepName: event.stepName,
+        runId: deps.runId,
+        error: event.error,
+        failedAt: deps.clock.now(),
+      })
+      enqueueRight(renderFailurePanePayload(summary))
+      return
+    }
+    if (event.type === 'step:parallel-branch-update') {
+      // Aggregate first, then render the compact rollup. Rollup renders on
+      // every update so branches that finish mid-rollup flip their glyph in
+      // place. Per-branch transcripts still flow through onRunnerEvent —
+      // they interleave with rollup frames in the right pane for v1. A
+      // dedicated rollup-only pane is a v2 concern.
+      const snapshot = rollup.apply({
+        stepName: event.stepName,
+        branchStatus: event.branchStatus,
+        ...(event.elapsedMs !== undefined ? { elapsedMs: event.elapsedMs } : {}),
+        ...(event.toolCount !== undefined ? { toolCount: event.toolCount } : {}),
+      })
+      enqueueRight(renderRollupPayload(snapshot))
+    }
   }
 
   const onRunnerEvent = (event: RunnerEvent, step: StepName): void => {
@@ -236,6 +283,7 @@ function buildHost(deps: BuildHostDeps): Host {
     if (torndown) return
     torndown = true
     deps.statusLoop.stop()
+    rollup.reset()
     await deps.queue.drain()
   }
 

@@ -167,5 +167,12 @@ export function applyEvent(
         ...(previous?.mode !== undefined ? { mode: previous.mode } : {}),
       })
       return
+
+    case 'step:parallel-branch-update':
+      // The left pane's status rollup is driven by the companion step:start
+      // / step:complete / step:failed events; the parallel-branch-update
+      // exists for hosts that render a compact parallel rollup (two-pane).
+      // Swallowing it here is intentional.
+      return
   }
 }
