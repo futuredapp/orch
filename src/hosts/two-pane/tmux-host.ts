@@ -33,6 +33,7 @@ import type {
   PaneRole,
 } from '../host.ts'
 import { renderTranscriptLine } from '../plain/transcript-text.ts'
+import { assertNoNestedTmux, createAttachForeground } from './attach-foreground.ts'
 import { renderFailurePanePayload } from './failure-pane.ts'
 import { createPaneQueue, type PaneQueue } from './pane-queue.ts'
 import {
@@ -66,9 +67,29 @@ export interface TmuxHostOptions {
   readonly stderr: NodeJS.WritableStream
   /** Skip the `tmux -V` probe. Tests using FakeTmuxService set this `true`. */
   readonly skipVersionCheck?: boolean
+  /**
+   * When true, `attachForeground()` prints the old "attach with …" hint and
+   * resolves immediately — no tmux client is spawned. CLI sets this for
+   * `--no-attach`, CI harnesses, and headless runs.
+   */
+  readonly skipAttach?: boolean
+  /**
+   * Environment map consulted for nested-tmux detection (`$TMUX`). Defaults
+   * to `process.env` when the CLI creates the host; tests pass `{}` to
+   * bypass the guard or `{ TMUX: '...' }` to exercise it.
+   */
+  readonly env?: Readonly<Record<string, string | undefined>>
+  /** Current working directory for foreground spawns. Defaults to `process.cwd()`. */
+  readonly cwd?: string
 }
 
 export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
+  // Nested-tmux guard fires before any session work. `attach-session` from
+  // inside another tmux client silently routes to the outer server and
+  // produces a confusing cascade; fail fast with actionable escape options.
+  const env = opts.env ?? (process.env as Readonly<Record<string, string | undefined>>)
+  assertNoNestedTmux(env, opts.skipAttach === true)
+
   const tmux: TmuxService =
     opts.tmux ?? new RealTmuxService({ processService: opts.processService })
   const socket = socketName(`orch-${opts.runId}`)
@@ -123,10 +144,15 @@ export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
     onError: (err) => opts.stderr.write(`[orch tmux] ${String(err)}\n`),
   })
 
-  opts.stderr.write(
-    `[orch tmux] attach with:   tmux -L ${socket} attach -t ${SESSION}\n` +
-      `[orch tmux] clean up with: tmux -L ${socket} kill-server\n`,
-  )
+  // Under `--no-attach`, the CLI keeps the old hint-only behavior. Under
+  // auto-attach (the default), the hint is moot — the attach client takes
+  // over the TTY immediately — and would scroll above the two panes.
+  if (opts.skipAttach === true) {
+    opts.stderr.write(
+      `[orch tmux] attach with:   tmux -L ${socket} attach -t ${SESSION}\n` +
+        `[orch tmux] clean up with: tmux -L ${socket} kill-server\n`,
+    )
+  }
 
   return buildHost({
     tmux,
@@ -138,6 +164,9 @@ export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
     stderr: opts.stderr,
     clock: opts.clock,
     runId: opts.runId,
+    processService: opts.processService,
+    skipAttach: opts.skipAttach === true,
+    cwd: opts.cwd ?? process.cwd(),
   })
 }
 
@@ -151,11 +180,19 @@ interface BuildHostDeps {
   readonly stderr: NodeJS.WritableStream
   readonly clock: Clock
   readonly runId: RunId
+  readonly processService: ProcessService
+  /** When true, `attachForeground()` never spawns `tmux attach-session`. */
+  readonly skipAttach: boolean
+  readonly cwd: string
 }
 
 function buildHost(deps: BuildHostDeps): Host {
   const mode: RunMode = 'two-pane'
   let torndown = false
+  // Set BEFORE teardown issues kill-session so `attachForeground` can tell
+  // "attach client exited because we killed the session" (clean) from
+  // "attach client exited on its own" (unexpected — diagnostic to stderr).
+  let teardownStarted = false
   const rollup: RollupAggregator = createRollupAggregator()
 
   const handleSendError = (err: unknown): void => {
@@ -279,13 +316,32 @@ function buildHost(deps: BuildHostDeps): Host {
     return { exitCode: 0, durationMs: deps.clock.now() - startedAt }
   }
 
+  const attachForeground = createAttachForeground({
+    processService: deps.processService,
+    socket: deps.socket,
+    stderr: deps.stderr,
+    cwd: deps.cwd,
+    skipAttach: deps.skipAttach,
+    isTeardownStarted: () => teardownStarted,
+  })
+
   const teardown = async (): Promise<void> => {
     if (torndown) return
+    teardownStarted = true
     torndown = true
     deps.statusLoop.stop()
     rollup.reset()
     await deps.queue.drain()
   }
 
-  return { mode, writeBanner, onRunnerEvent, onLifecycleEvent, attach, runInteractive, teardown }
+  return {
+    mode,
+    writeBanner,
+    onRunnerEvent,
+    onLifecycleEvent,
+    attach,
+    runInteractive,
+    attachForeground,
+    teardown,
+  }
 }

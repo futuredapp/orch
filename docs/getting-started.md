@@ -504,10 +504,16 @@ Lossy on branches — a stub replay only goes down one side of an `if`. It's a "
 | Mode | When it fires | What you see |
 |---|---|---|
 | `plain` | `CI=true`, piped, no-TTY, or `--mode=plain` | `[orch] step:start plan` / `[plan] assistant> …` lines on stdout. `--format=json` emits one NDJSON envelope per event — structured for log ingestion. |
-| `two-pane` | TTY + tmux ≥ 3.2, or `--mode=two-pane` | Dedicated tmux session on `-L orchestrator`: left = status rollup, right = active step's view. Interactive steps take the right pane via `tmux respawn-pane -k`; autonomous steps stream a readable transcript. |
+| `two-pane` | TTY + tmux ≥ 3.2, or `--mode=two-pane` | Dedicated tmux session on `-L orch-<runId>`: left = status rollup, right = active step's view. **orch auto-attaches your terminal to the session immediately** — you see both panes the moment the run starts. Interactive steps take the right pane via `tmux respawn-pane -k`; autonomous steps stream a readable transcript. |
 | `single-pane` | *(v2 — deferred)* | Alt-screen TUI. Explicit `--mode=single-pane` exits 2 in v1 with the deferral message; autodetect never picks it. |
 
 Resolution precedence: `--mode=<x>` > `orch.config.ts` `defaultMode` > `CI=true → plain` > TTY + tmux ≥ 3.2 → `two-pane` > fallback `plain`. The first-run banner prints on stderr with the chosen mode + why, unless `--format=json` suppresses stdout-noise for log consumers.
+
+#### Detach, `--no-attach`, and nested tmux
+
+- **Detach.** Press `Ctrl-b d` inside the tmux UI. orch prints `[orch] detached. run continues in background.` with `tmux … attach` and `orch logs <runId>` hints. The workflow keeps running in the same orch process until it completes.
+- **`--no-attach`.** Skip auto-attach entirely — orch creates the session, prints the "attach with …" hint, and runs to completion without taking the TTY. Use for CI, screenshot scripts, and any case where you want to attach manually from a second terminal. Pairing `--mode=two-pane --no-attach` is the supported way to run two-pane on a headless box (no TTY required).
+- **Nested tmux.** Running orch from inside a tmux session fails fast (`$TMUX` detected) — auto-attach inside nested tmux routes the client to the outer server and produces a confusing cascade. Escape options in the error message: attach from a pane, run orch outside tmux, or `--mode=plain`.
 
 ### `two-pane` — the tmux layout
 

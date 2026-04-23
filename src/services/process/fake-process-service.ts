@@ -13,6 +13,13 @@ export interface FakeResponse {
 
 export interface FakeForegroundResponse {
   readonly exitCode: number
+  /**
+   * Optional gate — when present, `wait()` resolves only after this promise
+   * settles. Lets tests script order between a foreground spawn and an
+   * external event (workflow completion, simulated user detach). Without it,
+   * `wait()` resolves immediately as before.
+   */
+  readonly exitWhen?: Promise<void>
 }
 
 export class FakeProcessService implements ProcessService {
@@ -123,6 +130,9 @@ export class FakeProcessService implements ProcessService {
     let killed = false
     return {
       async wait() {
+        if (response.exitWhen !== undefined) {
+          await response.exitWhen
+        }
         return { exitCode: killed ? -1 : response.exitCode }
       },
       kill() {

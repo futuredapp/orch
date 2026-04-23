@@ -8,10 +8,12 @@ import {
   type WorkflowArgs,
 } from '../../core/index.ts'
 import type { WorkflowDeps } from '../../core/workflow.ts'
+import { HostCreationError } from '../../hosts/index.ts'
 import type { RunId } from '../../state/index.ts'
 import { createTranscriptSidecar, StateCorruptionError } from '../../state/index.ts'
 import type { CliDeps } from '../deps.ts'
 import { type CliOpts, EXIT, type HostFactory } from '../main.ts'
+import { executeWithAttach } from './execute-with-attach.ts'
 import { isLoadError, loadWorkflow } from './load-workflow.ts'
 
 const SCAN_CAP = 50
@@ -120,13 +122,22 @@ export async function resumeCmd(
   const loaded = await loadWorkflow(deps.cwd, workflowName)
   if (isLoadError(loaded)) return loaded.code
 
-  const host = await hostFactory({
-    runId: targetId,
-    workflowName,
-    stdout: process.stdout,
-    stderr: process.stderr,
-    clock: deps.clock,
-  })
+  let host: Awaited<ReturnType<HostFactory>>
+  try {
+    host = await hostFactory({
+      runId: targetId,
+      workflowName,
+      stdout: process.stdout,
+      stderr: process.stderr,
+      clock: deps.clock,
+    })
+  } catch (err) {
+    if (err instanceof HostCreationError) {
+      process.stderr.write(`${err.message}\n`)
+      return EXIT.CONFIG_ERROR
+    }
+    throw err
+  }
 
   const transcriptSidecar = createTranscriptSidecar({
     fs: deps.fsService,
@@ -148,16 +159,12 @@ export async function resumeCmd(
     transcriptSidecar,
   }
 
-  try {
-    await loaded.executor.resume(wfDeps)
-  } catch (err) {
-    const code = mapResumeError(err)
-    if (code !== undefined) return code
-    throw err
-  } finally {
-    await host.teardown()
-  }
-
-  process.stderr.write(`Run ${targetId} completed.\n`)
-  return EXIT.OK
+  return await executeWithAttach({
+    host,
+    workflow: loaded.executor.resume(wfDeps),
+    runId: targetId,
+    stderr: process.stderr,
+    mapError: mapResumeError,
+    onSuccess: () => process.stderr.write(`Run ${targetId} completed.\n`),
+  })
 }

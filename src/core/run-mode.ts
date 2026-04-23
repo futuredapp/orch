@@ -53,6 +53,13 @@ export interface RunModeInputs {
   readonly tty: boolean
   readonly tmuxAvailable: boolean
   readonly tmuxVersionOk: boolean
+  /**
+   * When true, `--mode=two-pane` without a TTY is accepted (no attach spawn).
+   * Set by the CLI when `--no-attach` is present so CI harnesses and
+   * screenshot scripts can still run in two-pane without a real terminal.
+   * When omitted/false, explicit `--mode=two-pane` without a TTY errors.
+   */
+  readonly allowHeadlessTwoPane?: boolean
 }
 
 export function isRunMode(value: string): value is RunMode {
@@ -118,6 +125,11 @@ function resolveExplicitFlag(inputs: RunModeInputs): RunModeResolution {
     }
     if (!inputs.tmuxVersionOk) {
       throw new RunModeError('--mode=two-pane requires tmux >= 3.2')
+    }
+    if (!inputs.tty && inputs.allowHeadlessTwoPane !== true) {
+      throw new RunModeError(
+        '--mode=two-pane requires a TTY; add --no-attach for headless (CI, screenshot tests)',
+      )
     }
     return { mode: 'two-pane', source: 'flag', reason: '--mode=two-pane' }
   }

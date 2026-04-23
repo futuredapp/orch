@@ -5,9 +5,11 @@ import {
   ViewResolutionError,
 } from '../../core/index.ts'
 import type { WorkflowArgs, WorkflowDeps } from '../../core/workflow.ts'
+import { HostCreationError } from '../../hosts/index.ts'
 import { createTranscriptSidecar, generateRunId } from '../../state/index.ts'
 import type { CliDeps } from '../deps.ts'
 import { type CliOpts, EXIT, type HostFactory } from '../main.ts'
+import { executeWithAttach } from './execute-with-attach.ts'
 import { isLoadError, loadWorkflow } from './load-workflow.ts'
 
 const PROMPT_PREVIEW_MAX = 80
@@ -54,13 +56,22 @@ export async function runCmd(
     args.prompt !== undefined ? ` with prompt: "${formatPromptPreview(args.prompt)}"` : ''
   process.stderr.write(`Running workflow "${name}" (${runId})${promptSuffix}...\n`)
 
-  const host = await hostFactory({
-    runId,
-    workflowName: name,
-    stdout: process.stdout,
-    stderr: process.stderr,
-    clock: deps.clock,
-  })
+  let host: Awaited<ReturnType<HostFactory>>
+  try {
+    host = await hostFactory({
+      runId,
+      workflowName: name,
+      stdout: process.stdout,
+      stderr: process.stderr,
+      clock: deps.clock,
+    })
+  } catch (err) {
+    if (err instanceof HostCreationError) {
+      process.stderr.write(`${err.message}\n`)
+      return EXIT.CONFIG_ERROR
+    }
+    throw err
+  }
 
   const transcriptSidecar = createTranscriptSidecar({
     fs: deps.fsService,
@@ -82,16 +93,12 @@ export async function runCmd(
     transcriptSidecar,
   }
 
-  try {
-    await result.executor.execute(wfDeps)
-  } catch (err) {
-    const code = mapRunError(err)
-    if (code !== undefined) return code
-    throw err
-  } finally {
-    await host.teardown()
-  }
-
-  process.stderr.write(`Workflow "${name}" completed.\n`)
-  return EXIT.OK
+  return await executeWithAttach({
+    host,
+    workflow: result.executor.execute(wfDeps),
+    runId,
+    stderr: process.stderr,
+    mapError: mapRunError,
+    onSuccess: () => process.stderr.write(`Workflow "${name}" completed.\n`),
+  })
 }

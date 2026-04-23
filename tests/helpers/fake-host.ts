@@ -97,6 +97,10 @@ export function createFakeHost(opts: FakeHostOptions = {}): FakeHost {
       })
       return nextInteractive
     },
+    async attachForeground(): Promise<void> {
+      /* FakeHost never takes the TTY — executor tests race this against the
+         workflow promise and get immediate resolution. */
+    },
     async teardown(): Promise<void> {
       /* no-op */
     },

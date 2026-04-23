@@ -560,3 +560,17 @@ The line between v1 and v2 is drawn exactly where the code changes get
 load-bearing: v1 stops before anything needs a plugin registry, an IPC
 socket, or a pane-view stack. Everything above that line is designed to
 arrive without a breaking change.
+
+---
+
+## Footnote: auto-attach is the precondition for every opening frame (2026-04-23)
+
+Every v1 story above renders the two-pane layout (or plain stream) as the
+*first* frame after `$ orch run …`. That only works because `two-pane`
+auto-attaches the user's TTY to the tmux session — the reframe plan's
+original "print the attach hint and let the user run tmux attach" shape
+would have meant the stories start with the user staring at plain-mode
+output and then manually opening a second terminal. See
+[`docs/plans/2026-04-23-feat-two-pane-auto-attach-plan.md`](../plans/2026-04-23-feat-two-pane-auto-attach-plan.md)
+for the archaeology of how that gap went missing during plan translation
+and how it was closed.

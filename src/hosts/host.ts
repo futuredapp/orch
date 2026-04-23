@@ -84,5 +84,31 @@ export interface Host {
    *   the next transcript stream has a clean placeholder.
    */
   runInteractive(opts: InteractiveSpawn): Promise<InteractiveResult>
+  /**
+   * Hand the controlling TTY to the host for the duration of the run.
+   *
+   * - Two-pane host: spawns `tmux attach-session` with inherited stdio.
+   *   Resolves when the attach client exits — either because the user
+   *   detached (`Ctrl-b d`), or because `teardown()` killed the session.
+   * - Plain host: resolves immediately (no-op — plain never takes the TTY).
+   *
+   * The CLI races this against the workflow promise; whichever settles
+   * first drives shutdown. See the two-pane auto-attach plan for the full
+   * state diagram.
+   */
+  attachForeground(): Promise<void>
   teardown(): Promise<void>
+}
+
+/**
+ * Thrown from `createTmuxHost` when the environment can't host an auto-attach
+ * session (e.g. nested tmux). CLI maps to CONFIG_ERROR exit and prints the
+ * error message with the user-facing escape options.
+ */
+export class HostCreationError extends Error {
+  readonly code = 'HOST_CREATION_ERROR' as const
+  constructor(message: string) {
+    super(message)
+    this.name = 'HostCreationError'
+  }
 }

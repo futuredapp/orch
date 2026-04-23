@@ -54,6 +54,13 @@ export const EXIT = {
 export interface CliOpts {
   readonly mode: RunMode | undefined
   readonly format: PlainFormat
+  /**
+   * `--no-attach` — skip auto-attach in two-pane mode. CLI still creates the
+   * tmux session and prints the "attach with …" hint; workflow runs to
+   * completion without taking the TTY. Use for CI, screenshot scripts, and
+   * users who want to attach manually from a second terminal.
+   */
+  readonly noAttach: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -83,6 +90,7 @@ Options:
   --prompt <text>          Alias for the inline prompt positional
   --mode <m>               plain | single-pane | two-pane (single-pane deferred to v2)
   --format <f>             text | json — plain mode only; json suppresses the banner
+  --no-attach              two-pane only: skip auto-attach; print attach hint and keep running
 `
 
 // ---------------------------------------------------------------------------
@@ -96,6 +104,7 @@ export function parseArgv(argv: string[]): {
   help: boolean
   mode: RunMode | undefined
   format: PlainFormat
+  noAttach: boolean
 } {
   const { values, positionals } = parseArgs({
     args: argv,
@@ -104,6 +113,7 @@ export function parseArgv(argv: string[]): {
       prompt: { type: 'string' },
       mode: { type: 'string' },
       format: { type: 'string' },
+      'no-attach': { type: 'boolean', default: false },
       tmux: { type: 'boolean' },
       observe: { type: 'boolean' },
     },
@@ -134,6 +144,7 @@ export function parseArgv(argv: string[]): {
 
   const mode = parseModeFlag(values.mode)
   const format = parseFormatFlag(values.format)
+  const noAttach = values['no-attach'] === true
 
   if (format === 'json' && mode !== undefined && mode !== 'plain') {
     throw new ArgvError(`--format=json is only valid with --mode=plain (got --mode=${mode})`)
@@ -146,6 +157,7 @@ export function parseArgv(argv: string[]): {
     help: values.help as boolean,
     mode,
     format,
+    noAttach,
   }
 }
 
@@ -171,6 +183,7 @@ function parseFormatFlag(raw: unknown): PlainFormat {
 async function resolveMode(
   flag: RunMode | undefined,
   deps: ReturnType<typeof createDeps>,
+  allowHeadlessTwoPane: boolean,
 ): Promise<RunModeResolution> {
   const tmuxProbe = await probeTmuxVersion(deps.processService)
   const tmuxAvailable = tmuxProbe !== undefined
@@ -185,6 +198,7 @@ async function resolveMode(
     tty,
     tmuxAvailable,
     tmuxVersionOk,
+    allowHeadlessTwoPane,
   })
 }
 
@@ -212,9 +226,14 @@ function pickHostFactory(
   mode: RunMode,
   format: PlainFormat,
   processService: ProcessService,
+  noAttach: boolean,
 ): HostFactory {
   const registry = createHostRegistry()
-  registerBuiltinHosts(registry, { processService, format })
+  registerBuiltinHosts(registry, {
+    processService,
+    format,
+    tmuxOverrides: noAttach ? { skipAttach: true } : undefined,
+  })
   return registry.resolve(mode)
 }
 
@@ -293,7 +312,7 @@ async function main(): Promise<never> {
 
   let resolution: RunModeResolution
   try {
-    resolution = await resolveMode(parsed.mode, deps)
+    resolution = await resolveMode(parsed.mode, deps, parsed.noAttach)
   } catch (err) {
     if (err instanceof RunModeError) {
       process.stderr.write(`${err.message}\n`)
@@ -306,8 +325,17 @@ async function main(): Promise<never> {
     process.stderr.write(`${buildBanner(resolution)}\n`)
   }
 
-  const opts: CliOpts = { mode: resolution.mode, format: parsed.format }
-  const hostFactory = pickHostFactory(resolution.mode, parsed.format, deps.processService)
+  const opts: CliOpts = {
+    mode: resolution.mode,
+    format: parsed.format,
+    noAttach: parsed.noAttach,
+  }
+  const hostFactory = pickHostFactory(
+    resolution.mode,
+    parsed.format,
+    deps.processService,
+    parsed.noAttach,
+  )
   const code = await handler(deps, parsed.positional, parsed.args, opts, hostFactory)
   process.exit(code)
 }

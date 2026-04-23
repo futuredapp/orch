@@ -114,11 +114,24 @@ export function createPlainHost(opts: PlainHostOptions): Host {
     return { exitCode, durationMs: opts.clock.now() - startedAt }
   }
 
+  const attachForeground = async (): Promise<void> => {
+    /* plain never takes the TTY — the workflow stream IS the foreground. */
+  }
+
   const teardown = async (): Promise<void> => {
     /* plain writes are synchronous; nothing to flush. */
   }
 
-  return { mode, writeBanner, onRunnerEvent, onLifecycleEvent, attach, runInteractive, teardown }
+  return {
+    mode,
+    writeBanner,
+    onRunnerEvent,
+    onLifecycleEvent,
+    attach,
+    runInteractive,
+    attachForeground,
+    teardown,
+  }
 }
 
 function textLifecycle(event: StepLifecycleEvent): string {

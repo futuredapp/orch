@@ -59,9 +59,11 @@ describe('createTmuxHost setup', () => {
     if (split?.method !== 'splitPane') throw new Error('expected split-pane call')
     expect(split.opts.command).toBe('cat')
 
-    // Attach + kill-server hints printed to stderr so users can hop in.
-    expect(stderr.text()).toContain('attach with:')
-    expect(stderr.text()).toContain('clean up with:')
+    // Under auto-attach (the default), the "attach with …" hint is not
+    // emitted — the attach client immediately takes over the TTY. The hint
+    // now lives only on the --no-attach path (see `attach-foreground` tests).
+    expect(stderr.text()).not.toContain('attach with:')
+    expect(stderr.text()).not.toContain('clean up with:')
   })
 
   it('prepares the left pane with `clear && exec cat` so sendKeys draws to a clean pty', async () => {

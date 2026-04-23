@@ -475,6 +475,8 @@ Consistent with `RunnerCapabilityError`, `InteractiveParallelError`, `RunNotFoun
 
 #### Phase D — `two-pane` mode (tmux host)
 
+> **Follow-up (closed 2026-04-23 by [`2026-04-23-feat-two-pane-auto-attach-plan.md`](./2026-04-23-feat-two-pane-auto-attach-plan.md)): auto-attach.** Phase D's deliverable below says teardown "prints the attach + kill hints" — that was the designed v1 shape AT PLAN TIME, but the brainstorm's implicit default (stories + DX review decision #3 "Exit = window close") assumed the user was already attached. The gap was closed in a separate follow-up that added `Host.attachForeground()` + CLI `Promise.race(workflow, attach)`. The hint-only path is now the `--no-attach` opt-out, not the default. See the follow-up plan for the archaeology.
+
 **Goal:** port the existing tmux wiring to the `Host` port. Fixed `left` + `right`; left defaults to `StatusView`; right defaults to the active step's declared view. Interactive steps get their pane via `tmux respawn-pane` — deleting the current `tmuxActive` refusal. Readable `TranscriptView` replaces the raw `runnerEvent:JSON` dump.
 
 **Deliverables:**
