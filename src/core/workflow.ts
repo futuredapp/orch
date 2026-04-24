@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Host } from '../hosts/index.ts'
+import type { JsonObject, SessionLogger, StepSpan } from '../observability/index.ts'
+import { envKeys as envKeyList, redactReproduceCommand } from '../observability/index.ts'
 import { runRunner } from '../runners/index.ts'
 import type { Clock, FsService, GitService, ProcessService } from '../services/index.ts'
 import { GitCommandError } from '../services/index.ts'
@@ -152,6 +154,13 @@ export interface WorkflowDeps {
   readonly generateSessionId?: () => string
   /** CLI-supplied arguments. When omitted, the workflow callback sees `{}`. */
   readonly args?: WorkflowArgs
+  /**
+   * Optional per-run session logger. When present, the executor fans out
+   * spawn records, runner events, step lifecycle, and per-step session.json
+   * snapshots into `.orch/state/<runId>/logs/`. Absent in tests that don't
+   * care about logs (null adapter is the zero-cost default in the CLI path).
+   */
+  readonly logger?: SessionLogger
 }
 
 // ---------------------------------------------------------------------------
@@ -260,6 +269,49 @@ function validateSchemaOutput(config: AgentStepConfig, key: StepName, rawValue: 
 }
 
 // ---------------------------------------------------------------------------
+// Lifecycle tee — fans step events through the host AND the session logger.
+// Host owns rendering; logger owns the structured trace. Single call site
+// keeps the two observers in lock-step — see plan § "Host-side vs executor-
+// side lifecycle".
+// ---------------------------------------------------------------------------
+
+function emitStepLifecycle(
+  host: Host,
+  stepSpan: StepSpan | undefined,
+  event: StepLifecycleEvent,
+): void {
+  host.onLifecycleEvent(event)
+  if (stepSpan === undefined) return
+  const { type, stepName: _name, ...rest } = event
+  void stepSpan.append('lifecycle', { type, ...(rest as JsonObject) }).catch(() => {})
+}
+
+// ---------------------------------------------------------------------------
+// Reproduce command — `cd <cwd> && KEY=v ... <argv>` with secret redaction.
+// Values are omitted by default (envKeys-only); the string is already passed
+// through `redactReproduceCommand` so any caller-side env emission stays safe.
+// ---------------------------------------------------------------------------
+
+function buildReproduce(
+  cwd: Path,
+  env: Readonly<Record<string, string>>,
+  argv: readonly string[],
+): string {
+  const envParts = Object.keys(env)
+    .sort()
+    .map((k) => `${k}=${shellQuote(env[k] ?? '')}`)
+  const quotedArgv = argv.map((a) => shellQuote(a)).join(' ')
+  const envPrefix = envParts.length > 0 ? `${envParts.join(' ')} ` : ''
+  return redactReproduceCommand(`cd ${shellQuote(cwd)} && ${envPrefix}${quotedArgv}`)
+}
+
+function shellQuote(s: string): string {
+  if (s === '') return "''"
+  if (/^[A-Za-z0-9_\-./=:]+$/.test(s)) return s
+  return `'${s.replace(/'/g, `'\\''`)}'`
+}
+
+// ---------------------------------------------------------------------------
 // runInteractiveStep — executes an interactive step via foreground spawn
 // ---------------------------------------------------------------------------
 
@@ -268,6 +320,7 @@ async function runInteractiveStep(
   config: AgentStepConfig,
   key: StepName,
   overrides: RunOverrides | undefined,
+  stepSpan: StepSpan | undefined,
 ): Promise<{ value: InteractiveResult; entry: StepEntry }> {
   // Guard: interactive inside parallel()
   if (currentParallelDepth() > 0) {
@@ -295,11 +348,16 @@ async function runInteractiveStep(
 
   const sessionId = deps.generateSessionId?.() ?? randomUUID()
   const prompt = assemblePrompt(config.prompt, overrides)
+  const startedAtStep = deps.clock.now()
 
-  deps.host.onLifecycleEvent({ type: 'step:start', stepName: key, mode: 'interactive' })
+  emitStepLifecycle(deps.host, stepSpan, {
+    type: 'step:start',
+    stepName: key,
+    mode: 'interactive',
+  })
   const inParallel = currentParallelDepth() > 0
   if (inParallel) {
-    deps.host.onLifecycleEvent({
+    emitStepLifecycle(deps.host, stepSpan, {
       type: 'step:parallel-branch-update',
       stepName: key,
       branchStatus: 'running',
@@ -310,6 +368,8 @@ async function runInteractiveStep(
   // Otherwise, require a TTY and do foreground spawn.
   let exitCode: number
   let durationMs: number
+  let argv: readonly string[] = []
+  let cmdEnv: Readonly<Record<string, string>> = {}
 
   if (deps.onInteractive) {
     const result = await deps.onInteractive({
@@ -340,6 +400,8 @@ async function runInteractiveStep(
       mode: 'interactive',
       sessionId,
     })
+    argv = cmd.argv
+    cmdEnv = cmd.env
     const result = await deps.host.runInteractive({
       argv: cmd.argv,
       env: cmd.env,
@@ -350,35 +412,29 @@ async function runInteractiveStep(
     durationMs = result.durationMs
   }
 
+  logInteractiveSpawn(stepSpan, {
+    runnerName: config.agent.name,
+    argv,
+    cmdEnv,
+    cwd: deps.cwd,
+    sessionId,
+    exitCode,
+    durationMs,
+  })
+
   if (exitCode !== 0) {
-    deps.host.onLifecycleEvent({ type: 'step:failed', stepName: key, error: `exit ${exitCode}` })
-    if (inParallel) {
-      deps.host.onLifecycleEvent({
-        type: 'step:parallel-branch-update',
-        stepName: key,
-        branchStatus: 'failed',
-        elapsedMs: durationMs,
-      })
-    }
+    emitStepFailure(deps.host, stepSpan, key, `exit ${exitCode}`, inParallel, durationMs)
     throw new StepError(key, exitCode, `interactive session exited ${exitCode}`)
   }
 
   const value: InteractiveResult = { exitCode, durationMs, sessionId }
 
-  deps.host.onLifecycleEvent({ type: 'step:complete', stepName: key, durationMs })
-  if (inParallel) {
-    deps.host.onLifecycleEvent({
-      type: 'step:parallel-branch-update',
-      stepName: key,
-      branchStatus: 'completed',
-      elapsedMs: durationMs,
-    })
-  }
+  emitStepSuccess(deps.host, stepSpan, key, inParallel, durationMs)
 
   const entry: StepEntry = {
     name: key,
     value,
-    startedAt: deps.clock.now() - durationMs,
+    startedAt: startedAtStep,
     endedAt: deps.clock.now(),
     artifacts: [],
     validations: [],
@@ -386,7 +442,113 @@ async function runInteractiveStep(
     transcriptEventCount: 0,
     transcriptTruncated: false,
   }
+
+  await writeInteractiveSession(deps.logger, stepSpan, {
+    stepName: key,
+    runnerName: config.agent.name,
+    prompt,
+    argv,
+    cmdEnv,
+    cwd: deps.cwd,
+    sessionId,
+    exitCode,
+    durationMs,
+  })
+
   return { value, entry }
+}
+
+// ---------------------------------------------------------------------------
+// Step lifecycle emitters — keep runAgentStep / runInteractiveStep terse.
+// ---------------------------------------------------------------------------
+
+function emitStepFailure(
+  host: Host,
+  stepSpan: StepSpan | undefined,
+  key: StepName,
+  error: unknown,
+  inParallel: boolean,
+  durationMs: number,
+): void {
+  emitStepLifecycle(host, stepSpan, { type: 'step:failed', stepName: key, error })
+  if (inParallel) {
+    emitStepLifecycle(host, stepSpan, {
+      type: 'step:parallel-branch-update',
+      stepName: key,
+      branchStatus: 'failed',
+      elapsedMs: durationMs,
+    })
+  }
+}
+
+function emitStepSuccess(
+  host: Host,
+  stepSpan: StepSpan | undefined,
+  key: StepName,
+  inParallel: boolean,
+  durationMs: number,
+): void {
+  emitStepLifecycle(host, stepSpan, { type: 'step:complete', stepName: key, durationMs })
+  if (inParallel) {
+    emitStepLifecycle(host, stepSpan, {
+      type: 'step:parallel-branch-update',
+      stepName: key,
+      branchStatus: 'completed',
+      elapsedMs: durationMs,
+    })
+  }
+}
+
+interface InteractiveSpawnRecord {
+  readonly runnerName: string
+  readonly argv: readonly string[]
+  readonly cmdEnv: Readonly<Record<string, string>>
+  readonly cwd: Path
+  readonly sessionId: string
+  readonly exitCode: number
+  readonly durationMs: number
+}
+
+function logInteractiveSpawn(stepSpan: StepSpan | undefined, r: InteractiveSpawnRecord): void {
+  if (stepSpan === undefined) return
+  void stepSpan
+    .append('spawns', {
+      runnerName: r.runnerName,
+      mode: 'interactive',
+      argv: r.argv,
+      envKeys: envKeyList(r.cmdEnv),
+      cwd: r.cwd,
+      sessionId: r.sessionId,
+      exitCode: r.exitCode,
+      durationMs: r.durationMs,
+      reproduce: buildReproduce(r.cwd, r.cmdEnv, r.argv),
+    })
+    .catch(() => {})
+}
+
+async function writeInteractiveSession(
+  logger: SessionLogger | undefined,
+  stepSpan: StepSpan | undefined,
+  r: InteractiveSpawnRecord & { readonly stepName: StepName; readonly prompt: string },
+): Promise<void> {
+  if (logger === undefined || stepSpan === undefined) return
+  const body = JSON.stringify(
+    {
+      stepName: r.stepName,
+      stepSpanId: stepSpan.stepSpanId,
+      runnerName: r.runnerName,
+      mode: 'interactive',
+      prompt: r.prompt,
+      argv: r.argv,
+      envKeys: envKeyList(r.cmdEnv),
+      sessionId: r.sessionId,
+      exitCode: r.exitCode,
+      durationMs: r.durationMs,
+    },
+    null,
+    2,
+  )
+  await logger.writeFile(`agents/${r.stepName}.session.json`, body).catch(() => {})
 }
 
 // ---------------------------------------------------------------------------
@@ -397,6 +559,7 @@ function makeAgentEventHandler(
   deps: WorkflowDeps,
   key: StepName,
   stepTranscript: ReturnType<NonNullable<WorkflowDeps['transcriptSidecar']>['forStep']> | undefined,
+  stepSpan: StepSpan | undefined,
   isSilent: boolean,
 ): (evt: import('../runners/index.ts').RunnerEvent) => void {
   return (evt) => {
@@ -404,6 +567,9 @@ function makeAgentEventHandler(
       // Fire-and-forget: events arrive synchronously; the append is awaited
       // on the background chain inside the sidecar so ordering stays stable.
       void stepTranscript.append(evt).catch(() => {})
+    }
+    if (stepSpan !== undefined) {
+      void stepSpan.append('events', { event: evt }).catch(() => {})
     }
     if (!isSilent) deps.host.onRunnerEvent(evt, key)
   }
@@ -414,6 +580,7 @@ async function runAgentStep(
   config: AgentStepConfig,
   key: StepName,
   overrides: RunOverrides | undefined,
+  stepSpan: StepSpan | undefined,
 ): Promise<{ value: unknown; entry: StepEntry }> {
   checkSchemaCapability(config, key)
 
@@ -430,9 +597,13 @@ async function runAgentStep(
   const isSilent = resolution.kind === 'silent'
   const inParallel = currentParallelDepth() > 0
 
-  deps.host.onLifecycleEvent({ type: 'step:start', stepName: key, mode: 'autonomous' })
+  emitStepLifecycle(deps.host, stepSpan, {
+    type: 'step:start',
+    stepName: key,
+    mode: 'autonomous',
+  })
   if (inParallel) {
-    deps.host.onLifecycleEvent({
+    emitStepLifecycle(deps.host, stepSpan, {
       type: 'step:parallel-branch-update',
       stepName: key,
       branchStatus: 'running',
@@ -446,6 +617,7 @@ async function runAgentStep(
   const preRunSnapshot = headSha !== undefined ? { headSha } : undefined
 
   const startedAt = deps.clock.now()
+  const prompt = assemblePrompt(config.prompt, overrides)
   // Sidecar captures every RunnerEvent (silent steps included — `orch logs`
   // needs the trace even when the host renders nothing). Errors are logged
   // to stderr but do not abort the step; transcript loss is recoverable,
@@ -454,36 +626,33 @@ async function runAgentStep(
   const runnerDeps = {
     processService: deps.processService,
     clock: deps.clock,
-    onEvent: makeAgentEventHandler(deps, key, stepTranscript, isSilent),
+    onEvent: makeAgentEventHandler(deps, key, stepTranscript, stepSpan, isSilent),
   }
-  const result = await runRunner(
-    config.agent,
-    {
-      cwd: deps.cwd,
-      env: {},
-      prompt: assemblePrompt(config.prompt, overrides),
-      extraArgs: [],
-      ...(config.returns !== undefined
-        ? { schema: { jsonSchema: config.returns.jsonSchema } }
-        : {}),
-    },
-    runnerDeps,
-  )
+  // Build the runner command up front so spawn records capture argv/env even
+  // when the runner fails mid-run. Agents that error before exec still land a
+  // spawn entry with the argv the executor would have used.
+  const runnerCtx = {
+    cwd: deps.cwd,
+    env: {},
+    prompt,
+    extraArgs: [],
+    ...(config.returns !== undefined ? { schema: { jsonSchema: config.returns.jsonSchema } } : {}),
+  }
+  const result = await runRunner(config.agent, runnerCtx, runnerDeps)
+  const durationMs = deps.clock.now() - startedAt
+
+  await logAgentSpawn(stepSpan, config, runnerCtx, {
+    cwd: deps.cwd,
+    exitCode: result.exitCode,
+    durationMs,
+  })
 
   if (result.finalEvent.type === 'error' || result.exitCode !== 0) {
     const msg =
       result.finalEvent.type === 'error'
         ? result.finalEvent.message
         : `runner exited ${result.exitCode}`
-    deps.host.onLifecycleEvent({ type: 'step:failed', stepName: key, error: msg })
-    if (inParallel) {
-      deps.host.onLifecycleEvent({
-        type: 'step:parallel-branch-update',
-        stepName: key,
-        branchStatus: 'failed',
-        elapsedMs: deps.clock.now() - startedAt,
-      })
-    }
+    emitStepFailure(deps.host, stepSpan, key, msg, inParallel, durationMs)
     throw new StepError(key, result.exitCode, msg)
   }
 
@@ -503,16 +672,7 @@ async function runAgentStep(
     throw new ValidationError(key, failures)
   }
 
-  const durationMs = deps.clock.now() - startedAt
-  deps.host.onLifecycleEvent({ type: 'step:complete', stepName: key, durationMs })
-  if (inParallel) {
-    deps.host.onLifecycleEvent({
-      type: 'step:parallel-branch-update',
-      stepName: key,
-      branchStatus: 'completed',
-      elapsedMs: durationMs,
-    })
-  }
+  emitStepSuccess(deps.host, stepSpan, key, inParallel, durationMs)
 
   const entry = buildAgentEntry({
     key,
@@ -523,7 +683,94 @@ async function runAgentStep(
     outcomes,
     transcriptMeta: stepTranscript?.snapshot(),
   })
+
+  await writeAgentSession(deps.logger, stepSpan, {
+    stepName: key,
+    runnerName: config.agent.name,
+    prompt,
+    config,
+    runnerCtx,
+    result,
+    durationMs,
+    transcriptSnapshot: stepTranscript?.snapshot(),
+  })
+
   return { value, entry }
+}
+
+async function logAgentSpawn(
+  stepSpan: StepSpan | undefined,
+  config: AgentStepConfig,
+  runnerCtx: import('../runners/index.ts').RunnerContext,
+  r: { readonly cwd: Path; readonly exitCode: number; readonly durationMs: number },
+): Promise<void> {
+  if (stepSpan === undefined) return
+  const cmd = await tryBuildCommand(config, runnerCtx)
+  void stepSpan
+    .append('spawns', {
+      runnerName: config.agent.name,
+      mode: 'autonomous',
+      argv: cmd.argv,
+      envKeys: envKeyList(cmd.env),
+      cwd: r.cwd,
+      exitCode: r.exitCode,
+      durationMs: r.durationMs,
+      reproduce: buildReproduce(r.cwd, cmd.env, cmd.argv),
+    })
+    .catch(() => {})
+}
+
+async function writeAgentSession(
+  logger: SessionLogger | undefined,
+  stepSpan: StepSpan | undefined,
+  r: {
+    readonly stepName: StepName
+    readonly runnerName: string
+    readonly prompt: string
+    readonly config: AgentStepConfig
+    readonly runnerCtx: import('../runners/index.ts').RunnerContext
+    readonly result: Awaited<ReturnType<typeof runRunner>>
+    readonly durationMs: number
+    readonly transcriptSnapshot:
+      | { readonly transcriptPath: string; readonly transcriptEventCount: number }
+      | undefined
+  },
+): Promise<void> {
+  if (logger === undefined || stepSpan === undefined) return
+  const cmd = await tryBuildCommand(r.config, r.runnerCtx)
+  const body = JSON.stringify(
+    {
+      stepName: r.stepName,
+      stepSpanId: stepSpan.stepSpanId,
+      runnerName: r.runnerName,
+      mode: 'autonomous',
+      prompt: r.prompt,
+      argv: cmd.argv,
+      envKeys: envKeyList(cmd.env),
+      finalEvent: r.result.finalEvent,
+      exitCode: r.result.exitCode,
+      durationMs: r.durationMs,
+      ...(r.transcriptSnapshot !== undefined && r.transcriptSnapshot.transcriptEventCount > 0
+        ? { transcriptPath: r.transcriptSnapshot.transcriptPath }
+        : {}),
+    },
+    null,
+    2,
+  )
+  await logger.writeFile(`agents/${r.stepName}.session.json`, body).catch(() => {})
+}
+
+// Best-effort command rebuild for log-only purposes. Runners whose
+// `buildCommand` rejects get empty argv/env — logging must not fail the run.
+async function tryBuildCommand(
+  config: AgentStepConfig,
+  ctx: import('../runners/index.ts').RunnerContext,
+): Promise<{ readonly argv: readonly string[]; readonly env: Readonly<Record<string, string>> }> {
+  try {
+    return await config.agent.buildCommand(ctx)
+  } catch {
+    return { argv: [], env: {} }
+  }
 }
 
 function buildAgentEntry(inputs: {
@@ -625,19 +872,24 @@ async function runStepOnce(
   if (cached !== undefined) {
     const { config } = s
     if (config.kind === 'agent') revalidateCachedValue(config, key, cached.value)
+    // Cached events do not mint a fresh span — the step's structured records
+    // live in the original run's logs. Emit a run-level lifecycle line so the
+    // timeline still shows the cache hit.
     deps.host.onLifecycleEvent({ type: 'step:cached', stepName: key })
+    void deps.logger?.append('lifecycle', { type: 'step:cached', stepName: key }).catch(() => {})
     return cached.value
   }
 
+  const stepSpan = deps.logger?.forStep(key)
   const { config } = s
   let result: { value: unknown; entry: StepEntry }
   switch (config.kind) {
     case 'agent': {
       const mode = resolveMode(config, overrides)
       if (mode === 'interactive') {
-        result = await runInteractiveStep(deps, config, key, overrides)
+        result = await runInteractiveStep(deps, config, key, overrides, stepSpan)
       } else {
-        result = await runAgentStep(deps, config, key, overrides)
+        result = await runAgentStep(deps, config, key, overrides, stepSpan)
       }
       break
     }
@@ -662,9 +914,17 @@ async function executeWorkflowFn(fn: WorkflowFn, deps: WorkflowDeps): Promise<vo
   const run: RunFn = <T>(s: Step<T>, overrides?: RunOverrides): Promise<T> =>
     runStepOnce(deps, s, overrides) as Promise<T>
 
+  const startedAt = deps.clock.now()
   try {
     await fn(run, deps.args ?? {})
     await deps.stateStore.setStatus(deps.runId, 'completed', deps.clock.now())
+    void deps.logger
+      ?.append('lifecycle', {
+        type: 'run-ended',
+        status: 'completed',
+        totalDurationMs: deps.clock.now() - startedAt,
+      })
+      .catch(() => {})
   } catch (err) {
     try {
       await deps.stateStore.setStatus(deps.runId, 'crashed', deps.clock.now())
@@ -675,6 +935,13 @@ async function executeWorkflowFn(fn: WorkflowFn, deps: WorkflowDeps): Promise<vo
       // For the resume() path, the run is known to exist (loadRun succeeded),
       // so this only fires on I/O errors (disk full, permissions).
     }
+    void deps.logger
+      ?.append('lifecycle', {
+        type: 'run-ended',
+        status: 'crashed',
+        totalDurationMs: deps.clock.now() - startedAt,
+      })
+      .catch(() => {})
     throw err
   }
 }

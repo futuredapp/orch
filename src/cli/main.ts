@@ -62,6 +62,12 @@ export interface CliOpts {
    * users who want to attach manually from a second terminal.
    */
   readonly noAttach: boolean
+  /**
+   * `--debug` — turn on heavy captures in `.orch/state/<runId>/logs/` (raw
+   * agent stdout/stderr, tmux pipe-pane, subprocess spawns, orch internal
+   * trace). All-or-nothing. Defaults to `ORCH_DEBUG=1` in the environment.
+   */
+  readonly debug: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -92,6 +98,7 @@ Options:
   --mode <m>               plain | single-pane | two-pane (single-pane deferred to v2)
   --format <f>             text | json — plain mode only; json suppresses the banner
   --no-attach              two-pane only: skip auto-attach; print attach hint and keep running
+  --debug                  turn on heavy session logs (agent stdout/stderr, tmux pipe-pane, subprocess spawns, orch.log)
 `
 
 // ---------------------------------------------------------------------------
@@ -106,6 +113,7 @@ export function parseArgv(argv: string[]): {
   mode: RunMode | undefined
   format: PlainFormat
   noAttach: boolean
+  debug: boolean
 } {
   const { values, positionals } = parseArgs({
     args: argv,
@@ -115,6 +123,7 @@ export function parseArgv(argv: string[]): {
       mode: { type: 'string' },
       format: { type: 'string' },
       'no-attach': { type: 'boolean', default: false },
+      debug: { type: 'boolean', default: false },
       tmux: { type: 'boolean' },
       observe: { type: 'boolean' },
     },
@@ -146,6 +155,7 @@ export function parseArgv(argv: string[]): {
   const mode = parseModeFlag(values.mode)
   const format = parseFormatFlag(values.format)
   const noAttach = values['no-attach'] === true
+  const debug = values.debug === true || process.env.ORCH_DEBUG === '1'
 
   if (format === 'json' && mode !== undefined && mode !== 'plain') {
     throw new ArgvError(`--format=json is only valid with --mode=plain (got --mode=${mode})`)
@@ -159,6 +169,7 @@ export function parseArgv(argv: string[]): {
     mode,
     format,
     noAttach,
+    debug,
   }
 }
 
@@ -309,7 +320,7 @@ async function main(): Promise<never> {
     process.exit(EXIT.CONFIG_ERROR)
   }
 
-  const deps = createDeps(process.cwd())
+  const deps = createDeps(process.cwd(), { debug: parsed.debug })
 
   let resolution: RunModeResolution
   try {
@@ -330,6 +341,7 @@ async function main(): Promise<never> {
     mode: resolution.mode,
     format: parsed.format,
     noAttach: parsed.noAttach,
+    debug: parsed.debug,
   }
   const hostFactory = pickHostFactory(
     resolution.mode,

@@ -6,6 +6,12 @@ import {
 } from '../../core/index.ts'
 import type { WorkflowArgs, WorkflowDeps } from '../../core/workflow.ts'
 import { HostCreationError } from '../../hosts/index.ts'
+import {
+  buildRunMeta,
+  orchVersion,
+  renderRunReadme,
+  type SessionLogger,
+} from '../../observability/index.ts'
 import { createTranscriptSidecar, generateRunId } from '../../state/index.ts'
 import type { CliDeps } from '../deps.ts'
 import { type CliOpts, EXIT, type HostFactory } from '../main.ts'
@@ -36,11 +42,51 @@ function mapRunError(err: unknown): number | undefined {
   return undefined
 }
 
+async function writeRunPreamble(
+  logger: SessionLogger,
+  ctx: {
+    readonly runId: string
+    readonly workflowName: string
+    readonly mode: string
+    readonly debug: boolean
+    readonly argv: readonly string[]
+    readonly env: Readonly<Record<string, string | undefined>>
+    readonly startedAtIso: string
+    readonly emitEnvValues: boolean
+  },
+): Promise<void> {
+  const version = await orchVersion()
+  const meta = buildRunMeta({
+    runId: ctx.runId,
+    workflowName: ctx.workflowName,
+    argv: ctx.argv,
+    env: ctx.env,
+    mode: ctx.mode,
+    debug: ctx.debug,
+    orchVersion: version,
+    os: process.platform,
+    startedAtIso: ctx.startedAtIso,
+    emitEnvValues: ctx.emitEnvValues,
+  })
+  await logger.writeFile('run.meta.json', `${JSON.stringify(meta, null, 2)}\n`)
+  await logger.writeFile(
+    'README.md',
+    renderRunReadme({
+      runId: ctx.runId,
+      workflowName: ctx.workflowName,
+      mode: ctx.mode,
+      debug: ctx.debug,
+      startedAt: ctx.startedAtIso,
+      orchVersion: version,
+    }),
+  )
+}
+
 export async function runCmd(
   deps: CliDeps,
   name: string,
   args: WorkflowArgs,
-  _opts: CliOpts,
+  opts: CliOpts,
   hostFactory: HostFactory,
 ): Promise<number> {
   if (!name) {
@@ -56,49 +102,69 @@ export async function runCmd(
     args.prompt !== undefined ? ` with prompt: "${formatPromptPreview(args.prompt)}"` : ''
   process.stderr.write(`Running workflow "${name}" (${runId})${promptSuffix}...\n`)
 
-  let host: Awaited<ReturnType<HostFactory>>
+  const logger = deps.sessionLoggerFor(runId)
+  const startedAtIso = new Date(deps.clock.now()).toISOString()
+
   try {
-    host = await hostFactory({
+    await writeRunPreamble(logger, {
       runId,
       workflowName: name,
-      stdout: process.stdout,
-      stderr: process.stderr,
-      clock: deps.clock,
+      mode: opts.mode ?? 'plain',
+      debug: deps.debug,
+      argv: process.argv,
+      env: process.env,
+      startedAtIso,
+      emitEnvValues: process.env.ORCH_LOG_ENV_VALUES === '1',
     })
-  } catch (err) {
-    if (err instanceof HostCreationError) {
-      process.stderr.write(`${err.message}\n`)
-      return EXIT.CONFIG_ERROR
+
+    let host: Awaited<ReturnType<HostFactory>>
+    try {
+      host = await hostFactory({
+        runId,
+        workflowName: name,
+        stdout: process.stdout,
+        stderr: process.stderr,
+        clock: deps.clock,
+        logger,
+      })
+    } catch (err) {
+      if (err instanceof HostCreationError) {
+        process.stderr.write(`${err.message}\n`)
+        return EXIT.CONFIG_ERROR
+      }
+      throw err
     }
-    throw err
+
+    const transcriptSidecar = createTranscriptSidecar({
+      fs: deps.fsService,
+      runId,
+      basePath: deps.statePath,
+    })
+
+    const wfDeps: WorkflowDeps = {
+      stateStore: deps.stateStore,
+      processService: deps.processService,
+      clock: deps.clock,
+      runId,
+      cwd: deps.cwd,
+      fsService: deps.fsService,
+      gitService: deps.gitService,
+      workflowName: name,
+      args,
+      host,
+      transcriptSidecar,
+      logger,
+    }
+
+    return await executeWithAttach({
+      host,
+      workflow: result.executor.execute(wfDeps),
+      runId,
+      stderr: process.stderr,
+      mapError: mapRunError,
+      onSuccess: () => process.stderr.write(`Workflow "${name}" completed.\n`),
+    })
+  } finally {
+    await logger.close()
   }
-
-  const transcriptSidecar = createTranscriptSidecar({
-    fs: deps.fsService,
-    runId,
-    basePath: deps.statePath,
-  })
-
-  const wfDeps: WorkflowDeps = {
-    stateStore: deps.stateStore,
-    processService: deps.processService,
-    clock: deps.clock,
-    runId,
-    cwd: deps.cwd,
-    fsService: deps.fsService,
-    gitService: deps.gitService,
-    workflowName: name,
-    args,
-    host,
-    transcriptSidecar,
-  }
-
-  return await executeWithAttach({
-    host,
-    workflow: result.executor.execute(wfDeps),
-    runId,
-    stderr: process.stderr,
-    mapError: mapRunError,
-    onSuccess: () => process.stderr.write(`Workflow "${name}" completed.\n`),
-  })
 }

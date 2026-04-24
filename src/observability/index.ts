@@ -2,9 +2,12 @@ export type { CreateFileSessionLoggerDeps } from './file-session-logger.ts'
 export { createFileSessionLogger } from './file-session-logger.ts'
 export type { CreateNullSessionLoggerOptions } from './null-session-logger.ts'
 export { createNullSessionLogger } from './null-session-logger.ts'
+export { orchVersion } from './orch-version.ts'
 export type { ReadmeContext } from './readme-template.ts'
 export { renderRunReadme } from './readme-template.ts'
 export { envKeys, isSecretKey, redactEnvValues, redactReproduceCommand } from './redact.ts'
+export type { BuildRunMetaOptions, RunMeta } from './run-meta.ts'
+export { buildRunMeta } from './run-meta.ts'
 // Session logging — per-run maintainer debugging logs.
 export type {
   JsonObject,

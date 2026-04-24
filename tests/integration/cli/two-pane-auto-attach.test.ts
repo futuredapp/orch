@@ -16,6 +16,7 @@ import { runCmd } from '../../../src/cli/commands/run.ts'
 import type { CliDeps } from '../../../src/cli/deps.ts'
 import { type CliOpts, EXIT, type HostFactory } from '../../../src/cli/main.ts'
 import { createTmuxHost } from '../../../src/hosts/index.ts'
+import { createNullSessionLogger } from '../../../src/observability/index.ts'
 import {
   BunFsService,
   FakeClock,
@@ -80,11 +81,13 @@ function makeDeps(): CliDeps {
     registry: new FileRunRegistry({ fs: bunFs, basePath }),
     cwd: path(tmpDir),
     statePath: basePath,
+    debug: false,
+    sessionLoggerFor: (rid) => createNullSessionLogger({ runId: rid }),
   }
 }
 
-const DEFAULT_OPTS: CliOpts = { mode: 'two-pane', format: 'text', noAttach: false }
-const NO_ATTACH_OPTS: CliOpts = { mode: 'two-pane', format: 'text', noAttach: true }
+const DEFAULT_OPTS: CliOpts = { mode: 'two-pane', format: 'text', noAttach: false, debug: false }
+const NO_ATTACH_OPTS: CliOpts = { mode: 'two-pane', format: 'text', noAttach: true, debug: false }
 
 describe('runCmd auto-attach — argv shape', () => {
   it('spawns tmux -L <socket> attach-session -t orch via the host', async () => {

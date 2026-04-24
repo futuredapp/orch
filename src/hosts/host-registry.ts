@@ -34,6 +34,8 @@ export interface HostFactoryInputs {
   readonly stdout: NodeJS.WritableStream
   readonly stderr: NodeJS.WritableStream
   readonly clock: import('../services/clock/index.ts').Clock
+  /** Per-run session logger. Forwarded to hosts that emit lifecycle records. */
+  readonly logger?: import('../observability/session-logger.ts').SessionLogger
 }
 
 export type HostFactory = (inputs: HostFactoryInputs) => Promise<Host>
@@ -90,6 +92,7 @@ export function registerBuiltinHosts(registry: HostRegistry, deps: RegisterBuilt
       clock: args.clock,
       runId: args.runId,
       processService: deps.processService,
+      ...(args.logger !== undefined ? { logger: args.logger } : {}),
     }),
   )
 
@@ -105,6 +108,7 @@ export function registerBuiltinHosts(registry: HostRegistry, deps: RegisterBuilt
       workflowName: args.workflowName,
       stderr: args.stderr,
       ...(deps.tmuxOverrides ?? {}),
+      ...(args.logger !== undefined ? { logger: args.logger } : {}),
     }),
   )
 }

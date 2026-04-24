@@ -19,7 +19,7 @@ import { summarizeFailure } from '../../core/failure-summary.ts'
 import type { RunMode } from '../../core/run-mode.ts'
 import type { RunId, StepName } from '../../core/types.ts'
 import type { StepLifecycleEvent } from '../../core/workflow.ts'
-import { type StatusLoop, startStatusLoop } from '../../observability/index.ts'
+import { type SessionLogger, type StatusLoop, startStatusLoop } from '../../observability/index.ts'
 import type { RunnerEvent } from '../../runners/index.ts'
 import type { Clock } from '../../services/clock/index.ts'
 import type { ProcessService } from '../../services/process/index.ts'
@@ -88,6 +88,12 @@ export interface TmuxHostOptions {
    * back. Defaults to `process.stdout`. Tests inject a non-TTY stream.
    */
   readonly stdout?: NodeJS.WritableStream
+  /**
+   * Optional session logger. Emits `host-created`, `tmux-session-created`,
+   * `pane-created(L|R)`, `attach-foreground-started/exited`, `pane-died`, and
+   * `host-torndown` to `lifecycle.ndjson` for post-mortem reconstruction.
+   */
+  readonly logger?: SessionLogger
 }
 
 export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
@@ -96,6 +102,8 @@ export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
   // produces a confusing cascade; fail fast with actionable escape options.
   const env = opts.env ?? (process.env as Readonly<Record<string, string | undefined>>)
   assertNoNestedTmux(env, opts.skipAttach === true)
+
+  void opts.logger?.append('lifecycle', { type: 'host-created', mode: 'two-pane' }).catch(() => {})
 
   const tmux: TmuxService =
     opts.tmux ?? new RealTmuxService({ processService: opts.processService })
@@ -109,6 +117,15 @@ export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
     height: HEIGHT,
     paneDiedCommand: PANE_DIED_COMMAND,
   })
+  void opts.logger
+    ?.append('lifecycle', {
+      type: 'tmux-session-created',
+      socket,
+      session: SESSION,
+      width: WIDTH,
+      height: HEIGHT,
+    })
+    .catch(() => {})
 
   // Left pane is the session's initial pane. Swap the default shell for `cat`
   // so the status loop's sendKeys draws to a clean pty (no PS1 pollution).
@@ -122,6 +139,9 @@ export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
     throw new Error('TmuxHost: tmux new-session produced no panes')
   }
   const leftPaneId = paneId(firstPane)
+  void opts.logger
+    ?.append('lifecycle', { type: 'pane-created', pane: 'L', paneId: leftPaneId })
+    .catch(() => {})
 
   // `clear && exec cat` — wipe any prior output, replace the shell with `cat`
   // so sendKeys bytes never reach a shell interpreter.
@@ -141,6 +161,9 @@ export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
     percent: RIGHT_PERCENT,
     command: PLACEHOLDER_CMD,
   })
+  void opts.logger
+    ?.append('lifecycle', { type: 'pane-created', pane: 'R', paneId: rightPaneId })
+    .catch(() => {})
 
   const statusLoop: StatusLoop = startStatusLoop({
     tmux,
@@ -175,6 +198,7 @@ export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
     skipAttach: opts.skipAttach === true,
     cwd: opts.cwd ?? process.cwd(),
     stdout: opts.stdout ?? process.stdout,
+    ...(opts.logger !== undefined ? { logger: opts.logger } : {}),
   })
 }
 
@@ -193,6 +217,7 @@ interface BuildHostDeps {
   readonly skipAttach: boolean
   readonly cwd: string
   readonly stdout: NodeJS.WritableStream
+  readonly logger?: SessionLogger
 }
 
 function buildHost(deps: BuildHostDeps): Host {
@@ -325,7 +350,7 @@ function buildHost(deps: BuildHostDeps): Host {
     return { exitCode: 0, durationMs: deps.clock.now() - startedAt }
   }
 
-  const attachForeground = createAttachForeground({
+  const rawAttachForeground = createAttachForeground({
     processService: deps.processService,
     socket: deps.socket,
     stderr: deps.stderr,
@@ -333,6 +358,17 @@ function buildHost(deps: BuildHostDeps): Host {
     skipAttach: deps.skipAttach,
     isTeardownStarted: () => teardownStarted,
   })
+
+  // Wrap so the logger observes the attach lifetime without every internal
+  // path of `createAttachForeground` needing to know about it.
+  const attachForeground = async (): Promise<void> => {
+    void deps.logger?.append('lifecycle', { type: 'attach-foreground-started' }).catch(() => {})
+    try {
+      await rawAttachForeground()
+    } finally {
+      void deps.logger?.append('lifecycle', { type: 'attach-foreground-exited' }).catch(() => {})
+    }
+  }
 
   const teardown = async (): Promise<void> => {
     if (torndown) return
@@ -356,6 +392,7 @@ function buildHost(deps: BuildHostDeps): Host {
     // TTY (mouse tracking, alt-screen, bracketed paste). Safe no-op when
     // `stdout.isTTY` is false (pipes, tests).
     restoreTerminalModes(deps.stdout)
+    void deps.logger?.append('lifecycle', { type: 'host-torndown', mode }).catch(() => {})
   }
 
   return {

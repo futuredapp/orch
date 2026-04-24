@@ -4,6 +4,7 @@ import { runsCmd } from '../../../src/cli/commands/runs.ts'
 import { statusCmd } from '../../../src/cli/commands/status.ts'
 import type { CliDeps } from '../../../src/cli/deps.ts'
 import { EXIT } from '../../../src/cli/main.ts'
+import { createNullSessionLogger } from '../../../src/observability/index.ts'
 import {
   BunFsService,
   FakeClock,
@@ -34,6 +35,8 @@ function makeDeps(): CliDeps {
     registry: new FileRunRegistry({ fs: bunFs, basePath }),
     cwd: path(tmpDir),
     statePath: basePath,
+    debug: false,
+    sessionLoggerFor: (rid) => createNullSessionLogger({ runId: rid }),
   }
 }
 

@@ -15,6 +15,7 @@ import { summarizeFailure } from '../../core/failure-summary.ts'
 import type { RunMode } from '../../core/run-mode.ts'
 import type { RunId, StepName } from '../../core/types.ts'
 import type { StepLifecycleEvent } from '../../core/workflow.ts'
+import type { SessionLogger } from '../../observability/index.ts'
 import type { RunnerEvent } from '../../runners/index.ts'
 import type { Clock } from '../../services/clock/index.ts'
 import type { ProcessService } from '../../services/process/index.ts'
@@ -42,10 +43,19 @@ export interface PlainHostOptions {
    * kept optional so tests that only exercise text/JSON output can omit it.
    */
   readonly processService?: ProcessService
+  /**
+   * Optional session logger. When present, emits `host-created` on
+   * construction and `host-torndown` on teardown to `lifecycle.ndjson`.
+   * Plain host has no tmux pane lifecycle; step-level lifecycle already
+   * flows through the executor's logger tee.
+   */
+  readonly logger?: SessionLogger
 }
 
 export function createPlainHost(opts: PlainHostOptions): Host {
   const mode: RunMode = 'plain'
+
+  void opts.logger?.append('lifecycle', { type: 'host-created', mode }).catch(() => {})
 
   const writeJsonLine = (payload: Record<string, unknown>): void => {
     const envelope: Record<string, unknown> = {
@@ -119,6 +129,7 @@ export function createPlainHost(opts: PlainHostOptions): Host {
   }
 
   const teardown = async (): Promise<void> => {
+    void opts.logger?.append('lifecycle', { type: 'host-torndown', mode }).catch(() => {})
     /* plain writes are synchronous; nothing to flush. */
   }
 

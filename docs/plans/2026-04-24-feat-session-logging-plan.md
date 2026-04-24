@@ -352,25 +352,25 @@ via `CliDeps` and into `WorkflowDeps.logger`.
 
 ### Functional Requirements
 
-- [ ] `bun x orch run <workflow>` produces `.orch/state/<runId>/logs/` with:
-  - [ ] `spawns.ndjson`, `events.ndjson`, `lifecycle.ndjson`, `timeline.ndjson`
-  - [ ] `run.meta.json`, `README.md`
-  - [ ] `agents/<stepName>.session.json` for every agent / interactive step
+- [x] `bun x orch run <workflow>` produces `.orch/state/<runId>/logs/` with:
+  - [x] `spawns.ndjson`, `events.ndjson`, `lifecycle.ndjson`, `timeline.ndjson`
+  - [x] `run.meta.json`, `README.md`
+  - [x] `agents/<stepName>.session.json` for every agent / interactive step
 - [ ] `bun x orch run --debug <workflow>` additionally produces:
   - [ ] `agents/<stepName>.stdout` + `.stderr` per agent step
   - [ ] `tmux/<paneId>.log` per pane (two-pane mode only; no-op on plain)
   - [ ] `orch.log` with orch-internal trace entries
   - [ ] `subprocesses.ndjson` with every non-agent `ProcessService.spawn`
-- [ ] Every step-scoped record in `spawns.ndjson`, `events.ndjson`,
+- [x] Every step-scoped record in `spawns.ndjson`, `events.ndjson`,
   `lifecycle.ndjson`, `timeline.ndjson`, and `agents/<name>.session.json`
   carries a `stepSpanId`. `grep <stepSpanId> logs/*.ndjson` returns >=1
   line from each file that recorded the step.
-- [ ] `env` values are **never** present in baseline logs; only `envKeys`.
+- [x] `env` values are **never** present in baseline logs; only `envKeys`.
   `ORCH_LOG_ENV_VALUES=1` emits values in `run.meta.json` with secrets
   redacted to `***`.
-- [ ] `orch resume <runId>` appends (does not overwrite) and bumps
+- [x] `orch resume <runId>` appends (does not overwrite) and bumps
   `run.meta.json.resumedAt`.
-- [ ] `bun run check` green.
+- [x] `bun run check` green.
 
 ### Non-Functional Requirements
 
@@ -388,7 +388,7 @@ via `CliDeps` and into `WorkflowDeps.logger`.
 
 - [x] Unit coverage for `SessionLogger` port + `FileSessionLogger` adapter +
   `redactEnv` (see § Test Plan).
-- [ ] Integration coverage for each writer hook (spawns, events, lifecycle,
+- [x] Integration coverage for each writer hook (spawns, events, lifecycle,
   run.meta.json, per-step session.json).
 - [x] **One e2e test** that runs a real workflow end-to-end (FakeRunner,
   temp cwd, BunFsService) and asserts every baseline file exists with the

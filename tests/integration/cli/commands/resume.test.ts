@@ -3,6 +3,7 @@ import * as fs from 'node:fs/promises'
 import type { CliDeps } from '../../../../src/cli/deps.ts'
 import { type CliOpts, EXIT, type HostFactory } from '../../../../src/cli/main.ts'
 import { createPlainHost } from '../../../../src/hosts/index.ts'
+import { createNullSessionLogger } from '../../../../src/observability/index.ts'
 import {
   BunFsService,
   FakeClock,
@@ -32,10 +33,12 @@ function makeDeps(): CliDeps {
     registry: new FileRunRegistry({ fs: bunFs, basePath }),
     cwd: path(tmpDir),
     statePath: basePath,
+    debug: false,
+    sessionLoggerFor: (rid) => createNullSessionLogger({ runId: rid }),
   }
 }
 
-const DEFAULT_OPTS: CliOpts = { mode: 'plain', format: 'text', noAttach: false }
+const DEFAULT_OPTS: CliOpts = { mode: 'plain', format: 'text', noAttach: false, debug: false }
 
 const DEFAULT_HOST_FACTORY: HostFactory = async (args) =>
   createPlainHost({

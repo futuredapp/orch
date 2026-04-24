@@ -24,7 +24,7 @@ export async function logsCmd(
   deps: CliDeps,
   idArg: string,
   _args: WorkflowArgs = {},
-  opts: CliOpts = { mode: undefined, format: 'text', noAttach: false },
+  opts: CliOpts = { mode: undefined, format: 'text', noAttach: false, debug: false },
 ): Promise<number> {
   if (!idArg) {
     process.stderr.write('Usage: orch logs <runId>\n')
