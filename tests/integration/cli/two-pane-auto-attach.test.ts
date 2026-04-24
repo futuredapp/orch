@@ -241,13 +241,26 @@ describe('runCmd auto-attach — race semantics', () => {
     })
 
     // Allow the workflow race + teardown to run. teardown flips the
-    // teardownStarted flag; in prod it kills the tmux session. Here we
-    // emulate that by resolving the attach gate after teardown.
+    // teardownStarted flag and kills the tmux session — kill-session is
+    // what makes the attach-session client return in prod. We emulate the
+    // attach-side of that by resolving the gate after teardown; we assert
+    // the kill-session call happened below.
     await new Promise((resolve) => setTimeout(resolve, 10))
     killAttach()
 
     const code = await racePromise
     expect(code).toBe(EXIT.OK)
+
+    // Teardown actually killed the tmux session — this is the line that
+    // used to only be asserted implicitly via the attach client returning.
+    // Without kill-session, the tmux server lingers and leaves `mouse on`
+    // bits on the outer TTY (the symptom from the bug that motivated this
+    // plumbing). Assert it fired, and on the right session.
+    const killCalls = tmux.recordedCalls.filter((c) => c.method === 'killSession')
+    expect(killCalls).toHaveLength(1)
+    if (killCalls[0]?.method === 'killSession') {
+      expect(killCalls[0].opts.session).toBe('orch')
+    }
 
     // No detached hint — workflow won the race.
     expect(stderr.text()).not.toContain('detached. run continues')

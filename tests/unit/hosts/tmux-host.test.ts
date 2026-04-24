@@ -292,4 +292,34 @@ describe('TmuxHost.teardown', () => {
     )
     expect(tmux.recordedCalls.length).toBe(callsBefore)
   })
+
+  it('kills the tmux session so the server does not leave mouse-mode bits on the outer TTY', async () => {
+    const tmux = new FakeTmuxService()
+    tmux.setListPanesResult(['%0'])
+    tmux.nextPaneId(paneId('%42'))
+
+    const { host } = await buildHost(tmux)
+
+    await host.teardown()
+
+    const killCalls = tmux.recordedCalls.filter((c) => c.method === 'killSession')
+    expect(killCalls).toHaveLength(1)
+    if (killCalls[0]?.method === 'killSession') {
+      expect(killCalls[0].opts.session).toBe('orch')
+    }
+  })
+
+  it('is idempotent — a second teardown does not re-issue kill-session', async () => {
+    const tmux = new FakeTmuxService()
+    tmux.setListPanesResult(['%0'])
+    tmux.nextPaneId(paneId('%42'))
+
+    const { host } = await buildHost(tmux)
+
+    await host.teardown()
+    await host.teardown()
+
+    const killCalls = tmux.recordedCalls.filter((c) => c.method === 'killSession')
+    expect(killCalls).toHaveLength(1)
+  })
 })

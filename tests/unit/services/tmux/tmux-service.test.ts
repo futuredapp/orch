@@ -335,6 +335,33 @@ describe('FakeTmuxService.listPanes', () => {
   })
 })
 
+describe('FakeTmuxService.killSession', () => {
+  it('records the session teardown call so host tests can assert it fired', async () => {
+    const tmux = new FakeTmuxService()
+    const socket = socketName('orch-1')
+
+    await tmux.killSession({ socket, session: 'orch' })
+
+    const call = tmux.recordedCalls.at(-1)
+    expect(call?.method).toBe('killSession')
+    if (call?.method === 'killSession') {
+      expect(call.opts.socket).toBe(socket)
+      expect(call.opts.session).toBe('orch')
+    }
+  })
+
+  it('stays a no-op when called twice so teardown can be idempotent', async () => {
+    const tmux = new FakeTmuxService()
+    const socket = socketName('orch-1')
+
+    await tmux.killSession({ socket, session: 'orch' })
+    await tmux.killSession({ socket, session: 'orch' })
+
+    const killCalls = tmux.recordedCalls.filter((c) => c.method === 'killSession')
+    expect(killCalls).toHaveLength(2)
+  })
+})
+
 describe('FakeTmuxService.respawnPane', () => {
   it('records argv verbatim even when entries contain shell metacharacters', async () => {
     const tmux = new FakeTmuxService()

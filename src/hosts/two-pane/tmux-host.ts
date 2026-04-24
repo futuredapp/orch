@@ -41,6 +41,7 @@ import {
   type RollupAggregator,
   renderRollupPayload,
 } from './parallel-rollup.ts'
+import { restoreTerminalModes } from './terminal-reset.ts'
 
 // Defaults mirror the old `src/cli/tmux-wiring.ts`. Kept in-file because they
 // are pane-geometry choices, not user-facing config; a v2 layout-tree surface
@@ -81,6 +82,12 @@ export interface TmuxHostOptions {
   readonly env?: Readonly<Record<string, string | undefined>>
   /** Current working directory for foreground spawns. Defaults to `process.cwd()`. */
   readonly cwd?: string
+  /**
+   * Stream used by `teardown()` to emit DEC private-mode reset sequences
+   * (disable mouse tracking, exit alt-screen, …) after tmux hands the TTY
+   * back. Defaults to `process.stdout`. Tests inject a non-TTY stream.
+   */
+  readonly stdout?: NodeJS.WritableStream
 }
 
 export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
@@ -167,6 +174,7 @@ export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
     processService: opts.processService,
     skipAttach: opts.skipAttach === true,
     cwd: opts.cwd ?? process.cwd(),
+    stdout: opts.stdout ?? process.stdout,
   })
 }
 
@@ -184,6 +192,7 @@ interface BuildHostDeps {
   /** When true, `attachForeground()` never spawns `tmux attach-session`. */
   readonly skipAttach: boolean
   readonly cwd: string
+  readonly stdout: NodeJS.WritableStream
 }
 
 function buildHost(deps: BuildHostDeps): Host {
@@ -327,11 +336,26 @@ function buildHost(deps: BuildHostDeps): Host {
 
   const teardown = async (): Promise<void> => {
     if (torndown) return
+    // Order matters: flip `teardownStarted` BEFORE killSession so the attach
+    // client exit (triggered by kill-session) routes through the "expected"
+    // branch in `attachForeground`, not the "attach died unexpectedly" path.
     teardownStarted = true
     torndown = true
     deps.statusLoop.stop()
     rollup.reset()
     await deps.queue.drain()
+    // Kill the session last so all pending writes have already drained.
+    // `killSession` tolerates "session not found" — a racing teardown or an
+    // already-gone server is the outcome we want.
+    try {
+      await deps.tmux.killSession({ socket: deps.socket, session: SESSION })
+    } catch (err) {
+      deps.stderr.write(`[orch tmux] kill-session failed: ${String(err)}\n`)
+    }
+    // Restore DEC private modes the attach client may have left on the outer
+    // TTY (mouse tracking, alt-screen, bracketed paste). Safe no-op when
+    // `stdout.isTTY` is false (pipes, tests).
+    restoreTerminalModes(deps.stdout)
   }
 
   return {

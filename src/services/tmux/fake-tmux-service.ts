@@ -4,6 +4,7 @@ import type {
   CreateSessionOptions,
   DisplayMessageOptions,
   KillPaneOptions,
+  KillSessionOptions,
   ListPanesOptions,
   PaneId,
   PipePaneOptions,
@@ -45,6 +46,7 @@ export type RecordedCall =
   | { readonly method: 'setHook'; readonly opts: SetHookOptions }
   | { readonly method: 'displayMessage'; readonly opts: DisplayMessageOptions }
   | { readonly method: 'killPane'; readonly opts: KillPaneOptions }
+  | { readonly method: 'killSession'; readonly opts: KillSessionOptions }
   | { readonly method: 'attachSession'; readonly opts: AttachSessionOptions }
   | { readonly method: 'selectPane'; readonly opts: SelectPaneOptions }
   | { readonly method: 'capturePane'; readonly opts: CapturePaneOptions }
@@ -130,6 +132,10 @@ export class FakeTmuxService implements TmuxService {
 
   async killPane(opts: KillPaneOptions): Promise<void> {
     this.#calls.push({ method: 'killPane', opts })
+  }
+
+  async killSession(opts: KillSessionOptions): Promise<void> {
+    this.#calls.push({ method: 'killSession', opts })
   }
 
   async attachSession(opts: AttachSessionOptions): Promise<void> {

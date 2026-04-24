@@ -19,6 +19,11 @@ import { EXIT } from '../main.ts'
 
 const ATTACH_SETTLED = Symbol('attach-settled')
 
+// Hard cap on teardown during signal-triggered exit. tmux commands can
+// occasionally hang (socket gone mid-command); we don't want a stuck process
+// holding the user's terminal forever. Beyond this, we force-exit.
+const SIGNAL_TEARDOWN_GRACE_MS = 2_000
+
 export interface ExecuteWithAttachOpts {
   readonly host: Host
   readonly workflow: Promise<void>
@@ -31,6 +36,27 @@ export interface ExecuteWithAttachOpts {
 }
 
 export async function executeWithAttach(opts: ExecuteWithAttachOpts): Promise<number> {
+  // Signal handlers: Ctrl-C / SIGTERM during attach would otherwise kill orch
+  // mid-race and leave the tmux session alive with mouse-tracking bits on the
+  // outer TTY. Route them through teardown (idempotent) before exiting.
+  // Scoped to this function and unregistered in `finally` so repeat
+  // invocations (tests, `orch resume` after `orch run`) don't stack handlers.
+  const makeSignalHandler = (code: number) => (): void => {
+    // Fire-and-forget: signal handlers cannot await. The `.finally` exits
+    // either way — a teardown failure still unblocks the TTY.
+    void opts.host.teardown().finally(() => process.exit(code))
+    // Hard cap: if teardown hangs (tmux socket gone mid-command) we still
+    // exit. `unref` so a fast teardown doesn't keep the loop alive.
+    setTimeout(() => process.exit(code), SIGNAL_TEARDOWN_GRACE_MS).unref()
+  }
+  const sigintHandler = makeSignalHandler(EXIT.SIGINT)
+  const sigtermHandler = makeSignalHandler(EXIT.SIGTERM)
+  // Treat SIGHUP as SIGTERM — same blast radius, same exit code semantics.
+  const sighupHandler = makeSignalHandler(EXIT.SIGTERM)
+  process.on('SIGINT', sigintHandler)
+  process.on('SIGTERM', sigtermHandler)
+  process.on('SIGHUP', sighupHandler)
+
   let workflowSettled = false
   const trackedWorkflow = opts.workflow.finally(() => {
     workflowSettled = true
@@ -63,6 +89,10 @@ export async function executeWithAttach(opts: ExecuteWithAttachOpts): Promise<nu
     await opts.host.teardown()
     if (code !== undefined) return code
     throw err
+  } finally {
+    process.off('SIGINT', sigintHandler)
+    process.off('SIGTERM', sigtermHandler)
+    process.off('SIGHUP', sighupHandler)
   }
 
   await opts.host.teardown()

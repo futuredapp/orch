@@ -139,6 +139,11 @@ export interface KillPaneOptions {
   readonly target: PaneId
 }
 
+export interface KillSessionOptions {
+  readonly socket: SocketName
+  readonly session: string
+}
+
 export interface AttachSessionOptions {
   readonly socket: SocketName
   readonly session: string
@@ -234,6 +239,15 @@ export interface TmuxService {
 
   /** `tmux -L <socket> kill-pane -t <pane>`. */
   killPane(opts: KillPaneOptions): Promise<void>
+
+  /**
+   * `tmux -L <socket> kill-session -t <session>`. Tears down the named
+   * session and its panes. Adapters MUST tolerate "session not found" (the
+   * server is already gone, or a racing teardown already killed it) as a
+   * no-op — teardown is called from multiple paths (normal completion,
+   * signal handlers) and must be idempotent.
+   */
+  killSession(opts: KillSessionOptions): Promise<void>
 
   /**
    * `tmux -L <socket> attach-session -t <session>`. Blocks until the user

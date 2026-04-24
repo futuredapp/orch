@@ -164,6 +164,7 @@ below.
    Typos fail loudly, autocomplete works, union types stay clean.
 
 10. **Keep today's `run(name, opts)` — no `step.define()` ceremony.** The
+10. **Keep today's `run(name, opts)` — no `step.define()` ceremony.** Thee
     brainstorm (and stories) showed `run(step.define('plan', {...}))`. YAGNI —
     no stated benefit vs. `run('plan', {...})` in v1. Can revisit if/when we
     need to pass steps as data, dry-run plan a workflow without executing, or

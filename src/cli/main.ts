@@ -17,6 +17,7 @@ import {
   type PlainFormat,
   registerBuiltinHosts,
 } from '../hosts/index.ts'
+import { restoreTerminalModes } from '../hosts/two-pane/terminal-reset.ts'
 import type { ProcessService } from '../services/process/index.ts'
 import { dryRunCmd } from './commands/dry-run.ts'
 import { logsCmd } from './commands/logs.ts'
@@ -342,5 +343,15 @@ async function main(): Promise<never> {
 
 // Guard: only runs when this file is the entry point, not when imported by tests.
 if (import.meta.main) {
+  // Backstop for terminal-mode cleanup. The two-pane host's teardown already
+  // emits DEC private-mode resets, and signal handlers in executeWithAttach
+  // route through teardown — but a hard `process.exit(code)` from anywhere
+  // (unhandled error path, signal handler timeout) skips those. This fires
+  // on every clean exit path and tolerates being called a second time: the
+  // reset sequences are idempotent. Gated on `isTTY` inside the helper, so
+  // piped runs stay clean.
+  process.on('exit', () => {
+    restoreTerminalModes(process.stdout)
+  })
   main()
 }

@@ -10,6 +10,7 @@ import type {
   CreateSessionOptions,
   DisplayMessageOptions,
   KillPaneOptions,
+  KillSessionOptions,
   ListPanesOptions,
   PaneId,
   PipePaneOptions,
@@ -218,6 +219,17 @@ export class RealTmuxService implements TmuxService {
     const argv = ['tmux', '-L', opts.socket, 'kill-pane', '-t', opts.target]
     const { stderr, exitCode } = await this.#run(argv)
     if (exitCode !== 0) throw fail(exitCode, stderr, 'tmux kill-pane failed')
+  }
+
+  async killSession(opts: KillSessionOptions): Promise<void> {
+    // Teardown is idempotent by design — "session not found" and "no server
+    // running" both mean "already gone", which is the outcome we want.
+    // Anything else (malformed argv, permissions) surfaces as a real failure.
+    const argv = ['tmux', '-L', opts.socket, 'kill-session', '-t', opts.session]
+    const { stderr, exitCode } = await this.#run(argv)
+    if (exitCode === 0) return
+    if (/session not found|no server running|can't find session/i.test(stderr)) return
+    throw fail(exitCode, stderr, 'tmux kill-session failed')
   }
 
   async attachSession(opts: AttachSessionOptions): Promise<void> {

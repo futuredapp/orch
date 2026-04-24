@@ -30,6 +30,7 @@ const WRITE_RIDDLE = step.define('write-riddle', {
     bare: false,
     flags: ['--permission-mode', 'bypassPermissions'],
   }),
+  mode: 'interactive',
   prompt:
     `Invent one short original riddle (2-4 lines, in English) and write it to ./${RIDDLE_FILE}. ` +
     'Write only the riddle text — no title, no preamble, no answer, no code fences, no trailing newline.',

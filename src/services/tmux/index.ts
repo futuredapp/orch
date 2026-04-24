@@ -9,6 +9,7 @@ export type {
   CreateSessionOptions,
   DisplayMessageOptions,
   KillPaneOptions,
+  KillSessionOptions,
   ListPanesOptions,
   PaneId,
   PipePaneOptions,
