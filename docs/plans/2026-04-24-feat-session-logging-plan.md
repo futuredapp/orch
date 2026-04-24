@@ -386,14 +386,14 @@ via `CliDeps` and into `WorkflowDeps.logger`.
 
 ### Quality Gates
 
-- [ ] Unit coverage for `SessionLogger` port + `FileSessionLogger` adapter +
+- [x] Unit coverage for `SessionLogger` port + `FileSessionLogger` adapter +
   `redactEnv` (see § Test Plan).
 - [ ] Integration coverage for each writer hook (spawns, events, lifecycle,
   run.meta.json, per-step session.json).
-- [ ] **One e2e test** that runs a real workflow end-to-end (FakeRunner,
+- [x] **One e2e test** that runs a real workflow end-to-end (FakeRunner,
   temp cwd, BunFsService) and asserts every baseline file exists with the
   expected content shape (see § Test Plan — "E2E acceptance test").
-- [ ] Redaction golden test: `.env` with `SOMETHING_TOKEN=shh` lands as
+- [x] Redaction golden test: `.env` with `SOMETHING_TOKEN=shh` lands as
   `"SOMETHING_TOKEN": "***"` in `run.meta.json` under
   `ORCH_LOG_ENV_VALUES=1`.
 
