@@ -179,6 +179,7 @@ export function createFileSessionLogger(deps: CreateFileSessionLoggerDeps): Sess
   return {
     runId: deps.runId,
     debug: deps.debug,
+    logsDir,
     async append(category: LogCategory, record: JsonObject): Promise<void> {
       await appendNdjson(category, record)
     },

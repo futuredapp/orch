@@ -12,6 +12,7 @@
 // span handle auto-tags stepName + stepSpanId + ts so writers stay terse.
 
 import type { StepName } from '../core/types.ts'
+import type { Path } from '../services/types.ts'
 import type { RunId } from '../state/index.ts'
 
 // ---------------------------------------------------------------------------
@@ -61,6 +62,14 @@ export interface RawSink {
 export interface SessionLogger {
   readonly runId: RunId
   readonly debug: boolean
+  /**
+   * Absolute path to `<basePath>/<runId>/logs/`. Exposed so callers that
+   * must write outside the logger's own writer (e.g. `tmux pipe-pane`, which
+   * tees pane bytes via `/bin/sh -c`) can compute a target path under the
+   * run's log directory. `null` on the null adapter — consumers should no-op
+   * when absent.
+   */
+  readonly logsDir: Path | null
   /** Non-step-scoped append (run-level events like `run-ended`). Also mirrors
    *  into `timeline.ndjson`. */
   append(category: LogCategory, record: JsonObject): Promise<void>

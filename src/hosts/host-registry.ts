@@ -36,6 +36,19 @@ export interface HostFactoryInputs {
   readonly clock: import('../services/clock/index.ts').Clock
   /** Per-run session logger. Forwarded to hosts that emit lifecycle records. */
   readonly logger?: import('../observability/session-logger.ts').SessionLogger
+  /**
+   * Per-run ProcessService override. Lets the CLI hand in a logger-wrapped
+   * service (see `instrumentProcessService`) so tmux subprocess spawns land
+   * in `subprocesses.ndjson` under `--debug`. Falls back to the registry's
+   * service when absent.
+   */
+  readonly processService?: ProcessService
+  /**
+   * Optional FsService — required by the two-pane host under `--debug` to
+   * create the `logs/tmux/` directory for pipe-pane captures. Tests and
+   * baseline (non-debug) runs can safely omit it.
+   */
+  readonly fs?: import('../services/fs/index.ts').FsService
 }
 
 export type HostFactory = (inputs: HostFactoryInputs) => Promise<Host>
@@ -91,7 +104,7 @@ export function registerBuiltinHosts(registry: HostRegistry, deps: RegisterBuilt
       format: deps.format,
       clock: args.clock,
       runId: args.runId,
-      processService: deps.processService,
+      processService: args.processService ?? deps.processService,
       ...(args.logger !== undefined ? { logger: args.logger } : {}),
     }),
   )
@@ -102,13 +115,14 @@ export function registerBuiltinHosts(registry: HostRegistry, deps: RegisterBuilt
 
   registry.register('two-pane', (args) =>
     createTmuxHost({
-      processService: deps.processService,
+      processService: args.processService ?? deps.processService,
       clock: args.clock,
       runId: args.runId,
       workflowName: args.workflowName,
       stderr: args.stderr,
       ...(deps.tmuxOverrides ?? {}),
       ...(args.logger !== undefined ? { logger: args.logger } : {}),
+      ...(args.fs !== undefined ? { fs: args.fs } : {}),
     }),
   )
 }

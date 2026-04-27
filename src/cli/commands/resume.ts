@@ -9,7 +9,12 @@ import {
 } from '../../core/index.ts'
 import type { WorkflowDeps } from '../../core/workflow.ts'
 import { HostCreationError } from '../../hosts/index.ts'
-import { buildRunMeta, orchVersion, type SessionLogger } from '../../observability/index.ts'
+import {
+  buildRunMeta,
+  instrumentProcessService,
+  orchVersion,
+  type SessionLogger,
+} from '../../observability/index.ts'
 import type { RunId } from '../../state/index.ts'
 import { createTranscriptSidecar, StateCorruptionError } from '../../state/index.ts'
 import type { CliDeps } from '../deps.ts'
@@ -189,6 +194,11 @@ export async function resumeCmd(
       emitEnvValues: process.env.ORCH_LOG_ENV_VALUES === '1',
     })
 
+    const instrumentedProcess = instrumentProcessService(deps.processService, {
+      logger,
+      clock: deps.clock,
+    })
+
     let host: Awaited<ReturnType<HostFactory>>
     try {
       host = await hostFactory({
@@ -198,6 +208,8 @@ export async function resumeCmd(
         stderr: process.stderr,
         clock: deps.clock,
         logger,
+        processService: instrumentedProcess,
+        fs: deps.fsService,
       })
     } catch (err) {
       if (err instanceof HostCreationError) {
@@ -215,7 +227,7 @@ export async function resumeCmd(
 
     const wfDeps: WorkflowDeps = {
       stateStore: deps.stateStore,
-      processService: deps.processService,
+      processService: instrumentedProcess,
       clock: deps.clock,
       runId: targetId,
       cwd: deps.cwd,
@@ -235,6 +247,7 @@ export async function resumeCmd(
       stderr: process.stderr,
       mapError: mapResumeError,
       onSuccess: () => process.stderr.write(`Run ${targetId} completed.\n`),
+      logger,
     })
   } finally {
     await logger.close()

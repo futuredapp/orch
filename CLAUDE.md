@@ -23,6 +23,7 @@ The full phased roadmap lives at [`docs/plans/implementation-phases.md`](docs/pl
 - Load the `phase-implementer` skill.
 - Write tests first.
 - Land behind `bun run check`.
+- If debugging a finished run, read [`docs/logging.md`](docs/logging.md) before touching code — `.orch/state/<runId>/logs/` usually has the answer.
 
 ## How to add a new runner
 

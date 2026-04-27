@@ -19,9 +19,15 @@ import { summarizeFailure } from '../../core/failure-summary.ts'
 import type { RunMode } from '../../core/run-mode.ts'
 import type { RunId, StepName } from '../../core/types.ts'
 import type { StepLifecycleEvent } from '../../core/workflow.ts'
-import { type SessionLogger, type StatusLoop, startStatusLoop } from '../../observability/index.ts'
+import {
+  orchLog,
+  type SessionLogger,
+  type StatusLoop,
+  startStatusLoop,
+} from '../../observability/index.ts'
 import type { RunnerEvent } from '../../runners/index.ts'
 import type { Clock } from '../../services/clock/index.ts'
+import type { FsService } from '../../services/fs/index.ts'
 import type { ProcessService } from '../../services/process/index.ts'
 import type { PaneId, SocketName, TmuxService } from '../../services/tmux/index.ts'
 import { initOrchSession, paneId, RealTmuxService, socketName } from '../../services/tmux/index.ts'
@@ -41,6 +47,7 @@ import {
   type RollupAggregator,
   renderRollupPayload,
 } from './parallel-rollup.ts'
+import { startPipePaneCapture } from './pipe-pane-capture.ts'
 import { restoreTerminalModes } from './terminal-reset.ts'
 
 // Defaults mirror the old `src/cli/tmux-wiring.ts`. Kept in-file because they
@@ -54,7 +61,18 @@ const PLACEHOLDER_CMD = 'cat'
 // Global pane-died hook that `initOrchSession` wires — fires once per pane
 // death and signals a per-pane `wait-for` channel so interactive runs can
 // detect their child's exit deterministically.
-const PANE_DIED_COMMAND = 'run-shell "tmux wait-for -S pane-exit-#{hook_pane}"'
+//
+// Two non-obvious tmux quirks force the shape below:
+//   1. tmux commands invoked from a hook do NOT format-expand `#{hook_pane}`.
+//      Only `run-shell` performs that substitution, so we have to bounce
+//      through it to get the dying pane's id into the channel name.
+//   2. The shell `tmux …` invoked by `run-shell` is a fresh client. Without
+//      `-L <socket>` it would connect to the default socket and signal the
+//      WRONG server — our scoped `wait-for` would hang until the user
+//      force-killed the terminal. The interpolated socket below is the fix
+//      for that "stuck cancel" bug.
+const buildPaneDiedCommand = (socket: SocketName): string =>
+  `run-shell "tmux -L ${socket} wait-for -S pane-exit-#{hook_pane}"`
 // Interactive-step wait cap. Long enough for a real review session, short
 // enough that a zombie pane-exit hook doesn't hang orch forever.
 const INTERACTIVE_WAIT_TIMEOUT_MS = 3_600_000
@@ -94,6 +112,11 @@ export interface TmuxHostOptions {
    * `host-torndown` to `lifecycle.ndjson` for post-mortem reconstruction.
    */
   readonly logger?: SessionLogger
+  /**
+   * FsService used by `--debug` pipe-pane capture to `mkdir -p` the
+   * `logs/tmux/` directory. Optional because non-debug runs never create it.
+   */
+  readonly fs?: FsService
 }
 
 export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
@@ -115,7 +138,7 @@ export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
     session: SESSION,
     width: WIDTH,
     height: HEIGHT,
-    paneDiedCommand: PANE_DIED_COMMAND,
+    paneDiedCommand: buildPaneDiedCommand(socket),
   })
   void opts.logger
     ?.append('lifecycle', {
@@ -184,6 +207,22 @@ export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
     )
   }
 
+  // --debug pipe-pane capture. Kicked off after both panes exist so each
+  // pane's initial splash can still land in the log (before `cat` starts).
+  // Some tmux builds drop bytes issued before the pipe is installed; the
+  // plan (§ Open Questions) accepts that small initial loss.
+  const pipePaneCapture =
+    opts.logger?.debug && opts.logger.logsDir !== null && opts.fs !== undefined
+      ? await startPipePaneCapture({
+          tmux,
+          fs: opts.fs,
+          socket,
+          logsDir: opts.logger.logsDir,
+          panes: [leftPaneId, rightPaneId],
+          onError: (err) => opts.stderr.write(`[orch tmux] pipe-pane: ${String(err)}\n`),
+        })
+      : undefined
+
   return buildHost({
     tmux,
     socket,
@@ -199,6 +238,7 @@ export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
     cwd: opts.cwd ?? process.cwd(),
     stdout: opts.stdout ?? process.stdout,
     ...(opts.logger !== undefined ? { logger: opts.logger } : {}),
+    ...(pipePaneCapture !== undefined ? { pipePaneCapture } : {}),
   })
 }
 
@@ -218,6 +258,8 @@ interface BuildHostDeps {
   readonly cwd: string
   readonly stdout: NodeJS.WritableStream
   readonly logger?: SessionLogger
+  /** --debug pipe-pane capture. Stopped on teardown to drop the pipes. */
+  readonly pipePaneCapture?: import('./pipe-pane-capture.ts').PipePaneCapture
 }
 
 function buildHost(deps: BuildHostDeps): Host {
@@ -380,6 +422,11 @@ function buildHost(deps: BuildHostDeps): Host {
     deps.statusLoop.stop()
     rollup.reset()
     await deps.queue.drain()
+    // Stop pipe-pane capture BEFORE killSession so tmux closes the pipe
+    // cleanly instead of ripping the `cat` process out from under the pane.
+    if (deps.pipePaneCapture !== undefined) {
+      await deps.pipePaneCapture.stop()
+    }
     // Kill the session last so all pending writes have already drained.
     // `killSession` tolerates "session not found" — a racing teardown or an
     // already-gone server is the outcome we want.
@@ -393,6 +440,7 @@ function buildHost(deps: BuildHostDeps): Host {
     // `stdout.isTTY` is false (pipes, tests).
     restoreTerminalModes(deps.stdout)
     void deps.logger?.append('lifecycle', { type: 'host-torndown', mode }).catch(() => {})
+    orchLog(deps.logger, 'host-teardown', { mode })
   }
 
   return {

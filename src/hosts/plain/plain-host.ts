@@ -15,7 +15,7 @@ import { summarizeFailure } from '../../core/failure-summary.ts'
 import type { RunMode } from '../../core/run-mode.ts'
 import type { RunId, StepName } from '../../core/types.ts'
 import type { StepLifecycleEvent } from '../../core/workflow.ts'
-import type { SessionLogger } from '../../observability/index.ts'
+import { orchLog, type SessionLogger } from '../../observability/index.ts'
 import type { RunnerEvent } from '../../runners/index.ts'
 import type { Clock } from '../../services/clock/index.ts'
 import type { ProcessService } from '../../services/process/index.ts'
@@ -130,6 +130,7 @@ export function createPlainHost(opts: PlainHostOptions): Host {
 
   const teardown = async (): Promise<void> => {
     void opts.logger?.append('lifecycle', { type: 'host-torndown', mode }).catch(() => {})
+    orchLog(opts.logger, 'host-teardown', { mode })
     /* plain writes are synchronous; nothing to flush. */
   }
 

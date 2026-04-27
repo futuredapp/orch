@@ -15,6 +15,7 @@
 // mode that can detach.
 
 import type { Host } from '../../hosts/index.ts'
+import { orchLog, type SessionLogger } from '../../observability/index.ts'
 import { EXIT } from '../main.ts'
 
 const ATTACH_SETTLED = Symbol('attach-settled')
@@ -33,6 +34,8 @@ export interface ExecuteWithAttachOpts {
   readonly mapError: (err: unknown) => number | undefined
   /** Called on successful completion (before teardown returns to the caller). */
   readonly onSuccess: () => void
+  /** Optional per-run logger for `--debug` orch.log entries. */
+  readonly logger?: SessionLogger
 }
 
 export async function executeWithAttach(opts: ExecuteWithAttachOpts): Promise<number> {
@@ -42,6 +45,7 @@ export async function executeWithAttach(opts: ExecuteWithAttachOpts): Promise<nu
   // Scoped to this function and unregistered in `finally` so repeat
   // invocations (tests, `orch resume` after `orch run`) don't stack handlers.
   const makeSignalHandler = (code: number) => (): void => {
+    orchLog(opts.logger, 'signal-received', { exitCode: code })
     // Fire-and-forget: signal handlers cannot await. The `.finally` exits
     // either way — a teardown failure still unblocks the TTY.
     void opts.host.teardown().finally(() => process.exit(code))

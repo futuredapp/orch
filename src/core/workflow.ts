@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Host } from '../hosts/index.ts'
 import type { JsonObject, SessionLogger, StepSpan } from '../observability/index.ts'
-import { envKeys as envKeyList, redactReproduceCommand } from '../observability/index.ts'
+import { envKeys as envKeyList, orchLog, redactReproduceCommand } from '../observability/index.ts'
 import { runRunner } from '../runners/index.ts'
 import type { Clock, FsService, GitService, ProcessService } from '../services/index.ts'
 import { GitCommandError } from '../services/index.ts'
@@ -552,6 +552,35 @@ async function writeInteractiveSession(
 }
 
 // ---------------------------------------------------------------------------
+// openRawCapture — opens debug-only raw stdout/stderr sinks for an agent step.
+// Returns undefined when logger is absent or debug is off so the runner deps
+// stay free of the `onRawLine` hook (zero cost on the hot path). On step end,
+// the caller awaits `close()` to flush pending appends to disk.
+// ---------------------------------------------------------------------------
+
+interface RawCapture {
+  readonly onRawLine: (stream: 'stdout' | 'stderr', line: string) => void
+  close(): Promise<void>
+}
+
+function openRawCapture(logger: SessionLogger | undefined, key: StepName): RawCapture | undefined {
+  if (logger === undefined || !logger.debug) return undefined
+  const stdoutSink = logger.rawSink(`agents/${key}.stdout`)
+  const stderrSink = logger.rawSink(`agents/${key}.stderr`)
+  if (stdoutSink === null && stderrSink === null) return undefined
+  return {
+    onRawLine(stream, line) {
+      const sink = stream === 'stdout' ? stdoutSink : stderrSink
+      if (sink === null) return
+      void sink.write(`${line}\n`).catch(() => {})
+    },
+    async close() {
+      await Promise.all([stdoutSink?.close(), stderrSink?.close()])
+    },
+  }
+}
+
+// ---------------------------------------------------------------------------
 // runAgentStep — executes an autonomous step via a Runner adapter
 // ---------------------------------------------------------------------------
 
@@ -595,6 +624,11 @@ async function runAgentStep(
     stepMode: 'autonomous',
   })
   const isSilent = resolution.kind === 'silent'
+  orchLog(deps.logger, 'resolveView', {
+    stepName: key,
+    kind: resolution.kind,
+    ...(resolution.kind !== 'silent' ? { pane: resolution.pane } : {}),
+  })
   const inParallel = currentParallelDepth() > 0
 
   emitStepLifecycle(deps.host, stepSpan, {
@@ -623,10 +657,12 @@ async function runAgentStep(
   // to stderr but do not abort the step; transcript loss is recoverable,
   // a step failure from a fs hiccup is not.
   const stepTranscript = deps.transcriptSidecar?.forStep(key)
+  const rawCapture = openRawCapture(deps.logger, key)
   const runnerDeps = {
     processService: deps.processService,
     clock: deps.clock,
     onEvent: makeAgentEventHandler(deps, key, stepTranscript, stepSpan, isSilent),
+    ...(rawCapture !== undefined ? { onRawLine: rawCapture.onRawLine } : {}),
   }
   // Build the runner command up front so spawn records capture argv/env even
   // when the runner fails mid-run. Agents that error before exec still land a
@@ -638,7 +674,12 @@ async function runAgentStep(
     extraArgs: [],
     ...(config.returns !== undefined ? { schema: { jsonSchema: config.returns.jsonSchema } } : {}),
   }
-  const result = await runRunner(config.agent, runnerCtx, runnerDeps)
+  let result: Awaited<ReturnType<typeof runRunner>>
+  try {
+    result = await runRunner(config.agent, runnerCtx, runnerDeps)
+  } finally {
+    await rawCapture?.close().catch(() => {})
+  }
   const durationMs = deps.clock.now() - startedAt
 
   await logAgentSpawn(stepSpan, config, runnerCtx, {
@@ -877,6 +918,7 @@ async function runStepOnce(
     // timeline still shows the cache hit.
     deps.host.onLifecycleEvent({ type: 'step:cached', stepName: key })
     void deps.logger?.append('lifecycle', { type: 'step:cached', stepName: key }).catch(() => {})
+    orchLog(deps.logger, 'cache-hit', { stepName: key, kind: config.kind })
     return cached.value
   }
 
@@ -903,6 +945,7 @@ async function runStepOnce(
   }
 
   await deps.stateStore.saveStep(deps.runId, result.entry)
+  orchLog(deps.logger, 'saveStep', { stepName: key, kind: s.config.kind })
   return result.value
 }
 

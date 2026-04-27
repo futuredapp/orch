@@ -49,7 +49,20 @@ Users opt in knowing the cost — there are no size caps.
 | `agents/<stepName>.stdout` + `.stderr` | raw bytes per agent subprocess — parser miss recovery, NDJSON decode failures |
 | `tmux/<paneId>.log` | `tmux pipe-pane` capture, two-pane mode only |
 | `subprocesses.ndjson` | every non-agent subprocess (git, tmux, probes) that routed through `ProcessService` |
-| `orch.log` | orch's own internal trace — view/mode resolution, state writes, signal handling |
+| `orch.ndjson` | orch's own internal trace — view resolution, cache hits, state writes, signal handling, host teardown |
+
+Notes:
+- `agents/<stepName>.stdout` is the raw byte stream BEFORE any NDJSON parsing.
+  Use it to debug parser misses; `events.ndjson` only shows what `parseEvents`
+  accepted.
+- Agent subprocesses carry `tag: 'agent'` so they are intentionally skipped by
+  `subprocesses.ndjson`. Only non-agent spawns (git probes, tmux commands, etc.)
+  land there. See `src/observability/instrument-process-service.ts`.
+- `tmux/<paneId>.log` starts AFTER the pane is created, so the first splash line
+  can be lost. Accepted loss in v1 — it's baseline output, not step output.
+- `orch.ndjson` is append-only NDJSON despite the name drift; v1 keeps the
+  `.ndjson` suffix so `grep` and `jq` work the same way they do on the
+  baseline files.
 
 ## Redaction
 
@@ -86,4 +99,25 @@ Every spawn that exited non-zero:
 
 ```bash
 jq 'select(.exitCode != 0)' .orch/state/<runId>/logs/spawns.ndjson
+```
+
+### `--debug`-only recipes
+
+Every non-agent subprocess orch fired (git, tmux, probes):
+
+```bash
+jq -r '[.argv[], .exitCode] | @tsv' .orch/state/<runId>/logs/subprocesses.ndjson
+```
+
+Internal decisions the orchestrator logged:
+
+```bash
+jq -r '[.msg, .stepName // ""] | @tsv' .orch/state/<runId>/logs/orch.ndjson
+```
+
+Raw agent bytes for one step (pairs with `events.ndjson` to spot parser misses):
+
+```bash
+diff <(jq -c '.event' .orch/state/<runId>/logs/events.ndjson | sort) \
+     <(sort .orch/state/<runId>/logs/agents/<stepName>.stdout)
 ```

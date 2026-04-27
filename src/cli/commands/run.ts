@@ -8,6 +8,7 @@ import type { WorkflowArgs, WorkflowDeps } from '../../core/workflow.ts'
 import { HostCreationError } from '../../hosts/index.ts'
 import {
   buildRunMeta,
+  instrumentProcessService,
   orchVersion,
   renderRunReadme,
   type SessionLogger,
@@ -117,6 +118,11 @@ export async function runCmd(
       emitEnvValues: process.env.ORCH_LOG_ENV_VALUES === '1',
     })
 
+    const instrumentedProcess = instrumentProcessService(deps.processService, {
+      logger,
+      clock: deps.clock,
+    })
+
     let host: Awaited<ReturnType<HostFactory>>
     try {
       host = await hostFactory({
@@ -126,6 +132,8 @@ export async function runCmd(
         stderr: process.stderr,
         clock: deps.clock,
         logger,
+        processService: instrumentedProcess,
+        fs: deps.fsService,
       })
     } catch (err) {
       if (err instanceof HostCreationError) {
@@ -143,7 +151,7 @@ export async function runCmd(
 
     const wfDeps: WorkflowDeps = {
       stateStore: deps.stateStore,
-      processService: deps.processService,
+      processService: instrumentedProcess,
       clock: deps.clock,
       runId,
       cwd: deps.cwd,
@@ -163,6 +171,7 @@ export async function runCmd(
       stderr: process.stderr,
       mapError: mapRunError,
       onSuccess: () => process.stderr.write(`Workflow "${name}" completed.\n`),
+      logger,
     })
   } finally {
     await logger.close()

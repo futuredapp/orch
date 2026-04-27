@@ -5,6 +5,13 @@ export interface SpawnOptions {
   readonly cwd: Path
   /** Full replacement. No automatic merge with process.env. */
   readonly env: Readonly<Record<string, string>>
+  /**
+   * Observational marker consumed by wrappers that log subprocess activity
+   * (see `instrumentProcessService`). Runners set `tag: 'agent'` so the
+   * subprocess logger skips them — agent spawns already land in
+   * `spawns.ndjson`. Ignored by the real process service.
+   */
+  readonly tag?: string
 }
 
 // ---------------------------------------------------------------------------

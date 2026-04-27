@@ -34,6 +34,7 @@ export function createNullSessionLogger(opts: CreateNullSessionLoggerOptions = {
   return {
     runId: resolvedRunId,
     debug,
+    logsDir: null,
     async append(_category: LogCategory, _record: JsonObject): Promise<void> {
       /* no-op */
     },

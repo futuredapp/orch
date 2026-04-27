@@ -39,20 +39,35 @@ export async function runRunner(
      * (terminal + info). Used by observe mode to tee the event stream.
      */
     readonly onEvent?: (event: RunnerEvent) => void
+    /**
+     * `--debug` capture seam. Fires for every raw line drained from stdout
+     * or stderr before any parsing. Under `!debug`, this is undefined —
+     * zero overhead for the hot path. Raw lines preserve parser misses and
+     * NDJSON decode failures; `onEvent` only sees what `parseEvents`
+     * accepts. See plan § Phase 3.
+     */
+    readonly onRawLine?: (stream: 'stdout' | 'stderr', line: string) => void
   },
 ): Promise<RunnerResult> {
   const startedAt = deps.clock.now()
   const cmd = await runner.buildCommand(ctx)
-  const handle = deps.processService.spawn({ argv: cmd.argv, env: cmd.env, cwd: ctx.cwd })
+  const handle = deps.processService.spawn({
+    argv: cmd.argv,
+    env: cmd.env,
+    cwd: ctx.cwd,
+    tag: 'agent',
+  })
 
-  // Drain stderr concurrently to prevent pipe deadlock.
-  const stderrDone = drainStream(handle.stderr)
+  // Drain stderr concurrently to prevent pipe deadlock. Under `--debug` the
+  // raw-line hook also fires on every stderr line.
+  const stderrDone = drainStream(handle.stderr, (line) => deps.onRawLine?.('stderr', line))
 
   let finalEvent: TerminalEvent | null = null
   let exitCode: number
 
   try {
     for await (const line of handle.stdout) {
+      deps.onRawLine?.('stdout', line)
       if (finalEvent !== null) continue // drain trailing output without processing
       const evt = runner.parseEvents(line)
       if (evt === null) continue
@@ -82,9 +97,12 @@ export async function runRunner(
   return { finalEvent, exitCode, durationMs }
 }
 
-async function drainStream(stream: AsyncIterable<string>): Promise<void> {
-  for await (const _ of stream) {
-    /* discard */
+async function drainStream(
+  stream: AsyncIterable<string>,
+  onLine?: (line: string) => void,
+): Promise<void> {
+  for await (const line of stream) {
+    onLine?.(line)
   }
 }
 

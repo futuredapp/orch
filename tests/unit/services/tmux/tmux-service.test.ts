@@ -240,7 +240,7 @@ describe('initOrchSession', () => {
       session: 'main',
       width: 200,
       height: 50,
-      paneDiedCommand: 'run-shell "tmux wait-for -S pane-exit-#{hook_pane}"',
+      paneDiedCommand: 'run-shell "tmux -L orch-1 wait-for -S pane-exit-#{hook_pane}"',
     })
 
     const hookCall = tmux.recordedCalls.find((c) => c.method === 'setHook')
