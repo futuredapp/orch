@@ -22,6 +22,9 @@ function makeInteractiveRunner(): Runner {
     extractStructuredOutput() {
       return undefined
     },
+    toTranscriptLines() {
+      return []
+    },
   })
 }
 

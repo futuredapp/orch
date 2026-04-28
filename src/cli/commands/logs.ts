@@ -13,6 +13,7 @@
 
 import type { WorkflowArgs } from '../../core/index.ts'
 import { renderTranscriptLine } from '../../hosts/index.ts'
+import { toClaudeTranscriptLines } from '../../runners/claude/format-event.ts'
 import type { RunnerEvent } from '../../runners/index.ts'
 import type { Path } from '../../services/types.ts'
 import { path } from '../../services/types.ts'
@@ -107,7 +108,18 @@ function printEvent(stepName: string, line: string, format: CliOpts['format']): 
   } catch {
     return
   }
-  const rendered = renderTranscriptLine(event)
-  if (rendered === null) return
-  process.stdout.write(`[${stepName}] ${rendered}\n`)
+  // Phase A: assume Claude-shaped events. The persisted NDJSON doesn't carry
+  // a runner tag yet; Phase E (`orch logs` reframe) will read the runner from
+  // state.json and dispatch through the runner registry.
+  const lines = toClaudeTranscriptLines(event)
+  if (lines.length === 0) return
+  const color = process.stdout.isTTY === true && !process.env.NO_COLOR
+  const prefix = `[${stepName}] `
+  for (const tl of lines) {
+    const rendered = renderTranscriptLine(tl, {
+      color,
+      prefix: tl.kind === 'line' ? prefix : '',
+    })
+    for (const out of rendered) process.stdout.write(`${out}\n`)
+  }
 }

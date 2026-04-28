@@ -1,7 +1,7 @@
 ---
 title: Autonomous-step transcript rendering — make non-interactive runs legible
 type: feat
-status: active
+status: phase-a-shipped
 date: 2026-04-28
 brainstorm: docs/brainstorms/2026-04-28-autonomous-transcript-rendering-brainstorm.md
 ---
@@ -398,37 +398,37 @@ Codex emits a thinner stream than Claude (no nested message content), but `turn.
 
 ### Functional Requirements
 
-- [ ] Live stream: piping a real or captured Claude run through `--mode=plain --format=text` produces the brainstorm's "Live stream" block. Specifically:
+- [x] Live stream: piping a real or captured Claude run through `--mode=plain --format=text` produces the brainstorm's "Live stream" block. Specifically:
   - One `[step] · system: model=…, N tools, M mcp servers` line on init.
   - One `[step] ○ thinking` line per `thinking` content block.
   - One `[step] ▸ <Tool> <args>` line per `tool_use` content block.
   - One `[step] ◂ <result>` (or `[step] ✗ <error>`) line per `tool_result`.
   - One `[step] assistant> <text>` line per non-empty `text` content block.
-- [ ] Completion summary: on `terminal/turn-complete`, prints the multi-line `── done ──` block with rows for present `usage` fields. Cache numbers humanized as `143k`/`29k`. Partial `usage` renders only present rows; never crashes.
-- [ ] Failure summary: on `terminal/error`, prints the `── failed ──` block with a `message` row.
-- [ ] Same renderer feeds two-pane right pane and `--mode=plain --format=text`. Output is byte-equal modulo ANSI on/off (and the `[step]` prefix on `kind: 'line'` items).
-- [ ] `--format=json` is unchanged: NDJSON envelopes still flow as before.
-- [ ] `events.ndjson` and `<step>.transcript.ndjson` files on disk are unchanged.
-- [ ] Interactive steps: `toTranscriptLines` is never called; the tmux pane attached to the agent already shows what happened.
-- [ ] Codex autonomous runs print a meaningful summary block on `turn.completed` and a `── failed ──` block on `turn.failed`. No `· <unknown-type>` lines for events the formatter recognizes.
-- [ ] A buggy `toTranscriptLines` (throws) does not abort a run: the executor catches, logs once, and the host receives `[]` for that event.
+- [x] Completion summary: on `terminal/turn-complete`, prints the multi-line `── done ──` block with rows for present `usage` fields. Cache numbers humanized as `143k`/`29k`. Partial `usage` renders only present rows; never crashes.
+- [x] Failure summary: on `terminal/error`, prints the `── failed ──` block with a `message` row.
+- [x] Same renderer feeds two-pane right pane and `--mode=plain --format=text`. Output is byte-equal modulo ANSI on/off (and the `[step]` prefix on `kind: 'line'` items).
+- [x] `--format=json` is unchanged: NDJSON envelopes still flow as before.
+- [x] `events.ndjson` and `<step>.transcript.ndjson` files on disk are unchanged.
+- [x] Interactive steps: `toTranscriptLines` is never called; the tmux pane attached to the agent already shows what happened.
+- [ ] Codex autonomous runs print a meaningful summary block on `turn.completed` and a `── failed ──` block on `turn.failed`. No `· <unknown-type>` lines for events the formatter recognizes. (Phase B — placeholder `() => []` shipped in Phase A.)
+- [x] A buggy `toTranscriptLines` (throws) does not abort a run: the executor catches, logs once, and the host receives `[]` for that event.
 
 ### Non-Functional Requirements
 
-- [ ] **Color:** auto on `process.stdout.isTTY === true && NO_COLOR === undefined`. Tmux right pane is always colorized. Pipes are never colorized.
-- [ ] **Truncation:** Bash to 120 chars, file paths via middle-ellipsis at 60 chars, generic JSON to 80 chars, assistant text to 4000 chars, error text to 200 chars. All operate on the JS string after `JSON.stringify`; no malformed UTF-8.
-- [ ] **stripAnsi** applied to every `body` before write — runner-built strings can't poison the terminal.
-- [ ] **File sizes:** all new files ≤ 300 lines per CLAUDE.md rule 5; functions ≤ 60 lines.
-- [ ] **No `any`, no `!`** — payloads typed as `Readonly<Record<string, unknown>>`; safe field readers (mirror the existing `readStringField` pattern in `transcript-text.ts:86`).
-- [ ] **No new module-import side effects** — formatters export functions only; no logging or fs at import time.
+- [x] **Color:** auto on `process.stdout.isTTY === true && NO_COLOR === undefined`. Tmux right pane is always colorized. Pipes are never colorized.
+- [x] **Truncation:** Bash to 120 chars, file paths via middle-ellipsis at 60 chars, generic JSON to 80 chars, assistant text to 4000 chars, error text to 200 chars. All operate on the JS string after `JSON.stringify`; no malformed UTF-8.
+- [x] **stripAnsi** applied to every `body` before write — runner-built strings can't poison the terminal.
+- [x] **File sizes:** all new files ≤ 300 lines per CLAUDE.md rule 5; functions ≤ 60 lines.
+- [x] **No `any`, no `!`** — payloads typed as `Readonly<Record<string, unknown>>`; safe field readers (mirror the existing `readStringField` pattern in `transcript-text.ts:86`).
+- [x] **No new module-import side effects** — formatters export functions only; no logging or fs at import time.
 
 ### Quality Gates
 
-- [ ] Unit tests cover every branch in `toClaudeTranscriptLines` and `toCodexTranscriptLines` reachable from the captured fixture.
-- [ ] Integration test consumes the real captured NDJSON (`r-2026-04-28-oiyrjv`) and snapshots the rendered plain text.
-- [ ] `bun run check` green at every PR boundary.
-- [ ] `RUN_REAL_CLAUDE=1 bun run test:int` passes — existing real runner test now also asserts at least one `── done ──` block reaches stdout.
-- [ ] No regressions in existing `--format=json` paths (existing JSON snapshot tests still pass without edits).
+- [x] Unit tests cover every branch in `toClaudeTranscriptLines` reachable from the captured fixture. (Codex deferred to Phase B.)
+- [x] Integration test consumes the real captured NDJSON (`r-2026-04-28-oiyrjv`) and snapshots the rendered plain text.
+- [x] `bun run check` green at every PR boundary.
+- [ ] `RUN_REAL_CLAUDE=1 bun run test:int` passes — existing real runner test now also asserts at least one `── done ──` block reaches stdout. (Existing real-runner suite untouched in Phase A; revisit in Phase B alongside Codex.)
+- [x] No regressions in existing `--format=json` paths (existing JSON snapshot tests still pass without edits).
 
 ## Success Metrics
 
@@ -509,4 +509,22 @@ This plan was revised after a multi-agent review (DHH/Kieran/code-simplicity) fl
 - **`safeToTranscriptLines` wrapper** — formatter throws don't abort the run.
 - **Test plan trimmed** — dropped per-glyph ANSI unit tests, the `<50ms` perf benchmark, the synthetic `turn-failed.transcript.ndjson` fixture, and `format-helpers.test.ts`. Lean on the integration snapshot.
 - **Edge cases added** — partial `usage` rows, `null`/missing `content`, multiple text blocks per assistant message, 50KB single text body, formatter throws.
+
+## Phase A — shipped (2026-04-28)
+
+Phase A landed end-to-end: `TranscriptCategory` / `TranscriptLine` types are
+in place, `Runner.toTranscriptLines` is required and validated by the zod
+adapter schema, the Claude formatter walks `payload.message.content[]` with
+the truncation table from this plan, the plain host and tmux right pane
+share `src/hosts/plain/render-line.ts`, and the executor wraps the formatter
+in `safeToTranscriptLines` so a thrown formatter never aborts a run. The
+captured `r-2026-04-28-oiyrjv` riddle-solve fixture renders through the
+production chain with the correct system init / tool / error / assistant /
+done block lines (`tests/integration/hosts/plain/transcript-render-claude.test.ts`).
+
+Codex still has a `() => []` placeholder; Phase B will port the same
+pattern. The `logs` CLI command hard-codes the Claude formatter for replay
+until Phase E persists runner identity in the transcript sidecar.
+
+Solutions doc: [`docs/solutions/autonomous-transcript-rendering.md`](../solutions/autonomous-transcript-rendering.md).
 - **`stripAnsi` consistency** — host always strips ANSI from `body` before writing.

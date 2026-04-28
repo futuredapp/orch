@@ -3,7 +3,7 @@ import { Writable } from 'node:stream'
 import type { StepName } from '../../../src/core/types.ts'
 import type { StepLifecycleEvent } from '../../../src/core/workflow.ts'
 import { createPlainHost } from '../../../src/hosts/index.ts'
-import type { RunnerEvent } from '../../../src/runners/index.ts'
+import type { RunnerEvent, TranscriptLine } from '../../../src/runners/index.ts'
 import { FakeClock } from '../../../src/services/index.ts'
 import type { RunId } from '../../../src/state/index.ts'
 
@@ -64,19 +64,44 @@ describe('PlainHost — text format', () => {
     expect(stdout.text()).toBe('[orch] step:start plan (autonomous)\n')
   })
 
-  it('renders a runner event under the [stepName] prefix', () => {
+  it('writes one prefixed text line per kind:line transcript line under [stepName]', () => {
     const { host, stdout } = makeTextHost()
-    const evt: RunnerEvent = { kind: 'info', type: 'assistant', payload: { text: 'hi' } }
-    host.onRunnerEvent(evt, STEP)
+    const evt: RunnerEvent = { kind: 'info', type: 'assistant', payload: {} }
+    const lines: readonly TranscriptLine[] = [
+      { kind: 'line', category: 'assistant', label: 'assistant>', body: 'hi' },
+    ]
+    host.onRunnerEvent(evt, STEP, lines)
 
     expect(stdout.text()).toBe('[plan] assistant> hi\n')
   })
 
-  it('suppresses runner events whose rendered line is null (turn-complete)', () => {
+  it('suppresses runner events whose lines array is empty', () => {
     const { host, stdout } = makeTextHost()
-    host.onRunnerEvent({ kind: 'terminal', type: 'turn-complete' }, STEP)
+    host.onRunnerEvent({ kind: 'terminal', type: 'turn-complete' }, STEP, [])
 
     expect(stdout.text()).toBe('')
+  })
+
+  it('writes a heading and indented rows for kind:block lines without the [step] prefix', () => {
+    const { host, stdout } = makeTextHost()
+    const evt: RunnerEvent = { kind: 'terminal', type: 'turn-complete' }
+    const lines: readonly TranscriptLine[] = [
+      {
+        kind: 'block',
+        heading: 'done',
+        rows: [
+          ['result', 'ok'],
+          ['turns', '6'],
+        ],
+      },
+    ]
+    host.onRunnerEvent(evt, STEP, lines)
+
+    const out = stdout.text()
+    expect(out).toContain('── done ──')
+    expect(out).toContain('  result  ok')
+    expect(out).toContain('  turns   6')
+    expect(out).not.toContain('[plan] ── done ──')
   })
 
   it('emits step:complete with duration', () => {
@@ -158,7 +183,7 @@ describe('PlainHost — json format', () => {
 
   it('emits runner events as ev:event with kind/type', () => {
     const { host, stdout } = makeJsonHost()
-    host.onRunnerEvent({ kind: 'info', type: 'assistant', payload: { text: 'hi' } }, STEP)
+    host.onRunnerEvent({ kind: 'info', type: 'assistant', payload: { text: 'hi' } }, STEP, [])
 
     const parsed = JSON.parse(stdout.text().trim())
     expect(parsed.ev).toBe('event')

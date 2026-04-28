@@ -21,12 +21,13 @@ import type {
   PaneAttachment,
   PaneRole,
 } from '../../src/hosts/index.ts'
-import type { RunnerEvent } from '../../src/runners/index.ts'
+import type { RunnerEvent, TranscriptLine } from '../../src/runners/index.ts'
 
 export interface RecordedRunnerEvent {
   readonly kind: 'runner'
   readonly step: StepName
   readonly event: RunnerEvent
+  readonly lines: readonly TranscriptLine[]
 }
 
 export interface RecordedLifecycleEvent {
@@ -74,8 +75,8 @@ export function createFakeHost(opts: FakeHostOptions = {}): FakeHost {
     writeBanner(line: string): void {
       banners.push(line)
     },
-    onRunnerEvent(event: RunnerEvent, step: StepName): void {
-      recorded.push({ kind: 'runner', step, event })
+    onRunnerEvent(event: RunnerEvent, step: StepName, lines: readonly TranscriptLine[]): void {
+      recorded.push({ kind: 'runner', step, event, lines })
     },
     onLifecycleEvent(event: StepLifecycleEvent): void {
       recorded.push({ kind: 'lifecycle', event })

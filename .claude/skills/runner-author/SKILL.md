@@ -37,9 +37,49 @@ export interface Runner {
   buildCommand(ctx: RunnerContext): { argv: string[]; env: Record<string, string> }
   parseEvents(line: string): RunnerEvent | null
   extractStructuredOutput(finalEvent: RunnerEvent, schema: ZodSchema): unknown
+  toTranscriptLines(event: RunnerEvent): readonly TranscriptLine[]
   escalationWiring?(ctx: RunnerContext): EscalationBinding   // optional
 }
 ```
+
+## Why `toTranscriptLines` is required
+
+Hosts know nothing about your runner's NDJSON shape; you do. Map every
+`RunnerEvent` your `parseEvents` emits into one or more `TranscriptLine`s.
+Return `[]` to suppress (e.g. `rate_limit_event`). Throwing is safe — the
+executor catches and falls back to `[]` per event — but a thrown formatter
+means no text reaches the screen for that event.
+
+```ts
+export type TranscriptCategory =
+  | 'system' | 'thinking' | 'tool-call' | 'tool-result' | 'tool-error' | 'assistant'
+
+export type TranscriptLine =
+  | { kind: 'line'; category: TranscriptCategory; label?: string; body: string }
+  | { kind: 'block'; heading: 'done' | 'failed'; rows: readonly (readonly [string, string])[] }
+```
+
+Rules:
+
+- **Truncate at the source.** Long file paths use middle-ellipsis; long
+  command/JSON values get tail-ellipsis (`…`). Recommended caps: file paths
+  60 chars, Bash commands 120, generic tool input JSON 80, tool-result first
+  line 80, error messages 200, assistant text 4000.
+- **One terminal block per terminal event.** `terminal/turn-complete` →
+  `kind: 'block', heading: 'done'`; `terminal/error` → `heading: 'failed'`.
+  Rows are `[label, value]` tuples — typically `result`, `duration`, `turns`,
+  `cost`, `tokens`, `permissions`, `session`. Omit rows whose value is
+  unavailable rather than emitting `'?'`.
+- **Stay free of ANSI.** The host owns color, glyphs, the `[<step>] ` prefix,
+  and the block heading. You return raw text.
+- **Walk nested envelopes.** Many CLIs (Claude, Codex) put the interesting
+  content blocks inside `payload.message.content[]`. The top-level
+  `event.type` is just an envelope tag — don't switch on it like a leaf.
+
+See `src/runners/claude/format-event.ts` for a worked example. The Claude
+formatter walks `payload.message.content[]`, emits one line per nested
+block (`thinking`, `tool_use`, `text`, `tool_result`), and turns
+`turn-complete` into a `done` block with rows.
 
 ## Environment
 
@@ -63,14 +103,28 @@ export const myagent = defineRunner({
   }),
 
   parseEvents: (line) => {
-    if (line.startsWith('DONE:')) return { type: 'turn-complete' }
-    if (line.startsWith('TOOL:')) return { type: 'tool-call', tool: line.slice(5) }
-    if (line.startsWith('ERR:')) return { type: 'error', message: line.slice(4) }
+    if (line.startsWith('DONE:')) return { kind: 'terminal', type: 'turn-complete' }
+    if (line.startsWith('TOOL:')) return { kind: 'info', type: 'tool-call', payload: { name: line.slice(5) } }
+    if (line.startsWith('ERR:')) return { kind: 'terminal', type: 'error', message: line.slice(4) }
     return null
   },
 
   extractStructuredOutput: () => {
     throw new Error('myagent does not emit structured output')
+  },
+
+  toTranscriptLines: (evt) => {
+    if (evt.kind === 'terminal' && evt.type === 'turn-complete') {
+      return [{ kind: 'block', heading: 'done', rows: [['result', 'ok']] }]
+    }
+    if (evt.kind === 'terminal' && evt.type === 'error') {
+      return [{ kind: 'block', heading: 'failed', rows: [['message', evt.message]] }]
+    }
+    if (evt.kind === 'info' && evt.type === 'tool-call') {
+      const name = (evt.payload as { name?: string } | undefined)?.name ?? '?'
+      return [{ kind: 'line', category: 'tool-call', label: name, body: '' }]
+    }
+    return []
   },
 })
 ```

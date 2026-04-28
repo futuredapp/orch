@@ -65,8 +65,8 @@ describe('host runner-event forwarding', () => {
     await wf.execute(deps)
 
     const received: RunnerEvent[] = deps.host.recorded
-      .filter((r): r is { kind: 'runner'; step: never; event: RunnerEvent } => r.kind === 'runner')
-      .map((r) => r.event)
+      .filter((r) => r.kind === 'runner')
+      .map((r) => (r as Extract<typeof r, { kind: 'runner' }>).event)
     expect(received.length).toBe(3)
     expect(received[0]).toMatchObject({ kind: 'info', type: 'assistant' })
     expect(received[1]).toMatchObject({ kind: 'info', type: 'tool-call' })

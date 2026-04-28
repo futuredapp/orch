@@ -72,6 +72,9 @@ function makeNonInteractiveRunner(): Runner {
     extractStructuredOutput() {
       return undefined
     },
+    toTranscriptLines() {
+      return []
+    },
   })
 }
 

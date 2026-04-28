@@ -279,5 +279,10 @@ export function codex(
         return text
       }
     },
+
+    // Phase A placeholder. Codex's formatter lands in Phase B; until then
+    // every Codex event is suppressed from the readable transcript. The JSON
+    // path and on-disk transcript.ndjson are unaffected.
+    toTranscriptLines: () => [],
   })
 }

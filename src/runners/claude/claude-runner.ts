@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { mergeEnv } from '../_shared/merge-env.ts'
 import type { Runner, RunnerCommand, RunnerContext, TerminalEvent } from '../types.ts'
 import { defineRunner } from '../types.ts'
+import { toClaudeTranscriptLines } from './format-event.ts'
 
 // ---------------------------------------------------------------------------
 // Zod schemas — corrected against real Claude CLI v2.1.101 / SDK v0.2.101
@@ -226,6 +227,8 @@ export function claude(opts: ClaudeOptions = {}): Readonly<Runner> {
     },
 
     parseEvents: parseClaudeLine,
+
+    toTranscriptLines: toClaudeTranscriptLines,
 
     extractStructuredOutput(finalEvent: TerminalEvent): unknown {
       if (finalEvent.type === 'error') return undefined

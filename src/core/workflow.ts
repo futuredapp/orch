@@ -587,6 +587,7 @@ function openRawCapture(logger: SessionLogger | undefined, key: StepName): RawCa
 function makeAgentEventHandler(
   deps: WorkflowDeps,
   key: StepName,
+  runner: import('../runners/index.ts').Runner,
   stepTranscript: ReturnType<NonNullable<WorkflowDeps['transcriptSidecar']>['forStep']> | undefined,
   stepSpan: StepSpan | undefined,
   isSilent: boolean,
@@ -600,7 +601,32 @@ function makeAgentEventHandler(
     if (stepSpan !== undefined) {
       void stepSpan.append('events', { event: evt }).catch(() => {})
     }
-    if (!isSilent) deps.host.onRunnerEvent(evt, key)
+    if (isSilent) return
+    const lines = safeToTranscriptLines(runner, evt, deps.logger, key)
+    deps.host.onRunnerEvent(evt, key, lines)
+  }
+}
+
+// A buggy formatter must not abort a run. We catch, log once per call, and
+// pass an empty `lines` array to the host. The raw event still flows to
+// `transcript.ndjson` and to the host's JSON path unmodified.
+function safeToTranscriptLines(
+  runner: import('../runners/index.ts').Runner,
+  evt: import('../runners/index.ts').RunnerEvent,
+  logger: SessionLogger | undefined,
+  stepName: StepName,
+): readonly import('../runners/index.ts').TranscriptLine[] {
+  try {
+    return runner.toTranscriptLines(evt)
+  } catch (err) {
+    orchLog(logger, 'transcript-format-error', {
+      stepName,
+      runner: runner.name,
+      eventKind: evt.kind,
+      eventType: evt.type,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return []
   }
 }
 
@@ -661,7 +687,7 @@ async function runAgentStep(
   const runnerDeps = {
     processService: deps.processService,
     clock: deps.clock,
-    onEvent: makeAgentEventHandler(deps, key, stepTranscript, stepSpan, isSilent),
+    onEvent: makeAgentEventHandler(deps, key, config.agent, stepTranscript, stepSpan, isSilent),
     ...(rawCapture !== undefined ? { onRawLine: rawCapture.onRawLine } : {}),
   }
   // Build the runner command up front so spawn records capture argv/env even

@@ -13,5 +13,7 @@ export type {
   RunnerContext,
   RunnerEvent,
   TerminalEvent,
+  TranscriptCategory,
+  TranscriptLine,
 } from './types.ts'
 export { defineRunner, isTerminalEvent } from './types.ts'

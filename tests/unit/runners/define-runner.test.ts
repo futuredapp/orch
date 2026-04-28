@@ -23,6 +23,9 @@ function makeValidAdapter(): Runner {
     extractStructuredOutput(_finalEvent: TerminalEvent): unknown {
       return undefined
     },
+    toTranscriptLines() {
+      return []
+    },
   }
 }
 
@@ -69,6 +72,13 @@ describe('defineRunner', () => {
     const { extractStructuredOutput: _, ...noExtract } = adapter
 
     expect(() => defineRunner(noExtract as unknown as Runner)).toThrow(/extractStructuredOutput/)
+  })
+
+  it('throws a readable error when toTranscriptLines is missing', () => {
+    const adapter = makeValidAdapter()
+    const { toTranscriptLines: _, ...noFormatter } = adapter
+
+    expect(() => defineRunner(noFormatter as unknown as Runner)).toThrow(/toTranscriptLines/)
   })
 
   it('does not leak config values in error messages', () => {

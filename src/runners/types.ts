@@ -47,6 +47,36 @@ export function isTerminalEvent(e: RunnerEvent): e is TerminalEvent {
 }
 
 // ---------------------------------------------------------------------------
+// TranscriptLine — runner-formatted, host-rendered.
+//
+// Runners pre-format every RunnerEvent into zero-or-more TranscriptLines.
+// Hosts map `category` to glyph/color (presentation policy) and add the
+// `[<step>] ` prefix; runners stay free of ANSI and pane-width concerns.
+// `kind: 'block'` carries multi-line completion/failure summaries.
+// ---------------------------------------------------------------------------
+
+export type TranscriptCategory =
+  | 'system'
+  | 'thinking'
+  | 'tool-call'
+  | 'tool-result'
+  | 'tool-error'
+  | 'assistant'
+
+export type TranscriptLine =
+  | {
+      readonly kind: 'line'
+      readonly category: TranscriptCategory
+      readonly label?: string
+      readonly body: string
+    }
+  | {
+      readonly kind: 'block'
+      readonly heading: 'done' | 'failed'
+      readonly rows: ReadonlyArray<readonly [label: string, value: string]>
+    }
+
+// ---------------------------------------------------------------------------
 // RunnerCommand — return type of buildCommand
 // ---------------------------------------------------------------------------
 
@@ -78,6 +108,15 @@ export interface Runner {
   buildCommand(ctx: RunnerContext): RunnerCommand | Promise<RunnerCommand>
   parseEvents(line: string): RunnerEvent | null
   extractStructuredOutput(finalEvent: TerminalEvent): unknown
+  /**
+   * Format a `RunnerEvent` for the human-readable transcript stream.
+   * Return `[]` to suppress the event entirely (e.g. `rate_limit_event`).
+   *
+   * Pure: no I/O, no external state. Called synchronously by the executor
+   * before the event reaches the host. A throw is caught by the executor and
+   * logged once; the event is still persisted to disk via the JSON path.
+   */
+  toTranscriptLines(event: RunnerEvent): readonly TranscriptLine[]
 }
 
 // ---------------------------------------------------------------------------
@@ -113,6 +152,9 @@ const RunnerAdapterSchema = z.object({
     (v) => typeof v === 'function',
     { message: 'expected function' },
   ),
+  toTranscriptLines: z.custom<Runner['toTranscriptLines']>((v) => typeof v === 'function', {
+    message: 'expected function',
+  }),
 })
 
 export function defineRunner<T extends Runner>(config: T): Readonly<T> {

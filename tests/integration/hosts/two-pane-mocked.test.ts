@@ -6,7 +6,7 @@ import { describe, expect, it } from 'bun:test'
 import { Writable } from 'node:stream'
 import { step } from '../../../src/core/step.ts'
 import { type WorkflowDeps, workflow } from '../../../src/core/workflow.ts'
-import { createTmuxHost } from '../../../src/hosts/index.ts'
+import { createTmuxHost, stripAnsi } from '../../../src/hosts/index.ts'
 import { FakeRunner } from '../../../src/runners/index.ts'
 import {
   FakeClock,
@@ -92,9 +92,9 @@ describe('two-pane mocked workflow', () => {
       expect(payload).not.toMatch(/"kind":\s*"info"/)
     }
 
-    const anyPayload = rightWrites
-      .map((c) => (c.method === 'sendKeys' ? c.opts.keys.join('') : ''))
-      .join('')
+    const anyPayload = stripAnsi(
+      rightWrites.map((c) => (c.method === 'sendKeys' ? c.opts.keys.join('') : '')).join(''),
+    )
     expect(anyPayload).toContain('[plan] assistant> plan thinking')
     expect(anyPayload).toContain('[work] assistant> work thinking')
   })

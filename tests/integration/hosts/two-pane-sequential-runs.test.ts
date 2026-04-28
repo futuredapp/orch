@@ -68,6 +68,9 @@ const trueRunner: Readonly<Runner> = defineRunner({
   extractStructuredOutput(): undefined {
     return undefined
   },
+  toTranscriptLines() {
+    return []
+  },
 })
 
 function bufferStream(): { stream: NodeJS.WritableStream; text: () => string } {
@@ -249,6 +252,7 @@ describe.skipIf(!canRun)('two-pane host - sequential runs against real tmux', ()
         "  buildCommand: () => ({ argv: ['true'], env: {} }),",
         '  parseEvents: () => null,',
         '  extractStructuredOutput: () => undefined,',
+        '  toTranscriptLines: () => [],',
         '})',
         '',
         "export default workflow('demo', async (run) => {",

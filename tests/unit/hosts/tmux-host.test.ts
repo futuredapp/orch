@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'bun:test'
 import { Writable } from 'node:stream'
 import { stepName } from '../../../src/core/types.ts'
-import { createTmuxHost } from '../../../src/hosts/index.ts'
+import { createTmuxHost, stripAnsi } from '../../../src/hosts/index.ts'
 import type { RunnerEvent } from '../../../src/runners/index.ts'
 import {
   FakeClock,
@@ -91,9 +91,11 @@ describe('TmuxHost.onRunnerEvent', () => {
     const evt: RunnerEvent = {
       kind: 'info',
       type: 'assistant',
-      payload: { text: 'hello from plan' },
+      payload: {},
     }
-    host.onRunnerEvent(evt, stepName('plan'))
+    host.onRunnerEvent(evt, stepName('plan'), [
+      { kind: 'line', category: 'assistant', label: 'assistant>', body: 'hello from plan' },
+    ])
     // The write is queued; wait for teardown to drain.
     await host.teardown()
 
@@ -106,18 +108,19 @@ describe('TmuxHost.onRunnerEvent', () => {
     // Raw JSON `runnerEvent:…` shape must never appear.
     expect(payload).not.toMatch(/runnerEvent:/)
     expect(payload).not.toMatch(/"kind":"info"/)
-    // Human-readable transcript line.
-    expect(payload).toContain('[plan] assistant> hello from plan')
+    // Human-readable transcript line — tmux always renders with color, so
+    // strip ANSI before the substring assertion.
+    expect(stripAnsi(payload)).toContain('[plan] assistant> hello from plan')
   })
 
-  it('suppresses lines that renderTranscriptLine returns null for (turn-complete)', async () => {
+  it('suppresses runner events whose lines array is empty', async () => {
     const tmux = new FakeTmuxService()
     tmux.setListPanesResult(['%0'])
     tmux.nextPaneId(paneId('%42'))
 
     const { host } = await buildHost(tmux)
 
-    host.onRunnerEvent({ kind: 'terminal', type: 'turn-complete' }, stepName('plan'))
+    host.onRunnerEvent({ kind: 'terminal', type: 'turn-complete' }, stepName('plan'), [])
     await host.teardown()
 
     const rightSendKeys = tmux.recordedCalls.filter(
@@ -136,10 +139,9 @@ describe('TmuxHost.onLifecycleEvent — step:failed', () => {
     const { host } = await buildHost(tmux)
 
     // Queue one transcript line first so we can assert ordering.
-    host.onRunnerEvent(
-      { kind: 'info', type: 'assistant', payload: { text: 'thinking' } },
-      stepName('plan'),
-    )
+    host.onRunnerEvent({ kind: 'info', type: 'assistant', payload: {} }, stepName('plan'), [
+      { kind: 'line', category: 'assistant', label: 'assistant>', body: 'thinking' },
+    ])
     host.onLifecycleEvent({
       type: 'step:failed',
       stepName: stepName('plan'),
@@ -315,20 +317,18 @@ describe('TmuxHost.teardown', () => {
     tmux.nextPaneId(paneId('%42'))
 
     const { host } = await buildHost(tmux)
-    host.onRunnerEvent(
-      { kind: 'info', type: 'assistant', payload: { text: 'pending' } },
-      stepName('plan'),
-    )
+    host.onRunnerEvent({ kind: 'info', type: 'assistant', payload: {} }, stepName('plan'), [
+      { kind: 'line', category: 'assistant', label: 'assistant>', body: 'pending' },
+    ])
 
     await host.teardown()
 
     // Further events after teardown do not produce new sendKeys — the host
     // is silenced once torn down.
     const callsBefore = tmux.recordedCalls.length
-    host.onRunnerEvent(
-      { kind: 'info', type: 'assistant', payload: { text: 'post-teardown' } },
-      stepName('plan'),
-    )
+    host.onRunnerEvent({ kind: 'info', type: 'assistant', payload: {} }, stepName('plan'), [
+      { kind: 'line', category: 'assistant', label: 'assistant>', body: 'post-teardown' },
+    ])
     expect(tmux.recordedCalls.length).toBe(callsBefore)
   })
 

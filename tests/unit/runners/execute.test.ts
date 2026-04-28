@@ -80,6 +80,9 @@ function dummyRunner(parseEvents: (line: string) => RunnerEvent | null): Runner 
     extractStructuredOutput() {
       return undefined
     },
+    toTranscriptLines() {
+      return []
+    },
   })
 }
 

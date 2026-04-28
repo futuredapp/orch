@@ -25,7 +25,7 @@ import {
   type StatusLoop,
   startStatusLoop,
 } from '../../observability/index.ts'
-import type { RunnerEvent } from '../../runners/index.ts'
+import type { RunnerEvent, TranscriptLine } from '../../runners/index.ts'
 import type { Clock } from '../../services/clock/index.ts'
 import type { FsService } from '../../services/fs/index.ts'
 import type { ProcessService } from '../../services/process/index.ts'
@@ -38,7 +38,7 @@ import type {
   PaneAttachment,
   PaneRole,
 } from '../host.ts'
-import { renderTranscriptLine } from '../plain/transcript-text.ts'
+import { renderTranscriptLine } from '../plain/render-line.ts'
 import { assertNoNestedTmux, createAttachForeground } from './attach-foreground.ts'
 import { renderFailurePanePayload } from './failure-pane.ts'
 import { createPaneQueue, type PaneQueue } from './pane-queue.ts'
@@ -318,13 +318,27 @@ function buildHost(deps: BuildHostDeps): Host {
     }
   }
 
-  const onRunnerEvent = (event: RunnerEvent, step: StepName): void => {
+  const onRunnerEvent = (
+    _event: RunnerEvent,
+    step: StepName,
+    lines: readonly TranscriptLine[],
+  ): void => {
     if (torndown) return
-    const line = renderTranscriptLine(event)
-    if (line === null) return
-    // Never write raw JSON — the transcript is what humans see via tmux.
-    // Step prefix mirrors the `[step] …` shape the plain host uses.
-    const payload = `[${step}] ${line}\r\n`
+    if (lines.length === 0) return
+    // tmux owns the pane, so `color: true` always. Block lines drop the
+    // `[step] ` prefix so the heading is the only context anchor — matches
+    // the plain host's behaviour byte-for-byte (modulo \r\n vs \n).
+    const prefix = `[${step}] `
+    const out: string[] = []
+    for (const line of lines) {
+      const rendered = renderTranscriptLine(line, {
+        color: true,
+        prefix: line.kind === 'line' ? prefix : '',
+      })
+      for (const r of rendered) out.push(`${r}\r\n`)
+    }
+    if (out.length === 0) return
+    const payload = out.join('')
     void deps.queue
       .enqueue(deps.rightPaneId, () =>
         deps.tmux.sendKeys({

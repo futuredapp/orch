@@ -21,7 +21,7 @@ import type { RunMode } from '../core/run-mode.ts'
 import type { Path, StepName } from '../core/types.ts'
 import type { PaneRole } from '../core/view.ts'
 import type { StepLifecycleEvent } from '../core/workflow.ts'
-import type { RunnerEvent } from '../runners/index.ts'
+import type { RunnerEvent, TranscriptLine } from '../runners/index.ts'
 
 // v1 panes. `left` == status rollup, `right` == active step's view. The
 // canonical definition lives in core/view.ts so workflow and hosts can agree
@@ -63,8 +63,14 @@ export interface Host {
   readonly mode: RunMode
   /** First-run banner; emitted once per invocation by the CLI entry point. */
   writeBanner(line: string): void
-  /** Called by the workflow executor for every autonomous-step RunnerEvent. */
-  onRunnerEvent(event: RunnerEvent, step: StepName): void
+  /**
+   * Called by the workflow executor for every autonomous-step RunnerEvent.
+   * `lines` is the runner-formatted transcript output the host renders for
+   * `format=text` paths; `event` stays in the signature so JSON paths can
+   * write the raw envelope without re-serialising. Always non-undefined —
+   * may be empty (suppression) or contain multiple lines per event.
+   */
+  onRunnerEvent(event: RunnerEvent, step: StepName, lines: readonly TranscriptLine[]): void
   /** Called by the workflow executor for every StepLifecycleEvent. */
   onLifecycleEvent(event: StepLifecycleEvent): void
   /**

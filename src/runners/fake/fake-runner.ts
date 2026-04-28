@@ -7,6 +7,7 @@ import type {
   RunnerContext,
   RunnerEvent,
   TerminalEvent,
+  TranscriptLine,
 } from '../types.ts'
 
 export interface FakeScript {
@@ -80,5 +81,22 @@ export class FakeRunner implements Runner {
 
   extractStructuredOutput(finalEvent: TerminalEvent): unknown {
     return (finalEvent as { data?: unknown }).data
+  }
+
+  toTranscriptLines(event: RunnerEvent): readonly TranscriptLine[] {
+    if (event.kind === 'terminal' && event.type === 'error') {
+      return [{ kind: 'block', heading: 'failed', rows: [['error', event.message]] }]
+    }
+    if (event.kind === 'info') {
+      // Test scripts hand-roll events like
+      //   { kind: 'info', type: 'assistant', payload: { text: 'hi' } }
+      // Surface a `text` payload as an assistant line so view-resolution and
+      // host-output integration tests can assert `[step] …` shows up.
+      const payload = event.payload as { readonly text?: unknown } | undefined
+      if (payload !== undefined && typeof payload.text === 'string' && payload.text.length > 0) {
+        return [{ kind: 'line', category: 'assistant', label: 'assistant>', body: payload.text }]
+      }
+    }
+    return []
   }
 }

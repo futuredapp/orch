@@ -70,6 +70,9 @@ function noSchemaRunner(fps: FakeProcessService): Runner {
     extractStructuredOutput() {
       return undefined
     },
+    toTranscriptLines() {
+      return []
+    },
   })
 }
 

@@ -16,7 +16,7 @@ import type { RunMode } from '../../core/run-mode.ts'
 import type { RunId, StepName } from '../../core/types.ts'
 import type { StepLifecycleEvent } from '../../core/workflow.ts'
 import { orchLog, type SessionLogger } from '../../observability/index.ts'
-import type { RunnerEvent } from '../../runners/index.ts'
+import type { RunnerEvent, TranscriptLine } from '../../runners/index.ts'
 import type { Clock } from '../../services/clock/index.ts'
 import type { ProcessService } from '../../services/process/index.ts'
 import type {
@@ -27,7 +27,7 @@ import type {
   PaneRole,
 } from '../host.ts'
 import { renderFailureText } from './failure-text.ts'
-import { renderTranscriptLine } from './transcript-text.ts'
+import { renderTranscriptLine } from './render-line.ts'
 
 export type PlainFormat = 'text' | 'json'
 
@@ -66,14 +66,29 @@ export function createPlainHost(opts: PlainHostOptions): Host {
     opts.stdout.write(`${JSON.stringify(envelope)}\n`)
   }
 
-  const onRunnerEvent = (event: RunnerEvent, step: StepName): void => {
+  // `kind: 'line'` lines get the `[<step>] ` prefix; `kind: 'block'` lines
+  // are step-anchored by the heading itself, so no prefix. Color is on only
+  // for TTY stdout without NO_COLOR (pipes and CI tails stay plain).
+  const color = (opts.stdout as { isTTY?: boolean }).isTTY === true && !process.env.NO_COLOR
+
+  const onRunnerEvent = (
+    event: RunnerEvent,
+    step: StepName,
+    lines: readonly TranscriptLine[],
+  ): void => {
     if (opts.format === 'json') {
       writeJsonLine({ ev: 'event', step, kind: event.kind, type: event.type, ...payloadOf(event) })
       return
     }
-    const line = renderTranscriptLine(event)
-    if (line === null) return
-    opts.stdout.write(`[${step}] ${line}\n`)
+    if (lines.length === 0) return
+    const prefix = `[${step}] `
+    for (const line of lines) {
+      const rendered = renderTranscriptLine(line, {
+        color,
+        prefix: line.kind === 'line' ? prefix : '',
+      })
+      for (const out of rendered) opts.stdout.write(`${out}\n`)
+    }
   }
 
   const onLifecycleEvent = (event: StepLifecycleEvent): void => {

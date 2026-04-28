@@ -17,7 +17,7 @@ import {
   path,
 } from '../../../src/services/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
-import { createFakeHost } from '../../helpers/fake-host.ts'
+import { createFakeHost, type FakeHost } from '../../helpers/fake-host.ts'
 
 const rid = (s: string): RunId => s as RunId
 
@@ -29,6 +29,7 @@ interface TestDeps extends WorkflowDeps {
   readonly clock: FakeClock
   readonly gitService: FakeGitService
   readonly fsService: FakeFsService
+  readonly host: FakeHost
 }
 
 function makeDeps(overrides?: {
@@ -288,6 +289,9 @@ describe('workflow run()', () => {
       extractStructuredOutput() {
         return undefined
       },
+      toTranscriptLines() {
+        return []
+      },
     })
     const STEP = step.define('noisy', { agent: noisy })
 
@@ -320,6 +324,153 @@ describe('workflow run()', () => {
     expect(state).toBeDefined()
     expect(state?.id).toBe(deps.runId)
     expect(state?.status).toBe('completed')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// safeToTranscriptLines — executor wires the runner's formatter through to
+// the host. The wrapper must catch formatter throws so a buggy formatter can
+// never abort a run, and interactive steps must skip the formatter entirely
+// (they don't stream events through the host).
+// ---------------------------------------------------------------------------
+
+describe('workflow run() — runner.toTranscriptLines forwarding', () => {
+  it('forwards transcript lines from runner.toTranscriptLines to host.onRunnerEvent for autonomous steps', async () => {
+    const deps = makeDeps()
+
+    const argv = [':spy-format:'] as const
+    const events = [
+      { kind: 'info', type: 'assistant', payload: { text: 'hello' } },
+      { kind: 'terminal', type: 'turn-complete', data: 'ok' },
+    ]
+    deps.processService
+      .when(argv)
+      .respondWith({ stdout: events.map((e) => JSON.stringify(e)), exitCode: 0 })
+
+    const spy: Runner = defineRunner({
+      name: 'spy-format',
+      supports: { interactive: false, structuredOutput: false },
+      buildCommand(ctx: RunnerContext) {
+        return { argv, env: ctx.env }
+      },
+      parseEvents(line: string) {
+        if (line.trim() === '') return null
+        return JSON.parse(line)
+      },
+      extractStructuredOutput() {
+        return undefined
+      },
+      toTranscriptLines(evt) {
+        if (evt.kind === 'info' && evt.type === 'assistant') {
+          return [{ kind: 'line', category: 'assistant', label: 'assistant>', body: 'hello' }]
+        }
+        if (evt.kind === 'terminal' && evt.type === 'turn-complete') {
+          return [{ kind: 'block', heading: 'done', rows: [['result', 'ok']] }]
+        }
+        return []
+      },
+    })
+    const STEP = step.define('plan', { agent: spy })
+
+    const wf = workflow('test', async (run) => {
+      await run(STEP)
+    })
+    await wf.execute(deps)
+
+    const runnerEvents = deps.host.recorded.flatMap((r) => (r.kind === 'runner' ? [r] : []))
+    expect(runnerEvents).toHaveLength(2)
+    const first = runnerEvents[0]
+    const second = runnerEvents[1]
+    if (first === undefined || second === undefined) throw new Error('expected two runner events')
+
+    expect(first.lines).toEqual([
+      { kind: 'line', category: 'assistant', label: 'assistant>', body: 'hello' },
+    ])
+    expect(second.lines).toEqual([{ kind: 'block', heading: 'done', rows: [['result', 'ok']] }])
+  })
+
+  it('catches a thrown formatter, forwards an empty lines array, and lets the run complete', async () => {
+    const deps = makeDeps()
+
+    const argv = [':throws-format:'] as const
+    const events = [
+      { kind: 'info', type: 'assistant', payload: {} },
+      { kind: 'terminal', type: 'turn-complete', data: 'done' },
+    ]
+    deps.processService
+      .when(argv)
+      .respondWith({ stdout: events.map((e) => JSON.stringify(e)), exitCode: 0 })
+
+    const exploding: Runner = defineRunner({
+      name: 'throws-format',
+      supports: { interactive: false, structuredOutput: false },
+      buildCommand(ctx: RunnerContext) {
+        return { argv, env: ctx.env }
+      },
+      parseEvents(line: string) {
+        if (line.trim() === '') return null
+        return JSON.parse(line)
+      },
+      extractStructuredOutput() {
+        return 'done'
+      },
+      toTranscriptLines() {
+        throw new Error('formatter exploded')
+      },
+    })
+    const STEP = step.define('plan', { agent: exploding })
+
+    let result: unknown
+    const wf = workflow('test', async (run) => {
+      result = await run(STEP)
+    })
+    await wf.execute(deps)
+
+    expect(result).toBe('done')
+    const runnerEvents = deps.host.recorded.flatMap((r) => (r.kind === 'runner' ? [r] : []))
+    expect(runnerEvents.length).toBeGreaterThan(0)
+    for (const r of runnerEvents) {
+      expect(r.lines).toEqual([])
+    }
+  })
+
+  it('does not invoke runner.toTranscriptLines for interactive steps', async () => {
+    let formatterCalls = 0
+    const interactiveSpy: Runner = defineRunner({
+      name: 'interactive-spy',
+      supports: { interactive: true, structuredOutput: false },
+      buildCommand(ctx: RunnerContext) {
+        return { argv: ['noop'], env: ctx.env }
+      },
+      parseEvents() {
+        return null
+      },
+      extractStructuredOutput() {
+        return undefined
+      },
+      toTranscriptLines() {
+        formatterCalls++
+        return []
+      },
+    })
+
+    const deps: WorkflowDeps = {
+      ...makeDeps(),
+      generateSessionId: () => '11111111-1111-1111-1111-111111111111',
+      onInteractive: async () => ({
+        exitCode: 0,
+        durationMs: 100,
+        sessionId: '11111111-1111-1111-1111-111111111111',
+      }),
+    }
+    const STEP = step.define('brainstorm', { agent: interactiveSpy, mode: 'interactive' })
+
+    const wf = workflow('test', async (run) => {
+      await run(STEP)
+    })
+    await wf.execute(deps)
+
+    expect(formatterCalls).toBe(0)
   })
 })
 
