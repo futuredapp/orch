@@ -212,7 +212,7 @@ describe('initOrchSession', () => {
     }
   })
 
-  it('uses remain-on-exit "failed" so live panes close but dead ones stay visible', async () => {
+  it('uses remain-on-exit "on" so the pane-died hook fires for every agent exit', async () => {
     const tmux = new FakeTmuxService()
 
     await initOrchSession(tmux, {
@@ -227,7 +227,7 @@ describe('initOrchSession', () => {
     expect(setOptionCall?.method).toBe('setOption')
     if (setOptionCall?.method === 'setOption') {
       expect(setOptionCall.opts.name).toBe('remain-on-exit')
-      expect(setOptionCall.opts.value).toBe('failed')
+      expect(setOptionCall.opts.value).toBe('on')
       expect(setOptionCall.opts.global).toBe(true)
     }
   })
@@ -399,5 +399,35 @@ describe('FakeTmuxService.respawnPane', () => {
     const call = tmux.recordedCalls[0]
     if (call?.method !== 'respawnPane') throw new Error('expected respawnPane call')
     expect(call.opts.killRunning).toBe(false)
+  })
+})
+
+describe('FakeTmuxService.waitFor', () => {
+  it('records a wait without timeoutMs so interactive callers can assert the no-timeout contract', async () => {
+    const tmux = new FakeTmuxService()
+
+    await tmux.waitFor({
+      socket: socketName('orch-1'),
+      channel: 'pane-exit-%42',
+    })
+
+    const call = tmux.recordedCalls.at(-1)
+    if (call?.method !== 'waitFor') throw new Error('expected waitFor call')
+    expect(call.opts.channel).toBe('pane-exit-%42')
+    expect(call.opts.timeoutMs).toBeUndefined()
+  })
+
+  it('records the timeoutMs value verbatim when a caller supplies one', async () => {
+    const tmux = new FakeTmuxService()
+
+    await tmux.waitFor({
+      socket: socketName('orch-1'),
+      channel: 'pane-exit-%42',
+      timeoutMs: 5000,
+    })
+
+    const call = tmux.recordedCalls.at(-1)
+    if (call?.method !== 'waitFor') throw new Error('expected waitFor call')
+    expect(call.opts.timeoutMs).toBe(5000)
   })
 })

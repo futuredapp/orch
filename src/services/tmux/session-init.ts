@@ -24,9 +24,16 @@ export interface InitSessionOptions {
  * Create a new detached tmux session and install the lifecycle options +
  * hooks every step relies on:
  *
- * - `remain-on-exit failed` — keep dead panes visible so errors can be
- *   inspected. Requires tmux >= 3.2; fallback to `on` for older tmux is
- *   the caller's concern.
+ * - `remain-on-exit on` — keep every dead pane visible (success and
+ *   failure alike). The post-step `respawn-pane -k` immediately replaces
+ *   the dead pane with a fresh `cat`, so the "[exited]" splash only
+ *   appears for the brief window between the agent exiting and the next
+ *   step taking over (or teardown). The earlier `remain-on-exit failed`
+ *   value was wrong: tmux's `pane-died` hook fires only for exits that
+ *   `remain-on-exit` keeps visible, so a clean (exit-0) agent exit closed
+ *   the pane silently and the per-pane `wait-for` channel was never
+ *   signaled — `runInteractive()` then hung in `waitFor` for the full
+ *   1-hour cap.
  * - `mouse on` — let users drag pane borders to resize, click to focus,
  *   and wheel-scroll into copy mode. Hold Shift (or Option on macOS) for
  *   native terminal text selection when needed.
@@ -48,7 +55,7 @@ export const initOrchSession = async (
     socket: opts.socket,
     target: opts.session,
     name: 'remain-on-exit',
-    value: 'failed',
+    value: 'on',
     global: true,
   })
 

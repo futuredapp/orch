@@ -73,9 +73,6 @@ const PLACEHOLDER_CMD = 'cat'
 //      for that "stuck cancel" bug.
 const buildPaneDiedCommand = (socket: SocketName): string =>
   `run-shell "tmux -L ${socket} wait-for -S pane-exit-#{hook_pane}"`
-// Interactive-step wait cap. Long enough for a real review session, short
-// enough that a zombie pane-exit hook doesn't hang orch forever.
-const INTERACTIVE_WAIT_TIMEOUT_MS = 3_600_000
 
 export interface TmuxHostOptions {
   readonly tmux?: TmuxService
@@ -353,23 +350,35 @@ function buildHost(deps: BuildHostDeps): Host {
 
     // respawn-pane enqueues behind any pending sendKeys on the right pane so
     // no transcript keystroke races the interactive child's stdin.
+    // `env: spawn.env` carries the runner's full env (built via mergeEnv) into
+    // the child via tmux's `-e KEY=VAL` flags — the only seam where the
+    // interactive agent picks up `ANTHROPIC_API_KEY`, OAuth keychain bootstrap
+    // vars, and `FORCE_COLOR=3` for Claude.
+    // `cwd: spawn.cwd` becomes tmux's `-c <dir>` flag — without it, the pane
+    // keeps the cwd it was created with, which is `/` (RealTmuxService runs
+    // every tmux subprocess from `/`). The agent then can't write to its
+    // project files.
     await deps.queue.enqueue(deps.rightPaneId, () =>
       deps.tmux.respawnPane({
         socket: deps.socket,
         target: deps.rightPaneId,
         argv: spawn.argv,
         killRunning: true,
+        env: spawn.env,
+        cwd: spawn.cwd,
       }),
     )
 
     // The global `pane-died` hook (installed by `initOrchSession`) signals
-    // `pane-exit-<paneId>` when the child exits. We race against a hard cap
-    // so a zombie hook never hangs orch forever — see tmux issue #2679.
+    // `pane-exit-<paneId>` when the child exits. Interactive steps wait
+    // indefinitely — the agent's `pane-died` hook is the only signal that
+    // can release this wait, and the user may pause the agent for arbitrary
+    // periods. Autonomous callers can still pass `timeoutMs` to bound their
+    // own waits.
     try {
       await deps.tmux.waitFor({
         socket: deps.socket,
         channel: `pane-exit-${deps.rightPaneId}`,
-        timeoutMs: INTERACTIVE_WAIT_TIMEOUT_MS,
       })
     } finally {
       // Restore the `cat` placeholder so the next autonomous step's

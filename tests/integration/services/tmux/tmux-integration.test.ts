@@ -10,6 +10,7 @@ import {
   socketName,
   TmuxCommandError,
 } from '../../../../src/services/tmux/index.ts'
+import { path } from '../../../../src/services/types.ts'
 
 describe('RealTmuxService.createSession', () => {
   it('sends new-session with detached flag, socket, window geometry, and /dev/null config', async () => {
@@ -182,6 +183,48 @@ describe('RealTmuxService.waitFor', () => {
       channel: 'pane-exit-1',
       timeoutMs: 5000,
     })
+  })
+
+  it('waits indefinitely when timeoutMs is omitted and resolves on exit zero', async () => {
+    // The interactive contract: callers that omit timeoutMs get no race, no
+    // timer — only the underlying tmux wait-for subprocess gates the resolve.
+    // We prove this by responding to the wait-for with exit 0 and asserting
+    // the call resolves successfully without any timeout error.
+    const proc = new FakeProcessService()
+    proc.when(['tmux', '-L', 'orch-1', 'wait-for', 'pane-exit-1']).respondWith({ exitCode: 0 })
+    const tmux = new RealTmuxService({ processService: proc })
+
+    await tmux.waitFor({
+      socket: socketName('orch-1'),
+      channel: 'pane-exit-1',
+    })
+  })
+
+  it('throws the wait-for-failed error path (not the timeout path) when timeoutMs is omitted and the subprocess exits non-zero', async () => {
+    const proc = new FakeProcessService()
+    proc
+      .when(['tmux', '-L', 'orch-1', 'wait-for', 'pane-exit-1'])
+      .respondWith({ exitCode: 2, stderr: ['no server'] })
+    const tmux = new RealTmuxService({ processService: proc })
+
+    let caught: unknown
+    try {
+      await tmux.waitFor({
+        socket: socketName('orch-1'),
+        channel: 'pane-exit-1',
+      })
+    } catch (err) {
+      caught = err
+    }
+
+    expect(caught).toBeInstanceOf(TmuxCommandError)
+    if (!(caught instanceof TmuxCommandError)) throw new Error('expected TmuxCommandError')
+    // The "failed" path proves we did NOT take the timeout branch (which would
+    // produce "timed out after Nms" with exitCode -1 and empty stderr).
+    expect(caught.message).toMatch(/tmux wait-for failed/)
+    expect(caught.message).not.toMatch(/timed out/)
+    expect(caught.exitCode).toBe(2)
+    expect(caught.stderr).toBe('no server')
   })
 })
 
@@ -425,5 +468,130 @@ describe('RealTmuxService.respawnPane', () => {
         killRunning: true,
       }),
     ).rejects.toBeInstanceOf(TmuxCommandError)
+  })
+
+  it('emits one -e KEY=VAL flag per env entry before -t and the argv', async () => {
+    const proc = new FakeProcessService()
+    proc
+      .when([
+        'tmux',
+        '-L',
+        'orch-1',
+        'respawn-pane',
+        '-k',
+        '-e',
+        'ANTHROPIC_API_KEY=sk-test',
+        '-e',
+        'FORCE_COLOR=3',
+        '-t',
+        '%2',
+        'claude',
+        '--',
+        'go',
+      ])
+      .respondWith({ exitCode: 0 })
+    const tmux = new RealTmuxService({ processService: proc })
+
+    await tmux.respawnPane({
+      socket: socketName('orch-1'),
+      target: paneId('%2'),
+      argv: ['claude', '--', 'go'],
+      killRunning: true,
+      env: { ANTHROPIC_API_KEY: 'sk-test', FORCE_COLOR: '3' },
+    })
+  })
+
+  it('omits -e flags entirely when env is undefined or empty', async () => {
+    const proc = new FakeProcessService()
+    proc
+      .when(['tmux', '-L', 'orch-1', 'respawn-pane', '-k', '-t', '%2', 'cat'])
+      .respondWith({ exitCode: 0 })
+    const tmux = new RealTmuxService({ processService: proc })
+
+    await tmux.respawnPane({
+      socket: socketName('orch-1'),
+      target: paneId('%2'),
+      argv: ['cat'],
+      killRunning: true,
+      env: {},
+    })
+  })
+
+  it("throws when an env key contains '=' or newline (would corrupt -e KEY=VAL argv)", async () => {
+    const proc = new FakeProcessService()
+    const tmux = new RealTmuxService({ processService: proc })
+
+    await expect(
+      tmux.respawnPane({
+        socket: socketName('orch-1'),
+        target: paneId('%2'),
+        argv: ['cat'],
+        killRunning: true,
+        env: { 'BAD=KEY': 'v' },
+      }),
+    ).rejects.toThrow(/contains '=' or newline/)
+
+    await expect(
+      tmux.respawnPane({
+        socket: socketName('orch-1'),
+        target: paneId('%2'),
+        argv: ['cat'],
+        killRunning: true,
+        env: { 'BAD\nKEY': 'v' },
+      }),
+    ).rejects.toThrow(/contains '=' or newline/)
+  })
+
+  it('emits -c <cwd> after -e flags and before -t when cwd is set', async () => {
+    // Without `-c`, tmux keeps the pane's existing cwd (which is `/` in
+    // production because RealTmuxService runs every tmux subprocess from
+    // `/`). The agent then can't write to its project files. Argv order
+    // matters: tmux's respawn-pane parser expects flags before -t.
+    const proc = new FakeProcessService()
+    proc
+      .when([
+        'tmux',
+        '-L',
+        'orch-1',
+        'respawn-pane',
+        '-k',
+        '-e',
+        'FORCE_COLOR=3',
+        '-c',
+        '/Users/x/proj',
+        '-t',
+        '%2',
+        'claude',
+        '--',
+        'go',
+      ])
+      .respondWith({ exitCode: 0 })
+    const tmux = new RealTmuxService({ processService: proc })
+
+    await tmux.respawnPane({
+      socket: socketName('orch-1'),
+      target: paneId('%2'),
+      argv: ['claude', '--', 'go'],
+      killRunning: true,
+      env: { FORCE_COLOR: '3' },
+      cwd: path('/Users/x/proj'),
+    })
+  })
+
+  it('omits -c entirely when cwd is undefined', async () => {
+    // The placeholder `cat` restore deliberately omits cwd — cat needs no
+    // cwd, and the asymmetry teaches the contract.
+    const proc = new FakeProcessService()
+    proc
+      .when(['tmux', '-L', 'orch-1', 'respawn-pane', '-k', '-t', '%2', 'cat'])
+      .respondWith({ exitCode: 0 })
+    const tmux = new RealTmuxService({ processService: proc })
+
+    await tmux.respawnPane({
+      socket: socketName('orch-1'),
+      target: paneId('%2'),
+      argv: ['cat'],
+      killRunning: true,
+    })
   })
 })

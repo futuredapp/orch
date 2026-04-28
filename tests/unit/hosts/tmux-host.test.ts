@@ -232,16 +232,22 @@ describe('TmuxHost.onLifecycleEvent — step:parallel-branch-update', () => {
 })
 
 describe('TmuxHost.runInteractive', () => {
-  it('respawns the right pane with the runner argv, then restores the cat placeholder on exit', async () => {
+  it('respawns the right pane with runner argv + env + cwd, then restores cat without env or cwd on exit', async () => {
     const tmux = new FakeTmuxService()
     tmux.setListPanesResult(['%0'])
     tmux.nextPaneId(paneId('%42'))
 
     const { host } = await buildHost(tmux)
 
+    // The asymmetry in env and cwd is the design: the runner respawn carries
+    // both `spawn.env` (so ANTHROPIC_API_KEY / OAuth bootstrap vars /
+    // FORCE_COLOR=3 reach the agent) and `spawn.cwd` (so the agent's tools
+    // see the project directory, not tmux's `/`). The placeholder restore
+    // deliberately omits both — `cat` needs nothing.
+    const spawnEnv = { ANTHROPIC_API_KEY: 'sk-test', FORCE_COLOR: '3' }
     const result = await host.runInteractive({
       argv: ['claude', '--resume', 'abc'],
-      env: {},
+      env: spawnEnv,
       cwd: path('/tmp'),
       stepName: stepName('review'),
     })
@@ -250,22 +256,55 @@ describe('TmuxHost.runInteractive', () => {
 
     const respawns = tmux.recordedCalls.filter((c) => c.method === 'respawnPane')
     expect(respawns).toHaveLength(2)
-    // First respawn: runner argv with killRunning=true (kicks the `cat` placeholder).
+    // First respawn: runner argv with killRunning=true, env carrying spawn.env,
+    // and cwd carrying spawn.cwd. Without cwd plumbing, the pane keeps its
+    // existing cwd (`/` in production) and the agent can't write project files.
     const first = respawns[0]
     if (first?.method !== 'respawnPane') throw new Error('expected respawnPane call')
     expect(first.opts.argv).toEqual(['claude', '--resume', 'abc'])
     expect(first.opts.killRunning).toBe(true)
-    // Second respawn: restore `cat` so the next transcript stream has a placeholder.
+    expect(first.opts.env).toEqual(spawnEnv)
+    expect(first.opts.cwd).toBe(path('/tmp'))
+    // Second respawn: restore `cat`. Env and cwd are intentionally omitted —
+    // placeholder needs no environment or working directory, and a stale
+    // runner env or cwd would leak into the next pane state. The asymmetry
+    // is the contract.
     const second = respawns[1]
     if (second?.method !== 'respawnPane') throw new Error('expected respawnPane call')
     expect(second.opts.argv).toEqual(['cat'])
     expect(second.opts.killRunning).toBe(true)
-    // And we waited on the pane-exit channel between them.
+    expect(second.opts.env).toBeUndefined()
+    expect(second.opts.cwd).toBeUndefined()
+    // And we waited on the pane-exit channel between them, with no timeout —
+    // interactive steps must wait indefinitely so the user can pause the
+    // agent for arbitrary periods without orch killing the run.
     const waits = tmux.recordedCalls.filter((c) => c.method === 'waitFor')
     expect(waits).toHaveLength(1)
     const wait = waits[0]
     if (wait?.method !== 'waitFor') throw new Error('expected waitFor call')
     expect(wait.opts.channel).toBe('pane-exit-%42')
+    expect(wait.opts.timeoutMs).toBeUndefined()
+  })
+
+  it('omits timeoutMs on the pane-exit waitFor so an idle interactive agent never trips a default timeout', async () => {
+    const tmux = new FakeTmuxService()
+    tmux.setListPanesResult(['%0'])
+    tmux.nextPaneId(paneId('%42'))
+
+    const { host } = await buildHost(tmux)
+
+    await host.runInteractive({
+      argv: ['claude'],
+      env: {},
+      cwd: path('/tmp'),
+      stepName: stepName('review'),
+    })
+
+    const waits = tmux.recordedCalls.filter((c) => c.method === 'waitFor')
+    expect(waits).toHaveLength(1)
+    const wait = waits[0]
+    if (wait?.method !== 'waitFor') throw new Error('expected waitFor call')
+    expect(wait.opts.timeoutMs).toBeUndefined()
   })
 })
 

@@ -3,6 +3,8 @@
 // sockets prevent cross-contamination.
 
 import { afterEach, describe, expect, it } from 'bun:test'
+import { realpath } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { BunProcessService } from '../../../../src/services/process/index.ts'
 import {
   initOrchSession,
@@ -12,6 +14,7 @@ import {
   socketName,
   TmuxCommandError,
 } from '../../../../src/services/tmux/index.ts'
+import { path } from '../../../../src/services/types.ts'
 
 const canRun = Bun.which('tmux') !== null
 
@@ -157,6 +160,124 @@ describe.skipIf(!canRun)('RealTmuxService against a real tmux server', () => {
       channel: `pane-exit-${pane}`,
       timeoutMs: 5_000,
     })
+  })
+
+  // Regression: an interactive run that ends with the agent exiting
+  // cleanly (Claude Code's "Ctrl+C twice" gesture returns exit 0) used to
+  // leave runInteractive() hung in waitFor for the full 1-hour cap. The
+  // sibling test above only covers exit≠0 — `pane-died` only fires when
+  // remain-on-exit keeps the pane visible, so under remain-on-exit=failed
+  // a clean exit closed the pane silently and the wait-for channel was
+  // never signaled. This pins the contract that the hook fires for ANY
+  // exit code, so a regression to a value that gates by exit code (or any
+  // other change that drops the pane-died signal on success) fails fast.
+  it('signals the wait-for channel even when the pane process exits 0', async () => {
+    const tmux = new RealTmuxService({ processService: new BunProcessService() })
+    const socket = newSocket('panedied-clean')
+
+    await initOrchSession(tmux, {
+      socket,
+      session: 'main',
+      width: 200,
+      height: 50,
+      paneDiedCommand: `run-shell "tmux -L ${socket} wait-for -S pane-exit-#{hook_pane}"`,
+    })
+
+    const pane = await tmux.splitPane({
+      socket,
+      session: 'main',
+      orientation: 'h',
+      percent: 30,
+      command: 'sh -c "exit 0"',
+    })
+
+    await tmux.waitFor({
+      socket,
+      channel: `pane-exit-${pane}`,
+      timeoutMs: 5_000,
+    })
+  })
+
+  // Regression: tmux servers used to launch with a pinned 3-key env
+  // (PATH/HOME/LANG), so the user's `ANTHROPIC_API_KEY`, OAuth keychain
+  // bootstrap vars, and `NODE_OPTIONS` never reached pane processes — the
+  // interactive Claude pane would prompt "Please run /login" even when the
+  // outer shell was logged in. Under passthrough, the tmux server inherits
+  // the orch process's full env, so a non-allowlist key reaches a child
+  // started with `respawn-pane`. The `assertNoNestedTmux` guard (in
+  // two-pane host) is what keeps `TMUX` / `TMUX_PANE` passthrough safe —
+  // do not weaken it under the new contract.
+  it('inherits the orch process env so non-allowlist keys reach pane processes', async () => {
+    const sentinel = `ORCH_PASSTHROUGH_${Date.now()}_${Math.floor(Math.random() * 1e6)}`
+    process.env.ORCH_TEST_SENTINEL = sentinel
+    try {
+      const tmux = new RealTmuxService({ processService: new BunProcessService() })
+      const socket = newSocket('passthrough')
+
+      await tmux.createSession({ socket, session: 'main', width: 200, height: 50 })
+      // `printenv ORCH_TEST_SENTINEL > /tmp/<sentinel>` lets the child write
+      // its env-visible value to a deterministic path; we read it back below.
+      const outFile = `/tmp/orch-passthrough-${Date.now()}-${Math.floor(Math.random() * 1e6)}.txt`
+      const pane = await tmux.splitPane({
+        socket,
+        session: 'main',
+        orientation: 'h',
+        percent: 30,
+        command: `sh -c "printenv ORCH_TEST_SENTINEL > ${outFile}; sleep 0.5"`,
+      })
+      expect(pane).toMatch(/^%\d+$/)
+
+      // Wait for the printenv child to flush the file.
+      await new Promise((r) => setTimeout(r, 600))
+      const written = await Bun.file(outFile).text()
+      expect(written.trim()).toBe(sentinel)
+    } finally {
+      delete process.env.ORCH_TEST_SENTINEL
+    }
+  })
+
+  // Regression: tmux-host's `runInteractive` used to drop `spawn.cwd` on the
+  // floor — every tmux subprocess in RealTmuxService runs with `cwd: '/'`, so
+  // panes were created at `/` and respawn-pane (without `-c`) kept that.
+  // Claude's `Bash(pwd)` returned `/` and `Write(./riddle.txt)` blew up with
+  // `EROFS: read-only file system, open '/riddle.txt'`. This test pins the
+  // contract: respawn-pane with `-c <dir>` puts the replacement process at
+  // `<dir>`, observable via tmux's own `#{pane_current_path}`.
+  it('respawn-pane -c sets the pane current_path so runners see the project cwd', async () => {
+    const tmux = new RealTmuxService({ processService: new BunProcessService() })
+    const socket = newSocket('respawn-cwd')
+
+    // Resolve symlinks once: macOS reports `/private/tmp` for `/tmp`. tmux's
+    // `#{pane_current_path}` follows the OS, so we compare resolved paths.
+    const dir = await realpath(tmpdir())
+
+    await tmux.createSession({ socket, session: 'main', width: 200, height: 50 })
+    const pane = await tmux.splitPane({
+      socket,
+      session: 'main',
+      orientation: 'h',
+      percent: 30,
+      command: 'cat',
+    })
+
+    await tmux.respawnPane({
+      socket,
+      target: pane,
+      argv: ['cat'],
+      killRunning: true,
+      cwd: path(dir),
+    })
+
+    // tmux updates `#{pane_current_path}` from the pane's tty cwd; give the
+    // shell a beat to settle after respawn.
+    await new Promise((r) => setTimeout(r, 200))
+    const observed = await tmux.displayMessage({
+      socket,
+      target: pane,
+      format: '#{pane_current_path}',
+    })
+    const observedReal = await realpath(observed)
+    expect(observedReal).toBe(dir)
   })
 
   it('isolates state across concurrent sockets', async () => {

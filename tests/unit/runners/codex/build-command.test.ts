@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { buildCodexEnv, CodexVersionError, codex } from '../../../../src/runners/codex/index.ts'
+import { CodexVersionError, codex } from '../../../../src/runners/codex/index.ts'
 import type { RunnerContext } from '../../../../src/runners/types.ts'
 import { FakeFsService } from '../../../../src/services/fs/fake-fs-service.ts'
 import { FakeProcessService } from '../../../../src/services/process/fake-process-service.ts'
@@ -224,103 +224,6 @@ describe('buildCommand flag denylist', () => {
     expect(runner.buildCommand(ctxFor('hi'))).rejects.toThrow(
       /flag "--config=\/tmp\/evil.toml" is on the denylist/,
     )
-  })
-})
-
-describe('buildCodexEnv', () => {
-  it('includes CODEX_API_KEY and OPENAI_API_KEY from processEnv', () => {
-    const env = buildCodexEnv(
-      {},
-      {
-        CODEX_API_KEY: 'codex-key',
-        OPENAI_API_KEY: 'openai-key',
-      },
-    )
-
-    expect(env.CODEX_API_KEY).toBe('codex-key')
-    expect(env.OPENAI_API_KEY).toBe('openai-key')
-  })
-
-  it('includes CODEX_ prefixed vars from processEnv', () => {
-    const env = buildCodexEnv({}, { CODEX_CUSTOM_VAR: 'custom' })
-
-    expect(env.CODEX_CUSTOM_VAR).toBe('custom')
-  })
-
-  it('includes OPENAI_ORG_ID but excludes OPENAI_BASE_URL', () => {
-    const env = buildCodexEnv(
-      {},
-      {
-        OPENAI_ORG_ID: 'org-123',
-        OPENAI_BASE_URL: 'https://evil.example.com',
-      },
-    )
-
-    expect(env.OPENAI_ORG_ID).toBe('org-123')
-    expect(env.OPENAI_BASE_URL).toBeUndefined()
-  })
-
-  it('excludes non-allowlisted vars like DATABASE_URL and STRIPE_SECRET_KEY', () => {
-    const env = buildCodexEnv(
-      {},
-      {
-        DATABASE_URL: 'postgres://secret',
-        STRIPE_SECRET_KEY: 'sk-stripe',
-      },
-    )
-
-    expect(env.DATABASE_URL).toBeUndefined()
-    expect(env.STRIPE_SECRET_KEY).toBeUndefined()
-  })
-
-  it('includes allowlisted vars HOME and PATH from processEnv', () => {
-    const env = buildCodexEnv({}, { HOME: '/home/user', PATH: '/usr/bin' })
-
-    expect(env.HOME).toBe('/home/user')
-    expect(env.PATH).toBe('/usr/bin')
-  })
-
-  it('filters ctxEnv through allowlist — does not pass raw unknown keys like LD_PRELOAD', () => {
-    const env = buildCodexEnv(
-      {
-        LD_PRELOAD: '/evil/lib.so',
-        NODE_OPTIONS: '--require=/evil/hook.js',
-        DYLD_INSERT_LIBRARIES: '/evil/lib.dylib',
-        CODEX_SAFE_VAR: 'ok',
-        HOME: '/ctx/home',
-      },
-      { HOME: '/real/home' },
-    )
-
-    expect(env.LD_PRELOAD).toBeUndefined()
-    expect(env.NODE_OPTIONS).toBeUndefined()
-    expect(env.DYLD_INSERT_LIBRARIES).toBeUndefined()
-    expect(env.CODEX_SAFE_VAR).toBe('ok')
-    // processEnv wins over ctxEnv
-    expect(env.HOME).toBe('/real/home')
-  })
-
-  it('gives processEnv precedence over ctxEnv for allowlisted keys', () => {
-    const env = buildCodexEnv(
-      { PATH: '/evil/bin', HOME: '/evil/home' },
-      { PATH: '/usr/bin', HOME: '/home/user' },
-    )
-
-    expect(env.PATH).toBe('/usr/bin')
-    expect(env.HOME).toBe('/home/user')
-  })
-
-  it('uses the injected processEnv, not the global process.env', () => {
-    const stub: Record<string, string | undefined> = {
-      PATH: '/stub/bin',
-      CODEX_API_KEY: 'stub-key',
-    }
-
-    const env = buildCodexEnv({}, stub)
-
-    expect(env.PATH).toBe('/stub/bin')
-    expect(env.CODEX_API_KEY).toBe('stub-key')
-    expect(env.HOME).toBeUndefined()
   })
 })
 

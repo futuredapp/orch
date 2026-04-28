@@ -71,6 +71,13 @@ are replaced with `***` wherever values are written. The default everywhere
 is `envKeys` — no values at all. Export `ORCH_LOG_ENV_VALUES=1` to include
 values in `run.meta.json` (secrets still redacted).
 
+> Note (2026-04-27): under the env passthrough contract
+> ([plan](plans/2026-04-27-feat-env-passthrough-plan.md)), `spawns.ndjson`
+> `envKeys` records the user's full env keys — there's no allowlist filtering
+> them anymore. Keys only, no values; sharing a log dump is still safe by the
+> same redaction rules above. If you spot a value leaking, treat it as a
+> regression.
+
 If you find a secret leaking, flag it as a regression — redaction lives in
 a single function (`redactEnv` in `src/observability/redact.ts`) and every
 writer routes through it.

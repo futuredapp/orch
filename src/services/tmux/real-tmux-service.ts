@@ -30,16 +30,22 @@ import { paneId, TmuxCommandError } from './tmux-service.ts'
 // Environment
 // ---------------------------------------------------------------------------
 //
-// Dedicated env for tmux subprocesses. We never forward the full process env
-// because tmux servers are long-lived and per-socket — leaking `TMUX`,
-// `TMUX_PANE`, `TERM_PROGRAM`, or user-configured shell rc-loaders into the
-// orchestrator's server would confuse the layout machinery.
+// The tmux server inherits the orch process's full env (passthrough). This is
+// the load-bearing fix for macOS keychain bootstrap vars (`SECURITYSESSIONID`,
+// `__CFBundleIdentifier`, …) reaching child processes spawned inside panes —
+// without them, an interactive Claude pane prompts "Please run /login" even
+// when the host shell is logged in. `TMUX` / `TMUX_PANE` are dangerous if orch
+// was launched from inside another tmux client; the `assertNoNestedTmux` guard
+// in two-pane host blocks that case before the server is created, so
+// passthrough is safe in practice.
 
-const buildTmuxEnv = (): Readonly<Record<string, string>> => ({
-  PATH: process.env.PATH ?? '',
-  HOME: process.env.HOME ?? '',
-  LANG: process.env.LANG ?? 'C',
-})
+const buildPassthroughEnv = (): Record<string, string> => {
+  const env: Record<string, string> = {}
+  for (const [k, v] of Object.entries(process.env)) {
+    if (v !== undefined) env[k] = v
+  }
+  return env
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -137,14 +143,24 @@ export class RealTmuxService implements TmuxService {
   }
 
   async waitFor(opts: WaitForOptions): Promise<void> {
-    // tmux `wait-for` has no native timeout. Race against a timer so we can
-    // fail loud instead of hanging the workflow forever.
+    // tmux `wait-for` has no native timeout. When the caller asks for a hard
+    // cap, race against a timer so autonomous waits fail loud instead of
+    // hanging forever. When `timeoutMs` is omitted, wait indefinitely —
+    // interactive steps need this so the user can pause the agent for
+    // arbitrary periods without orch killing the run.
     const argv = ['tmux', '-L', opts.socket, 'wait-for', opts.channel]
     const run = this.#run(argv)
 
+    if (opts.timeoutMs === undefined) {
+      const { stderr, exitCode } = await run
+      if (exitCode !== 0) throw fail(exitCode, stderr, 'tmux wait-for failed')
+      return
+    }
+
+    const timeoutMs = opts.timeoutMs
     let timer: ReturnType<typeof setTimeout> | undefined
     const timeout = new Promise<'timeout'>((resolve) => {
-      timer = setTimeout(() => resolve('timeout'), opts.timeoutMs)
+      timer = setTimeout(() => resolve('timeout'), timeoutMs)
     })
 
     const winner = await Promise.race([run.then(() => 'done' as const), timeout])
@@ -154,7 +170,7 @@ export class RealTmuxService implements TmuxService {
       throw new TmuxCommandError(
         -1,
         '',
-        `tmux wait-for ${opts.channel} timed out after ${opts.timeoutMs}ms`,
+        `tmux wait-for ${opts.channel} timed out after ${timeoutMs}ms`,
       )
     }
 
@@ -281,6 +297,18 @@ export class RealTmuxService implements TmuxService {
     // any running process (the default `cat` placeholder) before respawn.
     const argv: string[] = ['tmux', '-L', opts.socket, 'respawn-pane']
     if (opts.killRunning) argv.push('-k')
+    if (opts.env !== undefined) {
+      for (const [k, v] of Object.entries(opts.env)) {
+        // `=` and newline in the key would split or terminate the `-e KEY=VAL`
+        // argv that tmux parses. Values pass through verbatim — tmux handles
+        // them, including `=` inside the value (only the first split matters).
+        if (k.includes('=') || k.includes('\n')) {
+          throw new Error(`respawnPane: env key ${JSON.stringify(k)} contains '=' or newline`)
+        }
+        argv.push('-e', `${k}=${v}`)
+      }
+    }
+    if (opts.cwd !== undefined) argv.push('-c', opts.cwd)
     argv.push('-t', opts.target, ...opts.argv)
 
     const { stderr, exitCode } = await this.#run(argv)
@@ -295,7 +323,7 @@ export class RealTmuxService implements TmuxService {
       // tmux commands run against the server socket, not a filesystem path;
       // any existing directory works. `/` is always valid.
       cwd: path('/'),
-      env: buildTmuxEnv(),
+      env: buildPassthroughEnv(),
     })
 
     const stdoutPromise = (async () => {

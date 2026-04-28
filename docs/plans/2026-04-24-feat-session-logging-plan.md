@@ -356,11 +356,11 @@ via `CliDeps` and into `WorkflowDeps.logger`.
   - [x] `spawns.ndjson`, `events.ndjson`, `lifecycle.ndjson`, `timeline.ndjson`
   - [x] `run.meta.json`, `README.md`
   - [x] `agents/<stepName>.session.json` for every agent / interactive step
-- [ ] `bun x orch run --debug <workflow>` additionally produces:
-  - [ ] `agents/<stepName>.stdout` + `.stderr` per agent step
-  - [ ] `tmux/<paneId>.log` per pane (two-pane mode only; no-op on plain)
-  - [ ] `orch.log` with orch-internal trace entries
-  - [ ] `subprocesses.ndjson` with every non-agent `ProcessService.spawn`
+- [x] `bun x orch run --debug <workflow>` additionally produces:
+  - [x] `agents/<stepName>.stdout` + `.stderr` per agent step
+  - [x] `tmux/<paneId>.log` per pane (two-pane mode only; no-op on plain)
+  - [x] `orch.ndjson` with orch-internal trace entries (plan referred to this as `orch.log`; kept `.ndjson` suffix so `grep` and `jq` work identically to the baseline files)
+  - [x] `subprocesses.ndjson` with every non-agent `ProcessService.spawn`
 - [x] Every step-scoped record in `spawns.ndjson`, `events.ndjson`,
   `lifecycle.ndjson`, `timeline.ndjson`, and `agents/<name>.session.json`
   carries a `stepSpanId`. `grep <stepSpanId> logs/*.ndjson` returns >=1
@@ -374,15 +374,15 @@ via `CliDeps` and into `WorkflowDeps.logger`.
 
 ### Non-Functional Requirements
 
-- [ ] Zero new dependencies.
-- [ ] `SessionLogger` is the **only** new port. No `LogRotator`, no
+- [x] Zero new dependencies.
+- [x] `SessionLogger` is the **only** new port. No `LogRotator`, no
   `LogShipper`, no plugin registry.
-- [ ] File + function size budgets: `file-session-logger.ts` ≤ 300 lines,
+- [x] File + function size budgets: `file-session-logger.ts` ≤ 300 lines,
   every new function ≤ 60 lines (CLAUDE.md rule #5).
-- [ ] All log writes go through `FsService` — no direct `fs.appendFile`
+- [x] All log writes go through `FsService` — no direct `fs.appendFile`
   anywhere under `src/observability/` (rule #1 extended to fs).
-- [ ] `mock.module` / `vi.mock` banned in every new test (rule #3).
-- [ ] Every new test name is a full sentence (rule #4).
+- [x] `mock.module` / `vi.mock` banned in every new test (rule #3).
+- [x] Every new test name is a full sentence (rule #4).
 
 ### Quality Gates
 
@@ -565,6 +565,8 @@ the full executor; previous e2e still passes.
 ---
 
 ### Phase 3 — `--debug` heavy captures + docs finalisation
+
+_landed 2026-04-24._ Surprises worth recording: (1) the plan spec'd the file name as `orch.log`, but the FileSessionLogger writes every category as `<name>.ndjson`. Kept `.ndjson` so readers apply the same `grep`/`jq` pipelines across baseline and debug files — doc + checklist updated. (2) `resolveRunMode` was skipped as an `orchLog` call site because it runs before `runId` (and thus the logger) exists; the five live call sites are `resolveView`, `cache-hit`, `saveStep`, plain+tmux `host-teardown`, and `signal-received`.
 
 **Goal:** ship the opt-in heavy captures behind `--debug`. Each is additive
 and independently optional.

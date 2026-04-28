@@ -35,18 +35,14 @@ Setting `TERM` and `COLORTERM` alone isn't enough because `supports-color` gates
 
 ## What we shipped (partial fix)
 
-Two small changes in `src/runners/claude/claude-runner.ts`:
-
-1. Added `TERM` and `COLORTERM` to `CLAUDE_ENV_ALLOWLIST` so they flow from the parent env into the sandboxed Claude env.
-2. In `buildCommand`, when `ctx.mode === 'interactive'`, inject `FORCE_COLOR=3` into the env. chalk level 3 = truecolor.
+Under the [2026-04-27 env passthrough contract](../plans/2026-04-27-feat-env-passthrough-plan.md), the runner builds env via `mergeEnv(process.env, extras, ctx.env)`. `TERM` / `COLORTERM` flow through automatically — no explicit allowlist needed. The only env adjustment the Claude runner makes for interactive mode is `FORCE_COLOR=3`, passed via the `extras` slot of `mergeEnv`:
 
 ```ts
-if (ctx.mode === 'interactive') {
-  env.FORCE_COLOR = '3'
-}
+const extras = ctx.mode === 'interactive' ? { FORCE_COLOR: '3' } : {}
+const env = mergeEnv(process.env, extras, ctx.env)
 ```
 
-Autonomous mode is untouched — it pipes NDJSON and doesn't need colors.
+chalk level 3 = truecolor. `ctx.env` wins last by design, so a workflow author can disable the extra (e.g. `FORCE_COLOR=0`) per step. Autonomous mode is untouched — it pipes NDJSON and doesn't need colors.
 
 ## What this fix does NOT restore
 

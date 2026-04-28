@@ -41,11 +41,16 @@ export interface Runner {
 }
 ```
 
+## Environment
+
+Build the subprocess env via `mergeEnv(processEnv, extras, ctxEnv)` from `src/runners/_shared/merge-env.ts`. Passthrough by default — the child sees the same env the orch process saw, with `undefined` values filtered. `extras` is a runner/mode-specific override slot (today the only entry is `{ FORCE_COLOR: '3' }` for Claude in interactive mode); `ctx.env` always wins last on conflict, so workflow authors can disable extras (`FORCE_COLOR=0`) per step. No allowlist, no filtering. See [2026-04-27 env passthrough plan](../../../docs/plans/2026-04-27-feat-env-passthrough-plan.md).
+
 ## Minimal example (30 lines)
 
 ```ts
 // src/runners/myagent/myagent-runner.ts
 import { defineRunner } from '@orch/runners/runner'
+import { mergeEnv } from '@orch/runners/_shared/merge-env'
 
 export const myagent = defineRunner({
   name: 'myagent',
@@ -53,7 +58,8 @@ export const myagent = defineRunner({
 
   buildCommand: (ctx) => ({
     argv: ['myagent', '--prompt', ctx.prompt, ...(ctx.extraArgs ?? [])],
-    env: { ...ctx.env, MYAGENT_KEY: ctx.secrets.MYAGENT_KEY },
+    // Passthrough; ctx.env wins last. No extras for myagent.
+    env: mergeEnv(process.env, {}, ctx.env),
   }),
 
   parseEvents: (line) => {

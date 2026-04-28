@@ -370,6 +370,8 @@ export class CodexVersionError extends Error {
 
 ### Environment allowlist
 
+> **Superseded by [2026-04-27 env passthrough plan](2026-04-27-feat-env-passthrough-plan.md).** The allowlist (and the `ctxEnv` filter and `OPENAI_BASE_URL` exclusion) below are preserved for archaeology; the live contract is passthrough via `mergeEnv(process.env, {}, ctx.env)` from `src/runners/_shared/merge-env.ts`.
+
 Mirrors ClaudeRunner pattern with Codex-specific prefixes:
 
 ```ts

@@ -7,6 +7,8 @@
 // command injection. Socket names are branded so that any `-L` substitution
 // is statically proven safe.
 
+import type { Path } from '../types.ts'
+
 // ---------------------------------------------------------------------------
 // Branded types
 // ---------------------------------------------------------------------------
@@ -101,8 +103,12 @@ export interface SendKeysOptions {
 export interface WaitForOptions {
   readonly socket: SocketName
   readonly channel: string
-  /** Maximum wall-clock milliseconds to wait before throwing. */
-  readonly timeoutMs: number
+  /**
+   * Maximum wall-clock milliseconds to wait before throwing. Omit to wait
+   * indefinitely — interactive steps use this so the user can pause the
+   * agent for arbitrarily long without orch killing the run.
+   */
+  readonly timeoutMs?: number
 }
 
 export interface SignalChannelOptions {
@@ -196,6 +202,22 @@ export interface RespawnPaneOptions {
   readonly argv: readonly string[]
   /** `-k` — terminate any running process in the target pane before respawning. */
   readonly killRunning: boolean
+  /**
+   * Optional per-pane environment overrides. Each entry becomes a tmux
+   * `-e KEY=VAL` flag on the `respawn-pane` argv before the `--` separator,
+   * so the replacement process inherits the tmux server's env extended (and
+   * overridden) by these entries. Adapters MUST reject keys containing `=`
+   * or newline — they corrupt the `-e KEY=VAL` argv shape.
+   */
+  readonly env?: Readonly<Record<string, string>>
+  /**
+   * Optional `-c <cwd>` flag — sets the pane's working directory at respawn
+   * time. Without it, tmux keeps the pane's existing cwd (which is the cwd
+   * of the tmux client that created the pane: `/` for orch's
+   * RealTmuxService). Required for runner respawns so the agent sees the
+   * project cwd; `cat` placeholder restores omit it (cat needs no cwd).
+   */
+  readonly cwd?: Path
 }
 
 // ---------------------------------------------------------------------------
@@ -216,8 +238,9 @@ export interface TmuxService {
   sendKeys(opts: SendKeysOptions): Promise<void>
 
   /**
-   * `tmux -L <socket> wait-for <channel>` but raced against a timer so we
-   * never block forever. Throws `TmuxCommandError` on timeout.
+   * `tmux -L <socket> wait-for <channel>`. When `timeoutMs` is set, raced
+   * against a timer and throws `TmuxCommandError` on timeout. When omitted,
+   * waits indefinitely until the channel is signalled.
    */
   waitFor(opts: WaitForOptions): Promise<void>
 

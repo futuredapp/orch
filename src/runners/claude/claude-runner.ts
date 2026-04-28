@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { mergeEnv } from '../_shared/merge-env.ts'
 import type { Runner, RunnerCommand, RunnerContext, TerminalEvent } from '../types.ts'
 import { defineRunner } from '../types.ts'
 
@@ -72,52 +73,8 @@ export interface ClaudeOptions {
 }
 
 // ---------------------------------------------------------------------------
-// Environment allowlist
+// Flag denylist
 // ---------------------------------------------------------------------------
-
-const CLAUDE_ENV_ALLOWLIST = [
-  'HOME',
-  'PATH',
-  'SHELL',
-  'USER',
-  'TMPDIR',
-  'LANG',
-  'LC_ALL',
-  'HTTP_PROXY',
-  'HTTPS_PROXY',
-  'NO_PROXY',
-  'NODE_EXTRA_CA_CERTS',
-  // TERM/COLORTERM carry terminal capability info used by Ink/chalk/supports-color
-  // inside the Claude CLI. Without them, even a forced-color mode can't pick the
-  // right ANSI level.
-  'TERM',
-  'COLORTERM',
-  // IS_SANDBOX=1 is the convention Claude Code uses to signal the process is
-  // running in a sandboxed environment. Allow workflows (e.g. the `compound`
-  // example) to opt into it by exporting the variable before the run.
-  'IS_SANDBOX',
-] as const
-
-// processEnv is injected for testability; the `process.env` default only
-// activates inside the production call path (see buildCommand below).
-export function buildClaudeEnv(
-  ctxEnv: Readonly<Record<string, string>>,
-  processEnv: Readonly<Record<string, string | undefined>> = process.env,
-): Record<string, string> {
-  const base: Record<string, string> = {}
-  for (const key of CLAUDE_ENV_ALLOWLIST) {
-    const val = processEnv[key]
-    if (val !== undefined) base[key] = val
-  }
-  for (const [key, val] of Object.entries(processEnv)) {
-    if ((key.startsWith('ANTHROPIC_') || key.startsWith('CLAUDE_')) && val !== undefined) {
-      base[key] = val
-    }
-  }
-  // Allowlist wins over ctxEnv: a caller cannot override PATH/HOME/etc.
-  return { ...ctxEnv, ...base }
-}
-
 // Flags that would let a caller inject arbitrary config or MCP servers —
 // genuine code-execution vectors. Denied whether they appear in `flags` or
 // `ctx.extraArgs`. Note: `--dangerously-skip-permissions` used to live here
@@ -252,21 +209,15 @@ export function claude(opts: ClaudeOptions = {}): Readonly<Runner> {
       for (const flag of flags ?? []) assertFlagAllowed(flag)
       for (const flag of ctx.extraArgs) assertFlagAllowed(flag)
 
-      const env = buildClaudeEnv(ctx.env, process.env)
-      // Interactive mode note (2026-04-14): BunProcessService.spawnForeground
-      // spawns the child with `stdio: 'inherit'`. `inherit` shares file
-      // descriptors but does NOT allocate a PTY, so inside the Claude CLI
-      // `process.stdout.isTTY === false`. Ink/chalk/supports-color then fall
-      // back to a monochrome renderer — the "black-and-white" session we saw
-      // in docs/solutions/interactive-mode-colors.md.
-      // Forcing FORCE_COLOR=3 re-enables truecolor ANSI output via chalk even
-      // without a real TTY. This is a targeted fix for colors only; a full PTY
-      // passthrough (Bun.Terminal) would also restore interactive features
-      // like cursor movement and resize, but costs ~30 LoC of plumbing. See
-      // the solutions doc before escalating.
-      if (ctx.mode === 'interactive') {
-        env.FORCE_COLOR = '3'
-      }
+      // Env: passthrough by default — every key from `process.env` reaches the
+      // child. `extras` is a runner/mode-specific override slot; for Claude in
+      // interactive mode we add `FORCE_COLOR=3` so Ink/chalk render truecolor
+      // ANSI under the inherited (non-PTY) stdio that BunProcessService uses
+      // (see docs/solutions/interactive-mode-colors.md). `ctx.env` always wins
+      // last — workflow authors can disable extras by setting `FORCE_COLOR=0`.
+      const extras: Readonly<Record<string, string>> =
+        ctx.mode === 'interactive' ? { FORCE_COLOR: '3' } : {}
+      const env = mergeEnv(process.env, extras, ctx.env)
       const argv =
         ctx.mode === 'interactive'
           ? buildInteractiveArgv(ctx, { model, flags })

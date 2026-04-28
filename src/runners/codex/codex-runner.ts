@@ -2,11 +2,11 @@ import { z } from 'zod'
 import type { FsService } from '../../services/fs/fs-service.ts'
 import type { ProcessService } from '../../services/process/process-service.ts'
 import { path } from '../../services/types.ts'
+import { mergeEnv } from '../_shared/merge-env.ts'
 import type { RunnerCommand, RunnerContext, RunnerEvent, TerminalEvent } from '../types.ts'
 import { defineRunner } from '../types.ts'
 
-// 329 lines: matches ClaudeRunner's section order (schemas, types, env, denylist,
-// parser, version preflight, factory). Not worth splitting.
+// Section order: schemas, types, denylist, parser, version preflight, factory.
 
 // ---------------------------------------------------------------------------
 // Zod schemas — terminal events only (forward-compatible with new event types)
@@ -40,59 +40,6 @@ export interface CodexOptions {
   readonly model?: string
   readonly sandbox?: 'full-auto' | 'read-only' | 'workspace-write' | 'danger-full-access'
   readonly flags?: readonly string[]
-}
-
-// ---------------------------------------------------------------------------
-// Environment allowlist
-// ---------------------------------------------------------------------------
-
-const CODEX_ENV_ALLOWLIST = [
-  'HOME',
-  'PATH',
-  'SHELL',
-  'USER',
-  'TMPDIR',
-  'LANG',
-  'LC_ALL',
-  'HTTP_PROXY',
-  'HTTPS_PROXY',
-  'NO_PROXY',
-  'NODE_EXTRA_CA_CERTS',
-  'SSL_CERT_FILE',
-  'SSL_CERT_DIR',
-] as const
-
-const CODEX_OPENAI_EXPLICIT_ALLOWLIST = ['OPENAI_API_KEY', 'OPENAI_ORG_ID'] as const
-
-function isAllowedEnvKey(key: string): boolean {
-  return (
-    (CODEX_ENV_ALLOWLIST as readonly string[]).includes(key) ||
-    key.startsWith('CODEX_') ||
-    (CODEX_OPENAI_EXPLICIT_ALLOWLIST as readonly string[]).includes(key)
-  )
-}
-
-export function buildCodexEnv(
-  ctxEnv: Readonly<Record<string, string>>,
-  processEnv: Readonly<Record<string, string | undefined>> = process.env,
-): Record<string, string> {
-  const base: Record<string, string> = {}
-
-  for (const [key, val] of Object.entries(processEnv)) {
-    if (val !== undefined && isAllowedEnvKey(key)) {
-      base[key] = val
-    }
-  }
-
-  // Filter ctxEnv through the same rules — DO NOT spread raw ctxEnv
-  for (const [key, val] of Object.entries(ctxEnv)) {
-    if (key in base) continue // processEnv wins
-    if (isAllowedEnvKey(key)) {
-      base[key] = val
-    }
-  }
-
-  return base
 }
 
 // ---------------------------------------------------------------------------
@@ -288,7 +235,10 @@ export function codex(
       argv.push(...ctx.extraArgs)
       argv.push('--', ctx.prompt)
 
-      return { argv, env: buildCodexEnv(ctx.env, process.env) }
+      // Env: passthrough by default (see mergeEnv contract). Codex has no
+      // mode-specific extras today, so the middle layer is `{}`. `ctx.env`
+      // wins last on conflict — the workflow YAML is the override surface.
+      return { argv, env: mergeEnv(process.env, {}, ctx.env) }
     },
 
     parseEvents(line: string): RunnerEvent | null {

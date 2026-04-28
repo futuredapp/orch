@@ -30,6 +30,7 @@ The full phased roadmap lives at [`docs/plans/implementation-phases.md`](docs/pl
 - Load the `runner-author` skill.
 - Create `src/runners/<name>/` with the four-method adapter.
 - Add the required integration tests (mocked + real; real auto-skipped when the CLI is missing).
+- **Env policy: passthrough.** Build the subprocess env via `mergeEnv(process.env, extras, ctx.env)` from `src/runners/_shared/merge-env.ts`. No filtering, no allowlisting. `extras` is a runner/mode-specific override slot (e.g. `{ FORCE_COLOR: '3' }` for Claude in interactive mode); `ctx.env` always wins last. See [`docs/plans/2026-04-27-feat-env-passthrough-plan.md`](docs/plans/2026-04-27-feat-env-passthrough-plan.md).
 
 ## How to write tests
 

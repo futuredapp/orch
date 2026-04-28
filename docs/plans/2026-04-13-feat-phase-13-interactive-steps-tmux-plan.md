@@ -15,7 +15,7 @@ deepened: 2026-04-13
 ### Key Improvements
 
 1. **Compile-time safety:** `step.define` overloads prevent `returns:` + `mode: 'interactive'` at the type level. `RunFn` overloads make mode override return types honest.
-2. **Security hardening:** Branded `SocketName` type, `--` flag terminator before prompt, SIGINT handler during foreground, env allowlist for tmux commands, ANSI escape stripping.
+2. **Security hardening:** Branded `SocketName` type, `--` flag terminator before prompt, SIGINT handler during foreground, ~~env allowlist for tmux commands~~ (env policy is now passthrough — see [2026-04-27 env passthrough plan](2026-04-27-feat-env-passthrough-plan.md)), ANSI escape stripping.
 3. **Agent-native hooks:** `onInteractive`, `onStepEvent`, `onEvent` callbacks on `WorkflowDeps` decouple interactive mode from TTY and observability from tmux.
 4. **Performance:** Concatenate sendKeys into single call (6.5x faster). Move remain-on-exit/pane-died hook to session init. Left pane runs `cat` not a shell.
 5. **Simplification:** Reduce TmuxService from 16 to 11 methods. Remove `--single-pane`. Remove observe formatter (use raw stdout). Inline pane lifecycle.

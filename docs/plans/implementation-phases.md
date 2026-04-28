@@ -141,12 +141,12 @@ Legend: ☐ not started · ◐ in progress · ✓ landed
 **Goal:** first real end-to-end execution. **This is the "real feedback early" milestone.**
 
 **Deliverables:**
-- `src/runners/claude/claude-runner.ts` — Zod schemas, NDJSON parser, env allowlist builder, `claude()` factory via `defineRunner()`. `buildCommand` producing `claude --bare -p <prompt> --output-format stream-json --verbose --no-session-persistence`.
+- `src/runners/claude/claude-runner.ts` — Zod schemas, NDJSON parser, `claude()` factory via `defineRunner()`. `buildCommand` producing `claude --bare -p <prompt> --output-format stream-json --verbose --no-session-persistence`. Env policy: passthrough — see [2026-04-27 env passthrough plan](2026-04-27-feat-env-passthrough-plan.md).
 - `src/runners/claude/index.ts` — module barrel.
 - `claude()` factory exported from `src/runners/index.ts`.
 
 **Tests:**
-- **Unit** — `buildCommand` argv construction, env allowlist, option combinations (`tests/unit/runners/claude/build-command.test.ts`). NDJSON parser, success/error envelopes, malformed JSON, `extractStructuredOutput` (`tests/unit/runners/claude/parse-events.test.ts`).
+- **Unit** — `buildCommand` argv construction, option combinations (`tests/unit/runners/claude/build-command.test.ts`). NDJSON parser, success/error envelopes, malformed JSON, `extractStructuredOutput` (`tests/unit/runners/claude/parse-events.test.ts`). Env contract is tested once in `tests/unit/runners/_shared/merge-env.test.ts`.
 - **Integration (mocked)** — full round-trip `ClaudeRunner → runRunner → FakeProcessService` from fixture NDJSON (`tests/integration/runners/claude/claude-mocked.test.ts`).
 - **Integration (real, gated `RUN_REAL_CLAUDE=1` + `Bun.which('claude')`)** — real `claude` run with "Reply with exactly: OK" prompt (`tests/integration/runners/claude/claude-real.test.ts`).
 - **E2E-lite (gated)** — workflow DSL + real ClaudeRunner, persisted state inspection (`tests/integration/runners/claude/claude-e2e-lite.test.ts`).
@@ -237,13 +237,13 @@ Legend: ☐ not started · ◐ in progress · ✓ landed
 
 **Deliverables:**
 - **Prerequisite:** `Runner.buildCommand` return type widened to `RunnerCommand | Promise<RunnerCommand>` (backwards-compatible; `await syncValue === syncValue`). `runRunner` updated with `await`.
-- `src/runners/codex/codex-runner.ts` — Zod schemas (terminal events only), standalone `parseCodexLine` (exported), `buildCodexEnv` with allowlist + ctxEnv filtering (exported), expanded flag denylist (`--yolo`, `--config`, `--sandbox`, `-c`, `--approval-mode`), `CodexVersionError`, lazy version preflight, `codex()` factory via `defineRunner()`. Command shape: `codex exec --json --full-auto --skip-git-repo-check --ephemeral [--output-schema <tmpfile>] [-m <model>] -- <prompt>`.
+- `src/runners/codex/codex-runner.ts` — Zod schemas (terminal events only), standalone `parseCodexLine` (exported), expanded flag denylist (`--yolo`, `--config`, `--sandbox`, `-c`, `--approval-mode`), `CodexVersionError`, lazy version preflight, `codex()` factory via `defineRunner()`. Command shape: `codex exec --json --full-auto --skip-git-repo-check --ephemeral [--output-schema <tmpfile>] [-m <model>] -- <prompt>`. Env policy: passthrough — see [2026-04-27 env passthrough plan](2026-04-27-feat-env-passthrough-plan.md).
 - `src/runners/codex/index.ts` — module barrel.
-- Security: ctxEnv filtered through allowlist (no `LD_PRELOAD`/`NODE_OPTIONS` passthrough); `OPENAI_*` narrowed to explicit allowlist (`OPENAI_API_KEY`, `OPENAI_ORG_ID`); `--` separator before prompt.
+- Security: argv-only `--` separator before prompt. (Env policy was originally an allowlist; superseded by passthrough — see [2026-04-27 env passthrough plan](2026-04-27-feat-env-passthrough-plan.md).)
 - NDJSON test fixtures: `tests/fixtures/codex/{simple-success,with-output-schema,turn-failed}.jsonl`.
 
 **Tests:**
-- **Unit** — `buildCommand` argv (default, model, sandbox modes, schema temp file, flags, extraArgs, `--` separator), flag denylist (7 denied flags), env allowlist (CODEX_*, OPENAI_API_KEY, excludes OPENAI_BASE_URL, filters ctxEnv), closure state reset, version preflight (valid/old/missing/unparseable), factory shape — 48 tests across 2 files.
+- **Unit** — `buildCommand` argv (default, model, sandbox modes, schema temp file, flags, extraArgs, `--` separator), flag denylist (7 denied flags), closure state reset, version preflight (valid/old/missing/unparseable), factory shape. Env contract is tested once in `tests/unit/runners/_shared/merge-env.test.ts` — see [2026-04-27 env passthrough plan](2026-04-27-feat-env-passthrough-plan.md).
 - **Integration (mocked)** — full round-trip `CodexRunner → runRunner → FakeProcessService` from 3 NDJSON fixtures (simple success, structured output, turn failed), argv shape verification — 4 tests.
 - **Integration (real, gated `RUN_REAL_CODEX=1`)** — real `codex exec` with tiny prompt — 1 test.
 - **Integration (real, gated `RUN_REAL_CLAUDE=1` + `RUN_REAL_CODEX=1`)** — cross-runner `parallel()` with both real CLIs — 1 test.

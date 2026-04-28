@@ -104,6 +104,9 @@ No new seams. No changes to `runRunner`, `workflow`, `ProcessService`, or `Runne
 
 ### Environment variable handling (UPDATED — allowlist)
 
+> **Superseded by [2026-04-27 env passthrough plan](2026-04-27-feat-env-passthrough-plan.md).** The allowlist below is preserved for archaeology; the live contract is passthrough via `mergeEnv(process.env, extras, ctx.env)` from `src/runners/_shared/merge-env.ts`.
+
+
 ```ts
 const CLAUDE_ENV_ALLOWLIST = [
   'HOME', 'PATH', 'SHELL', 'USER', 'TMPDIR', 'LANG', 'LC_ALL',

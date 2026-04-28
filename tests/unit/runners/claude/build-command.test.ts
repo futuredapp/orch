@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { buildClaudeEnv, claude } from '../../../../src/runners/claude/index.ts'
+import { claude } from '../../../../src/runners/claude/index.ts'
 import type { RunnerContext } from '../../../../src/runners/types.ts'
 import { path } from '../../../../src/services/types.ts'
 
@@ -151,79 +151,6 @@ describe('buildCommand', () => {
   })
 })
 
-describe('buildClaudeEnv', () => {
-  it('includes allowlisted vars from process.env when present', () => {
-    const env = buildClaudeEnv({})
-
-    // HOME and PATH should always be present in any real environment
-    if (process.env.HOME !== undefined) {
-      expect(env.HOME).toBe(process.env.HOME)
-    }
-    if (process.env.PATH !== undefined) {
-      expect(env.PATH).toBe(process.env.PATH)
-    }
-  })
-
-  it('includes ANTHROPIC_ and CLAUDE_ prefixed vars from the injected processEnv', () => {
-    const env = buildClaudeEnv({}, { ANTHROPIC_API_KEY: 'sk-test-key' })
-
-    expect(env.ANTHROPIC_API_KEY).toBe('sk-test-key')
-  })
-
-  it('excludes non-allowlisted vars like DATABASE_URL', () => {
-    const env = buildClaudeEnv({}, { DATABASE_URL: 'postgres://secret' })
-
-    expect(env.DATABASE_URL).toBeUndefined()
-  })
-
-  it('gives allowlist precedence over ctx.env so callers cannot override PATH', () => {
-    const env = buildClaudeEnv(
-      { PATH: '/evil/bin', HOME: '/evil/home' },
-      {
-        PATH: '/usr/bin',
-        HOME: '/home/user',
-      },
-    )
-
-    expect(env.PATH).toBe('/usr/bin')
-    expect(env.HOME).toBe('/home/user')
-  })
-
-  it('uses the injected processEnv, not the global process.env', () => {
-    const stub: Record<string, string | undefined> = {
-      PATH: '/stub/bin',
-      ANTHROPIC_API_KEY: 'stub-key',
-    }
-
-    const env = buildClaudeEnv({}, stub)
-
-    expect(env.PATH).toBe('/stub/bin')
-    expect(env.ANTHROPIC_API_KEY).toBe('stub-key')
-    expect(env.HOME).toBeUndefined()
-  })
-
-  it('produces no undefined values in the result', () => {
-    const env = buildClaudeEnv({})
-
-    for (const val of Object.values(env)) {
-      expect(val).not.toBeUndefined()
-    }
-  })
-
-  it('propagates TERM and COLORTERM from processEnv so Claude can pick the right ANSI level', () => {
-    const env = buildClaudeEnv({}, { TERM: 'xterm-256color', COLORTERM: 'truecolor' })
-
-    expect(env.TERM).toBe('xterm-256color')
-    expect(env.COLORTERM).toBe('truecolor')
-  })
-
-  it('propagates IS_SANDBOX from processEnv so sandboxed workflows can signal it', () => {
-    const env = buildClaudeEnv({}, { IS_SANDBOX: '1' })
-
-    expect(env.IS_SANDBOX).toBe('1')
-  })
-})
-
 describe('buildCommand interactive mode', () => {
   it('produces interactive argv with session-id and -- flag terminator', async () => {
     const runner = claude()
@@ -297,6 +224,18 @@ describe('buildCommand interactive mode', () => {
     const cmd = await runner.buildCommand(ctxFor('test'))
 
     expect(cmd.env.FORCE_COLOR).toBeUndefined()
+  })
+
+  it('lets ctx.env override the interactive FORCE_COLOR extra (mergeEnv contract)', async () => {
+    const runner = claude()
+    const cmd = await runner.buildCommand(
+      ctxFor('test', { mode: 'interactive', env: { FORCE_COLOR: '0' } }),
+    )
+
+    // ctx.env wins last in mergeEnv. A workflow author can disable Ink's
+    // truecolor extra by setting FORCE_COLOR=0 — proves the override seam
+    // is wired through buildCommand even though no YAML path uses it yet.
+    expect(cmd.env.FORCE_COLOR).toBe('0')
   })
 })
 
