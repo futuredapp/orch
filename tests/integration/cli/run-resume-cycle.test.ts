@@ -45,7 +45,7 @@ describe('CLI run-resume cycle (integration)', () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-cycle-test-')
     const deps = makeDeps()
 
-    const rid = 'r-2026-04-13-cyc001' as RunId
+    const rid = 'r-2026-04-13-657204-rg' as RunId
     await deps.stateStore.initRun(rid, { workflowName: 'deploy', startedAt: 1000 })
     await deps.stateStore.saveStep(
       rid,
@@ -69,7 +69,7 @@ describe('CLI run-resume cycle (integration)', () => {
     const deps = makeDeps()
 
     // Simulate: init -> step A -> crash
-    const rid = 'r-2026-04-13-cyc002' as RunId
+    const rid = 'r-2026-04-13-434822-9k' as RunId
     await deps.stateStore.initRun(rid, { workflowName: 'pipeline', startedAt: 1000 })
     await deps.stateStore.saveStep(
       rid,
@@ -103,7 +103,7 @@ describe('CLI run-resume cycle (integration)', () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-cycle-test-')
     const deps = makeDeps()
 
-    const rid = 'r-2026-04-13-cyc003' as RunId
+    const rid = 'r-2026-04-13-212440-qo' as RunId
     await deps.stateStore.initRun(rid, { workflowName: 'test-wf', startedAt: 1000 })
     await deps.stateStore.saveStep(rid, makeStepEntry({ name: 'build' }))
     await deps.stateStore.setStatus(rid, 'completed', 3000)

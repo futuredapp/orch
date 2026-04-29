@@ -43,7 +43,7 @@ function makeDeps(overrides?: {
     fsService: bunFs,
     gitService,
     stateStore: new FileStateStore({ fs: bunFs, basePath: path(tmpDir) }),
-    runId: overrides?.runId ?? ('r-2026-04-13-res001' as RunId),
+    runId: overrides?.runId ?? ('r-2026-04-13-447523-5f' as RunId),
     cwd: path('/workspace'),
     host: createFakeHost(),
   }
@@ -52,7 +52,7 @@ function makeDeps(overrides?: {
 describe('resume (integration)', () => {
   it('four-step crash at step 3, resume completes all steps with memoization', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-resume-test-')
-    const sharedRunId = 'r-2026-04-13-res001' as RunId
+    const sharedRunId = 'r-2026-04-13-447523-5f' as RunId
 
     // First run: steps A+B succeed, step C crashes
     const fps1 = new FakeProcessService()
@@ -117,7 +117,7 @@ describe('resume (integration)', () => {
 
   it('resume resets status to running before re-executing', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-resume-test-')
-    const sharedRunId = 'r-2026-04-13-res002' as RunId
+    const sharedRunId = 'r-2026-04-13-225142-nj' as RunId
 
     // First run: step A succeeds, step B crashes
     const fps1 = new FakeProcessService()
@@ -166,7 +166,7 @@ describe('resume (integration)', () => {
 
   it('double resume: crash at C, resume crashes at D, second resume completes', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-resume-test-')
-    const sharedRunId = 'r-2026-04-13-res003' as RunId
+    const sharedRunId = 'r-2026-04-13-002761-5n' as RunId
 
     const buildWf = (frA: FakeRunner, frB: FakeRunner, frC: FakeRunner, frD: FakeRunner) =>
       workflow('double-resume', async (run) => {
@@ -246,7 +246,7 @@ describe('resume (integration)', () => {
 
   it('resume on run with zero completed steps re-executes all steps', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-resume-test-')
-    const sharedRunId = 'r-2026-04-13-res004' as RunId
+    const sharedRunId = 'r-2026-04-13-780380-mr' as RunId
 
     // First run: workflow function throws before any step runs
     const fps1 = new FakeProcessService()
@@ -291,7 +291,7 @@ describe('resume (integration)', () => {
 
   it('resume with parallel branches skips cached branch and re-runs failed one', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-resume-test-')
-    const sharedRunId = 'r-2026-04-13-res005' as RunId
+    const sharedRunId = 'r-2026-04-13-557999-4v' as RunId
 
     // First run: branch-a succeeds, branch-b fails
     const fps1 = new FakeProcessService()
@@ -342,7 +342,7 @@ describe('resume (integration)', () => {
 
   it('resume with commit steps skips cached agent step and re-runs crashed commit', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-resume-test-')
-    const sharedRunId = 'r-2026-04-13-res006' as RunId
+    const sharedRunId = 'r-2026-04-13-335618-lz' as RunId
 
     // First run: agent step succeeds, commit step crashes (via FakeGitService)
     const fps1 = new FakeProcessService()
@@ -397,7 +397,7 @@ describe('resume (integration)', () => {
   describe('resume guards', () => {
     it('resume on completed run throws ResumeError with correct runId and status', async () => {
       tmpDir = await fs.mkdtemp('/tmp/orch-resume-test-')
-      const sharedRunId = 'r-2026-04-13-res007' as RunId
+      const sharedRunId = 'r-2026-04-13-113237-33' as RunId
 
       const fps = new FakeProcessService()
       const deps = makeDeps({ processService: fps, runId: sharedRunId })
@@ -425,7 +425,7 @@ describe('resume (integration)', () => {
 
     it('resume on non-existent runId throws RunNotFoundError with correct runId', async () => {
       tmpDir = await fs.mkdtemp('/tmp/orch-resume-test-')
-      const missingRunId = 'r-2026-04-13-res008' as RunId
+      const missingRunId = 'r-2026-04-13-890856-k7' as RunId
       const deps = makeDeps({ runId: missingRunId })
 
       const wf = workflow('missing-guard', async (run) => {
@@ -445,7 +445,7 @@ describe('resume (integration)', () => {
 
     it('resume on stuck running run succeeds', async () => {
       tmpDir = await fs.mkdtemp('/tmp/orch-resume-test-')
-      const sharedRunId = 'r-2026-04-13-res009' as RunId
+      const sharedRunId = 'r-2026-04-13-668475-2b' as RunId
 
       // Create a run and manually set its status to 'running' (simulating SIGKILL)
       const deps1 = makeDeps({ runId: sharedRunId })

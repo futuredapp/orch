@@ -21,6 +21,7 @@ import type { CliDeps } from '../deps.ts'
 import { type CliOpts, EXIT, type HostFactory } from '../main.ts'
 import { executeWithAttach } from './execute-with-attach.ts'
 import { isLoadError, loadWorkflow } from './load-workflow.ts'
+import { relativeRunDir } from './relative-run-dir.ts'
 
 const SCAN_CAP = 50
 
@@ -60,22 +61,19 @@ async function resolveEffectiveArgs(
   return cliArgs
 }
 
-function mapResumeError(err: unknown): number | undefined {
+function mapResumeError(err: unknown): { code: number; reason: string } | undefined {
   if (err instanceof RunNotFoundError || err instanceof ResumeError) {
-    process.stderr.write(`${err.message}\n`)
-    return EXIT.CANNOT_RESUME
+    return { code: EXIT.CANNOT_RESUME, reason: err.message }
   }
   if (err instanceof ViewResolutionError || err instanceof StateCorruptionError) {
-    process.stderr.write(`${err.message}\n`)
-    return EXIT.CONFIG_ERROR
+    return { code: EXIT.CONFIG_ERROR, reason: err.message }
   }
   if (
     err instanceof StepError ||
     err instanceof SchemaValidationError ||
     err instanceof ParallelError
   ) {
-    process.stderr.write(`${err.message}\n`)
-    return EXIT.STEP_FAILURE
+    return { code: EXIT.STEP_FAILURE, reason: err.message }
   }
   return undefined
 }
@@ -246,7 +244,10 @@ export async function resumeCmd(
       runId: targetId,
       stderr: process.stderr,
       mapError: mapResumeError,
-      onSuccess: () => process.stderr.write(`Run ${targetId} completed.\n`),
+      summary: {
+        workflowName,
+        runDir: relativeRunDir(deps.cwd, deps.statePath, targetId),
+      },
       logger,
     })
   } finally {

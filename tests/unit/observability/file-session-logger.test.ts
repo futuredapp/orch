@@ -4,7 +4,7 @@ import { createFileSessionLogger } from '../../../src/observability/file-session
 import { FakeClock, FakeFsService, path } from '../../../src/services/index.ts'
 import { runId as runIdFactory } from '../../../src/state/index.ts'
 
-const RUN_ID = runIdFactory('r-2026-04-24-abcdef')
+const RUN_ID = runIdFactory('r-2026-04-24-950814-ei')
 const BASE = path('/state')
 
 function make(debug = false): {

@@ -52,7 +52,7 @@ describe('runsCmd (integration)', () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-runs-test-')
     const deps = makeDeps()
 
-    const rid = 'r-2026-04-13-abc001' as RunId
+    const rid = 'r-2026-04-13-438944-09' as RunId
     await deps.stateStore.initRun(rid, { workflowName: 'deploy', startedAt: 1000 })
     await deps.stateStore.setStatus(rid, 'completed', 5000)
 
@@ -65,8 +65,8 @@ describe('runsCmd (integration)', () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-runs-test-')
     const deps = makeDeps()
 
-    const rid1 = 'r-2026-04-13-abc001' as RunId
-    const rid2 = 'r-2026-04-13-abc002' as RunId
+    const rid1 = 'r-2026-04-13-438944-09' as RunId
+    const rid2 = 'r-2026-04-13-216568-id' as RunId
     await deps.stateStore.initRun(rid1, { workflowName: 'deploy', startedAt: 1000 })
     await deps.stateStore.setStatus(rid1, 'completed', 2000)
     await deps.stateStore.initRun(rid2, { workflowName: 'test', startedAt: 3000 })

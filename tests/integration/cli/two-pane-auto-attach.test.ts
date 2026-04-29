@@ -100,7 +100,7 @@ describe('runCmd auto-attach — argv shape', () => {
     tmux.nextPaneId(paneId('%1'))
     const stderr = bufferStream()
 
-    const runId = 'r-2026-04-23-arg001'
+    const runId = 'r-2026-04-23-760704-6a'
     const expectedArgv = ['tmux', '-L', `orch-${runId}`, 'attach-session', '-t', 'orch']
     processService.whenForeground(expectedArgv).respondWith({ exitCode: 0 })
 
@@ -143,7 +143,7 @@ describe('runCmd auto-attach — race semantics', () => {
 
     // Attach resolves immediately (exitCode 0 — simulated `Ctrl-b d`).
     processService
-      .whenForeground(['tmux', '-L', 'orch-r-2026-04-23-rac001', 'attach-session', '-t', 'orch'])
+      .whenForeground(['tmux', '-L', 'orch-r-2026-04-23-877760-x8', 'attach-session', '-t', 'orch'])
       .respondWith({ exitCode: 0 })
 
     const hostFactory: HostFactory = async (args) => {
@@ -167,7 +167,7 @@ describe('runCmd auto-attach — race semantics', () => {
     const { executeWithAttach } = await import('../../../src/cli/commands/execute-with-attach.ts')
 
     const host = await hostFactory({
-      runId: 'r-2026-04-23-rac001' as unknown as Parameters<HostFactory>[0]['runId'],
+      runId: 'r-2026-04-23-877760-x8' as unknown as Parameters<HostFactory>[0]['runId'],
       workflowName: 'demo',
       stdout: stdout.stream,
       stderr: stderr.stream,
@@ -177,10 +177,10 @@ describe('runCmd auto-attach — race semantics', () => {
     const racePromise = executeWithAttach({
       host,
       workflow: workflowGate,
-      runId: 'r-2026-04-23-rac001',
+      runId: 'r-2026-04-23-877760-x8',
       stderr: stderr.stream,
       mapError: () => undefined,
-      onSuccess: () => stderr.stream.write('DONE\n'),
+      summary: { workflowName: 'demo', runDir: '.orch/state/r-2026-04-23-877760-x8' },
     })
 
     // Let the microtasks settle so the attach resolves first.
@@ -188,16 +188,16 @@ describe('runCmd auto-attach — race semantics', () => {
 
     // Attach has already settled; the detached hint should be on stderr now.
     expect(stderr.text()).toContain('detached. run continues in background')
-    expect(stderr.text()).toContain('re-attach with: tmux -L orch-r-2026-04-23-rac001')
-    expect(stderr.text()).toContain('orch logs r-2026-04-23-rac001')
-    // Workflow is still pending — onSuccess must not have fired yet.
-    expect(stderr.text()).not.toContain('DONE')
+    expect(stderr.text()).toContain('re-attach with: tmux -L orch-r-2026-04-23-877760-x8')
+    expect(stderr.text()).toContain('orch logs r-2026-04-23-877760-x8')
+    // Workflow is still pending — success summary must not have fired yet.
+    expect(stderr.text()).not.toContain('completed.')
 
     // Now let the workflow finish and wait for the race to complete.
     workflowFinished()
     const code = await racePromise
     expect(code).toBe(EXIT.OK)
-    expect(stderr.text()).toContain('DONE')
+    expect(stderr.text()).toContain('Workflow "demo" completed.')
   })
 
   it('when the workflow finishes first, skips the detached hint and exits OK', async () => {
@@ -215,14 +215,14 @@ describe('runCmd auto-attach — race semantics', () => {
       killAttach = resolve
     })
     processService
-      .whenForeground(['tmux', '-L', 'orch-r-2026-04-23-rac002', 'attach-session', '-t', 'orch'])
+      .whenForeground(['tmux', '-L', 'orch-r-2026-04-23-655384-fc', 'attach-session', '-t', 'orch'])
       .respondWith({ exitCode: 0, exitWhen: attachGate })
 
     const host = await createTmuxHost({
       tmux,
       processService,
       clock: new FakeClock(0),
-      runId: 'r-2026-04-23-rac002' as unknown as Parameters<typeof createTmuxHost>[0]['runId'],
+      runId: 'r-2026-04-23-655384-fc' as unknown as Parameters<typeof createTmuxHost>[0]['runId'],
       workflowName: 'demo',
       stderr: stderr.stream,
       skipVersionCheck: true,
@@ -237,10 +237,10 @@ describe('runCmd auto-attach — race semantics', () => {
     const racePromise = executeWithAttach({
       host,
       workflow,
-      runId: 'r-2026-04-23-rac002',
+      runId: 'r-2026-04-23-655384-fc',
       stderr: stderr.stream,
       mapError: () => undefined,
-      onSuccess: () => stderr.stream.write('DONE\n'),
+      summary: { workflowName: 'demo', runDir: '.orch/state/r-2026-04-23-655384-fc' },
     })
 
     // Allow the workflow race + teardown to run. teardown flips the
@@ -267,10 +267,10 @@ describe('runCmd auto-attach — race semantics', () => {
 
     // No detached hint — workflow won the race.
     expect(stderr.text()).not.toContain('detached. run continues')
-    expect(stderr.text()).toContain('DONE')
+    expect(stderr.text()).toContain('Workflow "demo" completed.')
 
-    // Proof stdout channel stayed silent aside from DONE — prevents the
-    // test from ever silently regressing to "both sides run" soup.
+    // Proof stdout channel stayed silent aside from the summary — prevents
+    // the test from ever silently regressing to "both sides run" soup.
     expect(stdout.text()).toBe('')
   })
 })
@@ -289,7 +289,7 @@ describe('runCmd --no-attach — hint preserved, no spawn', () => {
       tmux,
       processService,
       clock: new FakeClock(0),
-      runId: 'r-2026-04-23-noa001' as unknown as Parameters<typeof createTmuxHost>[0]['runId'],
+      runId: 'r-2026-04-23-925840-la' as unknown as Parameters<typeof createTmuxHost>[0]['runId'],
       workflowName: 'demo',
       stderr: stderr.stream,
       skipVersionCheck: true,

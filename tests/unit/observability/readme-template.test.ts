@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test'
 import { renderRunReadme } from '../../../src/observability/readme-template.ts'
 
 const BASE_CTX = {
-  runId: 'r-2026-04-24-abcdef',
+  runId: 'r-2026-04-24-950814-ei',
   workflowName: 'demo',
   mode: 'plain' as const,
   debug: false,
@@ -13,7 +13,7 @@ const BASE_CTX = {
 describe('renderRunReadme', () => {
   it('includes the runId in the top-level heading', () => {
     const md = renderRunReadme(BASE_CTX)
-    expect(md).toContain('# Run r-2026-04-24-abcdef')
+    expect(md).toContain('# Run r-2026-04-24-950814-ei')
   })
 
   it('includes workflow name, mode, started-at, and orch version', () => {

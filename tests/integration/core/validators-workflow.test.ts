@@ -36,7 +36,7 @@ function makeDeps(cwd: string, basePath: string): WorkflowDeps {
     stateStore: new FileStateStore({ fs: bunFs, basePath: path(basePath) }),
     processService: new FakeProcessService(),
     clock: new FakeClock(1000),
-    runId: 'r-2026-04-11-wf0001' as RunId,
+    runId: 'r-2026-04-11-889356-fn' as RunId,
     cwd: path(cwd),
     fsService: bunFs,
     gitService: new FakeGitService(),

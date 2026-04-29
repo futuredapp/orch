@@ -50,7 +50,7 @@ describe('two-pane D2 — failing step', () => {
     tmux.setListPanesResult(['%0'])
     tmux.nextPaneId(paneId('%7'))
 
-    const runId = 'r-2026-04-23-fail01' as RunId
+    const runId = 'r-2026-04-23-699656-8n' as RunId
     const host = await createTmuxHost({
       tmux,
       processService,
@@ -106,7 +106,7 @@ describe('two-pane D2 — parallel rollup', () => {
     tmux.setListPanesResult(['%0'])
     tmux.nextPaneId(paneId('%7'))
 
-    const runId = 'r-2026-04-23-par001' as RunId
+    const runId = 'r-2026-04-23-423020-l8' as RunId
     const host = await createTmuxHost({
       tmux,
       processService,

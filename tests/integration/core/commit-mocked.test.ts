@@ -41,7 +41,7 @@ function makeDeps(overrides?: {
     fsService: bunFs,
     gitService,
     stateStore: new FileStateStore({ fs: bunFs, basePath: path(tmpDir) }),
-    runId: overrides?.runId ?? ('r-2026-04-13-000001' as RunId),
+    runId: overrides?.runId ?? ('r-2026-04-13-458000-q8' as RunId),
     cwd: path('/workspace'),
     host: createFakeHost(),
   }
@@ -104,7 +104,7 @@ describe('commit step integration (mocked)', () => {
 
   it('commit step is skipped on resume when already persisted', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-commit-test-')
-    const runId = 'r-2026-04-13-resume' as RunId
+    const runId = 'r-2026-04-13-398232-yj' as RunId
 
     // First execution: commit succeeds, agent step crashes
     const fps1 = new FakeProcessService()

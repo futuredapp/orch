@@ -53,7 +53,7 @@ describe('statusCmd (integration)', () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-status-test-')
     const deps = makeDeps()
 
-    const code = await statusCmd(deps, 'r-2026-04-13-nope00')
+    const code = await statusCmd(deps, 'r-2026-04-13-020688-q5')
 
     expect(code).toBe(EXIT.CONFIG_ERROR)
   })
@@ -62,7 +62,7 @@ describe('statusCmd (integration)', () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-status-test-')
     const deps = makeDeps()
 
-    const rid = 'r-2026-04-13-abc001' as RunId
+    const rid = 'r-2026-04-13-438944-09' as RunId
     await deps.stateStore.initRun(rid, { workflowName: 'deploy', startedAt: 1000 })
     await deps.stateStore.saveStep(
       rid,
@@ -70,7 +70,7 @@ describe('statusCmd (integration)', () => {
     )
     await deps.stateStore.setStatus(rid, 'completed', 5000)
 
-    const code = await statusCmd(deps, 'r-2026-04-13-abc001')
+    const code = await statusCmd(deps, 'r-2026-04-13-438944-09')
 
     expect(code).toBe(EXIT.OK)
   })
@@ -79,10 +79,10 @@ describe('statusCmd (integration)', () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-status-test-')
     const deps = makeDeps()
 
-    const rid = 'r-2026-04-13-abc001' as RunId
+    const rid = 'r-2026-04-13-438944-09' as RunId
     await deps.stateStore.initRun(rid, { startedAt: 1000 })
 
-    const code = await statusCmd(deps, 'r-2026-04-13-abc')
+    const code = await statusCmd(deps, 'r-2026-04-13-438')
 
     expect(code).toBe(EXIT.OK)
   })
@@ -91,8 +91,8 @@ describe('statusCmd (integration)', () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-status-test-')
     const deps = makeDeps()
 
-    const rid1 = 'r-2026-04-13-abc001' as RunId
-    const rid2 = 'r-2026-04-13-abc002' as RunId
+    const rid1 = 'r-2026-04-13-438944-09' as RunId
+    const rid2 = 'r-2026-04-13-216568-id' as RunId
     await deps.stateStore.initRun(rid1, { startedAt: 1000 })
     await deps.stateStore.initRun(rid2, { startedAt: 2000 })
 
@@ -105,11 +105,11 @@ describe('statusCmd (integration)', () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-status-test-')
     const deps = makeDeps()
 
-    const rid = 'r-2026-04-13-abc001' as RunId
+    const rid = 'r-2026-04-13-438944-09' as RunId
     await deps.stateStore.initRun(rid, { workflowName: 'fail-fast', startedAt: 1000 })
     await deps.stateStore.setStatus(rid, 'crashed', 2000)
 
-    const code = await statusCmd(deps, 'r-2026-04-13-abc001')
+    const code = await statusCmd(deps, 'r-2026-04-13-438944-09')
 
     expect(code).toBe(EXIT.OK)
   })

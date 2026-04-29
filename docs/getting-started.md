@@ -442,13 +442,18 @@ Every `run()` call checks `.orchestrator/runs/<id>/state.json` for a cached entr
 ```bash
 # Start a run
 orch run orchestration.ts
-# Run ID: r-2026-04-09-a7f3
+# Run ID: r-2026-04-29-143052-7k
 
 # Crash happens (power loss, CI timeout, you hit ctrl-c, whatever)
 
 # Pick up where you left off
-orch resume r-2026-04-09-a7f3
+orch resume r-2026-04-29-143052-7k
 ```
+
+> **2026-04-29 — Run ID format changed.** Existing runs under
+> `.orch/state/r-YYYY-MM-DD-xxxxyy/` are no longer recognised by `orch logs`/
+> `orch resume`. Delete the directory if you no longer need them.
+
 
 On resume, the workflow function re-executes from the top. Every `run()` call that previously completed returns instantly with the cached value. The first one that *didn't* complete actually spawns the agent. From there, execution continues normally.
 
@@ -527,7 +532,7 @@ Resolution precedence: `--mode=<x>` > `orch.config.ts` `defaultMode` > `CI=true 
 Here's the layout mid-run, during the `work-auth` step of the first-workflow example from §5:
 
 ```
-┌─ orch: feature-build ── r-2026-04-09-a7f3 ──────────┬─ work-auth @ claude --bare -p ── alive 0:42 ───────────┐
+┌─ orch: feature-build ── r-2026-04-29-143052-7k ─────┬─ work-auth @ claude --bare -p ── alive 0:42 ───────────┐
 │                                                      │                                                          │
 │  ● brainstorm            ✓   3m 12s   $0.42   12k   │  system: loaded skill workflows:work                    │
 │  ● plan                  ✓   1m 47s   $0.88   28k   │  system: allowed tools Bash, Read, Edit, Write           │
@@ -553,7 +558,7 @@ Here's the layout mid-run, during the `work-auth` step of the first-workflow exa
 │   [!] force kill current step                        │                                                          │
 │                                                      │  (streaming…)                                            │
 └──────────────────────────────────────────────────────┴──────────────────────────────────────────────────────────┘
- [status]  run r-2026-04-09-a7f3 · step 3/9 work-auth · $1.42 · 5m41s · press ? for help
+ [status]  run r-2026-04-29-143052-7k · step 3/9 work-auth · $1.42 · 5m41s · press ? for help
 ```
 
 The glyphs on the left pane, top to bottom:
@@ -574,7 +579,7 @@ The glyphs on the left pane, top to bottom:
 When a step needs a human decision (see §13), the `escalation` block on the left activates and the right pane hosts the prompt:
 
 ```
-┌─ orch: feature-build ── r-2026-04-09-a7f3 ──────────┬─ [ human input needed ] ── work-auth ──────────────────┐
+┌─ orch: feature-build ── r-2026-04-29-143052-7k ─────┬─ [ human input needed ] ── work-auth ──────────────────┐
 │                                                      │                                                          │
 │  ● brainstorm            ✓   3m 12s   $0.42   12k   │  work-auth is about to run:                              │
 │  ● plan                  ✓   1m 47s   $0.88   28k   │                                                          │
@@ -598,7 +603,7 @@ When a step needs a human decision (see §13), the `escalation` block on the lef
 When `validate:` fails, the right pane shows which validator failed (by its `defineValidator` name) and the last lines of transcript:
 
 ```
-┌─ orch: feature-build ── r-2026-04-09-a7f3 ──────────┬─ [ validation failed ] ── work-auth ────────────────────┐
+┌─ orch: feature-build ── r-2026-04-29-143052-7k ─────┬─ [ validation failed ] ── work-auth ────────────────────┐
 │                                                      │                                                          │
 │  ● brainstorm            ✓   3m 12s   $0.42   12k   │  Validator failed: tests-passed                         │
 │  ● plan                  ✓   1m 47s   $0.88   28k   │                                                          │

@@ -39,7 +39,7 @@ function makeIntegrationDeps(overrides?: {
     fsService: bunFs,
     gitService: new FakeGitService(),
     stateStore: new FileStateStore({ fs: bunFs, basePath: path(tmpDir) }),
-    runId: overrides?.runId ?? ('r-2026-04-10-000001' as RunId),
+    runId: overrides?.runId ?? ('r-2026-04-10-458000-q8' as RunId),
     cwd: path('/workspace'),
     host: createFakeHost(),
     basePath: tmpDir,
@@ -86,7 +86,7 @@ describe('workflow (integration)', () => {
 
   it('four-step workflow with crash at step 3, then resume completes all steps', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-wf-test-')
-    const sharedRunId = 'r-2026-04-10-000001' as RunId
+    const sharedRunId = 'r-2026-04-10-458000-q8' as RunId
 
     // First run: steps 1-2 succeed, step 3 crashes
     const fps1 = new FakeProcessService()
@@ -166,7 +166,7 @@ describe('workflow (integration)', () => {
 
     const RunStateSchema = z.object({
       schemaVersion: z.literal(5),
-      id: z.string().regex(/^r-\d{4}-\d{2}-\d{2}-[a-z0-9]{6}$/),
+      id: z.string().regex(/^r-\d{4}-\d{2}-\d{2}-\d{6}-[a-z0-9]{2}$/),
       status: z.enum(['running', 'completed', 'crashed']),
       workflowName: z.string().optional(),
       startedAt: z.number(),

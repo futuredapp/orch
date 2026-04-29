@@ -101,10 +101,10 @@ describe('parseArgv prompt handling', () => {
   })
 
   it('accepts a prompt on the resume command', () => {
-    const result = parseArgv(['resume', 'r-2026-04-14-abc123', 'new prompt'])
+    const result = parseArgv(['resume', 'r-2026-04-14-645920-3h', 'new prompt'])
 
     expect(result.command).toBe('resume')
-    expect(result.positional).toBe('r-2026-04-14-abc123')
+    expect(result.positional).toBe('r-2026-04-14-645920-3h')
     expect(result.args).toEqual({ prompt: 'new prompt' })
   })
 })

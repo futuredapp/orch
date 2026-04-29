@@ -27,7 +27,7 @@ export function makeStepEntry(overrides: Partial<StepEntry> = {}): StepEntry {
 export function makeRunState(overrides: Partial<RunState> = {}): RunState {
   return {
     schemaVersion: 5,
-    id: 'r-2026-04-10-000001' as RunId,
+    id: 'r-2026-04-10-458000-q8' as RunId,
     status: 'running',
     startedAt: 0,
     steps: {},

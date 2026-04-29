@@ -29,7 +29,7 @@ function bufferStream(): { stream: NodeJS.WritableStream; text: () => string } {
   return { stream: stream as unknown as NodeJS.WritableStream, text: () => chunks.join('') }
 }
 
-const RUN_ID = 'r-2026-04-23-vr0001' as RunId
+const RUN_ID = 'r-2026-04-23-419108-97' as RunId
 
 describe('view resolution under --mode=plain', () => {
   it('suppresses runner events for silent steps but still fires lifecycle events', async () => {

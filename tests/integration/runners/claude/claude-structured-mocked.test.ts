@@ -42,7 +42,7 @@ function makeDeps(overrides?: {
     processService,
     clock,
     stateStore: new FileStateStore({ fs, basePath: BASE }),
-    runId: overrides?.runId ?? rid('r-2026-04-12-int001'),
+    runId: overrides?.runId ?? rid('r-2026-04-12-585828-kn'),
     cwd: path('/workspace'),
     host: createFakeHost(),
   }
@@ -86,7 +86,7 @@ describe('ClaudeRunner structured output — mocked integration', () => {
   })
 
   it('schema validation failure with structured-output-invalid fixture throws SchemaValidationError', async () => {
-    const deps = makeDeps({ runId: rid('r-2026-04-12-int002') })
+    const deps = makeDeps({ runId: rid('r-2026-04-12-363448-1r') })
     const runner = claude()
     const ctx = {
       cwd: path('/workspace'),
@@ -123,7 +123,7 @@ describe('ClaudeRunner structured output — mocked integration', () => {
   })
 
   it('error_max_structured_output_retries fixture routes to StepError', async () => {
-    const deps = makeDeps({ runId: rid('r-2026-04-12-int003') })
+    const deps = makeDeps({ runId: rid('r-2026-04-12-141064-jv') })
     const runner = claude()
     const ctx = {
       cwd: path('/workspace'),
@@ -159,7 +159,7 @@ describe('ClaudeRunner structured output — mocked integration', () => {
   })
 
   it('memoization: second run returns cached value without re-running', async () => {
-    const deps = makeDeps({ runId: rid('r-2026-04-12-int004') })
+    const deps = makeDeps({ runId: rid('r-2026-04-12-918684-0z') })
     const fr = new FakeRunner(deps.processService)
     fr.script({ structuredOutput: { title: 'Cached', items: [], count: 0 } })
     const STEP = step.define('memo', {
@@ -181,7 +181,7 @@ describe('ClaudeRunner structured output — mocked integration', () => {
   })
 
   it('schema step with validators: structured output available as ctx.value in check()', async () => {
-    const deps = makeDeps({ runId: rid('r-2026-04-12-int005') })
+    const deps = makeDeps({ runId: rid('r-2026-04-12-696304-i3') })
     const fr = new FakeRunner(deps.processService)
     fr.script({ structuredOutput: { title: 'Report', items: ['x'], count: 1 } })
 
@@ -206,7 +206,7 @@ describe('ClaudeRunner structured output — mocked integration', () => {
   })
 
   it('--bare and --json-schema coexist: structured_output present in result envelope', async () => {
-    const deps = makeDeps({ runId: rid('r-2026-04-12-int006') })
+    const deps = makeDeps({ runId: rid('r-2026-04-12-473920-07') })
     const runner = claude({ bare: true })
 
     const s = schema(researchSchema)

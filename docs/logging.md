@@ -9,9 +9,10 @@ set `ORCH_DEBUG=1`) on the run you're debugging.
 ## Where it lives
 
 Every run writes to `<cwd>/.orch/state/<runId>/logs/`. The `runId` follows
-the `r-YYYY-MM-DD-xxxxyy` pattern from `src/state/run-id.ts`. Each run's
-directory is self-contained; deleting `.orch/state/<runId>/` removes
-everything orch wrote for that run.
+the `r-YYYY-MM-DD-HHMMSS-xx` pattern from `src/state/run-id.ts` (date +
+6-digit local-time clock segment + 2 base-36 chars). Each run's directory
+is self-contained; deleting `.orch/state/<runId>/` removes everything orch
+wrote for that run.
 
 ## Baseline files (always present)
 

@@ -51,7 +51,7 @@ function makeDeps(overrides?: {
     processService,
     clock,
     stateStore: new FileStateStore({ fs, basePath: BASE }),
-    runId: overrides?.runId ?? rid('r-2026-04-13-int001'),
+    runId: overrides?.runId ?? rid('r-2026-04-13-585828-kn'),
     cwd: path('/workspace'),
     host,
     generateSessionId: overrides?.generateSessionId,
@@ -233,7 +233,7 @@ describe('interactive step non-zero exit', () => {
 describe('interactive step caching on resume', () => {
   it('caches a completed interactive step and skips it on resume', async () => {
     const sharedFs = new FakeFsService()
-    const sharedRunId = rid('r-2026-04-13-ires01')
+    const sharedRunId = rid('r-2026-04-13-320115-3u')
     let interactiveCalls = 0
 
     // First run: interactive step succeeds, then next step crashes
@@ -328,7 +328,7 @@ describe('host lifecycle events', () => {
 
   it('emits step:cached when a step is served from cache', async () => {
     const sharedFs = new FakeFsService()
-    const sharedRunId = rid('r-2026-04-13-evtc01')
+    const sharedRunId = rid('r-2026-04-13-009248-w8')
 
     // First run — populate cache
     const fps1 = new FakeProcessService()

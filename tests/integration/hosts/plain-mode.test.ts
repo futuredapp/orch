@@ -28,7 +28,7 @@ function bufferStream(): { stream: NodeJS.WritableStream; text: () => string } {
   return { stream: stream as unknown as NodeJS.WritableStream, text: () => chunks.join('') }
 }
 
-const RUN_ID = 'r-2026-04-23-pl0001' as RunId
+const RUN_ID = 'r-2026-04-23-296419-nu' as RunId
 
 async function runTwoStepPlainWorkflow(format: 'text' | 'json'): Promise<{
   stdout: string

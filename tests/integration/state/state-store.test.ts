@@ -19,7 +19,7 @@ describe('FileStateStore (integration)', () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-state-test-')
     const bunFs = new BunFsService()
     const store = new FileStateStore({ fs: bunFs, basePath: path(tmpDir) })
-    const id = 'r-2026-04-10-000001' as RunId
+    const id = 'r-2026-04-10-458000-q8' as RunId
     const entry = makeEntry()
 
     await store.saveStep(id, entry)
@@ -35,11 +35,11 @@ describe('FileStateStore (integration)', () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-state-test-')
     const bunFs = new BunFsService()
     const store = new FileStateStore({ fs: bunFs, basePath: path(tmpDir) })
-    const id = 'r-2026-04-10-000002' as RunId
+    const id = 'r-2026-04-10-235624-8c' as RunId
 
     await store.saveStep(id, makeEntry({ name: 'disk-step', value: 'disk-val' }))
 
-    const raw = await fs.readFile(`${tmpDir}/r-2026-04-10-000002/state.json`, 'utf-8')
+    const raw = await fs.readFile(`${tmpDir}/r-2026-04-10-235624-8c/state.json`, 'utf-8')
     const parsed = JSON.parse(raw)
     expect(parsed.id).toBe(id)
     expect(parsed.steps['disk-step'].value).toBe('disk-val')

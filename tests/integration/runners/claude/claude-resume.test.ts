@@ -39,7 +39,7 @@ function makeDeps(overrides?: {
     processService,
     clock,
     stateStore: new FileStateStore({ fs, basePath: BASE }),
-    runId: overrides?.runId ?? rid('r-2026-04-13-cres01'),
+    runId: overrides?.runId ?? rid('r-2026-04-13-327523-xq'),
     cwd: path('/workspace'),
     host: createFakeHost(),
   }
@@ -49,7 +49,7 @@ describe('ClaudeRunner crash+resume (mocked)', () => {
   it('step 1 memoized on resume, step 2 re-runs with success fixture', async () => {
     const runner = claude()
     const sharedFs = new FakeFsService()
-    const sharedRunId = rid('r-2026-04-13-cres01')
+    const sharedRunId = rid('r-2026-04-13-327523-xq')
 
     const STEP_1 = step.define('step-1', { agent: runner, prompt: 'do step 1' })
     const STEP_2 = step.define('step-2', { agent: runner, prompt: 'do step 2' })

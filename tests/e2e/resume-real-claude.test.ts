@@ -27,7 +27,7 @@ afterEach(async () => {
 describe.skipIf(!canRun)('resume with real Claude (e2e)', () => {
   it('real Claude result survives memoization across a resume boundary', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-resume-e2e-')
-    const runIdVal = 'r-2026-04-13-e2e001' as RunId
+    const runIdVal = 'r-2026-04-13-143160-11' as RunId
     const bunFs = new BunFsService()
     const realProcessService = new BunProcessService()
 

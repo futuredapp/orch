@@ -67,7 +67,7 @@ async function makeDeps(
     fsService: bunFs,
     gitService: new BunGitService({ processService }),
     stateStore: new FileStateStore({ fs: bunFs, basePath: orchPath(stateDir) }),
-    runId: runId ?? ('r-2026-04-13-re0001' as RunId),
+    runId: runId ?? ('r-2026-04-13-638488-e2' as RunId),
     cwd: orchPath(repoDir),
     host: createFakeHost(),
   }
@@ -121,7 +121,7 @@ describe.skipIf(!canRun)('commit step with real git', () => {
 
   it('returns cached result on resume', async () => {
     const repoDir = await tempGitRepo()
-    const runId = 'r-2026-04-13-re0002' as RunId
+    const runId = 'r-2026-04-13-416112-w6' as RunId
     // Shared state dir so both runs see the same persisted state
     const stateDir = await fs.mkdtemp('/tmp/orch-git-state-')
     tmpDirs.push(stateDir)

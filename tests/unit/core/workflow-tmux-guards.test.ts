@@ -39,7 +39,7 @@ function makeDeps(overrides?: {
     processService,
     clock,
     stateStore: new FileStateStore({ fs, basePath: BASE }),
-    runId: overrides?.runId ?? rid('r-2026-04-14-twx001'),
+    runId: overrides?.runId ?? rid('r-2026-04-14-097860-gx'),
     cwd: path('/workspace'),
     host,
   }

@@ -29,7 +29,7 @@ function bufferStream(): { stream: NodeJS.WritableStream; text: () => string } {
   return { stream: stream as unknown as NodeJS.WritableStream, text: () => chunks.join('') }
 }
 
-const RUN_ID = 'r-2026-04-23-tp0001' as RunId
+const RUN_ID = 'r-2026-04-23-489539-t7' as RunId
 
 describe('two-pane mocked workflow', () => {
   it('streams readable transcript lines on the right pane — no raw JSON anywhere', async () => {

@@ -4,7 +4,7 @@ import { FileStateStore, type RunId, StateCorruptionError } from '../../../src/s
 import { makeStepEntry } from '../../helpers/make-step-entry.ts'
 
 const BASE = path('/runs')
-const RID = 'r-2026-04-10-000001' as RunId
+const RID = 'r-2026-04-10-458000-q8' as RunId
 
 function makeStore() {
   const fs = new FakeFsService()
@@ -13,8 +13,8 @@ function makeStore() {
 }
 
 async function writeRawState(fs: FakeFsService, body: unknown): Promise<void> {
-  await fs.mkdir(path('/runs/r-2026-04-10-000001'), { recursive: true })
-  await fs.writeFile(path('/runs/r-2026-04-10-000001/state.json'), JSON.stringify(body))
+  await fs.mkdir(path('/runs/r-2026-04-10-458000-q8'), { recursive: true })
+  await fs.writeFile(path('/runs/r-2026-04-10-458000-q8/state.json'), JSON.stringify(body))
 }
 
 describe('RunState schema v5', () => {
@@ -156,7 +156,7 @@ describe('RunState pre-v5 rejection (prerelease — no migrations)', () => {
     const { fs, store } = makeStore()
     await writeRawState(fs, {
       schemaVersion: 1,
-      id: 'r-2026-04-10-000001',
+      id: 'r-2026-04-10-458000-q8',
       status: 'running',
       steps: {},
     })
@@ -175,7 +175,7 @@ describe('RunState pre-v5 rejection (prerelease — no migrations)', () => {
     const { fs, store } = makeStore()
     await writeRawState(fs, {
       schemaVersion: 2,
-      id: 'r-2026-04-10-000001',
+      id: 'r-2026-04-10-458000-q8',
       status: 'running',
       steps: {},
     })
@@ -187,7 +187,7 @@ describe('RunState pre-v5 rejection (prerelease — no migrations)', () => {
     const { fs, store } = makeStore()
     await writeRawState(fs, {
       schemaVersion: 3,
-      id: 'r-2026-04-10-000001',
+      id: 'r-2026-04-10-458000-q8',
       status: 'running',
       workflowName: 'deploy',
       startedAt: 5000,
@@ -201,7 +201,7 @@ describe('RunState pre-v5 rejection (prerelease — no migrations)', () => {
     const { fs, store } = makeStore()
     await writeRawState(fs, {
       schemaVersion: 4,
-      id: 'r-2026-04-10-000001',
+      id: 'r-2026-04-10-458000-q8',
       status: 'running',
       startedAt: 5000,
       steps: {},
@@ -214,7 +214,7 @@ describe('RunState pre-v5 rejection (prerelease — no migrations)', () => {
     const { fs, store } = makeStore()
     await writeRawState(fs, {
       schemaVersion: 99,
-      id: 'r-2026-04-10-000001',
+      id: 'r-2026-04-10-458000-q8',
       status: 'running',
       steps: {},
     })

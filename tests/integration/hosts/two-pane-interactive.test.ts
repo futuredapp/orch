@@ -30,7 +30,7 @@ function bufferStream(): { stream: NodeJS.WritableStream; text: () => string } {
   return { stream: stream as unknown as NodeJS.WritableStream, text: () => chunks.join('') }
 }
 
-const RUN_ID = 'r-2026-04-23-tpint1' as RunId
+const RUN_ID = 'r-2026-04-23-301840-rk' as RunId
 
 describe('two-pane interactive step', () => {
   it('respawns the right pane with runner argv, waits pane-exit, then restores cat', async () => {

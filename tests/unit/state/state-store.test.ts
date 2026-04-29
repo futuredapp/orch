@@ -78,14 +78,14 @@ describe('FileStateStore', () => {
   it('loadRun returns undefined for a non-existent run', async () => {
     const { store } = makeStore()
 
-    const result = await store.loadRun(rid('r-2026-04-10-ab0000'))
+    const result = await store.loadRun(rid('r-2026-04-10-913048-xr'))
 
     expect(result).toBeUndefined()
   })
 
   it('saveStep then loadRun round-trips a single step entry', async () => {
     const { store } = makeStore()
-    const id = rid('r-2026-04-10-000001')
+    const id = rid('r-2026-04-10-458000-q8')
     const entry = makeEntry()
 
     await store.saveStep(id, entry)
@@ -100,7 +100,7 @@ describe('FileStateStore', () => {
 
   it('saveStep then loadRun round-trips multiple step entries', async () => {
     const { store } = makeStore()
-    const id = rid('r-2026-04-10-000001')
+    const id = rid('r-2026-04-10-458000-q8')
     const entryA = makeEntry({ name: 'step-a' })
     const entryB = makeEntry({ name: 'step-b', value: 42, startedAt: 3000, endedAt: 4000 })
 
@@ -116,7 +116,7 @@ describe('FileStateStore', () => {
 
   it('saveStep overwrites an existing step with the same name', async () => {
     const { store } = makeStore()
-    const id = rid('r-2026-04-10-000001')
+    const id = rid('r-2026-04-10-458000-q8')
     const original = makeEntry({ name: 'step-a', value: 'first' })
     const updated = makeEntry({ name: 'step-a', value: 'second' })
 
@@ -129,19 +129,19 @@ describe('FileStateStore', () => {
 
   it('saveStep creates the run directory if it does not exist', async () => {
     const { store, fs } = makeStore()
-    const id = rid('r-2026-04-10-000001')
+    const id = rid('r-2026-04-10-458000-q8')
 
     await store.saveStep(id, makeEntry())
 
-    expect(await fs.exists(path('/runs/r-2026-04-10-000001'))).toBe(true)
+    expect(await fs.exists(path('/runs/r-2026-04-10-458000-q8'))).toBe(true)
   })
 
   it('loadRun throws StateCorruptionError on corrupted JSON', async () => {
     const fakeFs = new FakeFsService()
-    await fakeFs.mkdir(path('/runs/r-2026-04-10-000001'), { recursive: true })
-    await fakeFs.writeFile(path('/runs/r-2026-04-10-000001/state.json'), '{ broken json')
+    await fakeFs.mkdir(path('/runs/r-2026-04-10-458000-q8'), { recursive: true })
+    await fakeFs.writeFile(path('/runs/r-2026-04-10-458000-q8/state.json'), '{ broken json')
     const store = new FileStateStore({ fs: fakeFs, basePath: BASE })
-    const id = rid('r-2026-04-10-000001')
+    const id = rid('r-2026-04-10-458000-q8')
 
     expect(store.loadRun(id)).rejects.toThrow()
   })
@@ -149,11 +149,11 @@ describe('FileStateStore', () => {
   it('atomic write leaves original state untouched when rename fails', async () => {
     const fakeFs = new FakeFsService()
     const store = new FileStateStore({ fs: fakeFs, basePath: BASE })
-    const id = rid('r-2026-04-10-000001')
+    const id = rid('r-2026-04-10-458000-q8')
 
     await store.saveStep(id, makeEntry({ name: 'original', value: 'safe' }))
 
-    const originalJson = await fakeFs.readFile(path('/runs/r-2026-04-10-000001/state.json'))
+    const originalJson = await fakeFs.readFile(path('/runs/r-2026-04-10-458000-q8/state.json'))
 
     // Inject a failing rename — applied after the first successful save
     fakeFs.rename = async () => {
@@ -164,13 +164,13 @@ describe('FileStateStore', () => {
       store.saveStep(id, makeEntry({ name: 'bad-step', value: 'danger' })),
     ).rejects.toThrow('Simulated rename failure')
 
-    const afterJson = await fakeFs.readFile(path('/runs/r-2026-04-10-000001/state.json'))
+    const afterJson = await fakeFs.readFile(path('/runs/r-2026-04-10-458000-q8/state.json'))
     expect(afterJson).toBe(originalJson)
   })
 
   it('saveStep wraps JSON.stringify errors with step name and cause', async () => {
     const { store } = makeStore()
-    const id = rid('r-2026-04-10-000001')
+    const id = rid('r-2026-04-10-458000-q8')
     const circular: Record<string, unknown> = {}
     circular.self = circular
     const entry = makeEntry({ name: 'bad-value', value: circular })
@@ -186,7 +186,7 @@ describe('FileStateStore', () => {
 
   it('initRun creates an empty running state', async () => {
     const { store } = makeStore()
-    const id = rid('r-2026-04-10-000001')
+    const id = rid('r-2026-04-10-458000-q8')
 
     await store.initRun(id)
     const state = await store.loadRun(id)
@@ -200,7 +200,7 @@ describe('FileStateStore', () => {
 
   it('initRun is idempotent — calling twice does not clear existing steps', async () => {
     const { store } = makeStore()
-    const id = rid('r-2026-04-10-000001')
+    const id = rid('r-2026-04-10-458000-q8')
 
     await store.initRun(id)
     await store.saveStep(id, makeEntry({ name: 'step-a' }))
@@ -213,7 +213,7 @@ describe('FileStateStore', () => {
 
   it('setStatus transitions status from running to completed', async () => {
     const { store } = makeStore()
-    const id = rid('r-2026-04-10-000001')
+    const id = rid('r-2026-04-10-458000-q8')
 
     await store.initRun(id)
     await store.setStatus(id, 'completed')
@@ -224,7 +224,7 @@ describe('FileStateStore', () => {
 
   it('setStatus transitions status from running to crashed', async () => {
     const { store } = makeStore()
-    const id = rid('r-2026-04-10-000001')
+    const id = rid('r-2026-04-10-458000-q8')
 
     await store.initRun(id)
     await store.setStatus(id, 'crashed')
@@ -235,7 +235,7 @@ describe('FileStateStore', () => {
 
   it('setStatus throws for a non-existent run', async () => {
     const { store } = makeStore()
-    const id = rid('r-2026-04-10-000001')
+    const id = rid('r-2026-04-10-458000-q8')
 
     expect(store.setStatus(id, 'completed')).rejects.toThrow('does not exist')
   })
@@ -248,7 +248,7 @@ describe('FileStateStore', () => {
       throw eaccesError
     }
     const store = new FileStateStore({ fs: fakeFs, basePath: BASE })
-    const id = rid('r-2026-04-10-000001')
+    const id = rid('r-2026-04-10-458000-q8')
 
     await expect(store.loadRun(id)).rejects.toThrow('EACCES: permission denied')
   })
@@ -256,7 +256,7 @@ describe('FileStateStore', () => {
   it('saveStep cleans up its .tmp file when the rename step fails', async () => {
     const recording = new RecordingFsService()
     const store = new FileStateStore({ fs: recording, basePath: BASE })
-    const id = rid('r-2026-04-10-000001')
+    const id = rid('r-2026-04-10-458000-q8')
 
     recording.rename = async () => {
       throw new Error('Simulated rename failure')
@@ -276,7 +276,7 @@ describe('FileStateStore', () => {
   it('saveStep uses a unique tmp path per invocation', async () => {
     const recording = new RecordingFsService()
     const store = new FileStateStore({ fs: recording, basePath: BASE })
-    const id = rid('r-2026-04-10-000001')
+    const id = rid('r-2026-04-10-458000-q8')
 
     await store.saveStep(id, makeEntry({ name: 'step-a' }))
     await store.saveStep(id, makeEntry({ name: 'step-b' }))
@@ -290,7 +290,7 @@ describe('FileStateStore', () => {
 
   it('loadRun returns a branded RunId, not a raw string', async () => {
     const { store } = makeStore()
-    const id = rid('r-2026-04-10-000001')
+    const id = rid('r-2026-04-10-458000-q8')
 
     await store.saveStep(id, makeEntry())
     const state = await store.loadRun(id)
@@ -306,7 +306,7 @@ describe('FileStateStore', () => {
 
   it('concurrent saveStep calls for the same runId do not lose entries', async () => {
     const { store } = makeStore()
-    const id = rid('r-2026-04-10-000001')
+    const id = rid('r-2026-04-10-458000-q8')
 
     await Promise.all([
       store.saveStep(id, makeEntry({ name: 'step-a', value: 'a' })),
@@ -323,8 +323,8 @@ describe('FileStateStore', () => {
 
   it('concurrent saveStep calls for different runIds do not interfere', async () => {
     const { store } = makeStore()
-    const id1 = rid('r-2026-04-10-000001')
-    const id2 = rid('r-2026-04-10-000002')
+    const id1 = rid('r-2026-04-10-458000-q8')
+    const id2 = rid('r-2026-04-10-235624-8c')
 
     await Promise.all([
       store.saveStep(id1, makeEntry({ name: 'step-x', value: 'x' })),
@@ -342,7 +342,7 @@ describe('FileStateStore', () => {
 
   it('write queue cleans up after chain goes idle', async () => {
     const { store } = makeStore()
-    const id = rid('r-2026-04-10-000001')
+    const id = rid('r-2026-04-10-458000-q8')
 
     await store.saveStep(id, makeEntry({ name: 'step-a' }))
 

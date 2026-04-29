@@ -167,7 +167,7 @@ describe.skipIf(!canRun)('two-pane host - sequential runs against real tmux', ()
     const statePath = `${tmpDir}/.orch/state`
 
     const r1 = await runOnce({
-      runId: 'r-2026-04-28-aaaaaa',
+      runId: 'r-2026-04-28-031568-o6',
       cwd: tmpDir,
       statePath,
       tmuxSockets,
@@ -180,7 +180,7 @@ describe.skipIf(!canRun)('two-pane host - sequential runs against real tmux', ()
     // Second run — the regression site. If anything from run 1 leaks into
     // the new host's setup, this is where it surfaces.
     const r2 = await runOnce({
-      runId: 'r-2026-04-28-bbbbbb',
+      runId: 'r-2026-04-28-983232-a7',
       cwd: tmpDir,
       statePath,
       tmuxSockets,
@@ -199,7 +199,7 @@ describe.skipIf(!canRun)('two-pane host - sequential runs against real tmux', ()
     await fs.writeFile(`${tmpDir}/solution.txt`, 'leftover from run 1\n')
 
     const r1 = await runOnce({
-      runId: 'r-2026-04-28-cccccc',
+      runId: 'r-2026-04-28-725320-mg',
       cwd: tmpDir,
       statePath: `${tmpDir}/.orch/state`,
       tmuxSockets,
@@ -207,7 +207,7 @@ describe.skipIf(!canRun)('two-pane host - sequential runs against real tmux', ()
     expect(r1.stderrText).not.toContain('respawn-pane failed')
 
     const r2 = await runOnce({
-      runId: 'r-2026-04-28-dddddd',
+      runId: 'r-2026-04-28-472508-ey',
       cwd: tmpDir,
       statePath: `${tmpDir}/.orch/state`,
       tmuxSockets,
@@ -286,11 +286,11 @@ describe.skipIf(!canRun)('two-pane host - sequential runs against real tmux', ()
 
     // Track sockets created by the subprocess so afterEach reaps them.
     // The subprocess's runId is in the `Running workflow "demo" (r-…)` line.
-    const r1Match = r1.stderr.match(/r-\d{4}-\d{2}-\d{2}-[a-z0-9]{6}/)
+    const r1Match = r1.stderr.match(/r-\d{4}-\d{2}-\d{2}-\d{6}-[a-z0-9]{2}/)
     if (r1Match !== null) tmuxSockets.push(`orch-${r1Match[0]}`)
 
     const r2 = spawnOnce()
-    const r2Match = r2.stderr.match(/r-\d{4}-\d{2}-\d{2}-[a-z0-9]{6}/)
+    const r2Match = r2.stderr.match(/r-\d{4}-\d{2}-\d{2}-\d{6}-[a-z0-9]{2}/)
     if (r2Match !== null) tmuxSockets.push(`orch-${r2Match[0]}`)
 
     // The whole point of this test: if run 2 exits non-zero, we've
@@ -301,7 +301,7 @@ describe.skipIf(!canRun)('two-pane host - sequential runs against real tmux', ()
     // And both invocations must have produced a per-run state directory —
     // the symptom in the original bug report was "no state dir created".
     const stateEntries = await fs.readdir(`${tmpDir}/.orch/state`)
-    const runDirs = stateEntries.filter((e) => /^r-\d{4}-\d{2}-\d{2}-[a-z0-9]{6}$/.test(e))
+    const runDirs = stateEntries.filter((e) => /^r-\d{4}-\d{2}-\d{2}-\d{6}-[a-z0-9]{2}$/.test(e))
     expect(runDirs.length).toBe(2)
   })
 })

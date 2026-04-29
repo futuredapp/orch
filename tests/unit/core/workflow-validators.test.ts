@@ -39,7 +39,7 @@ function makeDeps(): TestDeps {
     processService,
     clock,
     stateStore: new FileStateStore({ fs, basePath: BASE }),
-    runId: rid('r-2026-04-10-000001'),
+    runId: rid('r-2026-04-10-458000-q8'),
     cwd: path('/workspace'),
     host: createFakeHost(),
   }

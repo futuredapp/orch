@@ -16,7 +16,7 @@ import { parseClaudeLine } from '../../../../src/runners/claude/index.ts'
 
 const FIXTURE = path.join(
   import.meta.dir,
-  '../../../fixtures/claude/r-2026-04-28-oiyrjv.transcript.ndjson',
+  '../../../fixtures/claude/r-2026-04-28-596832-e1.transcript.ndjson',
 )
 
 function renderFixture(color: boolean): string {

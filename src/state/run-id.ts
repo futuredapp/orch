@@ -1,11 +1,11 @@
 import type { Clock } from '../services/index.ts'
 
-/** Branded run identifier: r-YYYY-MM-DD-xxxxyy where xxxx is 4 clock-derived base-36 chars
- *  and yy is 2 cryptographically random base-36 chars (6-char slug total). */
+/** Branded run identifier: r-YYYY-MM-DD-HHMMSS-xx where HHMMSS is local
+ *  wall-clock time and xx is 2 cryptographically random base-36 chars. */
 export type RunId = string & { readonly __brand: 'RunId' }
 
 /** Pattern all RunIds must match. Exported for RunRegistry's directory filter. */
-export const RUN_ID_PATTERN = /^r-\d{4}-\d{2}-\d{2}-[a-z0-9]{6}$/
+export const RUN_ID_PATTERN = /^r-\d{4}-\d{2}-\d{2}-\d{6}-[a-z0-9]{2}$/
 
 const BASE36_ALPHABET = '0123456789abcdefghijklmnopqrstuvwxyz'
 
@@ -17,18 +17,20 @@ export function runId(s: string): RunId {
   return s as RunId
 }
 
-/** Generates a new RunId from the current clock time plus cryptographic entropy.
- *  Format: r-YYYY-MM-DD-xxxxyy where xxxx = clock.now() base-36 (last 4 chars, zero-padded)
- *  and yy = 2 bytes of crypto randomness mapped to base-36. */
+/** Generates a new RunId from local wall-clock time plus cryptographic entropy.
+ *  Format: r-YYYY-MM-DD-HHMMSS-xx where HHMMSS is local time and xx is 2
+ *  cryptographically random base-36 chars (~1296 same-second slots). */
 export function generateRunId(deps: { readonly clock: Clock }): RunId {
   const now = deps.clock.now()
   const d = new Date(now)
-  const yyyy = String(d.getUTCFullYear())
-  const mm = String(d.getUTCMonth() + 1).padStart(2, '0')
-  const dd = String(d.getUTCDate()).padStart(2, '0')
-  const clockSlug = now.toString(36).slice(-4).padStart(4, '0')
-  const randSlug = randomBase36Pair()
-  return runId(`r-${yyyy}-${mm}-${dd}-${clockSlug}${randSlug}`)
+  const yyyy = String(d.getFullYear())
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mi = String(d.getMinutes()).padStart(2, '0')
+  const ss = String(d.getSeconds()).padStart(2, '0')
+  const rand = randomBase36Pair()
+  return runId(`r-${yyyy}-${mm}-${dd}-${hh}${mi}${ss}-${rand}`)
 }
 
 function randomBase36Pair(): string {

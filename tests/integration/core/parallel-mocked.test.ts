@@ -38,7 +38,7 @@ function makeDeps(overrides?: {
     processService,
     clock,
     stateStore: new FileStateStore({ fs, basePath: BASE }),
-    runId: overrides?.runId ?? rid('r-2026-04-12-par001'),
+    runId: overrides?.runId ?? rid('r-2026-04-12-423020-l8'),
     cwd: path('/workspace'),
     host: createFakeHost(),
   }
@@ -74,7 +74,7 @@ describe('parallel — mocked integration', () => {
   })
 
   it('homogeneous parallel creates entries with as-override names', async () => {
-    const deps = makeDeps({ runId: rid('r-2026-04-12-par002') })
+    const deps = makeDeps({ runId: rid('r-2026-04-12-200640-3c') })
     const files = ['file-a', 'file-b', 'file-c']
 
     const wf = workflow('test-homo', async (run) => {
@@ -89,7 +89,7 @@ describe('parallel — mocked integration', () => {
     })
     await wf.execute(deps)
 
-    const state = await deps.stateStore.loadRun(rid('r-2026-04-12-par002'))
+    const state = await deps.stateStore.loadRun(rid('r-2026-04-12-200640-3c'))
     expect(state?.status).toBe('completed')
     expect(Object.keys(state?.steps ?? {})).toHaveLength(3)
     expect(state?.steps['review-file-a']?.value).toBe('reviewed-file-a')
@@ -99,7 +99,7 @@ describe('parallel — mocked integration', () => {
 
   it('resume skips completed branches and re-runs failed ones', async () => {
     const sharedFs = new FakeFsService()
-    const sharedRunId = rid('r-2026-04-12-par003')
+    const sharedRunId = rid('r-2026-04-12-978256-kg')
 
     // First run: branch-a succeeds, branch-b fails
     const fps1 = new FakeProcessService()
@@ -157,7 +157,7 @@ describe('parallel — mocked integration', () => {
   })
 
   it('concurrency cap 2 over 5 items limits active runners', async () => {
-    const deps = makeDeps({ runId: rid('r-2026-04-12-par004') })
+    const deps = makeDeps({ runId: rid('r-2026-04-12-755876-2k') })
     let active = 0
     let maxActive = 0
 
@@ -183,12 +183,12 @@ describe('parallel — mocked integration', () => {
 
     expect(maxActive).toBeLessThanOrEqual(2)
 
-    const state = await deps.stateStore.loadRun(rid('r-2026-04-12-par004'))
+    const state = await deps.stateStore.loadRun(rid('r-2026-04-12-755876-2k'))
     expect(Object.keys(state?.steps ?? {})).toHaveLength(5)
   })
 
   it('schema steps return Zod-parsed values through parallel', async () => {
-    const deps = makeDeps({ runId: rid('r-2026-04-12-par005') })
+    const deps = makeDeps({ runId: rid('r-2026-04-12-533496-jo') })
 
     const resultSchema = z.object({ score: z.number(), label: z.string() })
 
@@ -217,7 +217,7 @@ describe('parallel — mocked integration', () => {
       { score: 72, label: 'good' },
     ])
 
-    const state = await deps.stateStore.loadRun(rid('r-2026-04-12-par005'))
+    const state = await deps.stateStore.loadRun(rid('r-2026-04-12-533496-jo'))
     expect(state?.steps['eval-a']?.value).toEqual({ score: 95, label: 'excellent' })
     expect(state?.steps['eval-b']?.value).toEqual({ score: 72, label: 'good' })
   })

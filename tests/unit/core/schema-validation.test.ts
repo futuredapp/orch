@@ -41,7 +41,7 @@ function makeDeps(overrides?: {
     processService,
     clock,
     stateStore: new FileStateStore({ fs, basePath: BASE }),
-    runId: overrides?.runId ?? rid('r-2026-04-12-sch001'),
+    runId: overrides?.runId ?? rid('r-2026-04-12-935632-9n'),
     cwd: path('/workspace'),
     host: createFakeHost(),
   }
@@ -280,7 +280,7 @@ describe('executor Zod validation', () => {
 
 describe('cache-hit re-validation', () => {
   it('re-validates cached value when schema is present', async () => {
-    const sharedRunId = rid('r-2026-04-12-cch001')
+    const sharedRunId = rid('r-2026-04-12-408036-se')
     const fs = new FakeFsService()
 
     // First run: step succeeds with valid data, gets cached

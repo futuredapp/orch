@@ -20,7 +20,7 @@ import type {
 } from './session-logger.ts'
 import { stepSpanId as stepSpanIdFactory } from './session-logger.ts'
 
-const PLACEHOLDER_RUN_ID = runIdFactory('r-1970-01-01-000000')
+const PLACEHOLDER_RUN_ID = runIdFactory('r-1970-01-01-000000-00')
 
 export interface CreateNullSessionLoggerOptions {
   readonly runId?: RunId

@@ -25,15 +25,23 @@ const ATTACH_SETTLED = Symbol('attach-settled')
 // holding the user's terminal forever. Beyond this, we force-exit.
 const SIGNAL_TEARDOWN_GRACE_MS = 2_000
 
+export interface RunSummaryDescriptor {
+  readonly workflowName: string
+  /** Already-formatted relative path, e.g. `.orch/state/r-...-7k`. */
+  readonly runDir: string
+}
+
 export interface ExecuteWithAttachOpts {
   readonly host: Host
   readonly workflow: Promise<void>
   readonly runId: string
   readonly stderr: NodeJS.WritableStream
-  /** Maps domain errors (StepError, ViewResolutionError, …) to exit codes. */
-  readonly mapError: (err: unknown) => number | undefined
-  /** Called on successful completion (before teardown returns to the caller). */
-  readonly onSuccess: () => void
+  /** Maps domain errors to an exit code AND a reason string the failure
+   *  summary can quote. Returning `undefined` means re-throw unchanged. */
+  readonly mapError: (err: unknown) => { code: number; reason: string } | undefined
+  /** Workflow name + run dir used to render the end-of-run summary block on
+   *  both the success and mapped-failure paths. */
+  readonly summary: RunSummaryDescriptor
   /** Optional per-run logger for `--debug` orch.log entries. */
   readonly logger?: SessionLogger
 }
@@ -89,9 +97,12 @@ export async function executeWithAttach(opts: ExecuteWithAttachOpts): Promise<nu
     // workflow continues running in-process and carries the exit code.
     await trackedWorkflow
   } catch (err) {
-    const code = opts.mapError(err)
+    const mapped = opts.mapError(err)
     await opts.host.teardown()
-    if (code !== undefined) return code
+    if (mapped !== undefined) {
+      writeFailureSummary(opts.stderr, opts.summary, mapped.reason)
+      return mapped.code
+    }
     throw err
   } finally {
     process.off('SIGINT', sigintHandler)
@@ -100,6 +111,18 @@ export async function executeWithAttach(opts: ExecuteWithAttachOpts): Promise<nu
   }
 
   await opts.host.teardown()
-  opts.onSuccess()
+  writeSuccessSummary(opts.stderr, opts.summary)
   return EXIT.OK
+}
+
+function writeSuccessSummary(stderr: NodeJS.WritableStream, summary: RunSummaryDescriptor): void {
+  stderr.write(`Workflow "${summary.workflowName}" completed.\n  data: ${summary.runDir}/\n`)
+}
+
+function writeFailureSummary(
+  stderr: NodeJS.WritableStream,
+  summary: RunSummaryDescriptor,
+  reason: string,
+): void {
+  stderr.write(`Workflow "${summary.workflowName}" failed: ${reason}\n  data: ${summary.runDir}/\n`)
 }

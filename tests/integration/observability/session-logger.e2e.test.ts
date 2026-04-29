@@ -14,7 +14,7 @@ import { createFileSessionLogger, renderRunReadme } from '../../../src/observabi
 import { BunClock, BunFsService, path } from '../../../src/services/index.ts'
 import { runId as runIdFactory } from '../../../src/state/index.ts'
 
-const RUN_ID = runIdFactory('r-2026-04-24-abcdef')
+const RUN_ID = runIdFactory('r-2026-04-24-950814-ei')
 
 let tempDir: string
 let logsDir: string

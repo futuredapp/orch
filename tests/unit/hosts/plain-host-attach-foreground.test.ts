@@ -20,7 +20,7 @@ function bufferStream(): { stream: NodeJS.WritableStream; text: () => string } {
   return { stream: stream as unknown as NodeJS.WritableStream, text: () => chunks.join('') }
 }
 
-const RUN_ID = 'r-2026-04-23-aaaaaa' as RunId
+const RUN_ID = 'r-2026-04-23-031568-o6' as RunId
 
 describe('PlainHost.attachForeground', () => {
   it('resolves immediately with no subprocess spawn', async () => {

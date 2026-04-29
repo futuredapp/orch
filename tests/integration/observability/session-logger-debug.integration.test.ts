@@ -38,7 +38,7 @@ import {
 } from '../../../src/services/index.ts'
 import { FileStateStore, type RunId, runId as runIdFactory } from '../../../src/state/index.ts'
 
-const RUN_ID: RunId = runIdFactory('r-2026-04-24-debug0')
+const RUN_ID: RunId = runIdFactory('r-2026-04-24-641780-4l')
 
 let tempDir: string
 let logsDir: string

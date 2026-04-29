@@ -25,7 +25,7 @@ interface RecordingLogger extends SessionLogger {
 function makeRecordingLogger(debug: boolean): RecordingLogger {
   const records: Array<{ category: LogCategory; record: JsonObject }> = []
   const base: SessionLogger = {
-    runId: runIdFactory('r-2026-04-24-abcdef'),
+    runId: runIdFactory('r-2026-04-24-950814-ei'),
     debug,
     logsDir: null,
     async append(category: LogCategory, record: JsonObject): Promise<void> {

@@ -70,7 +70,7 @@ describe('resumeCmd state-finding (integration)', () => {
     const deps = makeDeps()
     const { resumeCmd } = await import('../../../../src/cli/commands/resume.ts')
 
-    const rid = 'r-2026-04-13-abc001' as RunId
+    const rid = 'r-2026-04-13-438944-09' as RunId
     await deps.stateStore.initRun(rid, { workflowName: 'test', startedAt: 1000 })
     await deps.stateStore.setStatus(rid, 'completed', 2000)
 
@@ -84,7 +84,7 @@ describe('resumeCmd state-finding (integration)', () => {
     const deps = makeDeps()
     const { resumeCmd } = await import('../../../../src/cli/commands/resume.ts')
 
-    const rid = 'r-2026-04-13-abc001' as RunId
+    const rid = 'r-2026-04-13-438944-09' as RunId
     await deps.stateStore.initRun(rid, { workflowName: 'deploy', startedAt: 1000 })
     await deps.stateStore.setStatus(rid, 'crashed', 2000)
 
@@ -102,7 +102,7 @@ describe('resumeCmd state-finding (integration)', () => {
 
     const code = await resumeCmd(
       deps,
-      'r-2026-04-13-nope00',
+      'r-2026-04-13-020688-q5',
       {},
       DEFAULT_OPTS,
       DEFAULT_HOST_FACTORY,
@@ -116,8 +116,8 @@ describe('resumeCmd state-finding (integration)', () => {
     const deps = makeDeps()
     const { resumeCmd } = await import('../../../../src/cli/commands/resume.ts')
 
-    const rid1 = 'r-2026-04-13-abc001' as RunId
-    const rid2 = 'r-2026-04-13-abc002' as RunId
+    const rid1 = 'r-2026-04-13-438944-09' as RunId
+    const rid2 = 'r-2026-04-13-216568-id' as RunId
     await deps.stateStore.initRun(rid1, { startedAt: 1000 })
     await deps.stateStore.setStatus(rid1, 'crashed', 2000)
     await deps.stateStore.initRun(rid2, { startedAt: 3000 })
@@ -133,7 +133,7 @@ describe('resumeCmd state-finding (integration)', () => {
     const deps = makeDeps()
     const { resumeCmd } = await import('../../../../src/cli/commands/resume.ts')
 
-    const rid = 'r-2026-04-13-arg001' as RunId
+    const rid = 'r-2026-04-13-760704-6a' as RunId
     await deps.stateStore.initRun(rid, {
       workflowName: 'brainstorm',
       startedAt: 1000,
@@ -161,7 +161,7 @@ describe('resumeCmd state-finding (integration)', () => {
     const deps = makeDeps()
     const { resumeCmd } = await import('../../../../src/cli/commands/resume.ts')
 
-    const rid = 'r-2026-04-13-arg002' as RunId
+    const rid = 'r-2026-04-13-538328-ne' as RunId
     await deps.stateStore.initRun(rid, {
       workflowName: 'brainstorm',
       startedAt: 1000,
@@ -182,7 +182,7 @@ describe('resumeCmd state-finding (integration)', () => {
 
     // Write a raw v2 state file — v2/v3/v4 are all rejected with a wipe hint
     // after the prerelease direct-rewrite schema bump.
-    const rid = 'r-2026-04-13-abc001' as RunId
+    const rid = 'r-2026-04-13-438944-09' as RunId
     const ridDir = `${tmpDir}/${rid}`
     await fs.mkdir(ridDir, { recursive: true })
     await fs.writeFile(

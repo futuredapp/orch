@@ -25,7 +25,7 @@ function makeDeps(args?: WorkflowArgs): WorkflowDeps {
     processService: new FakeProcessService(),
     clock: new FakeClock(1000),
     stateStore: new FileStateStore({ fs, basePath: BASE }),
-    runId: rid('r-2026-04-14-aaaaaa'),
+    runId: rid('r-2026-04-14-031568-o6'),
     cwd: path('/workspace'),
     host: createFakeHost(),
     ...(args !== undefined ? { args } : {}),

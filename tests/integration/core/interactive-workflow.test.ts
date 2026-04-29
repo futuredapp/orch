@@ -40,7 +40,7 @@ function makeDeps(overrides?: {
     processService,
     clock,
     stateStore: new FileStateStore({ fs, basePath: BASE }),
-    runId: overrides?.runId ?? rid('r-2026-04-14-iwf001'),
+    runId: overrides?.runId ?? rid('r-2026-04-14-636616-oi'),
     cwd: path('/workspace'),
     host,
     generateSessionId: overrides?.generateSessionId,
@@ -138,7 +138,7 @@ describe('interactive workflow mocked round-trip', () => {
 
   it('mode override at run() call site overrides step config', async () => {
     const deps = makeDeps({
-      runId: rid('r-2026-04-14-iwf002'),
+      runId: rid('r-2026-04-14-414240-6m'),
       generateSessionId: () => 'ffffffff-ffff-ffff-ffff-ffffffffffff',
       onInteractive: async () => ({
         exitCode: 0,

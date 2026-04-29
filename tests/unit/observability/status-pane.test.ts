@@ -95,7 +95,7 @@ describe('stripAnsi', () => {
 function runState(overrides: Partial<RunState> = {}): RunState {
   return {
     schemaVersion: 5,
-    id: 'r-2026-04-14-000001' as RunId,
+    id: 'r-2026-04-14-458000-q8' as RunId,
     status: 'running',
     startedAt: 0,
     steps: {},
@@ -189,9 +189,9 @@ describe('renderStatusPane', () => {
   it('renders the run title above the step list when provided', () => {
     const lines = renderStatusPane([record({ name: 'plan', status: 'pending' })], {
       now: NOW,
-      runTitle: 'r-2026-04-14-000001 · hello-world',
+      runTitle: 'r-2026-04-14-458000-q8 · hello-world',
     })
-    expect(lines).toEqual(['r-2026-04-14-000001 · hello-world', '', '○ plan'])
+    expect(lines).toEqual(['r-2026-04-14-458000-q8 · hello-world', '', '○ plan'])
   })
 
   it('uses ASCII glyphs and strips ANSI from step names when tty is false', () => {

@@ -33,21 +33,25 @@ describe('FileRunRegistry', () => {
 
   it('listRuns returns sorted run IDs', async () => {
     const fs = new FakeFsService()
-    await seedRunDirs(fs, ['r-2026-04-10-cc0000', 'r-2026-04-08-aa0000', 'r-2026-04-09-bb0000'])
+    await seedRunDirs(fs, [
+      'r-2026-04-10-888392-ru',
+      'r-2026-04-08-574464-as',
+      'r-2026-04-09-318720-wz',
+    ])
     const registry = new FileRunRegistry({ fs, basePath: BASE })
 
     const runs = await registry.listRuns()
 
     expect(runs).toEqual([
-      rid('r-2026-04-08-aa0000'),
-      rid('r-2026-04-09-bb0000'),
-      rid('r-2026-04-10-cc0000'),
+      rid('r-2026-04-08-574464-as'),
+      rid('r-2026-04-09-318720-wz'),
+      rid('r-2026-04-10-888392-ru'),
     ])
   })
 
   it('listRuns ignores non-matching directory entries', async () => {
     const fs = new FakeFsService()
-    await seedRunDirs(fs, ['r-2026-04-10-ab0000'])
+    await seedRunDirs(fs, ['r-2026-04-10-913048-xr'])
     // Seed non-matching entries
     await fs.mkdir(path('/runs/.DS_Store'), { recursive: true })
     await fs.mkdir(path('/runs/notes.txt'), { recursive: true })
@@ -55,7 +59,7 @@ describe('FileRunRegistry', () => {
 
     const runs = await registry.listRuns()
 
-    expect(runs).toEqual([rid('r-2026-04-10-ab0000')])
+    expect(runs).toEqual([rid('r-2026-04-10-913048-xr')])
   })
 
   it('findLatest returns undefined when no runs exist', async () => {
@@ -69,32 +73,36 @@ describe('FileRunRegistry', () => {
 
   it('findLatest returns the most recent run', async () => {
     const fs = new FakeFsService()
-    await seedRunDirs(fs, ['r-2026-04-08-aa0000', 'r-2026-04-10-cc0000', 'r-2026-04-09-bb0000'])
+    await seedRunDirs(fs, [
+      'r-2026-04-08-574464-as',
+      'r-2026-04-10-888392-ru',
+      'r-2026-04-09-318720-wz',
+    ])
     const registry = new FileRunRegistry({ fs, basePath: BASE })
 
     const latest = await registry.findLatest()
 
-    expect(latest).toBe(rid('r-2026-04-10-cc0000'))
+    expect(latest).toBe(rid('r-2026-04-10-888392-ru'))
   })
 
   it('findByPrefix returns matching runs', async () => {
     const fs = new FakeFsService()
     await seedRunDirs(fs, [
-      'r-2026-04-08-aa0000',
-      'r-2026-04-10-cc0000',
-      'r-2026-04-10-dd0000',
-      'r-2026-04-09-bb0000',
+      'r-2026-04-08-574464-as',
+      'r-2026-04-10-888392-ru',
+      'r-2026-04-10-849664-bv',
+      'r-2026-04-09-318720-wz',
     ])
     const registry = new FileRunRegistry({ fs, basePath: BASE })
 
     const matches = await registry.findByPrefix('r-2026-04-10')
 
-    expect(matches).toEqual([rid('r-2026-04-10-cc0000'), rid('r-2026-04-10-dd0000')])
+    expect(matches).toEqual([rid('r-2026-04-10-849664-bv'), rid('r-2026-04-10-888392-ru')])
   })
 
   it('findByPrefix returns empty array when nothing matches', async () => {
     const fs = new FakeFsService()
-    await seedRunDirs(fs, ['r-2026-04-10-cc0000'])
+    await seedRunDirs(fs, ['r-2026-04-10-888392-ru'])
     const registry = new FileRunRegistry({ fs, basePath: BASE })
 
     const matches = await registry.findByPrefix('r-2025-01-01')

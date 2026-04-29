@@ -18,6 +18,7 @@ import type { CliDeps } from '../deps.ts'
 import { type CliOpts, EXIT, type HostFactory } from '../main.ts'
 import { executeWithAttach } from './execute-with-attach.ts'
 import { isLoadError, loadWorkflow } from './load-workflow.ts'
+import { relativeRunDir } from './relative-run-dir.ts'
 
 const PROMPT_PREVIEW_MAX = 80
 
@@ -27,18 +28,16 @@ function formatPromptPreview(prompt: string): string {
   return `${normalized.slice(0, PROMPT_PREVIEW_MAX - 1)}…`
 }
 
-function mapRunError(err: unknown): number | undefined {
+function mapRunError(err: unknown): { code: number; reason: string } | undefined {
   if (err instanceof ViewResolutionError) {
-    process.stderr.write(`${err.message}\n`)
-    return EXIT.CONFIG_ERROR
+    return { code: EXIT.CONFIG_ERROR, reason: err.message }
   }
   if (
     err instanceof StepError ||
     err instanceof SchemaValidationError ||
     err instanceof ParallelError
   ) {
-    process.stderr.write(`${err.message}\n`)
-    return EXIT.STEP_FAILURE
+    return { code: EXIT.STEP_FAILURE, reason: err.message }
   }
   return undefined
 }
@@ -170,7 +169,7 @@ export async function runCmd(
       runId,
       stderr: process.stderr,
       mapError: mapRunError,
-      onSuccess: () => process.stderr.write(`Workflow "${name}" completed.\n`),
+      summary: { workflowName: name, runDir: relativeRunDir(deps.cwd, deps.statePath, runId) },
       logger,
     })
   } finally {

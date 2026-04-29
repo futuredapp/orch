@@ -20,7 +20,7 @@ function makeStderr(): { stream: NodeJS.WritableStream; text: () => string } {
   return { stream: stream as unknown as NodeJS.WritableStream, text: () => chunks.join('') }
 }
 
-const RUN_ID = 'r-2026-04-23-att001' as RunId
+const RUN_ID = 'r-2026-04-23-700304-kl' as RunId
 
 async function buildHostWithAttach(opts?: {
   skipAttach?: boolean
