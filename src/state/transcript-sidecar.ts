@@ -14,6 +14,10 @@
 //
 // Parallel safety: each step has its own file, so two parallel branches
 // never write to the same sidecar. No per-file locking needed.
+//
+// Path: events live at `logs/agents/<stepName>/events.ndjson`. State.json's
+// `transcriptPath` literal absorbs both the new and the old (`steps/<stepName>
+// .transcript.ndjson`) layouts, so older runs read fine without migration.
 
 import type { FsService } from '../services/fs/fs-service.ts'
 import type { Path } from '../services/types.ts'
@@ -47,22 +51,23 @@ export interface CreateTranscriptSidecarDeps {
   readonly fs: FsService
   readonly runId: RunId
   /** The `.orch/state` directory root. The sidecar writes under
-   *  `<basePath>/<runId>/steps/<name>.transcript.ndjson`. */
+   *  `<basePath>/<runId>/logs/agents/<name>/events.ndjson`. */
   readonly basePath: Path
 }
 
 export function createTranscriptSidecar(deps: CreateTranscriptSidecarDeps): TranscriptSidecar {
   const runDir = path(`${deps.basePath}/${deps.runId}`)
-  const stepsDir = path(`${runDir}/steps`)
-  let stepsDirEnsured: Promise<void> | undefined
+  // Lazy mkdir cache keyed by the per-step folder. Many runs never emit events
+  // (commit-only, interactive-only workflows), and we don't want to create an
+  // empty `logs/agents/<step>/` for them.
+  const stepDirsEnsured = new Map<string, Promise<void>>()
 
-  // Lazy mkdir — many runs never emit events (commit-only, interactive-only
-  // workflows), and we don't want to create an empty `steps/` for them.
-  const ensureStepsDir = (): Promise<void> => {
-    if (stepsDirEnsured === undefined) {
-      stepsDirEnsured = deps.fs.mkdir(stepsDir, { recursive: true })
-    }
-    return stepsDirEnsured
+  const ensureStepDir = (sanitized: string): Promise<void> => {
+    const cached = stepDirsEnsured.get(sanitized)
+    if (cached !== undefined) return cached
+    const task = deps.fs.mkdir(path(`${runDir}/logs/agents/${sanitized}`), { recursive: true })
+    stepDirsEnsured.set(sanitized, task)
+    return task
   }
 
   const handles = new Map<string, StepTranscript>()
@@ -72,9 +77,15 @@ export function createTranscriptSidecar(deps: CreateTranscriptSidecarDeps): Tran
       const cached = handles.get(stepName)
       if (cached !== undefined) return cached
 
-      const relativePath = `steps/${sanitizeStepName(stepName)}.transcript.ndjson`
+      const sanitized = sanitizeStepName(stepName)
+      const relativePath = `logs/agents/${sanitized}/events.ndjson`
       const filePath = path(`${runDir}/${relativePath}`)
       let count = 0
+      // Truncate on the first write of this process so a resumed step's
+      // folder reflects only the latest attempt — matches the contract of
+      // the per-step folder's other append-only files (raw_output.ndjson,
+      // formatted_output.*).
+      let truncated = false
       // Per-step serial append chain prevents two concurrent RunnerEvent
       // callbacks from interleaving lines in the sidecar file.
       let chain: Promise<void> = Promise.resolve()
@@ -83,7 +94,11 @@ export function createTranscriptSidecar(deps: CreateTranscriptSidecarDeps): Tran
         async append(event: unknown): Promise<void> {
           const line = `${JSON.stringify(event)}\n`
           const next = chain.then(async () => {
-            await ensureStepsDir()
+            await ensureStepDir(sanitized)
+            if (!truncated) {
+              truncated = true
+              await deps.fs.writeFile(filePath, '')
+            }
             await deps.fs.appendFile(filePath, line)
             count += 1
           })

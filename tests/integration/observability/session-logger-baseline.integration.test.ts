@@ -247,7 +247,7 @@ describe('session-logger baseline hook-ins (integration)', () => {
     expect(parsed.env.SOMETHING_TOKEN).toBe('***')
   })
 
-  it('agents/<stepName>.session.json contains prompt, argv, envKeys, finalEvent, and stepSpanId', async () => {
+  it('agents/<stepName>/session.json contains prompt, argv, envKeys, finalEvent, and stepSpanId', async () => {
     const rig = await makeRig()
     const demo = step.define('demo', { agent: rig.runner, prompt: 'hi' })
     const wf = workflow('baseline', async (run) => {
@@ -257,7 +257,7 @@ describe('session-logger baseline hook-ins (integration)', () => {
     await wf.execute(rig.deps)
     await rig.logger.close()
 
-    const session = await readJson<Record<string, unknown>>('agents/demo.session.json')
+    const session = await readJson<Record<string, unknown>>('agents/demo/session.json')
     expect(session.stepName).toBe('demo')
     expect(typeof session.stepSpanId).toBe('string')
     expect(session.runnerName).toBe('fake')
@@ -269,6 +269,14 @@ describe('session-logger baseline hook-ins (integration)', () => {
     const finalEvent = session.finalEvent as { kind: string; type: string }
     expect(finalEvent.kind).toBe('terminal')
     expect(finalEvent.type).toBe('turn-complete')
+    // outputs map lets a cold reader inventory the per-step folder.
+    expect(session.outputs).toEqual({
+      events: 'events.ndjson',
+      rawStdout: 'raw_output.ndjson',
+      rawStderr: 'raw_stderr.log',
+      formattedAnsi: 'formatted_output.ansi',
+      formattedText: 'formatted_output.txt',
+    })
 
     // Cross-check: the spawn record and the session.json share the stepSpanId.
     const spawns = await readLines('spawns.ndjson')

@@ -5,10 +5,14 @@
 // file only exercises what the baseline cannot.
 // ---------------------------------------------------------------------------
 //
-// Covered heavy captures:
-//   - agents/<step>.stdout + .stderr  (raw byte sink from runRunner)
+// Covered heavy captures (still gated by --debug):
 //   - subprocesses.ndjson             (instrumentProcessService wrapper)
 //   - orch.log                        (orchLog helper call sites)
+//
+// Per-step raw stdout/stderr is now ALWAYS-ON and lives under
+// `agents/<step>/raw_output.ndjson` + `agents/<step>/raw_stderr.log`. This
+// file still asserts the file's contents (debug=true makes no difference)
+// to lock the contract.
 //
 // Not covered here (lives elsewhere for deliberate reasons):
 //   - tmux/<paneId>.log is exercised by the tmux host tests; it requires a
@@ -129,7 +133,7 @@ function makeRig(opts: RigOptions): Rig {
 }
 
 describe('session-logger --debug hook-ins (integration)', () => {
-  it('writes raw agent stdout to agents/<step>.stdout when debug is on', async () => {
+  it('writes raw agent stdout to agents/<step>/raw_output.ndjson regardless of debug', async () => {
     const rig = makeRig({ debug: true })
     rig.runner.script({
       events: [{ kind: 'info', type: 'assistant-text', payload: { text: 'hello' } }],
@@ -143,7 +147,7 @@ describe('session-logger --debug hook-ins (integration)', () => {
     await wf.execute(rig.deps)
     await rig.logger.close()
 
-    const body = await readText('agents/demo.stdout')
+    const body = await readText('agents/demo/raw_output.ndjson')
     // FakeRunner emits two NDJSON lines: the scripted info + the terminal.
     // Both land in the raw sink verbatim.
     expect(body).toContain('"kind":"info"')
@@ -152,7 +156,7 @@ describe('session-logger --debug hook-ins (integration)', () => {
     expect(body.split('\n').filter((l) => l.length > 0).length).toBe(2)
   })
 
-  it('creates an empty agents/<step>.stderr file when the runner writes no stderr bytes', async () => {
+  it('always opens the per-step raw_output.ndjson sink, even when no stderr bytes flow', async () => {
     const rig = makeRig({ debug: true })
     rig.runner.script({ structuredOutput: 'ok' })
     const demo = step.define('demo', { agent: rig.runner, prompt: 'hi' })
@@ -163,10 +167,11 @@ describe('session-logger --debug hook-ins (integration)', () => {
     await wf.execute(rig.deps)
     await rig.logger.close()
 
-    // The sink is opened unconditionally under debug — with no stderr bytes
-    // the file may be absent (rawSink.write is never called). That's fine;
-    // the important invariant is that stdout is recorded.
-    expect(await fileExists('agents/demo.stdout')).toBe(true)
+    // raw_output.ndjson is always written (the runner emits at least one
+    // terminal event line). raw_stderr.log may stay absent when the runner
+    // writes no stderr bytes — that's the same contract the old debug path
+    // had for `.stderr`.
+    expect(await fileExists('agents/demo/raw_output.ndjson')).toBe(true)
   })
 
   it('records non-agent subprocess spawns to subprocesses.ndjson', async () => {
@@ -228,7 +233,7 @@ describe('session-logger --debug hook-ins (integration)', () => {
     expect(messages).toContain('saveStep')
   })
 
-  it('does not create stdout, stderr, subprocesses, tmux, or orch logs when debug is off', async () => {
+  it('still writes always-on per-step files when debug is off; gates only subprocesses/orch/tmux', async () => {
     const rig = makeRig({ debug: false })
 
     // Drive a non-agent subprocess to prove the wrapper is bypassed.
@@ -252,8 +257,14 @@ describe('session-logger --debug hook-ins (integration)', () => {
     orchLog(rig.logger, 'should-noop')
     await rig.logger.close()
 
+    // Always-on per-step capture is unaffected by --debug.
+    expect(await fileExists('agents/demo/raw_output.ndjson')).toBe(true)
+    expect(await fileExists('agents/demo/session.json')).toBe(true)
+    // The legacy debug-only filenames are gone — they were superseded by the
+    // per-step folder. Asserting absence locks the supersession.
     expect(await fileExists('agents/demo.stdout')).toBe(false)
     expect(await fileExists('agents/demo.stderr')).toBe(false)
+    // Heavy cross-step captures stay --debug only.
     expect(await fileExists('subprocesses.ndjson')).toBe(false)
     expect(await fileExists('orch.ndjson')).toBe(false)
     expect(await fileExists('tmux')).toBe(false)

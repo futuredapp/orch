@@ -111,7 +111,7 @@ async function driveOneStepWorkflow(): Promise<string> {
   await span.append('lifecycle', { type: 'step:complete', durationMs: 5 })
 
   await logger.writeFile(
-    `agents/${span.stepName}.session.json`,
+    `agents/${span.stepName}/session.json`,
     JSON.stringify(
       {
         stepName: span.stepName,
@@ -124,7 +124,7 @@ async function driveOneStepWorkflow(): Promise<string> {
         finalEvent: { kind: 'terminal', type: 'turn-complete' },
         exitCode: 0,
         durationMs: 5,
-        transcriptPath: `steps/${span.stepName}.transcript.ndjson`,
+        transcriptPath: `logs/agents/${span.stepName}/events.ndjson`,
       },
       null,
       2,
@@ -148,7 +148,7 @@ describe('session-logger e2e acceptance', () => {
     expect(await fileExists('timeline.ndjson')).toBe(true)
     expect(await fileExists('run.meta.json')).toBe(true)
     expect(await fileExists('README.md')).toBe(true)
-    expect(await fileExists('agents/demo.session.json')).toBe(true)
+    expect(await fileExists('agents/demo/session.json')).toBe(true)
     // Baseline run should not produce debug-only files.
     expect(await fileExists('subprocesses.ndjson')).toBe(false)
     expect(await fileExists('orch.log')).toBe(false)
@@ -231,9 +231,9 @@ describe('session-logger e2e acceptance', () => {
     expect(timelineSpawnIds.sort()).toEqual(spawnIds.sort())
   })
 
-  it('writes agents/demo.session.json with prompt, argv, envKeys, finalEvent, exitCode', async () => {
+  it('writes agents/demo/session.json with prompt, argv, envKeys, finalEvent, exitCode', async () => {
     const spanId = await driveOneStepWorkflow()
-    const session = await readJson<Record<string, unknown>>('agents/demo.session.json')
+    const session = await readJson<Record<string, unknown>>('agents/demo/session.json')
     expect(session.stepName).toBe('demo')
     expect(session.stepSpanId).toBe(spanId)
     expect(session.prompt).toBe('hi')
@@ -261,7 +261,7 @@ describe('session-logger e2e acceptance', () => {
       'events.ndjson',
       'lifecycle.ndjson',
       'timeline.ndjson',
-      'agents/demo.session.json',
+      'agents/demo/session.json',
     ]
     for (const f of filesToCheck) {
       const body = await readFile(join(logsDir, f), 'utf8')

@@ -2,9 +2,11 @@
 // orch logs <runId> — stream the per-step transcript NDJSON.
 // ---------------------------------------------------------------------------
 //
-// `state.json` stores per-step pointers to `.orch/state/<runId>/steps/<name>
-// .transcript.ndjson`. This command streams those sidecars in step order,
-// either as readable text lines or as the raw NDJSON envelope.
+// `state.json` stores per-step pointers to
+// `.orch/state/<runId>/logs/agents/<name>/events.ndjson`. This command streams
+// those sidecars in step order, either as readable text lines or as the raw
+// NDJSON envelope. Older runs persisted `steps/<name>.transcript.ndjson`; the
+// `transcriptPath` literal in state.json reads either layout transparently.
 //
 // Path-traversal guard: the incoming `runId` is piped through the `runId()`
 // smart constructor *before* any fs access, so `orch logs ../../etc/passwd`

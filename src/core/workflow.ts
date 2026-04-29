@@ -143,9 +143,9 @@ export interface WorkflowDeps {
   readonly host: Host
   /**
    * Writes autonomous steps' RunnerEvents to append-only NDJSON sidecars
-   * under `.orch/state/<runId>/steps/*.transcript.ndjson`. The `StepEntry`
-   * carries only a relative path + event count; `orch logs` streams the
-   * sidecar. Absent in tests that don't care about persistence.
+   * under `.orch/state/<runId>/logs/agents/<step>/events.ndjson`. The
+   * `StepEntry` carries only a relative path + event count; `orch logs`
+   * streams the sidecar. Absent in tests that don't care about persistence.
    */
   readonly transcriptSidecar?: TranscriptSidecar
   /** Agent-native hook: decouples interactive from TTY. */
@@ -538,6 +538,10 @@ async function writeInteractiveSession(
       stepSpanId: stepSpan.stepSpanId,
       runnerName: r.runnerName,
       mode: 'interactive',
+      // Interactive steps only ever produce session.json — tmux owns the PTY
+      // and orch never sees the bytes. The map is empty so cold readers don't
+      // chase ghosts.
+      outputs: {},
       prompt: r.prompt,
       argv: r.argv,
       envKeys: envKeyList(r.cmdEnv),
@@ -548,14 +552,14 @@ async function writeInteractiveSession(
     null,
     2,
   )
-  await logger.writeFile(`agents/${r.stepName}.session.json`, body).catch(() => {})
+  await logger.writeFile(`agents/${r.stepName}/session.json`, body).catch(() => {})
 }
 
 // ---------------------------------------------------------------------------
-// openRawCapture — opens debug-only raw stdout/stderr sinks for an agent step.
-// Returns undefined when logger is absent or debug is off so the runner deps
-// stay free of the `onRawLine` hook (zero cost on the hot path). On step end,
-// the caller awaits `close()` to flush pending appends to disk.
+// openRawCapture — opens always-on raw stdout/stderr sinks for an agent step.
+// Returns undefined only when there's no logger so the runner deps stay free
+// of the `onRawLine` hook on test paths that pass no logger. On step end, the
+// caller awaits `close()` to flush pending appends to disk.
 // ---------------------------------------------------------------------------
 
 interface RawCapture {
@@ -564,18 +568,19 @@ interface RawCapture {
 }
 
 function openRawCapture(logger: SessionLogger | undefined, key: StepName): RawCapture | undefined {
-  if (logger === undefined || !logger.debug) return undefined
-  const stdoutSink = logger.rawSink(`agents/${key}.stdout`)
-  const stderrSink = logger.rawSink(`agents/${key}.stderr`)
-  if (stdoutSink === null && stderrSink === null) return undefined
+  if (logger === undefined) return undefined
+  // `truncateOnOpen` so a resumed step's folder reflects only the latest
+  // attempt — same contract the transcript sidecar and per-step render tee
+  // observe.
+  const stdoutSink = logger.streamSink(`agents/${key}/raw_output.ndjson`, { truncateOnOpen: true })
+  const stderrSink = logger.streamSink(`agents/${key}/raw_stderr.log`, { truncateOnOpen: true })
   return {
     onRawLine(stream, line) {
       const sink = stream === 'stdout' ? stdoutSink : stderrSink
-      if (sink === null) return
       void sink.write(`${line}\n`).catch(() => {})
     },
     async close() {
-      await Promise.all([stdoutSink?.close(), stderrSink?.close()])
+      await Promise.all([stdoutSink.close(), stderrSink.close()])
     },
   }
 }
@@ -811,6 +816,7 @@ async function writeAgentSession(
       stepSpanId: stepSpan.stepSpanId,
       runnerName: r.runnerName,
       mode: 'autonomous',
+      outputs: AUTONOMOUS_OUTPUTS,
       prompt: r.prompt,
       argv: cmd.argv,
       envKeys: envKeyList(cmd.env),
@@ -824,8 +830,20 @@ async function writeAgentSession(
     null,
     2,
   )
-  await logger.writeFile(`agents/${r.stepName}.session.json`, body).catch(() => {})
+  await logger.writeFile(`agents/${r.stepName}/session.json`, body).catch(() => {})
 }
+
+// `outputs:` map embedded in `session.json` so a cold reader can inventory the
+// per-step folder's siblings without prior knowledge. Paths are relative to
+// the per-step folder itself (the file containing this map). Interactive steps
+// only ever produce `session.json`; autonomous steps produce the full set.
+const AUTONOMOUS_OUTPUTS = Object.freeze({
+  events: 'events.ndjson',
+  rawStdout: 'raw_output.ndjson',
+  rawStderr: 'raw_stderr.log',
+  formattedAnsi: 'formatted_output.ansi',
+  formattedText: 'formatted_output.txt',
+})
 
 // Best-effort command rebuild for log-only purposes. Runners whose
 // `buildCommand` rejects get empty argv/env — logging must not fail the run.
