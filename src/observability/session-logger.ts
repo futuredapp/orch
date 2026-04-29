@@ -79,10 +79,25 @@ export interface SessionLogger {
   /** Write a complete file under logs/ (run.meta.json, README.md,
    *  agents/<name>.session.json). Writes atomically via tmp + rename. */
   writeFile(relPath: string, body: string): Promise<void>
-  /** `--debug` raw byte sink for `agents/<name>.stdout` / `.stderr` /
-   *  `tmux/<paneId>.log` / `orch.log`. Returns `null` when `!debug` so
-   *  callers can no-op without branching on `debug`. */
+  /** `--debug` raw byte sink for `tmux/<paneId>.log` / `orch.log`.
+   *  Returns `null` when `!debug` so callers can no-op without branching on
+   *  `debug`. Per-step `agents/<step>/raw_output.ndjson` etc. now go through
+   *  the always-on `streamSink` instead. */
   rawSink(relPath: string): RawSink | null
+  /**
+   * Always-on byte sink. Used for the per-step folder's `raw_output.ndjson`,
+   * `raw_stderr.log`, `formatted_output.ansi`, `formatted_output.txt`. Returns
+   * a `RawSink` regardless of `debug`. Pass `truncateOnOpen: true` to wipe the
+   * target file on the first write of the sink — used on resume so the
+   * per-step folder reflects only the latest attempt.
+   */
+  streamSink(relPath: string, opts?: StreamSinkOptions): RawSink
   /** Flush any in-flight appends. Called from teardown paths. */
   close(): Promise<void>
+}
+
+export interface StreamSinkOptions {
+  /** Wipe the target file on the first write. Used by writers that want
+   *  per-step folders to reflect only the latest run attempt. */
+  readonly truncateOnOpen?: boolean
 }

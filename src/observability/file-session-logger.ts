@@ -32,6 +32,7 @@ import type {
   SessionLogger,
   StepSpan,
   StepSpanId,
+  StreamSinkOptions,
 } from './session-logger.ts'
 import { stepSpanId as stepSpanIdFactory } from './session-logger.ts'
 
@@ -150,20 +151,28 @@ export function createFileSessionLogger(deps: CreateFileSessionLoggerDeps): Sess
     })
   }
 
-  const rawSink = (relPath: string): RawSink | null => {
-    if (!deps.debug) return null
+  // Shared body for both rawSink (debug-gated) and streamSink (always-on). The
+  // only difference between the two is the gate at the call site — the byte
+  // pipe itself is identical. `truncateOnOpen` wipes the file inside the
+  // per-sink chain so a queued first write sees an empty target.
+  const openByteSink = (relPath: string, opts?: StreamSinkOptions): RawSink => {
     const rel = sanitizeRelPath(relPath)
     const fullPath = path(`${logsDir}/${rel}`)
     // Per-sink chain keeps bytes ordered without interleaving across sinks.
     const sinkKey = `__sink__:${rel}` as unknown as LogCategory
     let closed = false
+    let truncated = !(opts?.truncateOnOpen === true)
 
     return {
       async write(chunk: Uint8Array | string): Promise<void> {
-        if (closed) throw new Error(`SessionLogger: rawSink for ${rel} is closed`)
+        if (closed) throw new Error(`SessionLogger: byte sink for ${rel} is closed`)
         const text = typeof chunk === 'string' ? chunk : new TextDecoder().decode(chunk)
         await enqueue(sinkKey, async () => {
           await ensureSubDir(rel)
+          if (!truncated) {
+            truncated = true
+            await deps.fs.writeFile(fullPath, '')
+          }
           await deps.fs.appendFile(fullPath, text)
         })
       },
@@ -175,6 +184,14 @@ export function createFileSessionLogger(deps: CreateFileSessionLoggerDeps): Sess
       },
     }
   }
+
+  const rawSink = (relPath: string): RawSink | null => {
+    if (!deps.debug) return null
+    return openByteSink(relPath)
+  }
+
+  const streamSink = (relPath: string, opts?: StreamSinkOptions): RawSink =>
+    openByteSink(relPath, opts)
 
   return {
     runId: deps.runId,
@@ -195,6 +212,7 @@ export function createFileSessionLogger(deps: CreateFileSessionLoggerDeps): Sess
     },
     writeFile,
     rawSink,
+    streamSink,
     async close(): Promise<void> {
       // Drain every chain. `pending` accumulates every scheduled swallowed
       // promise; awaiting it reaches the tail of every category.

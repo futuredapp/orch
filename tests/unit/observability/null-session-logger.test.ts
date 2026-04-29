@@ -41,4 +41,18 @@ describe('createNullSessionLogger', () => {
     await expect(logger.writeFile('run.meta.json', '{}')).resolves.toBeUndefined()
     await expect(logger.close()).resolves.toBeUndefined()
   })
+
+  it('streamSink returns a no-op sink whose write and close resolve', async () => {
+    const logger = createNullSessionLogger()
+    const sink = logger.streamSink('agents/demo/raw_output.ndjson')
+    await expect(sink.write('anything')).resolves.toBeUndefined()
+    await expect(sink.close()).resolves.toBeUndefined()
+  })
+
+  it('streamSink accepts truncateOnOpen and stays a no-op', async () => {
+    const logger = createNullSessionLogger()
+    const sink = logger.streamSink('agents/demo/raw_output.ndjson', { truncateOnOpen: true })
+    await expect(sink.write('anything')).resolves.toBeUndefined()
+    await expect(sink.close()).resolves.toBeUndefined()
+  })
 })

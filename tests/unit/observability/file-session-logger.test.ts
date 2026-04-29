@@ -160,3 +160,83 @@ describe('createFileSessionLogger — rawSink', () => {
     await expect(sink?.write('late')).rejects.toThrow(/closed/)
   })
 })
+
+describe('createFileSessionLogger — streamSink', () => {
+  it('returns a writable sink even when debug is false', async () => {
+    const { logger, fs } = make(false)
+    const sink = logger.streamSink('agents/demo/raw_output.ndjson')
+
+    await sink.write('one\n')
+    await sink.write('two\n')
+    await sink.close()
+
+    const body = await fs.readFile(path(`${BASE}/${RUN_ID}/logs/agents/demo/raw_output.ndjson`))
+    expect(body).toBe('one\ntwo\n')
+  })
+
+  it('appends across multiple writes preserving order', async () => {
+    const { logger, fs } = make()
+    const sink = logger.streamSink('agents/demo/formatted_output.ansi')
+
+    const writes = Array.from({ length: 30 }, (_, i) => sink.write(`line-${i}\n`))
+    await Promise.all(writes)
+    await sink.close()
+
+    const body = await fs.readFile(path(`${BASE}/${RUN_ID}/logs/agents/demo/formatted_output.ansi`))
+    const lines = body.split('\n').filter((l) => l.length > 0)
+    expect(lines).toEqual(Array.from({ length: 30 }, (_, i) => `line-${i}`))
+  })
+
+  it('writes from two streamSinks at the same path stay independent per call', async () => {
+    const { logger, fs } = make()
+    const a = logger.streamSink('agents/demo/raw_stderr.log')
+    const b = logger.streamSink('agents/demo/formatted_output.txt')
+
+    await Promise.all([a.write('A'), b.write('B')])
+    await Promise.all([a.close(), b.close()])
+
+    expect(await fs.readFile(path(`${BASE}/${RUN_ID}/logs/agents/demo/raw_stderr.log`))).toBe('A')
+    expect(await fs.readFile(path(`${BASE}/${RUN_ID}/logs/agents/demo/formatted_output.txt`))).toBe(
+      'B',
+    )
+  })
+
+  it('rejects writes after close', async () => {
+    const { logger } = make()
+    const sink = logger.streamSink('agents/demo/raw_output.ndjson')
+    await sink.close()
+    await expect(sink.write('late')).rejects.toThrow(/closed/)
+  })
+
+  it('truncates the target file on first write when truncateOnOpen is true', async () => {
+    const { logger, fs } = make()
+    // Pre-populate the file as if a prior process attempt left it behind.
+    await fs.mkdir(path(`${BASE}/${RUN_ID}/logs/agents/demo`), { recursive: true })
+    await fs.writeFile(path(`${BASE}/${RUN_ID}/logs/agents/demo/raw_output.ndjson`), 'stale\n')
+
+    const sink = logger.streamSink('agents/demo/raw_output.ndjson', { truncateOnOpen: true })
+    await sink.write('fresh\n')
+    await sink.close()
+
+    const body = await fs.readFile(path(`${BASE}/${RUN_ID}/logs/agents/demo/raw_output.ndjson`))
+    expect(body).toBe('fresh\n')
+  })
+
+  it('does not truncate without the flag', async () => {
+    const { logger, fs } = make()
+    await fs.mkdir(path(`${BASE}/${RUN_ID}/logs/agents/demo`), { recursive: true })
+    await fs.writeFile(path(`${BASE}/${RUN_ID}/logs/agents/demo/raw_output.ndjson`), 'kept\n')
+
+    const sink = logger.streamSink('agents/demo/raw_output.ndjson')
+    await sink.write('added\n')
+    await sink.close()
+
+    const body = await fs.readFile(path(`${BASE}/${RUN_ID}/logs/agents/demo/raw_output.ndjson`))
+    expect(body).toBe('kept\nadded\n')
+  })
+
+  it('rejects traversal segments in the rel path', () => {
+    const { logger } = make()
+    expect(() => logger.streamSink('../escape.log')).toThrow(/traversal/)
+  })
+})

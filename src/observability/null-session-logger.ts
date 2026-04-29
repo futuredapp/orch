@@ -14,11 +14,21 @@ import { runId as runIdFactory } from '../state/index.ts'
 import type {
   JsonObject,
   LogCategory,
+  RawSink,
   SessionLogger,
   StepSpan,
   StepSpanId,
 } from './session-logger.ts'
 import { stepSpanId as stepSpanIdFactory } from './session-logger.ts'
+
+const NOOP_SINK: RawSink = {
+  async write(_chunk: Uint8Array | string): Promise<void> {
+    /* no-op */
+  },
+  async close(): Promise<void> {
+    /* no-op */
+  },
+}
 
 const PLACEHOLDER_RUN_ID = runIdFactory('r-1970-01-01-000000-00')
 
@@ -53,6 +63,9 @@ export function createNullSessionLogger(opts: CreateNullSessionLoggerOptions = {
     },
     rawSink(_relPath: string): null {
       return null
+    },
+    streamSink(_relPath: string): RawSink {
+      return NOOP_SINK
     },
     async close(): Promise<void> {
       /* no-op */

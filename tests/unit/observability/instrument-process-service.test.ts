@@ -46,6 +46,16 @@ function makeRecordingLogger(debug: boolean): RecordingLogger {
     rawSink(): RawSink | null {
       return null
     },
+    streamSink(): RawSink {
+      return {
+        async write() {
+          /* no-op */
+        },
+        async close() {
+          /* no-op */
+        },
+      }
+    },
     async close(): Promise<void> {
       /* no-op */
     },

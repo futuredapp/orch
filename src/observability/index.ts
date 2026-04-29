@@ -19,6 +19,7 @@ export type {
   SessionLogger,
   StepSpan,
   StepSpanId,
+  StreamSinkOptions,
 } from './session-logger.ts'
 export { stepSpanId } from './session-logger.ts'
 export type { StatusLoop, StatusLoopOptions } from './status-loop.ts'
