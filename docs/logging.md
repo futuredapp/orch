@@ -24,7 +24,51 @@ wrote for that run.
 | `timeline.ndjson` | source-tagged mirror of the three streams above | the AI reader's primary entry point |
 | `run.meta.json` | reproducibility snapshot | orch version, argv, envKeys, os, runId, startedAt |
 | `README.md` | run-local navigation | generated per run; has grep recipes for this specific `runId` |
-| `agents/<stepName>.session.json` | per-step landing page | prompt, argv, envKeys, finalEvent, exitCode, transcript path |
+| `agents/<stepName>/` | per-step folder | self-describing landing site for one step's run; see below |
+
+### Per-step folder (`agents/<stepName>/`)
+
+One folder per step that produced at least one event. Always-on (no
+`--debug` requirement). "Show me everything about this step" is one
+folder, one `ls`.
+
+| File | Shape | Purpose |
+|---|---|---|
+| `session.json` | landing page | prompt, argv, envKeys, finalEvent, exitCode, `outputs:` map listing siblings |
+| `events.ndjson` | parsed `RunnerEvent[]` | one line per event (`steps/<stepName>.transcript.ndjson` in older runs) |
+| `raw_output.ndjson` | subprocess stdout, line-buffered | NDJSON the runner emitted before parsing — parser-miss recovery |
+| `raw_stderr.log` | subprocess stderr, line-buffered | empty file when the runner writes no stderr |
+| `formatted_output.ansi` | verbatim host bytes | `cat formatted_output.ansi` replays the run on a TTY |
+| `formatted_output.txt` | `formatted_output.ansi` minus ANSI | `grep`-friendly stripped form |
+
+Mode-specific shapes:
+
+- **Autonomous step** — produces every file above.
+- **Interactive step** — only `session.json` (tmux owns the PTY; orch never
+  sees the bytes).
+- **Silent step** — `events.ndjson` and `raw_output.ndjson` only; the host
+  renders nothing, so `formatted_output.*` are absent.
+
+`session.json.outputs:` maps a logical name (e.g. `formattedAnsi`) to a
+sibling filename (e.g. `formatted_output.ansi`). Cold readers can
+inventory the folder without prior knowledge.
+
+### Resume truncation
+
+Resuming a crashed run re-enters the step. The append-only files inside
+the per-step folder (`events.ndjson`, `raw_output.ndjson`,
+`raw_stderr.log`, `formatted_output.ansi`, `formatted_output.txt`) are
+truncated on the first write of the step in the resumed process so the
+folder reflects only the latest attempt. The cross-step `lifecycle.ndjson`
+still records every attempt's `step:start` / `step:failed` /
+`step:complete` boundary.
+
+`session.json` is written atomically (tmp + rename) so it overwrites
+cleanly without truncation.
+
+Cached resume (the step's value is already in `state.json`) does not
+re-enter the step, so the folder — if it exists from a prior run — is
+left untouched.
 
 ## The `stepSpanId`
 
@@ -47,15 +91,18 @@ Users opt in knowing the cost — there are no size caps.
 
 | File | Shape |
 |---|---|
-| `agents/<stepName>.stdout` + `.stderr` | raw bytes per agent subprocess — parser miss recovery, NDJSON decode failures |
 | `tmux/<paneId>.log` | `tmux pipe-pane` capture, two-pane mode only |
 | `subprocesses.ndjson` | every non-agent subprocess (git, tmux, probes) that routed through `ProcessService` |
 | `orch.ndjson` | orch's own internal trace — view resolution, cache hits, state writes, signal handling, host teardown |
 
+Note: per-step raw stdout/stderr is now baseline (always-on) under
+`agents/<stepName>/raw_output.ndjson` + `raw_stderr.log`. The old
+`agents/<stepName>.stdout` / `.stderr` debug files no longer exist —
+they're superseded by the per-step folder. Use `raw_output.ndjson` to
+debug parser misses; `events.ndjson` only shows what `parseEvents`
+accepted.
+
 Notes:
-- `agents/<stepName>.stdout` is the raw byte stream BEFORE any NDJSON parsing.
-  Use it to debug parser misses; `events.ndjson` only shows what `parseEvents`
-  accepted.
 - Agent subprocesses carry `tag: 'agent'` so they are intentionally skipped by
   `subprocesses.ndjson`. Only non-agent spawns (git probes, tmux commands, etc.)
   land there. See `src/observability/instrument-process-service.ts`.
@@ -109,6 +156,26 @@ Every spawn that exited non-zero:
 jq 'select(.exitCode != 0)' .orch/state/<runId>/logs/spawns.ndjson
 ```
 
+Per-step folder for one step (everything orch knows about that run):
+
+```bash
+ls .orch/state/<runId>/logs/agents/<stepName>/
+```
+
+Replay the run on a TTY:
+
+```bash
+cat .orch/state/<runId>/logs/agents/<stepName>/formatted_output.ansi
+```
+
+Raw agent bytes for one step (pairs with the parsed events to spot parser
+misses):
+
+```bash
+diff <(jq -c '.event' .orch/state/<runId>/logs/events.ndjson | sort) \
+     <(sort .orch/state/<runId>/logs/agents/<stepName>/raw_output.ndjson)
+```
+
 ### `--debug`-only recipes
 
 Every non-agent subprocess orch fired (git, tmux, probes):
@@ -121,11 +188,4 @@ Internal decisions the orchestrator logged:
 
 ```bash
 jq -r '[.msg, .stepName // ""] | @tsv' .orch/state/<runId>/logs/orch.ndjson
-```
-
-Raw agent bytes for one step (pairs with `events.ndjson` to spot parser misses):
-
-```bash
-diff <(jq -c '.event' .orch/state/<runId>/logs/events.ndjson | sort) \
-     <(sort .orch/state/<runId>/logs/agents/<stepName>.stdout)
 ```

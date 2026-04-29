@@ -1,7 +1,7 @@
 ---
 title: Per-agent output capture — record raw + formatted streams per step
 type: feat
-status: active
+status: completed
 date: 2026-04-28
 ---
 
@@ -403,48 +403,48 @@ command prints both. Locks the backwards-compat contract.
 
 ### Functional requirements
 
-- [ ] After an autonomous run, `logs/agents/<stepName>/` exists for every
+- [x] After an autonomous run, `logs/agents/<stepName>/` exists for every
       autonomous step that produced at least one event, containing
       `session.json`, `events.ndjson`, `raw_output.ndjson`,
       `raw_stderr.log`, `formatted_output.ansi`, `formatted_output.txt`.
-- [ ] `session.json` includes an `outputs:` map listing its sibling files.
-- [ ] Files are written **without** `ORCH_DEBUG=1`.
-- [ ] `formatted_output.ansi` is byte-identical to the bytes the host
+- [x] `session.json` includes an `outputs:` map listing its sibling files.
+- [x] Files are written **without** `ORCH_DEBUG=1`.
+- [x] `formatted_output.ansi` is byte-identical to the bytes the host
       emitted (`\n`-delimited under plain, `\r\n`-delimited under
       two-pane); `cat formatted_output.ansi` replays the run on a TTY.
-- [ ] `formatted_output.txt` is `formatted_output.ansi` passed through
+- [x] `formatted_output.txt` is `formatted_output.ansi` passed through
       `stripAnsi` — usable as a `grep` target.
-- [ ] `raw_output.ndjson` contains the verbatim bytes drained from the
+- [x] `raw_output.ndjson` contains the verbatim bytes drained from the
       subprocess stdout, line-buffered.
-- [ ] Interactive steps produce only `session.json` inside their folder.
-- [ ] Silent steps produce `events.ndjson` and `raw_output.ndjson` but no
+- [x] Interactive steps produce only `session.json` inside their folder.
+- [x] Silent steps produce `events.ndjson` and `raw_output.ndjson` but no
       `formatted_output.*` files.
-- [ ] Resuming a crashed step truncates its per-step folder so the folder
+- [x] Resuming a crashed step truncates its per-step folder so the folder
       reflects only the latest attempt.
-- [ ] The `--debug` flag still gates `tmux/<paneId>.log`,
+- [x] The `--debug` flag still gates `tmux/<paneId>.log`,
       `subprocesses.ndjson`, `orch.ndjson`. Old `agents/<step>.stdout` and
       `agents/<step>.stderr` no longer exist (superseded).
 
 ### Non-functional requirements
 
-- [ ] No new dependencies.
-- [ ] `bun run check` passes (lint + typecheck + unit + mocked integration).
-- [ ] No file grows past 300 lines; no function past 60 lines.
-- [ ] No new `mock.module` / `vi.mock` of internal modules in tests.
-- [ ] `transcriptPath` schema unchanged (state v5 still accepts the new
+- [x] No new dependencies.
+- [x] `bun run check` passes (lint + typecheck + unit + mocked integration).
+- [x] No file grows past 300 lines; no function past 60 lines.
+- [x] No new `mock.module` / `vi.mock` of internal modules in tests.
+- [x] `transcriptPath` schema unchanged (state v5 still accepts the new
       literal).
 
 ### Quality gates
 
-- [ ] Cross-test for parser misses: integration test asserts that for the
+- [x] Cross-test for parser misses: integration test asserts that for the
       Claude fixture in `tests/fixtures/claude/r-2026-04-28-oiyrjv.transcript.ndjson`,
       `wc -l raw_output.ndjson` ≥ `wc -l events.ndjson`. (Strictly: every
       event came from a raw line, so the raw stream has at least as many
       lines as parsed events.)
-- [ ] Round-trip test: pipe `formatted_output.txt` through diff against
+- [x] Round-trip test: pipe `formatted_output.txt` through diff against
       `events.ndjson | toClaudeTranscriptLines | stripAnsi`. Asserts the
       host wrote what the renderer said.
-- [ ] Backwards-compat test: `orch logs <old-run-id>` continues to work
+- [x] Backwards-compat test: `orch logs <old-run-id>` continues to work
       against a fixture with `transcriptPath: steps/...`.
 
 ## Implementation phases

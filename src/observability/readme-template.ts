@@ -21,7 +21,7 @@ export interface ReadmeContext {
 export function renderRunReadme(ctx: ReadmeContext): string {
   const debugSection = ctx.debug
     ? DEBUG_SECTION
-    : "(Run without `--debug` — heavy captures absent. Re-run with `--debug` to capture raw stdout/stderr, tmux pipe-pane, subprocess spawns, and orch's internal trace.)"
+    : "(Run without `--debug` — heavy cross-run captures absent. Re-run with `--debug` for tmux pipe-pane, subprocess spawns, and orch's internal trace. Per-step raw + formatted output is always-on under `agents/<step>/`.)"
 
   return `# Run ${ctx.runId}
 
@@ -42,7 +42,11 @@ no size caps — \`--debug\` is opt-in.
 - \`lifecycle.ndjson\` — host + tmux + step lifecycle (step:start / step:complete / …).
 - \`timeline.ndjson\` — source-tagged mirror of the three streams above. Start here.
 - \`run.meta.json\` — reproducibility snapshot (argv, envKeys, runner versions, os, …).
-- \`agents/<stepName>.session.json\` — per-step "landing page" (prompt, argv, envKeys, finalEvent).
+- \`agents/<stepName>/\` — per-step folder: \`session.json\` (landing page), \`events.ndjson\` (parsed), \`raw_output.ndjson\` + \`raw_stderr.log\` (subprocess bytes), \`formatted_output.ansi\` + \`.txt\` (verbatim host bytes; \`cat\` replays).
+
+Silent steps omit \`formatted_output.*\`. Interactive steps contain only
+\`session.json\` (tmux owns the PTY). On resume, append-only files in the
+folder are truncated so the folder reflects only the latest attempt.
 
 ## Grep recipes
 
@@ -64,7 +68,6 @@ ${debugSection}
 `
 }
 
-const DEBUG_SECTION = `- \`agents/<stepName>.stdout\` + \`.stderr\` — raw bytes per agent subprocess.
-- \`tmux/<paneId>.log\` — tmux \`pipe-pane\` capture (two-pane mode only).
+const DEBUG_SECTION = `- \`tmux/<paneId>.log\` — tmux \`pipe-pane\` capture (two-pane mode only).
 - \`subprocesses.ndjson\` — every non-agent subprocess spawn routed through ProcessService.
 - \`orch.log\` — orch's own internal trace (view/mode resolution, state writes, signal handling).`
