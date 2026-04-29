@@ -6,7 +6,8 @@ import { describe, expect, it } from 'bun:test'
 import { Writable } from 'node:stream'
 import { step } from '../../../src/core/step.ts'
 import { type WorkflowDeps, workflow } from '../../../src/core/workflow.ts'
-import { createPlainHost } from '../../../src/hosts/index.ts'
+import { createPlainHost, stripAnsi } from '../../../src/hosts/index.ts'
+import { createFileSessionLogger } from '../../../src/observability/index.ts'
 import { FakeRunner } from '../../../src/runners/index.ts'
 import {
   FakeClock,
@@ -15,7 +16,7 @@ import {
   FakeProcessService,
   path,
 } from '../../../src/services/index.ts'
-import { FileStateStore, type RunId } from '../../../src/state/index.ts'
+import { FileStateStore, type RunId, runId as runIdFactory } from '../../../src/state/index.ts'
 
 function bufferStream(): { stream: NodeJS.WritableStream; text: () => string } {
   const chunks: string[] = []
@@ -141,6 +142,83 @@ describe('--mode=plain — step:failed frame', () => {
     expect(err).toContain('model timed out')
     expect(err).toContain(`orch resume ${RUN_ID}`)
     expect(err).toContain(`orch logs ${RUN_ID}`)
+  })
+})
+
+describe('--mode=plain — formatted_output tee', () => {
+  it('persists rendered stdout bytes to agents/<step>/formatted_output.{ansi,txt}', async () => {
+    const fs = new FakeFsService()
+    const processService = new FakeProcessService()
+    const clock = new FakeClock(1_700_000_000_000)
+    const stdout = bufferStream()
+    const stderr = bufferStream()
+    const basePath = path('/state')
+    const teeRunId = runIdFactory('r-2026-04-28-tee123')
+
+    const logger = createFileSessionLogger({
+      fs,
+      clock,
+      runId: teeRunId,
+      basePath,
+      debug: false,
+    })
+
+    const host = createPlainHost({
+      stdout: stdout.stream,
+      stderr: stderr.stream,
+      format: 'text',
+      clock,
+      runId: teeRunId,
+      logger,
+    })
+
+    const agent = new FakeRunner(processService)
+    agent.script({
+      events: [{ kind: 'info', type: 'assistant-text', payload: { text: 'hello world' } }],
+      structuredOutput: 'ok',
+    })
+
+    const deps: WorkflowDeps = {
+      stateStore: new FileStateStore({ fs, basePath }),
+      processService,
+      clock,
+      runId: teeRunId,
+      cwd: path('/workspace'),
+      fsService: fs,
+      gitService: new FakeGitService(),
+      host,
+      logger,
+    }
+
+    await workflow('demo', async (run) => {
+      await run(step.define('demo', { agent, prompt: 'hi' }))
+    }).execute(deps)
+    await host.teardown()
+    await logger.close()
+
+    const ansi = await fs.readFile(
+      path(`${basePath}/${teeRunId}/logs/agents/demo/formatted_output.ansi`),
+    )
+    const txt = await fs.readFile(
+      path(`${basePath}/${teeRunId}/logs/agents/demo/formatted_output.txt`),
+    )
+
+    // Plain host with non-TTY buffer ⇒ no color, so ANSI and TXT match
+    // verbatim. The runner's assistant-text event renders one prefixed line.
+    expect(ansi).toBe(txt)
+    expect(txt).toContain('[demo]')
+    expect(txt).toContain('hello world')
+
+    // The stdout stream the user saw should equal the captured ANSI bytes
+    // for the per-step lines. Strip lifecycle [orch] lines (they don't go
+    // to the per-step file) before comparing.
+    const stepStdoutLines = stdout
+      .text()
+      .split('\n')
+      .filter((l) => l.startsWith('[demo]'))
+      .map((l) => `${l}\n`)
+      .join('')
+    expect(stripAnsi(stepStdoutLines)).toBe(stripAnsi(ansi))
   })
 })
 

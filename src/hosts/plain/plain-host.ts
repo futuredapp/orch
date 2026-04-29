@@ -27,6 +27,7 @@ import type {
   PaneRole,
 } from '../host.ts'
 import { renderFailureText } from './failure-text.ts'
+import { createPerStepTee } from './per-step-tee.ts'
 import { renderTranscriptLine } from './render-line.ts'
 
 export type PlainFormat = 'text' | 'json'
@@ -57,6 +58,8 @@ export function createPlainHost(opts: PlainHostOptions): Host {
 
   void opts.logger?.append('lifecycle', { type: 'host-created', mode }).catch(() => {})
 
+  const tee = createPerStepTee(opts.logger)
+
   const writeJsonLine = (payload: Record<string, unknown>): void => {
     const envelope: Record<string, unknown> = {
       ts: new Date(opts.clock.now()).toISOString(),
@@ -82,16 +85,33 @@ export function createPlainHost(opts: PlainHostOptions): Host {
     }
     if (lines.length === 0) return
     const prefix = `[${step}] `
+    let teeBuf = ''
     for (const line of lines) {
       const rendered = renderTranscriptLine(line, {
         color,
         prefix: line.kind === 'line' ? prefix : '',
       })
-      for (const out of rendered) opts.stdout.write(`${out}\n`)
+      for (const out of rendered) {
+        const wire = `${out}\n`
+        opts.stdout.write(wire)
+        teeBuf += wire
+      }
     }
+    // One tee write per event keeps the per-step file's line ordering
+    // identical to the bytes the user saw on stdout.
+    if (teeBuf.length > 0) tee.write(step, teeBuf)
   }
 
   const onLifecycleEvent = (event: StepLifecycleEvent): void => {
+    // Manage the per-step formatted_output.* sinks alongside any text/json
+    // bytes the host emits. The tee opens before the first onRunnerEvent
+    // because step:start fires before any runner event.
+    if (event.type === 'step:start' && event.mode === 'autonomous') {
+      tee.open(event.stepName)
+    } else if (event.type === 'step:complete' || event.type === 'step:failed') {
+      tee.close(event.stepName)
+    }
+
     if (opts.format === 'json') {
       writeJsonLine(jsonLifecycle(event))
       return
@@ -144,6 +164,9 @@ export function createPlainHost(opts: PlainHostOptions): Host {
   }
 
   const teardown = async (): Promise<void> => {
+    // Drain any per-step formatted_output sinks left open by SIGINT mid-step
+    // so the partial bytes hit disk before the run-ended record.
+    await tee.drain()
     void opts.logger?.append('lifecycle', { type: 'host-torndown', mode }).catch(() => {})
     orchLog(opts.logger, 'host-teardown', { mode })
     /* plain writes are synchronous; nothing to flush. */

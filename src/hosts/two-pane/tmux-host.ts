@@ -38,6 +38,7 @@ import type {
   PaneAttachment,
   PaneRole,
 } from '../host.ts'
+import { createPerStepTee, type PerStepTee } from '../plain/per-step-tee.ts'
 import { renderTranscriptLine } from '../plain/render-line.ts'
 import { assertNoNestedTmux, createAttachForeground } from './attach-foreground.ts'
 import { renderFailurePanePayload } from './failure-pane.ts'
@@ -234,6 +235,7 @@ export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
     skipAttach: opts.skipAttach === true,
     cwd: opts.cwd ?? process.cwd(),
     stdout: opts.stdout ?? process.stdout,
+    tee: createPerStepTee(opts.logger),
     ...(opts.logger !== undefined ? { logger: opts.logger } : {}),
     ...(pipePaneCapture !== undefined ? { pipePaneCapture } : {}),
   })
@@ -255,6 +257,10 @@ interface BuildHostDeps {
   readonly cwd: string
   readonly stdout: NodeJS.WritableStream
   readonly logger?: SessionLogger
+  /** Per-step formatted_output.* tee. Open/close on step lifecycle, write
+   *  before pane-queue enqueue so the file mirrors per-step ordering even
+   *  when two parallel branches interleave on the right pane. */
+  readonly tee: PerStepTee
   /** --debug pipe-pane capture. Stopped on teardown to drop the pipes. */
   readonly pipePaneCapture?: import('./pipe-pane-capture.ts').PipePaneCapture
 }
@@ -292,6 +298,14 @@ function buildHost(deps: BuildHostDeps): Host {
 
   const onLifecycleEvent = (event: StepLifecycleEvent): void => {
     deps.statusLoop.onStepEvent(event)
+    // Open/close per-step formatted_output.* sinks alongside the on-pane
+    // bytes. The tee writes happen inside onRunnerEvent (below) before
+    // pane-queue enqueue so the per-step file mirrors per-step ordering.
+    if (event.type === 'step:start' && event.mode === 'autonomous') {
+      deps.tee.open(event.stepName)
+    } else if (event.type === 'step:complete' || event.type === 'step:failed') {
+      deps.tee.close(event.stepName)
+    }
     if (event.type === 'step:failed' && !torndown) {
       const summary = summarizeFailure({
         stepName: event.stepName,
@@ -339,6 +353,9 @@ function buildHost(deps: BuildHostDeps): Host {
     }
     if (out.length === 0) return
     const payload = out.join('')
+    // Tee BEFORE pane-queue enqueue so the per-step file reflects per-step
+    // ordering even when parallel branches interleave on the right pane.
+    deps.tee.write(step, payload)
     void deps.queue
       .enqueue(deps.rightPaneId, () =>
         deps.tmux.sendKeys({
@@ -444,6 +461,9 @@ function buildHost(deps: BuildHostDeps): Host {
     torndown = true
     deps.statusLoop.stop()
     rollup.reset()
+    // Flush any open per-step formatted_output sinks so SIGINT mid-step
+    // still leaves bytes on disk before the run-ended record.
+    await deps.tee.drain()
     await deps.queue.drain()
     // Stop pipe-pane capture BEFORE killSession so tmux closes the pipe
     // cleanly instead of ripping the `cat` process out from under the pane.

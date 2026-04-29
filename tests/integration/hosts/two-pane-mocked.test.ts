@@ -7,6 +7,7 @@ import { Writable } from 'node:stream'
 import { step } from '../../../src/core/step.ts'
 import { type WorkflowDeps, workflow } from '../../../src/core/workflow.ts'
 import { createTmuxHost, stripAnsi } from '../../../src/hosts/index.ts'
+import { createFileSessionLogger } from '../../../src/observability/index.ts'
 import { FakeRunner } from '../../../src/runners/index.ts'
 import {
   FakeClock,
@@ -16,7 +17,7 @@ import {
   path,
 } from '../../../src/services/index.ts'
 import { FakeTmuxService, paneId } from '../../../src/services/tmux/index.ts'
-import { FileStateStore, type RunId } from '../../../src/state/index.ts'
+import { FileStateStore, type RunId, runId as runIdFactory } from '../../../src/state/index.ts'
 
 function bufferStream(): { stream: NodeJS.WritableStream; text: () => string } {
   const chunks: string[] = []
@@ -152,5 +153,84 @@ describe('two-pane mocked workflow', () => {
     expect(combined).toContain('demo')
     expect(combined).toContain('plan')
     expect(combined).not.toMatch(/assistant>/)
+  })
+
+  it('persists rendered transcript bytes to agents/<step>/formatted_output.{ansi,txt}', async () => {
+    const fs = new FakeFsService()
+    const processService = new FakeProcessService()
+    const clock = new FakeClock(1_700_000_000_000)
+    const stderr = bufferStream()
+    const basePath = path('/state')
+    const teeRunId = runIdFactory('r-2026-04-28-tp01te')
+
+    const tmux = new FakeTmuxService()
+    tmux.setListPanesResult(['%0'])
+    tmux.nextPaneId(paneId('%7'))
+
+    const logger = createFileSessionLogger({
+      fs,
+      clock,
+      runId: teeRunId,
+      basePath,
+      debug: false,
+    })
+
+    const host = await createTmuxHost({
+      tmux,
+      processService,
+      clock,
+      runId: teeRunId,
+      workflowName: 'demo',
+      stderr: stderr.stream,
+      skipVersionCheck: true,
+      logger,
+    })
+
+    const agent = new FakeRunner(processService)
+    agent.script({
+      events: [{ kind: 'info', type: 'assistant', payload: { text: 'plan thinking' } }],
+      structuredOutput: 'plan-done',
+    })
+
+    const deps: WorkflowDeps = {
+      stateStore: new FileStateStore({ fs, basePath }),
+      processService,
+      clock,
+      runId: teeRunId,
+      cwd: path('/workspace'),
+      fsService: fs,
+      gitService: new FakeGitService(),
+      host,
+      logger,
+    }
+
+    await workflow('demo', async (run) => {
+      await run(step.define('plan', { agent }))
+    }).execute(deps)
+    await host.teardown()
+    await logger.close()
+
+    const ansi = await fs.readFile(
+      path(`${basePath}/${teeRunId}/logs/agents/plan/formatted_output.ansi`),
+    )
+    const txt = await fs.readFile(
+      path(`${basePath}/${teeRunId}/logs/agents/plan/formatted_output.txt`),
+    )
+
+    // tmux always renders with color so ANSI carries escapes; stripping
+    // gives the same bytes as the txt sibling.
+    expect(stripAnsi(ansi)).toBe(txt)
+    expect(txt).toContain('[plan]')
+    expect(txt).toContain('plan thinking')
+    // tmux uses CRLF line endings on the right pane; the per-step file
+    // mirrors the bytes the host emitted.
+    expect(ansi).toContain('\r\n')
+
+    // Cross-check: the tee bytes match the right-pane sendKeys payloads.
+    const rightPayloads = tmux.recordedCalls
+      .filter((c) => c.method === 'sendKeys' && c.opts.target === paneId('%7'))
+      .map((c) => (c.method === 'sendKeys' ? c.opts.keys.join('') : ''))
+      .join('')
+    expect(ansi).toBe(rightPayloads)
   })
 })
