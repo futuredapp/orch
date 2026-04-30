@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 import { commit } from '../../../src/core/commit.ts'
+import { setWorkflowCwd } from '../../../src/core/execution-context.ts'
 import { step } from '../../../src/core/step.ts'
 import { StepError, type WorkflowDeps, workflow } from '../../../src/core/workflow.ts'
 import {
@@ -633,5 +634,89 @@ describe('workflow run() with commit steps', () => {
     })
 
     await expect(wf.execute(deps)).rejects.toThrow(GitCommandError)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// AsyncLocalStorage-scoped cwd — agent steps read the live workflowCwd
+// (set by createWorktree in Phase 3, or directly by setWorkflowCwd here as
+// a Phase 2 stand-in) and fall back to deps.cwd when nothing was set.
+// ---------------------------------------------------------------------------
+
+describe('workflow run() — currentCwd integration', () => {
+  it('agent step reads currentCwd, defaulting to deps.cwd when no workflowCwd is set', async () => {
+    const deps = makeDeps()
+
+    const argv = [':cwd-spy-default:'] as const
+    const terminalLine = JSON.stringify({ kind: 'terminal', type: 'turn-complete', data: 'ok' })
+    deps.processService.when(argv).respondWith({ stdout: [terminalLine], exitCode: 0 })
+
+    let observedCwd: string | undefined
+    const spy: Runner = defineRunner({
+      name: 'cwd-spy-default',
+      supports: { interactive: false, structuredOutput: false },
+      buildCommand(ctx: RunnerContext) {
+        observedCwd = ctx.cwd
+        return { argv, env: ctx.env }
+      },
+      parseEvents(line: string) {
+        if (line.trim() === '') return null
+        return JSON.parse(line)
+      },
+      extractStructuredOutput() {
+        return undefined
+      },
+      toTranscriptLines() {
+        return []
+      },
+    })
+    const STEP = step.define('cwd-default', { agent: spy })
+
+    const wf = workflow('test', async (run) => {
+      await run(STEP)
+    })
+    await wf.execute(deps)
+
+    expect(observedCwd).toBe(deps.cwd)
+  })
+
+  it('agent step honors a workflowCwd set by an earlier step in the same workflow', async () => {
+    const deps = makeDeps()
+
+    const argv = [':cwd-spy-set:'] as const
+    const terminalLine = JSON.stringify({ kind: 'terminal', type: 'turn-complete', data: 'ok' })
+    deps.processService.when(argv).respondWith({ stdout: [terminalLine], exitCode: 0 })
+
+    let observedCwd: string | undefined
+    const spy: Runner = defineRunner({
+      name: 'cwd-spy-set',
+      supports: { interactive: false, structuredOutput: false },
+      buildCommand(ctx: RunnerContext) {
+        observedCwd = ctx.cwd
+        return { argv, env: ctx.env }
+      },
+      parseEvents(line: string) {
+        if (line.trim() === '') return null
+        return JSON.parse(line)
+      },
+      extractStructuredOutput() {
+        return undefined
+      },
+      toTranscriptLines() {
+        return []
+      },
+    })
+    const STEP = step.define('cwd-set', { agent: spy })
+
+    const newCwd = path('/elsewhere')
+    const wf = workflow('test', async (run) => {
+      // Phase 2 stand-in for createWorktree({ enter: true }) — sets the
+      // ALS-scoped workflowCwd before the next run() observes cwd.
+      setWorkflowCwd(newCwd)
+      await run(STEP)
+    })
+    await wf.execute(deps)
+
+    expect(observedCwd).toBe(newCwd)
   })
 })

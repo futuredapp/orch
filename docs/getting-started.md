@@ -165,6 +165,31 @@ await run(WORK, { as: 'work-auth' })
 await commit('feat(auth): extract token service')
 ```
 
+### `createWorktree(branch, opts)`
+
+Materialises a git worktree as a memoizable step. With `enter: true` the
+workflow's cwd switches into the new worktree, so every subsequent `run()` and
+`commit()` lands inside it. Composes with `parallel(items, fn)` (each branch
+isolates its own cwd via `AsyncLocalStorage`).
+
+```ts
+await run(createWorktree('feat/foo', {
+  enter: true,
+  from: 'main',                            // optional; defaults to HEAD
+  postCreate: ['cp $ORIGIN/.env .', 'bun install'],
+}))
+await run(IMPLEMENT)            // runs inside the new worktree
+await run(commit('done'))       // commits inside the new worktree
+```
+
+Returns `{ path, branch, fromRef }`. Memoization is the only safety net —
+strict policy throws `GitCommandError` if the branch or target path already
+exists. Inside `parallel()`, only the homogeneous form is valid for
+`enter: true`; the executor throws if heterogeneous parallel branches mutate
+cwd.
+
+A working example lives at [`examples/worktree-demo/index.ts`](../examples/worktree-demo/index.ts).
+
 ### `run.custom(name, fn)`
 
 The escape hatch for arbitrary code that needs to be memoized like a step. Use it when you want to do something the agents can't do but you still want resume to work correctly.

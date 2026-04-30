@@ -11,7 +11,7 @@ import { createFileSessionLogger } from '../../../../src/observability/file-sess
 import { FakeClock, FakeFsService, path } from '../../../../src/services/index.ts'
 import { runId as runIdFactory } from '../../../../src/state/index.ts'
 
-const RUN_ID = runIdFactory('r-2026-04-28-tee001')
+const RUN_ID = runIdFactory('r-2026-04-28-000001-te')
 const BASE = path('/state')
 const ESC = String.fromCharCode(0x1b)
 

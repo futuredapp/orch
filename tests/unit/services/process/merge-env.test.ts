@@ -4,7 +4,7 @@
 // (e.g. Claude's interactive `FORCE_COLOR=3`) and assume mergeEnv works.
 
 import { describe, expect, it } from 'bun:test'
-import { mergeEnv } from '../../../../src/runners/_shared/merge-env.ts'
+import { mergeEnv } from '../../../../src/services/process/merge-env.ts'
 
 describe('mergeEnv passthrough', () => {
   it('passes arbitrary keys from processEnv through verbatim', () => {

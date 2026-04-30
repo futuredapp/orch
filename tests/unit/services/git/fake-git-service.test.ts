@@ -116,3 +116,120 @@ describe('FakeGitService.commit', () => {
     await expect(git.commit(path('/repo'), 'msg')).rejects.toThrow('no commit SHA scripted')
   })
 })
+
+describe('FakeGitService.repoRoot', () => {
+  it('returns the scripted repo root for the matching cwd', async () => {
+    const git = new FakeGitService()
+    git.setRepoRoot(path('/repo/sub'), path('/repo'))
+
+    const root = await git.repoRoot(path('/repo/sub'))
+
+    expect(root).toBe(path('/repo'))
+  })
+
+  it('throws a loud error when no repoRoot is scripted for the cwd', async () => {
+    const git = new FakeGitService()
+
+    await expect(git.repoRoot(path('/repo/unknown'))).rejects.toThrow('no repoRoot scripted')
+  })
+
+  it('isolates scripted state per cwd', async () => {
+    const git = new FakeGitService()
+    git.setRepoRoot(path('/a'), path('/a-root'))
+    git.setRepoRoot(path('/b'), path('/b-root'))
+
+    expect(await git.repoRoot(path('/a'))).toBe(path('/a-root'))
+    expect(await git.repoRoot(path('/b'))).toBe(path('/b-root'))
+  })
+})
+
+describe('FakeGitService.branchExists', () => {
+  it('returns the scripted boolean per (cwd, branch) pair', async () => {
+    const git = new FakeGitService()
+    git.setBranchExists(path('/repo'), 'feat/foo', true)
+    git.setBranchExists(path('/repo'), 'feat/missing', false)
+
+    expect(await git.branchExists(path('/repo'), 'feat/foo')).toBe(true)
+    expect(await git.branchExists(path('/repo'), 'feat/missing')).toBe(false)
+  })
+
+  it('throws a loud error when the (cwd, branch) pair is unscripted', async () => {
+    const git = new FakeGitService()
+
+    await expect(git.branchExists(path('/repo'), 'feat/foo')).rejects.toThrow(
+      'no branchExists scripted',
+    )
+  })
+})
+
+describe('FakeGitService.worktreePathExists', () => {
+  it('returns the scripted boolean per (cwd, path) pair', async () => {
+    const git = new FakeGitService()
+    git.setWorktreePathExists(path('/repo'), path('/wt/a'), true)
+    git.setWorktreePathExists(path('/repo'), path('/wt/b'), false)
+
+    expect(await git.worktreePathExists(path('/repo'), path('/wt/a'))).toBe(true)
+    expect(await git.worktreePathExists(path('/repo'), path('/wt/b'))).toBe(false)
+  })
+
+  it('throws a loud error when the (cwd, path) pair is unscripted', async () => {
+    const git = new FakeGitService()
+
+    await expect(git.worktreePathExists(path('/repo'), path('/wt/a'))).rejects.toThrow(
+      'no worktreePathExists scripted',
+    )
+  })
+})
+
+describe('FakeGitService.addWorktree', () => {
+  it('throws a loud error when addWorktree has not been allowed for the cwd', async () => {
+    const git = new FakeGitService()
+
+    await expect(
+      git.addWorktree(path('/repo'), {
+        branch: 'feat/foo',
+        path: path('/wt/orch--feat-foo'),
+        fromRef: 'HEAD',
+      }),
+    ).rejects.toThrow('addWorktree not allowed')
+  })
+
+  it('resolves to undefined and records the call when allowed', async () => {
+    const git = new FakeGitService()
+    git.allowAddWorktree(path('/repo'))
+
+    const result = await git.addWorktree(path('/repo'), {
+      branch: 'feat/foo',
+      path: path('/wt/orch--feat-foo'),
+      fromRef: 'main',
+    })
+
+    expect(result).toBeUndefined()
+    expect(git.addWorktreeCalls).toEqual([
+      {
+        cwd: path('/repo'),
+        branch: 'feat/foo',
+        path: path('/wt/orch--feat-foo'),
+        fromRef: 'main',
+      },
+    ])
+  })
+
+  it('records every call in invocation order', async () => {
+    const git = new FakeGitService()
+    git.allowAddWorktree(path('/repo'))
+
+    await git.addWorktree(path('/repo'), {
+      branch: 'feat/a',
+      path: path('/wt/orch--feat-a'),
+      fromRef: 'HEAD',
+    })
+    await git.addWorktree(path('/repo'), {
+      branch: 'feat/b',
+      path: path('/wt/orch--feat-b'),
+      fromRef: 'HEAD',
+    })
+
+    expect(git.addWorktreeCalls.map((c) => c.branch)).toEqual(['feat/a', 'feat/b'])
+  })
+})

@@ -153,7 +153,7 @@ describe('--mode=plain — formatted_output tee', () => {
     const stdout = bufferStream()
     const stderr = bufferStream()
     const basePath = path('/state')
-    const teeRunId = runIdFactory('r-2026-04-28-tee123')
+    const teeRunId = runIdFactory('r-2026-04-28-000123-te')
 
     const logger = createFileSessionLogger({
       fs,

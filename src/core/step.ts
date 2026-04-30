@@ -1,9 +1,11 @@
 import type { Runner } from '../runners/index.ts'
 import type { Validator } from '../validators/index.ts'
-import type { SchemaWrapper } from './schema.ts'
-import type { InteractiveResult, StepMode } from './types.ts'
+import { setWorkflowCwd } from './execution-context.ts'
+import { SchemaValidationError, type SchemaWrapper } from './schema.ts'
+import type { InteractiveResult, Path, StepMode } from './types.ts'
 import { type StepName, stepName } from './types.ts'
 import { BUILTIN_VIEW_KINDS, isBuiltinViewKind, type PaneRole, type ViewKind } from './view.ts'
+import { WorktreeResultSchema } from './worktree.ts'
 
 // ---------------------------------------------------------------------------
 // AgentStepConfig — the config stored on a Step
@@ -46,14 +48,66 @@ export interface CommitStepConfig {
   readonly message: string
 }
 
-export type StepConfig<T = unknown> = AgentStepConfig<T> | CommitStepConfig
+// ---------------------------------------------------------------------------
+// PostCreate hook — runs after a worktree is created.
+// ---------------------------------------------------------------------------
+
+/**
+ * Sugar form runs each line via `/bin/sh -c` with `ORIGIN`/`TARGET` env vars
+ * (Windows out of scope — POSIX shell only). Callback form is the
+ * cross-platform escape hatch.
+ */
+export type PostCreateHook = ReadonlyArray<string> | ((ctx: PostCreateCtx) => Promise<void>)
+
+export interface PostCreateCtx {
+  /** Original repo root (the cwd at the time createWorktree() ran). */
+  readonly origin: Path
+  /** Newly created worktree path. */
+  readonly target: Path
+  /**
+   * Argv-only exec wrapper around ProcessService.spawn. Defaults `cwd` to
+   * `target`. Rejects with `PostCreateExecError` on non-zero exit.
+   */
+  readonly exec: (argv: readonly string[], opts?: { readonly cwd?: Path }) => Promise<void>
+}
+
+/**
+ * Thrown by the `exec` wrapper passed to a `postCreate` callback when a
+ * subprocess exits non-zero. Programmatically discriminable so callbacks can
+ * `catch (e) { if (e instanceof PostCreateExecError) ... }`.
+ */
+export class PostCreateExecError extends Error {
+  readonly argv: readonly string[]
+  readonly exitCode: number
+  readonly stderr: string
+
+  constructor(argv: readonly string[], exitCode: number, stderr: string) {
+    super(`postCreate exec exited ${exitCode}: ${argv.join(' ')}`)
+    this.name = 'PostCreateExecError'
+    this.argv = argv
+    this.exitCode = exitCode
+    this.stderr = stderr
+    Object.setPrototypeOf(this, new.target.prototype)
+  }
+}
+
+export interface WorktreeStepConfig {
+  readonly kind: 'worktree'
+  readonly branch: string
+  readonly enter: boolean
+  readonly fromRef?: string
+  readonly target?: string
+  readonly postCreate?: PostCreateHook
+}
+
+export type StepConfig<T = unknown> = AgentStepConfig<T> | CommitStepConfig | WorktreeStepConfig
 
 export interface Step<T = unknown> {
   readonly name: StepName
   readonly config: StepConfig<T>
 }
 
-const RESERVED_PREFIX = 'commit:'
+const RESERVED_PREFIXES: readonly string[] = ['commit:', 'worktree:']
 
 // ---------------------------------------------------------------------------
 // step.define — input types for the two overloads
@@ -87,10 +141,13 @@ function defineStep(
   name: string,
   config: InteractiveStepInput | AutonomousStepInput<unknown>,
 ): Step {
-  if (name.startsWith(RESERVED_PREFIX)) {
-    throw new Error(
-      `step.define() cannot use reserved prefix "${RESERVED_PREFIX}" — use the commit() factory instead`,
-    )
+  for (const prefix of RESERVED_PREFIXES) {
+    if (name.startsWith(prefix)) {
+      const factory = prefix === 'commit:' ? 'commit()' : 'createWorktree()'
+      throw new Error(
+        `step.define() cannot use reserved prefix "${prefix}" — use the ${factory} factory instead`,
+      )
+    }
   }
   if (config.mode === 'interactive' && 'returns' in config && config.returns !== undefined) {
     throw new Error(
@@ -122,4 +179,52 @@ function assertViewFieldsValid(
 
 export const step: StepFactory = {
   define: defineStep as StepFactory['define'],
+}
+
+// ---------------------------------------------------------------------------
+// onCacheHit — kind-agnostic cache-hit dispatch
+// ---------------------------------------------------------------------------
+//
+// Replay returns the cached value without running the body, but some kinds
+// have a side-effect to reapply: agent steps re-validate the cached value
+// against the (possibly updated) schema; worktree steps with `enter: true`
+// must reapply the ALS cwd switch so subsequent run() calls observe the
+// right cwd. Commit is a no-op. The dispatcher stays kind-agnostic by shape;
+// the exhaustive switch lives here.
+
+export function onCacheHit(config: StepConfig, key: StepName, cachedValue: unknown): void {
+  switch (config.kind) {
+    case 'agent': {
+      if (config.returns === undefined) return
+      const parsed = config.returns.zodSchema.safeParse(cachedValue)
+      if (!parsed.success) throw new SchemaValidationError(key, parsed.error)
+      return
+    }
+    case 'commit':
+      return
+    case 'worktree': {
+      const parsed = WorktreeResultSchema.safeParse(cachedValue)
+      if (!parsed.success) {
+        const issues = parsed.error.issues.map((i) => i.message).join(', ')
+        throw new Error(`worktree cache entry "${key}" is malformed: ${issues}`)
+      }
+      const requestedFrom = config.fromRef ?? 'HEAD'
+      if (parsed.data.branch !== config.branch || parsed.data.fromRef !== requestedFrom) {
+        throw new Error(
+          `createWorktree: step "${key}" is cached with branch "${parsed.data.branch}" / from "${parsed.data.fromRef}"; ` +
+            `current call requested branch "${config.branch}" / from "${requestedFrom}". ` +
+            `Two different branches sanitized to the same step name. Use distinct names.`,
+        )
+      }
+      if (!config.enter) return
+      // Safe cast: schema requires a non-empty string and the value originated
+      // from a `Path` write to state.json by the worktree executor.
+      setWorkflowCwd(parsed.data.path as Path)
+      return
+    }
+    default: {
+      const _exhaustive: never = config
+      throw new Error(`Unexpected step kind: ${JSON.stringify(_exhaustive)}`)
+    }
+  }
 }

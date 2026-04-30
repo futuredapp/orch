@@ -20,14 +20,14 @@ import {
   RunnerCapabilityError,
   StepError,
 } from './errors.ts'
-import { currentParallelDepth } from './execution-context.ts'
+import { currentCwd, currentParallelDepth, executionContext } from './execution-context.ts'
 import { resolveView } from './view-registry.ts'
 
 // Re-export so existing imports from './workflow.ts' remain valid.
 export { InteractiveParallelError, ResumeError, RunNotFoundError, RunnerCapabilityError, StepError }
 
 import { SchemaValidationError } from './schema.ts'
-import type { AgentStepConfig, CommitStepConfig, Step } from './step.ts'
+import { type AgentStepConfig, type CommitStepConfig, onCacheHit, type Step } from './step.ts'
 import {
   type InteractiveResult,
   type Path,
@@ -37,6 +37,7 @@ import {
   stepName,
 } from './types.ts'
 import { outcomesToFailures, outcomesToPersisted, runValidators } from './validation-runner.ts'
+import { runWorktreeStep } from './worktree.ts'
 
 // ---------------------------------------------------------------------------
 // JsonValue — compile-time serialization safety for extraContext
@@ -248,12 +249,6 @@ function checkSchemaCapability(config: AgentStepConfig, key: StepName): void {
   }
 }
 
-function revalidateCachedValue(config: AgentStepConfig, key: StepName, cached: unknown): void {
-  if (config.returns === undefined) return
-  const reparse = config.returns.zodSchema.safeParse(cached)
-  if (!reparse.success) throw new SchemaValidationError(key, reparse.error)
-}
-
 function validateSchemaOutput(config: AgentStepConfig, key: StepName, rawValue: unknown): unknown {
   if (config.returns === undefined) return rawValue
 
@@ -349,6 +344,7 @@ async function runInteractiveStep(
   const sessionId = deps.generateSessionId?.() ?? randomUUID()
   const prompt = assemblePrompt(config.prompt, overrides)
   const startedAtStep = deps.clock.now()
+  const cwd = currentCwd(deps.cwd)
 
   emitStepLifecycle(deps.host, stepSpan, {
     type: 'step:start',
@@ -393,7 +389,7 @@ async function runInteractiveStep(
     }
 
     const cmd = await config.agent.buildCommand({
-      cwd: deps.cwd,
+      cwd,
       env: {},
       prompt,
       extraArgs: [],
@@ -405,7 +401,7 @@ async function runInteractiveStep(
     const result = await deps.host.runInteractive({
       argv: cmd.argv,
       env: cmd.env,
-      cwd: deps.cwd,
+      cwd,
       stepName: key,
     })
     exitCode = result.exitCode
@@ -416,7 +412,7 @@ async function runInteractiveStep(
     runnerName: config.agent.name,
     argv,
     cmdEnv,
-    cwd: deps.cwd,
+    cwd,
     sessionId,
     exitCode,
     durationMs,
@@ -449,7 +445,7 @@ async function runInteractiveStep(
     prompt,
     argv,
     cmdEnv,
-    cwd: deps.cwd,
+    cwd,
     sessionId,
     exitCode,
     durationMs,
@@ -675,10 +671,9 @@ async function runAgentStep(
     })
   }
 
+  const cwd = currentCwd(deps.cwd)
   const normalized = normalizeValidators(config.validate, key)
-  const headSha = anyNeedsHeadSha(normalized)
-    ? await safeHeadSha(deps.gitService, deps.cwd)
-    : undefined
+  const headSha = anyNeedsHeadSha(normalized) ? await safeHeadSha(deps.gitService, cwd) : undefined
   const preRunSnapshot = headSha !== undefined ? { headSha } : undefined
 
   const startedAt = deps.clock.now()
@@ -699,7 +694,7 @@ async function runAgentStep(
   // when the runner fails mid-run. Agents that error before exec still land a
   // spawn entry with the argv the executor would have used.
   const runnerCtx = {
-    cwd: deps.cwd,
+    cwd,
     env: {},
     prompt,
     extraArgs: [],
@@ -714,7 +709,7 @@ async function runAgentStep(
   const durationMs = deps.clock.now() - startedAt
 
   await logAgentSpawn(stepSpan, config, runnerCtx, {
-    cwd: deps.cwd,
+    cwd,
     exitCode: result.exitCode,
     durationMs,
   })
@@ -733,7 +728,7 @@ async function runAgentStep(
 
   const validatorCtx: ValidatorCtx = {
     stepName: key,
-    cwd: deps.cwd,
+    cwd,
     value,
     ...(preRunSnapshot !== undefined ? { preRunSnapshot } : {}),
   }
@@ -908,7 +903,8 @@ async function runCommitStep(
   }
 
   const startedAt = deps.clock.now()
-  const clean = await deps.gitService.isClean(deps.cwd)
+  const cwd = currentCwd(deps.cwd)
+  const clean = await deps.gitService.isClean(cwd)
 
   if (clean) {
     const entry: StepEntry = {
@@ -924,8 +920,8 @@ async function runCommitStep(
     return { value: null, entry }
   }
 
-  await deps.gitService.stageAll(deps.cwd)
-  const sha = await deps.gitService.commit(deps.cwd, config.message)
+  await deps.gitService.stageAll(cwd)
+  const sha = await deps.gitService.commit(cwd, config.message)
   const value = { sha }
 
   const entry: StepEntry = {
@@ -955,14 +951,17 @@ async function runStepOnce(
   const state = await deps.stateStore.loadRun(deps.runId)
   const cached = state?.steps[key]
   if (cached !== undefined) {
-    const { config } = s
-    if (config.kind === 'agent') revalidateCachedValue(config, key, cached.value)
+    // Kind-agnostic cache-hit dispatch: agent re-validates schema, worktree
+    // reapplies the ALS cwd switch, commit is a no-op. Keeping the switch
+    // exhaustive in step.ts stops the next step primitive from accreting a
+    // third special case here.
+    onCacheHit(s.config, key, cached.value)
     // Cached events do not mint a fresh span — the step's structured records
     // live in the original run's logs. Emit a run-level lifecycle line so the
     // timeline still shows the cache hit.
     deps.host.onLifecycleEvent({ type: 'step:cached', stepName: key })
     void deps.logger?.append('lifecycle', { type: 'step:cached', stepName: key }).catch(() => {})
-    orchLog(deps.logger, 'cache-hit', { stepName: key, kind: config.kind })
+    orchLog(deps.logger, 'cache-hit', { stepName: key, kind: s.config.kind })
     return cached.value
   }
 
@@ -981,6 +980,19 @@ async function runStepOnce(
     }
     case 'commit':
       result = await runCommitStep(deps, config, key, overrides)
+      break
+    case 'worktree':
+      result = await runWorktreeStep(
+        {
+          gitService: deps.gitService,
+          processService: deps.processService,
+          clock: deps.clock,
+        },
+        config,
+        key,
+        currentCwd(deps.cwd),
+        overrides,
+      )
       break
     default: {
       const _exhaustive: never = config
@@ -1003,7 +1015,12 @@ async function executeWorkflowFn(fn: WorkflowFn, deps: WorkflowDeps): Promise<vo
 
   const startedAt = deps.clock.now()
   try {
-    await fn(run, deps.args ?? {})
+    // Wrap the workflow body in an executionContext store so steps inside it
+    // (including setWorkflowCwd from createWorktree) can mutate workflowCwd
+    // and have subsequent run() calls observe the new cwd via currentCwd().
+    await executionContext.run({ parallelDepth: 0, workflowCwd: undefined }, () =>
+      fn(run, deps.args ?? {}),
+    )
     await deps.stateStore.setStatus(deps.runId, 'completed', deps.clock.now())
     void deps.logger
       ?.append('lifecycle', {

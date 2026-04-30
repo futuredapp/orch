@@ -7,7 +7,12 @@ export {
   RunnerCapabilityError,
   StepError,
 } from './errors.ts'
-export { currentParallelDepth, executionContext } from './execution-context.ts'
+export {
+  currentCwd,
+  currentParallelDepth,
+  executionContext,
+  setWorkflowCwd,
+} from './execution-context.ts'
 export type { FailureSummary, SummarizeFailureInputs } from './failure-summary.ts'
 export { summarizeFailure } from './failure-summary.ts'
 export type { AwaitedTuple, SettledEntry } from './parallel.ts'
@@ -23,8 +28,16 @@ export {
 } from './run-mode.ts'
 export type { SchemaWrapper } from './schema.ts'
 export { SchemaValidationError, schema } from './schema.ts'
-export type { AgentStepConfig, CommitStepConfig, Step, StepConfig } from './step.ts'
-export { step } from './step.ts'
+export type {
+  AgentStepConfig,
+  CommitStepConfig,
+  PostCreateCtx,
+  PostCreateHook,
+  Step,
+  StepConfig,
+  WorktreeStepConfig,
+} from './step.ts'
+export { onCacheHit, PostCreateExecError, step } from './step.ts'
 export type { InteractiveResult, Path, RunId, StepMode, StepName } from './types.ts'
 export { generateRunId, InteractiveResultSchema, path, runId, stepName } from './types.ts'
 export type {
@@ -64,3 +77,5 @@ export type {
   WorkflowFn,
 } from './workflow.ts'
 export { workflow } from './workflow.ts'
+export type { CreateWorktreeOpts, WorktreeResult } from './worktree.ts'
+export { createWorktree } from './worktree.ts'

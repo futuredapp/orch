@@ -1,6 +1,6 @@
 import type { ProcessService } from '../process/index.ts'
-import type { Path } from '../types.ts'
-import { GitCommandError, type GitService } from './git-service.ts'
+import { type Path, path as toPath } from '../types.ts'
+import { type AddWorktreeOptions, GitCommandError, type GitService } from './git-service.ts'
 
 const SHA_PATTERN = /^[0-9a-f]{7,64}$/i
 
@@ -143,6 +143,82 @@ export class BunGitService implements GitService {
       )
     }
     return this.headSha(cwd)
+  }
+
+  async repoRoot(cwd: Path): Promise<Path> {
+    const { stdout, stderr, exitCode } = await this.#runGit(cwd, [
+      'git',
+      'rev-parse',
+      '--show-toplevel',
+    ])
+    if (exitCode !== 0) {
+      throw new GitCommandError(
+        exitCode,
+        redactStderr(stderr),
+        `git rev-parse --show-toplevel failed (exit ${exitCode}): ${redactStderr(stderr)}`,
+      )
+    }
+    const firstLine = stdout.split('\n').find((l) => l.trim().length > 0) ?? ''
+    return toPath(firstLine.trim())
+  }
+
+  async branchExists(cwd: Path, branch: string): Promise<boolean> {
+    const { stderr, exitCode } = await this.#runGit(cwd, [
+      'git',
+      'show-ref',
+      '--verify',
+      '--quiet',
+      `refs/heads/${branch}`,
+    ])
+    if (exitCode === 0) return true
+    if (exitCode === 1) return false
+    throw new GitCommandError(
+      exitCode,
+      redactStderr(stderr),
+      `git show-ref --verify failed (exit ${exitCode}): ${redactStderr(stderr)}`,
+    )
+  }
+
+  async worktreePathExists(cwd: Path, target: Path): Promise<boolean> {
+    const { stdout, stderr, exitCode } = await this.#runGit(cwd, [
+      'git',
+      'worktree',
+      'list',
+      '--porcelain',
+    ])
+    if (exitCode !== 0) {
+      throw new GitCommandError(
+        exitCode,
+        redactStderr(stderr),
+        `git worktree list --porcelain failed (exit ${exitCode}): ${redactStderr(stderr)}`,
+      )
+    }
+    for (const line of stdout.split('\n')) {
+      if (line.startsWith('worktree ') && line.slice('worktree '.length) === target) {
+        return true
+      }
+    }
+    return false
+  }
+
+  async addWorktree(cwd: Path, opts: AddWorktreeOptions): Promise<void> {
+    const { stderr, exitCode } = await this.#runGit(cwd, [
+      'git',
+      'worktree',
+      'add',
+      '-b',
+      opts.branch,
+      '--',
+      opts.path,
+      opts.fromRef,
+    ])
+    if (exitCode !== 0) {
+      throw new GitCommandError(
+        exitCode,
+        redactStderr(stderr),
+        `git worktree add failed (exit ${exitCode}): ${redactStderr(stderr)}`,
+      )
+    }
   }
 
   async #runGit(

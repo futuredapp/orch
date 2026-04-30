@@ -14,8 +14,15 @@
 import * as fs from 'node:fs/promises'
 import * as nodePath from 'node:path'
 import { step, workflow, type WorkflowDeps } from '../../src/core/index.ts'
+import { createPlainHost } from '../../src/hosts/index.ts'
 import { claude } from '../../src/runners/index.ts'
-import { BunClock, BunFsService, BunProcessService, path } from '../../src/services/index.ts'
+import {
+  BunClock,
+  BunFsService,
+  BunGitService,
+  BunProcessService,
+  path,
+} from '../../src/services/index.ts'
 import { FileStateStore, generateRunId, type RunId, runId } from '../../src/state/index.ts'
 
 const here = import.meta.dir
@@ -46,12 +53,25 @@ const CREATE_FILE = step.define('create-hello-file', {
     '(no trailing newline, no code fences, no extra explanation).',
 })
 
+const fsService = new BunFsService()
+const processService = new BunProcessService()
+
 const deps: WorkflowDeps = {
-  stateStore: new FileStateStore({ fs: new BunFsService(), basePath: path(stateDir) }),
-  processService: new BunProcessService(),
+  stateStore: new FileStateStore({ fs: fsService, basePath: path(stateDir) }),
+  processService,
   clock,
   runId: runIdVal,
   cwd: path(sandboxDir),
+  fsService,
+  gitService: new BunGitService({ processService }),
+  host: createPlainHost({
+    stdout: process.stdout,
+    stderr: process.stderr,
+    format: 'text',
+    clock,
+    runId: runIdVal,
+    processService,
+  }),
 }
 
 const wf = workflow('hello-file-demo', async (run) => {

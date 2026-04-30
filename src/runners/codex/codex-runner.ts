@@ -1,8 +1,8 @@
 import { z } from 'zod'
 import type { FsService } from '../../services/fs/fs-service.ts'
+import { mergeEnv } from '../../services/index.ts'
 import type { ProcessService } from '../../services/process/process-service.ts'
 import { path } from '../../services/types.ts'
-import { mergeEnv } from '../_shared/merge-env.ts'
 import type { RunnerCommand, RunnerContext, RunnerEvent, TerminalEvent } from '../types.ts'
 import { defineRunner } from '../types.ts'
 

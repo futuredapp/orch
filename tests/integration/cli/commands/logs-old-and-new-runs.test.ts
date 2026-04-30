@@ -77,7 +77,7 @@ describe('orch logs — backwards-compat read path', () => {
   it('reads a NEW run with transcriptPath at logs/agents/<step>/events.ndjson', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-logs-newrun-')
     const deps = makeDeps()
-    const rid = 'r-2026-04-29-newrun' as RunId
+    const rid = 'r-2026-04-29-000000-nr' as RunId
 
     await deps.stateStore.initRun(rid, { workflowName: 'demo', startedAt: 1000 })
     const transcriptPath = `logs/agents/demo/events.ndjson`
@@ -113,7 +113,7 @@ describe('orch logs — backwards-compat read path', () => {
   it('reads an OLD run with transcriptPath at steps/<step>.transcript.ndjson', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-logs-oldrun-')
     const deps = makeDeps()
-    const rid = 'r-2026-04-01-oldrun' as RunId
+    const rid = 'r-2026-04-01-000000-or' as RunId
 
     await deps.stateStore.initRun(rid, { workflowName: 'demo', startedAt: 1000 })
     const transcriptPath = `steps/demo.transcript.ndjson`

@@ -99,7 +99,7 @@ export default workflow('compound', async (run, args) => {
   const sharedContext =
     `\n\n` +
     `Extra instructions:\n` +
-    `Analyze content of the brainstorm and plan files and add any additional instructions to the plan file.`,
+    `Analyze content of the brainstorm and plan files and add any additional instructions to the plan file. ` +
     `Store all session files (brainstorms, plans, notes) under \`${sessionsDir}/\`. ` +
     'Create the directory if it does not exist. All subsequent steps of this ' +
     'workflow will read from the same directory.'

@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'bun:test'
 import { z } from 'zod'
+import { executionContext } from '../../../src/core/execution-context.ts'
 import { schema } from '../../../src/core/schema.ts'
-import { step } from '../../../src/core/step.ts'
+import { onCacheHit, type StepConfig, step } from '../../../src/core/step.ts'
+import { type Path, path, stepName } from '../../../src/core/types.ts'
 import { FakeRunner } from '../../../src/runners/index.ts'
 import { FakeProcessService } from '../../../src/services/index.ts'
 
@@ -63,6 +65,21 @@ describe('step.define', () => {
     const agent = makeFakeRunner()
 
     expect(() => step.define('commit:foo', { agent })).toThrow('commit:')
+  })
+
+  it('rejects names starting with the reserved worktree: prefix', () => {
+    const agent = makeFakeRunner()
+
+    expect(() => step.define('worktree:foo', { agent })).toThrow('worktree:')
+  })
+
+  it.each([
+    ['commit:', 'commit:foo'],
+    ['worktree:', 'worktree:bar'],
+  ])('rejects reserved prefix %s (table-driven)', (prefix, name) => {
+    const agent = makeFakeRunner()
+
+    expect(() => step.define(name, { agent })).toThrow(prefix)
   })
 
   it('defaults mode to undefined when not specified', () => {
@@ -176,5 +193,174 @@ describe('step.define', () => {
     expect((caught as Error).message).toContain('unknown view "approval"')
     expect((caught as Error).message).toContain('interactive')
     expect((caught as Error).message).toContain('transcript')
+  })
+})
+
+describe('onCacheHit — kind-agnostic dispatch', () => {
+  it('agent kind without returns is a no-op', () => {
+    const agent = makeFakeRunner()
+    const config: StepConfig = { kind: 'agent', agent }
+
+    expect(() => onCacheHit(config, stepName('plan'), { whatever: 1 })).not.toThrow()
+  })
+
+  it('agent kind with returns re-validates the cached value against the schema', () => {
+    const agent = makeFakeRunner()
+    const config: StepConfig = {
+      kind: 'agent',
+      agent,
+      returns: schema(z.object({ count: z.number() })),
+    }
+
+    expect(() => onCacheHit(config, stepName('plan'), { count: 'not-a-number' })).toThrow()
+    expect(() => onCacheHit(config, stepName('plan'), { count: 7 })).not.toThrow()
+  })
+
+  it('commit kind is a no-op regardless of cached value', () => {
+    const config: StepConfig = { kind: 'commit', message: 'after research' }
+
+    expect(() => onCacheHit(config, stepName('commit:after-research'), null)).not.toThrow()
+    expect(() =>
+      onCacheHit(config, stepName('commit:after-research'), { sha: 'abc' }),
+    ).not.toThrow()
+  })
+
+  it('worktree kind with enter:true reapplies setWorkflowCwd from cached path', async () => {
+    const config: StepConfig = {
+      kind: 'worktree',
+      branch: 'feat/foo',
+      enter: true,
+    }
+    const cachedValue = {
+      path: path('/tmp/foo--feat-foo'),
+      branch: 'feat/foo',
+      fromRef: 'HEAD',
+    }
+
+    let observed: Path | undefined
+    await executionContext.run({ parallelDepth: 0, workflowCwd: undefined }, () => {
+      onCacheHit(config, stepName('worktree:feat-foo'), cachedValue)
+      observed = executionContext.getStore()?.workflowCwd
+    })
+
+    expect(observed).toBe(path('/tmp/foo--feat-foo'))
+  })
+
+  it('worktree kind with enter:false leaves workflowCwd untouched', async () => {
+    const config: StepConfig = {
+      kind: 'worktree',
+      branch: 'feat/foo',
+      enter: false,
+    }
+    const cachedValue = {
+      path: path('/tmp/foo--feat-foo'),
+      branch: 'feat/foo',
+      fromRef: 'HEAD',
+    }
+
+    let observed: Path | undefined
+    await executionContext.run({ parallelDepth: 0, workflowCwd: undefined }, () => {
+      onCacheHit(config, stepName('worktree:feat-foo'), cachedValue)
+      observed = executionContext.getStore()?.workflowCwd
+    })
+
+    expect(observed).toBeUndefined()
+  })
+
+  it('throws when cached worktree value is missing path', () => {
+    const config: StepConfig = {
+      kind: 'worktree',
+      branch: 'feat/foo',
+      enter: true,
+    }
+    const cachedValue = { branch: 'feat/foo', fromRef: 'HEAD' }
+
+    expect(() => onCacheHit(config, stepName('worktree:feat-foo'), cachedValue)).toThrow(
+      /malformed/,
+    )
+  })
+
+  it('throws when cached worktree value has a non-string branch', () => {
+    const config: StepConfig = {
+      kind: 'worktree',
+      branch: 'feat/foo',
+      enter: true,
+    }
+    const cachedValue = { path: '/x', branch: 123, fromRef: 'HEAD' }
+
+    expect(() => onCacheHit(config, stepName('worktree:feat-foo'), cachedValue)).toThrow(
+      /malformed/,
+    )
+  })
+
+  it('throws when cached branch differs from the current config (slug collision)', () => {
+    const config: StepConfig = {
+      kind: 'worktree',
+      branch: 'feat/foo',
+      enter: false,
+    }
+    const cachedValue = {
+      path: path('/tmp/proj--feat-foo'),
+      branch: 'feat/Foo',
+      fromRef: 'HEAD',
+    }
+
+    let caught: unknown
+    try {
+      onCacheHit(config, stepName('worktree:feat-foo'), cachedValue)
+    } catch (err) {
+      caught = err
+    }
+
+    expect(caught).toBeInstanceOf(Error)
+    expect((caught as Error).message).toContain('feat/foo')
+    expect((caught as Error).message).toContain('feat/Foo')
+  })
+
+  it('throws when cached fromRef differs from the current config', () => {
+    const config: StepConfig = {
+      kind: 'worktree',
+      branch: 'feat/foo',
+      enter: false,
+      fromRef: 'main',
+    }
+    const cachedValue = {
+      path: path('/tmp/proj--feat-foo'),
+      branch: 'feat/foo',
+      fromRef: 'HEAD',
+    }
+
+    let caught: unknown
+    try {
+      onCacheHit(config, stepName('worktree:feat-foo'), cachedValue)
+    } catch (err) {
+      caught = err
+    }
+
+    expect(caught).toBeInstanceOf(Error)
+    expect((caught as Error).message).toContain('main')
+    expect((caught as Error).message).toContain('HEAD')
+  })
+
+  it('accepts an exact-match cache hit (resume case)', async () => {
+    const config: StepConfig = {
+      kind: 'worktree',
+      branch: 'feat/foo',
+      enter: true,
+      fromRef: 'main',
+    }
+    const cachedValue = {
+      path: path('/tmp/foo--feat-foo'),
+      branch: 'feat/foo',
+      fromRef: 'main',
+    }
+
+    let observed: Path | undefined
+    await executionContext.run({ parallelDepth: 0, workflowCwd: undefined }, () => {
+      expect(() => onCacheHit(config, stepName('worktree:feat-foo'), cachedValue)).not.toThrow()
+      observed = executionContext.getStore()?.workflowCwd
+    })
+
+    expect(observed).toBe(path('/tmp/foo--feat-foo'))
   })
 })

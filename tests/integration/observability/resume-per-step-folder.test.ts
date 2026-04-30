@@ -12,7 +12,7 @@ import { FakeClock, FakeFsService, path } from '../../../src/services/index.ts'
 import { runId as runIdFactory } from '../../../src/state/index.ts'
 import { createTranscriptSidecar } from '../../../src/state/transcript-sidecar.ts'
 
-const RUN_ID = runIdFactory('r-2026-04-28-resum0')
+const RUN_ID = runIdFactory('r-2026-04-28-000000-rs')
 const BASE = path('/state')
 
 async function readSafely(fs: FakeFsService, p: ReturnType<typeof path>): Promise<string> {

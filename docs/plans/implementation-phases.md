@@ -477,6 +477,32 @@ v1 ships four phases, each a PR-sized chunk:
 
 ---
 
+### Phase 17 — `createWorktree()` step primitive ☐
+
+**Goal:** worktrees as first-class workflow entries. `createWorktree(branch, opts)` returns `Step<WorktreeResult>` that composes with `run()`, `parallel()`, memoization, and resume — same execution shape as `commit()`.
+
+**Deliverables:**
+- `src/services/git/git-service.ts` — port grows by 4 methods: `repoRoot`, `branchExists`, `worktreePathExists`, `addWorktree`.
+- `src/services/git/bun-git-service.ts` — adapter implementations.
+- `src/services/git/fake-git-service.ts` — setters: `setRepoRoot`, `setBranchExists`, `setWorktreePathExists`; `addWorktree` is recorded for assertion.
+- `src/core/execution-context.ts` — adds mutable `workflowCwd?: Path` + `homogeneousBranch?: true`; new `currentCwd(fallback)` and `setWorkflowCwd(path)` helpers (with hard guard against silent cwd corruption in heterogeneous parallel).
+- `src/core/parallel.ts` — homogeneous branches mark their store with `homogeneousBranch: true` and inherit outer `workflowCwd`.
+- `src/core/step.ts` — `WorktreeStepConfig`, `PostCreateHook`, `PostCreateCtx`, `PostCreateExecError`; reserved-prefix list grows to `['commit:', 'worktree:']`; `onCacheHit(config, key, cached)` kind-agnostic dispatcher (replaces the agent-only `revalidateCachedValue` cache-hit branch).
+- `src/core/worktree.ts` — new file: factory, `WorktreeResult`, `runWorktreeStep`, `runPostCreate`.
+- `src/core/workflow.ts` — switch case for `worktree`; cache-hit path delegates to `onCacheHit`; `deps.cwd` reads inside step execution paths go through `currentCwd(deps.cwd)`.
+- `src/core/index.ts` — barrel exports.
+
+**Tests:**
+- **Unit** — GitService methods (Phase 1), execution-context helpers + parallel inheritance + hard guard (Phase 2), factory validation + executor + onCacheHit (Phase 3).
+- **Integration (mocked)** — state.json shape, parallel isolation, parallel resume, postCreate-failure resume.
+- **Integration (real, auto-skip without git)** — sibling/from/postCreate sugar; pre-existing branch and path conflict errors.
+
+**Detailed plan:** [`docs/sessions/orch-git-helpers/plan.md`](../sessions/orch-git-helpers/plan.md)
+
+**Brainstorm:** [`docs/sessions/orch-git-helpers/brainstorm.md`](../sessions/orch-git-helpers/brainstorm.md)
+
+---
+
 ## Verification gates
 
 For every phase, the gate is:

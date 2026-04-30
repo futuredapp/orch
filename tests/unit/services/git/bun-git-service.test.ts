@@ -228,3 +228,226 @@ describe('BunGitService.redactStderr', () => {
     }
   })
 })
+
+describe('BunGitService.repoRoot', () => {
+  it('returns the absolute path from git rev-parse --show-toplevel', async () => {
+    const { git, proc } = makeGit()
+    proc.when(['git', 'rev-parse', '--show-toplevel']).respondWith({
+      stdout: ['/home/me/projects/orch'],
+      exitCode: 0,
+    })
+
+    const root = await git.repoRoot(path('/home/me/projects/orch/sub'))
+
+    expect(root).toBe(path('/home/me/projects/orch'))
+  })
+
+  it('throws GitCommandError when git rev-parse --show-toplevel fails', async () => {
+    const { git, proc } = makeGit()
+    proc.when(['git', 'rev-parse', '--show-toplevel']).respondWith({
+      stdout: [],
+      stderr: ['fatal: not a git repository'],
+      exitCode: 128,
+    })
+
+    await expect(git.repoRoot(path('/not-a-repo'))).rejects.toThrow(GitCommandError)
+  })
+
+  it('redacts $HOME paths in repoRoot stderr before throwing', async () => {
+    const { git, proc } = makeGit()
+    proc.when(['git', 'rev-parse', '--show-toplevel']).respondWith({
+      stderr: [`fatal: not a git repository: ${process.env.HOME ?? ''}/secret`],
+      exitCode: 128,
+    })
+
+    if (!process.env.HOME) return
+
+    try {
+      await git.repoRoot(path('/whatever'))
+      throw new Error('expected throw')
+    } catch (err) {
+      expect(err).toBeInstanceOf(GitCommandError)
+      const gce = err as GitCommandError
+      expect(gce.stderr).not.toContain(process.env.HOME)
+      expect(gce.stderr).toContain('~')
+    }
+  })
+})
+
+describe('BunGitService.branchExists', () => {
+  it('returns true when git show-ref --verify --quiet exits 0', async () => {
+    const { git, proc } = makeGit()
+    proc
+      .when(['git', 'show-ref', '--verify', '--quiet', 'refs/heads/feat/foo'])
+      .respondWith({ exitCode: 0 })
+
+    expect(await git.branchExists(path('/repo'), 'feat/foo')).toBe(true)
+  })
+
+  it('returns false when git show-ref --verify --quiet exits 1', async () => {
+    const { git, proc } = makeGit()
+    proc
+      .when(['git', 'show-ref', '--verify', '--quiet', 'refs/heads/feat/missing'])
+      .respondWith({ exitCode: 1 })
+
+    expect(await git.branchExists(path('/repo'), 'feat/missing')).toBe(false)
+  })
+
+  it('throws GitCommandError when git show-ref exits with code >= 2', async () => {
+    const { git, proc } = makeGit()
+    proc
+      .when(['git', 'show-ref', '--verify', '--quiet', 'refs/heads/bad'])
+      .respondWith({ stderr: ['fatal: bad ref'], exitCode: 128 })
+
+    await expect(git.branchExists(path('/repo'), 'bad')).rejects.toThrow(GitCommandError)
+  })
+})
+
+describe('BunGitService.worktreePathExists', () => {
+  it('returns true when the path appears as a worktree line in --porcelain output', async () => {
+    const { git, proc } = makeGit()
+    proc.when(['git', 'worktree', 'list', '--porcelain']).respondWith({
+      stdout: [
+        'worktree /home/me/projects/orch',
+        'HEAD abc123',
+        'branch refs/heads/main',
+        '',
+        'worktree /home/me/projects/orch--feat-foo',
+        'HEAD def456',
+        'branch refs/heads/feat/foo',
+      ],
+      exitCode: 0,
+    })
+
+    expect(
+      await git.worktreePathExists(path('/repo'), path('/home/me/projects/orch--feat-foo')),
+    ).toBe(true)
+  })
+
+  it('returns false when the path is absent from --porcelain output', async () => {
+    const { git, proc } = makeGit()
+    proc.when(['git', 'worktree', 'list', '--porcelain']).respondWith({
+      stdout: ['worktree /home/me/projects/orch', 'HEAD abc123', 'branch refs/heads/main'],
+      exitCode: 0,
+    })
+
+    expect(
+      await git.worktreePathExists(path('/repo'), path('/home/me/projects/orch--missing')),
+    ).toBe(false)
+  })
+
+  it('does not match a partial path prefix as a worktree entry', async () => {
+    const { git, proc } = makeGit()
+    proc.when(['git', 'worktree', 'list', '--porcelain']).respondWith({
+      stdout: ['worktree /home/me/projects/orch--feat-foobar'],
+      exitCode: 0,
+    })
+
+    expect(
+      await git.worktreePathExists(path('/repo'), path('/home/me/projects/orch--feat-foo')),
+    ).toBe(false)
+  })
+
+  it('throws GitCommandError when git worktree list fails', async () => {
+    const { git, proc } = makeGit()
+    proc.when(['git', 'worktree', 'list', '--porcelain']).respondWith({
+      stderr: ['fatal: not a git repository'],
+      exitCode: 128,
+    })
+
+    await expect(git.worktreePathExists(path('/not-a-repo'), path('/whatever'))).rejects.toThrow(
+      GitCommandError,
+    )
+  })
+})
+
+describe('BunGitService.addWorktree', () => {
+  it('spawns git worktree add -b <branch> -- <path> <fromRef> and resolves to undefined', async () => {
+    const { git, proc } = makeGit()
+    proc
+      .when([
+        'git',
+        'worktree',
+        'add',
+        '-b',
+        'feat/foo',
+        '--',
+        '/home/me/projects/orch--feat-foo',
+        'HEAD',
+      ])
+      .respondWith({ exitCode: 0 })
+
+    const result = await git.addWorktree(path('/repo'), {
+      branch: 'feat/foo',
+      path: path('/home/me/projects/orch--feat-foo'),
+      fromRef: 'HEAD',
+    })
+
+    expect(result).toBeUndefined()
+  })
+
+  it('passes the user-provided fromRef through to git', async () => {
+    const { git, proc } = makeGit()
+    proc
+      .when(['git', 'worktree', 'add', '-b', 'feat/foo', '--', '/wt/orch--feat-foo', 'main'])
+      .respondWith({ exitCode: 0 })
+
+    await git.addWorktree(path('/repo'), {
+      branch: 'feat/foo',
+      path: path('/wt/orch--feat-foo'),
+      fromRef: 'main',
+    })
+  })
+
+  it('addWorktree includes "--" separator before path and fromRef', async () => {
+    // Defense-in-depth: even if a future caller bypasses the factory, the
+    // adapter inserts the standard end-of-options separator so positional
+    // args cannot be reinterpreted as flags. FakeProcessService matches argv
+    // by deep equality — if the spawn omitted "--" the call would throw
+    // "no scripted response for argv".
+    const { git, proc } = makeGit()
+    proc
+      .when(['git', 'worktree', 'add', '-b', 'feat/foo', '--', '/wt/orch--feat-foo', 'HEAD'])
+      .respondWith({ exitCode: 0 })
+
+    // Adversarial control: register the WITHOUT-separator argv as exit-128 so
+    // a regression that drops the separator is caught loudly rather than
+    // surfacing as the same "no scripted response" error.
+    proc
+      .when(['git', 'worktree', 'add', '-b', 'feat/foo', '/wt/orch--feat-foo', 'HEAD'])
+      .respondWith({
+        stderr: ['regression: addWorktree must use "--" separator'],
+        exitCode: 128,
+      })
+
+    await git.addWorktree(path('/repo'), {
+      branch: 'feat/foo',
+      path: path('/wt/orch--feat-foo'),
+      fromRef: 'HEAD',
+    })
+  })
+
+  it('throws GitCommandError with redacted stderr when git worktree add fails', async () => {
+    const { git, proc } = makeGit()
+    proc
+      .when(['git', 'worktree', 'add', '-b', 'feat/foo', '--', '/wt/orch--feat-foo', 'HEAD'])
+      .respondWith({
+        stderr: ['fatal: cannot fetch https://user:s3cr3t@github.com/evil/repo.git'],
+        exitCode: 128,
+      })
+
+    try {
+      await git.addWorktree(path('/repo'), {
+        branch: 'feat/foo',
+        path: path('/wt/orch--feat-foo'),
+        fromRef: 'HEAD',
+      })
+      throw new Error('expected throw')
+    } catch (err) {
+      expect(err).toBeInstanceOf(GitCommandError)
+      const gce = err as GitCommandError
+      expect(gce.stderr).not.toContain('s3cr3t')
+      expect(gce.stderr).toContain('[REDACTED]')
+    }
+  })
+})

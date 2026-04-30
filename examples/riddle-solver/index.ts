@@ -25,6 +25,7 @@
 import * as fs from 'node:fs/promises'
 import * as nodePath from 'node:path'
 import { step, workflow, type WorkflowDeps } from '../../src/core/index.ts'
+import { createPlainHost } from '../../src/hosts/index.ts'
 import { claude } from '../../src/runners/index.ts'
 import {
   BunClock,
@@ -116,6 +117,14 @@ const deps: WorkflowDeps = {
   cwd: path(sandboxDir),
   fsService: bunFs,
   gitService: new BunGitService({ processService }),
+  host: createPlainHost({
+    stdout: process.stdout,
+    stderr: process.stderr,
+    format: 'text',
+    clock,
+    runId: runIdVal,
+    processService,
+  }),
   ...(promptSeed !== undefined ? { args: { prompt: promptSeed } } : {}),
 }
 

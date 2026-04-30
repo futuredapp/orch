@@ -106,20 +106,22 @@ export async function loadConfig(cwd: Path): Promise<OrchestratorConfig> {
     )
   }
 
-  // Safe type narrowing — no `as` cast
-  const defaultExport =
-    typeof mod === 'object' && mod !== null && 'default' in mod
-      ? (mod as { default: unknown }).default
+  // Accept either `export const config` (preferred — biome flags default
+  // exports) or `export default` (legacy fixtures and pre-existing configs).
+  const exported =
+    typeof mod === 'object' && mod !== null
+      ? ((mod as { config?: unknown; default?: unknown }).config ??
+        (mod as { default?: unknown }).default)
       : undefined
 
-  if (defaultExport === undefined) {
+  if (exported === undefined) {
     throw new ConfigLoadError(
-      `Config at ${configPath} has no default export. Use: export default defineConfig({ ... })`,
+      `Config at ${configPath} has no export. Use: export const config = defineConfig({ ... })`,
       configPath,
     )
   }
 
-  const result = ConfigSchema.safeParse(defaultExport)
+  const result = ConfigSchema.safeParse(exported)
   if (!result.success) {
     const summary = result.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')
     throw new ConfigLoadError(`Invalid config at ${configPath}: ${summary}`, configPath)

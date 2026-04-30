@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { mergeEnv } from '../_shared/merge-env.ts'
+import { mergeEnv } from '../../services/index.ts'
 import type { Runner, RunnerCommand, RunnerContext, TerminalEvent } from '../types.ts'
 import { defineRunner } from '../types.ts'
 import { toClaudeTranscriptLines } from './format-event.ts'

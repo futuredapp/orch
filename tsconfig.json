@@ -26,5 +26,5 @@
       "@orch/test/*": ["./tests/helpers/*"]
     }
   },
-  "include": ["src", "tests"]
+  "include": ["src", "tests", "examples"]
 }

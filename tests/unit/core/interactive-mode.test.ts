@@ -5,6 +5,7 @@ import {
   StepError,
 } from '../../../src/core/errors.ts'
 import { currentParallelDepth, executionContext } from '../../../src/core/execution-context.ts'
+import { parallel } from '../../../src/core/parallel.ts'
 import { step } from '../../../src/core/step.ts'
 import type { InteractiveResult } from '../../../src/core/types.ts'
 import type { WorkflowDeps } from '../../../src/core/workflow.ts'
@@ -146,31 +147,35 @@ describe('interactive mode resolution', () => {
 
 describe('interactive parallel guard', () => {
   it('throws InteractiveParallelError when interactive step runs inside parallel context', async () => {
-    let caught: unknown
-    await executionContext.run({ parallelDepth: 1 }, async () => {
-      const deps = makeDeps({
-        onInteractive: async () => ({
-          exitCode: 0,
-          durationMs: 100,
-          sessionId: '00000000-0000-0000-0000-000000000000',
-        }),
-      })
-      const agent = new FakeRunner(deps.processService)
-      const STEP = step.define('brainstorm', { agent, mode: 'interactive' })
+    const deps = makeDeps({
+      onInteractive: async () => ({
+        exitCode: 0,
+        durationMs: 100,
+        sessionId: '00000000-0000-0000-0000-000000000000',
+      }),
+    })
+    const agent = new FakeRunner(deps.processService)
+    const STEP = step.define('brainstorm', { agent, mode: 'interactive' })
 
-      const wf = workflow('test', async (run) => {
+    const wf = workflow('test', async (run) => {
+      await parallel([1], async () => {
         await run(STEP)
       })
-
-      try {
-        await wf.execute(deps)
-      } catch (err) {
-        caught = err
-      }
     })
 
-    expect(caught).toBeInstanceOf(InteractiveParallelError)
-    expect((caught as InteractiveParallelError).stepName as string).toBe('brainstorm')
+    let caught: unknown
+    try {
+      await wf.execute(deps)
+    } catch (err) {
+      caught = err
+    }
+
+    // parallel() wraps branch errors in ParallelError; unwrap to find the
+    // InteractiveParallelError raised by the guard inside runInteractiveStep.
+    const root = caught as { settled?: ReadonlyArray<{ status: string; error?: unknown }> }
+    const branchError = root.settled?.find((s) => s.status === 'error')?.error
+    expect(branchError).toBeInstanceOf(InteractiveParallelError)
+    expect((branchError as InteractiveParallelError).stepName as string).toBe('brainstorm')
   })
 })
 

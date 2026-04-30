@@ -161,7 +161,7 @@ describe('two-pane mocked workflow', () => {
     const clock = new FakeClock(1_700_000_000_000)
     const stderr = bufferStream()
     const basePath = path('/state')
-    const teeRunId = runIdFactory('r-2026-04-28-tp01te')
+    const teeRunId = runIdFactory('r-2026-04-28-000001-tp')
 
     const tmux = new FakeTmuxService()
     tmux.setListPanesResult(['%0'])

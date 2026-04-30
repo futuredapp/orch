@@ -8,7 +8,11 @@
 //
 // Both settle all branches before throwing. Cached branches skip on resume.
 
-import { currentParallelDepth, executionContext } from './execution-context.ts'
+import {
+  currentParallelDepth,
+  type ExecutionContext,
+  executionContext,
+} from './execution-context.ts'
 
 // ---------------------------------------------------------------------------
 // Settled types
@@ -115,8 +119,19 @@ async function parallelHomogeneous<I, R>(
 
   const snapshot = Array.from(items)
   const depth = currentParallelDepth() + 1
-  const wrappedFn = (item: I): Promise<R> =>
-    executionContext.run({ parallelDepth: depth }, () => fn(item))
+  // Each branch gets its own fresh store so setWorkflowCwd inside one branch
+  // does not leak to siblings. The outer scope's workflowCwd is inherited at
+  // branch start; the homogeneousBranch marker authorises setWorkflowCwd
+  // (the hard guard rejects mutation in heterogeneous parallel scopes).
+  const wrappedFn = (item: I): Promise<R> => {
+    const outer = executionContext.getStore()
+    const branchStore: ExecutionContext = {
+      parallelDepth: depth,
+      homogeneousBranch: true,
+      ...(outer?.workflowCwd !== undefined ? { workflowCwd: outer.workflowCwd } : {}),
+    }
+    return executionContext.run(branchStore, () => fn(item))
+  }
 
   const isUnlimited =
     concurrency === undefined ||
