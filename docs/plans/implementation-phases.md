@@ -503,6 +503,21 @@ v1 ships four phases, each a PR-sized chunk:
 
 ---
 
+### Phase 18 — TUI `ask()` step ◐
+
+**Goal:** `ask({ name, question, fields, buttons, defaultWhenNoninteractive? })` returns `Step<AskResult>` that pauses a workflow and renders a centered prompt. Composes with `run()`, memoization (`as:`), resume, and a new orthogonal `--interactive` / `--noninteractive` axis.
+
+**Phases:**
+- **18a** ◐ — Factory + executor + Fake + Readline + CLI flag. Plain mode and noninteractive end-to-end. No Ink, no React.
+- **18b** ◐ — `InkPromptService` (two-pane Ink renderer via spawn-Ink-child) + `ink-runner.ts` child entry + `AskApp` Ink component. Mocked-host integration test always runs; gated `RUN_INK_REAL` real-spawn smoke test verifies the arg-parse boundary; full Ink-render smoke is `RUN_INK_TTY=1`-gated since piped stdio cannot enable raw mode.
+- **18c** (deferred) — `examples/feature-loop/` written against the shipped public API.
+
+**Detailed plan:** [`docs/plans/2026-05-01-feat-tui-ask-step-plan.md`](2026-05-01-feat-tui-ask-step-plan.md)
+
+**Brainstorm:** [`docs/brainstorms/2026-04-30-tui-ask-step-brainstorm.md`](../brainstorms/2026-04-30-tui-ask-step-brainstorm.md)
+
+---
+
 ## Verification gates
 
 For every phase, the gate is:

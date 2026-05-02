@@ -10,6 +10,7 @@ import {
   BunProcessService,
   path,
 } from '../../../../src/services/index.ts'
+import { FakePromptService } from '../../../../src/services/prompt/index.ts'
 import { FileStateStore, type RunId } from '../../../../src/state/index.ts'
 import { createFakeHost } from '../../../helpers/fake-host.ts'
 
@@ -43,6 +44,8 @@ describe.skipIf(!canRun)('ClaudeRunner e2e-lite (workflow DSL + real CLI)', () =
       fsService: bunFs,
       gitService: new BunGitService({ processService }),
       host: createFakeHost(),
+      promptService: new FakePromptService(),
+      interactivity: 'interactive' as const,
     }
 
     const wf = workflow('e2e-lite', async (run) => {

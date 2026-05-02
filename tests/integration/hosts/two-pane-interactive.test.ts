@@ -16,6 +16,7 @@ import {
   FakeProcessService,
   path,
 } from '../../../src/services/index.ts'
+import { FakePromptService } from '../../../src/services/prompt/index.ts'
 import { FakeTmuxService, paneId } from '../../../src/services/tmux/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
 
@@ -70,6 +71,8 @@ describe('two-pane interactive step', () => {
       fsService: fs,
       gitService: new FakeGitService(),
       host,
+      promptService: new FakePromptService(),
+      interactivity: 'interactive' as const,
     }
 
     // Interactive step resolves view to 'interactive' on 'right'. The host's

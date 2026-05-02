@@ -11,6 +11,7 @@ import {
   FakeProcessService,
   path,
 } from '../../src/services/index.ts'
+import { FakePromptService } from '../../src/services/prompt/index.ts'
 import { FileStateStore, type RunId } from '../../src/state/index.ts'
 import { createFakeHost } from '../helpers/fake-host.ts'
 
@@ -56,6 +57,8 @@ describe.skipIf(!canRun)('resume with real Claude (e2e)', () => {
       fsService: bunFs,
       gitService: new BunGitService({ processService: realProcessService }),
       host: createFakeHost(),
+      promptService: new FakePromptService(),
+      interactivity: 'interactive' as const,
     }
 
     const wf1 = workflow('resume-e2e', async (run) => {
@@ -92,6 +95,8 @@ describe.skipIf(!canRun)('resume with real Claude (e2e)', () => {
       fsService: bunFs,
       gitService: new BunGitService({ processService: realProcessService }),
       host: createFakeHost(),
+      promptService: new FakePromptService(),
+      interactivity: 'interactive' as const,
     }
 
     const wf2 = workflow('resume-e2e', async (run) => {

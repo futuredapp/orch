@@ -2,7 +2,7 @@
 title: TUI `ask()` step — interactive user input as a first-class workflow step
 type: feat
 date: 2026-05-01
-status: revised after plan review — ready for /workflows:work
+status: phases 18a + 18b + 18c landed 2026-05-01 — plain + noninteractive + two-pane Ink renderer end-to-end; examples/feature-loop ships the loop-with-feedback demo
 brainstorm: docs/brainstorms/2026-04-30-tui-ask-step-brainstorm.md
 review_integrated: 2026-05-01 (DHH / Kieran / code-simplicity reviewers)
 ---
@@ -834,35 +834,35 @@ Planned contents (for the follow-up):
 
 ### Functional
 
-- [ ] `ask({ name, question, buttons, fields?, defaultWhenNoninteractive? })` returns `Step<AskResult>` with const-generic button union and field-name-keyed object type. The TS test `tests/unit/core/ask-types.test-d.ts` asserts `Expect<Equal<...>>` for both branches of the discriminated union AND for const-generic narrowing without `as const` (the load-bearing assertion — if it fails the API is meaningfully worse than advertised).
-- [ ] `ask:` is in `RESERVED_PREFIXES`; `step.define('ask:foo', ...)` throws with a message pointing to the `ask()` factory.
-- [ ] `ask()` validates each rejection independently (each is its own test, see § Test plan): empty `name`, whitespace-only `name`, name with null byte, name with newline; empty `question`, question with null byte; empty `buttons` array; duplicate `buttons`; field key not matching `/^[a-zA-Z][a-zA-Z0-9_]*$/`; field key in `FORBIDDEN_FIELD_KEYS` (`__proto__`, `constructor`, `prototype`). Each rejection has a specific error message naming the offending input.
-- [ ] `await run(ASK)` inside `parallel(...)` throws `AskParallelError` with a hoist-above-or-fan-in message — NOT a "switch to --noninteractive" remediation (which would be a behavior change, not a fix).
-- [ ] `await run(ASK)` under `--noninteractive`:
+- [x] `ask({ name, question, buttons, fields?, defaultWhenNoninteractive? })` returns `Step<AskResult>` with const-generic button union and field-name-keyed object type. The TS test `tests/unit/core/ask-types.test-d.ts` asserts `Expect<Equal<...>>` for both branches of the discriminated union AND for const-generic narrowing without `as const` (the load-bearing assertion — if it fails the API is meaningfully worse than advertised).
+- [x] `ask:` is in `RESERVED_PREFIXES`; `step.define('ask:foo', ...)` throws with a message pointing to the `ask()` factory.
+- [x] `ask()` validates each rejection independently (each is its own test, see § Test plan): empty `name`, whitespace-only `name`, name with null byte, name with newline; empty `question`, question with null byte; empty `buttons` array; duplicate `buttons`; field key not matching `/^[a-zA-Z][a-zA-Z0-9_]*$/`; field key in `FORBIDDEN_FIELD_KEYS` (`__proto__`, `constructor`, `prototype`). Each rejection has a specific error message naming the offending input.
+- [x] `await run(ASK)` inside `parallel(...)` throws `AskParallelError` with a hoist-above-or-fan-in message — NOT a "switch to --noninteractive" remediation (which would be a behavior change, not a fix).
+- [x] `await run(ASK)` under `--noninteractive`:
    - With `defaultWhenNoninteractive: { button: 'continue' }` and a config field `notes` that has no default → resolves to `{ cancelled: false, button: 'continue', notes: '' }`. Missing field values are zero-filled with `''`. Pinned in test + JSDoc on `AskInput.defaultWhenNoninteractive`.
    - Without a default → throws `AskNoDefaultError` at the call site, naming the step AND synthesizing the suggested `defaultWhenNoninteractive` value from the actual config (button list + field keys).
-- [ ] `await run(ASK)` under `--interactive` (default) calls `promptService.ask(spec, ctx)`. The cached value is persisted atomically; resume returns the cached value without re-prompting.
-- [ ] **Cancelled ask IS cached.** Resuming a run after the user pressed Esc replays the cancel without re-prompting; `FakePromptService.recorded()` shows zero calls on resume. (See § Cancel semantics on resume.)
-- [ ] Cache-stale detection (buttons): changing the buttons list between runs and resuming logs `cache-stale ask-<step>` and re-prompts. Implemented as a boolean predicate (`isAskCacheValid`) — NOT a thrown sentinel. Test asserts behavior (FakePromptService called with new spec) and persisted-entry replacement; the log string is a bonus, not the contract.
-- [ ] Cache-stale detection (field keys): renaming/removing a field key between runs invalidates the cache and re-prompts. Separate test.
-- [ ] Cache-stale tolerance: a `cancelled: true` cached value stays valid across button/field changes (cancel doesn't depend on shape).
-- [ ] **Resume from interactive into `--noninteractive`** without defaults → `AskNoDefaultError` at the first non-defaulted ask. Error names the offending step and synthesizes the default; resuming again with the synthesized default succeeds.
-- [ ] `validate:` slot is rejected at the type level in `ask()` (the input type omits it; TS error if specified). NOTE: type-level only — the `interactive`-mode `returns:` precedent at `step.ts:152` has both type-level AND runtime guards; for `validate:` on `ask()` we omit the runtime guard because the input type cannot be coerced through ordinary call-sites. Documented inline so the next maintainer doesn't read this as inconsistency.
-- [ ] Cancel returns `{ cancelled: true, fields: <whatever-was-typed> }`; TS narrows so `result.button` is unreachable in the `cancelled === true` branch.
-- [ ] Aggregate run timing (any "total wall-clock" or "average step duration" panel) excludes `kind: 'ask'` entries OR labels idle time as such. Asserted by a test exercising `printRunSummary` (or equivalent) on a run containing an ask with a sleep before answering.
+- [x] `await run(ASK)` under `--interactive` (default) calls `promptService.ask(spec, ctx)`. The cached value is persisted atomically; resume returns the cached value without re-prompting.
+- [x] **Cancelled ask IS cached.** Resuming a run after the user pressed Esc replays the cancel without re-prompting; `FakePromptService.recorded()` shows zero calls on resume. (See § Cancel semantics on resume.)
+- [x] Cache-stale detection (buttons): changing the buttons list between runs and resuming logs `cache-stale ask-<step>` and re-prompts. Implemented as a boolean predicate (`isAskCacheValid`) — NOT a thrown sentinel. Test asserts behavior (FakePromptService called with new spec) and persisted-entry replacement; the log string is a bonus, not the contract.
+- [x] Cache-stale detection (field keys): renaming/removing a field key between runs invalidates the cache and re-prompts. Separate test.
+- [x] Cache-stale tolerance: a `cancelled: true` cached value stays valid across button/field changes (cancel doesn't depend on shape).
+- [x] **Resume from interactive into `--noninteractive`** without defaults → `AskNoDefaultError` at the first non-defaulted ask. Error names the offending step and synthesizes the default; resuming again with the synthesized default succeeds.
+- [x] `validate:` slot is rejected at the type level in `ask()` (the input type omits it; TS error if specified). NOTE: type-level only — the `interactive`-mode `returns:` precedent at `step.ts:152` has both type-level AND runtime guards; for `validate:` on `ask()` we omit the runtime guard because the input type cannot be coerced through ordinary call-sites. Documented inline so the next maintainer doesn't read this as inconsistency.
+- [x] Cancel returns `{ cancelled: true, fields: <whatever-was-typed> }`; TS narrows so `result.button` is unreachable in the `cancelled === true` branch.
+- [ ] Aggregate run timing (any "total wall-clock" or "average step duration" panel) excludes `kind: 'ask'` entries OR labels idle time as such. Asserted by a test exercising `printRunSummary` (or equivalent) on a run containing an ask with a sleep before answering. (Deferred — no aggregate panel exists yet that needs the gate; revisit when one lands.)
 
 ### Non-functional
 
-- [ ] No new `child_process`, `node-pty`, or `Bun.spawn` import outside `src/services/process/` (CLAUDE.md rule 1). Ink's stdin/stdout consumption goes through the `PromptService` adapter, which calls `host.runInteractive` (existing seam).
-- [ ] No `mock.module`, `vi.mock`, or `jest.mock` in tests for `src/core/`, `src/state/`, `src/runners/` (CLAUDE.md rule 3). All ask tests mock `PromptService` (the port) only.
-- [ ] Files ≤ 300 lines, functions ≤ 60 lines (CLAUDE.md rule 5). `src/core/ask.ts` ≤ 180 lines (down from 200 after dropping `text()`/`FieldKind`); `src/core/ask-executor.ts` ≤ 150 lines; `src/services/prompt/ink-app.tsx` ≤ 200 lines.
-- [ ] `bun run check` is green on the branch. The `ink-prompt-service.ts` import does NOT pull React/Ink into test execution paths (lazy `import()` if test runner complains; Ink's React 19 peer dep otherwise gets eager-loaded).
+- [x] No new `child_process`, `node-pty`, or `Bun.spawn` import outside `src/services/process/` (CLAUDE.md rule 1). Ink's stdin/stdout consumption goes through the `PromptService` adapter, which calls `host.runInteractive` (existing seam).
+- [x] No `mock.module`, `vi.mock`, or `jest.mock` in tests for `src/core/`, `src/state/`, `src/runners/` (CLAUDE.md rule 3). All ask tests mock `PromptService` (the port) only.
+- [x] Files ≤ 300 lines, functions ≤ 60 lines (CLAUDE.md rule 5). `src/core/ask.ts` ≤ 180 lines (down from 200 after dropping `text()`/`FieldKind`); `src/core/ask-executor.ts` ≤ 150 lines; `src/services/prompt/ink-app.tsx` ≤ 200 lines.
+- [x] `bun run check` is green on the branch. The `ink-prompt-service.ts` import does NOT pull React/Ink into test execution paths (lazy `import()` if test runner complains; Ink's React 19 peer dep otherwise gets eager-loaded). (18b concern; 18a ships no Ink.)
 
 ### Quality gates
 
-- [ ] All three layers covered (CLAUDE.md gate). See § Test plan.
-- [ ] Implementation phases roadmap (`docs/plans/implementation-phases.md`) gets a new "Phase 18 — TUI ask step" block with status `◐ in progress` until phase 18a + 18b land.
-- [ ] Examples (`examples/feature-loop/`) lands in a follow-up PR — NOT blocking the v1 merge. See § Examples wiring.
+- [x] All three layers covered (CLAUDE.md gate). See § Test plan. (Layer 3 real-Ink test is 18b.)
+- [x] Implementation phases roadmap (`docs/plans/implementation-phases.md`) gets a new "Phase 18 — TUI ask step" block with status `◐ in progress` until phase 18a + 18b land.
+- [x] Examples (`examples/feature-loop/`) — landed in phase 18c with `index.ts` + `README.md`, registered in `examples/orch.config.ts`. Demonstrates loop-with-feedback (brainstorm → plan → work → review → ask) with `as:`-scoped iteration keys, `extraPrompt` retry, and `defaultWhenNoninteractive` for autonomous runs.
 
 ## Test plan
 
@@ -993,32 +993,44 @@ The original 4-phase slicing was rejected during review: phase 18a-as-written sh
 - Cache-stale (button removed, field renamed) re-prompts; logs the one-liner.
 - Ask inside `parallel()` throws `AskParallelError` with a hoist-above-or-fan-in message.
 
-### Phase 18b — `InkPromptService` (two-pane) + Ink runner child
+### Phase 18b — `InkPromptService` (two-pane) + Ink runner child ✓
 
 **Capability:** two-pane gets the rich Ink renderer.
 
 **Scope:**
 
-- `package.json` — add `ink`, `ink-text-input`, `react` runtime deps; `@types/react`, `ink-testing-library` dev deps.
-- `tsconfig.json` — `"jsx": "react-jsx"`, `"jsxImportSource": "react"`.
-- `src/services/prompt/{ink-prompt-service,ink-app,ink-runner}.{ts,tsx}` — Option A (spawn-Ink-child via `host.runInteractive` + temp-file IPC at `.orch/state/<runId>/asks/<step>.json`).
-- `src/cli/deps.ts` — replace the 18a stub with the real `InkPromptService` for two-pane.
-- TODO comment near the `bun run <repo-path>/.../ink-runner.ts` argv construction noting v1 is checkout-only and a `bin` entry is needed before published distribution.
+- [x] `package.json` — add `ink`, `ink-text-input`, `react` runtime deps; `@types/react`, `ink-testing-library` dev deps.
+- [x] `tsconfig.json` — `"jsx": "react-jsx"`, `"jsxImportSource": "react"`.
+- [x] `src/services/prompt/{ink-prompt-service,ink-app,ink-runner}.{ts,tsx}` — Option A (spawn-Ink-child via `host.runInteractive` + temp-file IPC; result lives under `os.tmpdir()/orch-ask-<random>/result.json` rather than `.orch/state/<runId>/asks/<step>.json` — temp-dir keeps the IPC byte cost off the run state directory and avoids needing the runId at the prompt-service seam).
+- [x] `src/cli/deps.ts` — replace the 18a stub with the real `InkPromptService` for two-pane; single-pane keeps a deferred stub.
+- [x] TODO comment near the `bun run <repo-path>/.../ink-runner.ts` argv construction noting v1 is checkout-only and a `bin` entry is needed before published distribution.
 
 **Tests:**
 
-- `tests/unit/services/prompt/ink-app.test.tsx` (using `ink-testing-library`): renders question + fields + buttons, Tab cycles focus across fields and buttons in order, Enter on a focused button resolves with `cancelled: false`, Esc resolves with `cancelled: true`, Ctrl-C resolves with `cancelled: true`.
-- `tests/integration/services/prompt/ink-prompt-service-real.test.ts` (gated on `ink` resolvability + `RUN_INK_REAL`): spawn the runner child as a real subprocess (this single test owns the spawn since it tests the spawn boundary).
-- Smoke test that two-pane wiring renders a prompt without crashing.
+- [x] `tests/unit/services/prompt/ink-app.test.tsx` (using `ink-testing-library`): renders question + fields + buttons, Tab cycles focus across fields and buttons in order, Shift-Tab cycles backward, Enter on a focused button resolves with `cancelled: false`, Esc resolves with `cancelled: true`, Ctrl-C resolves with `cancelled: true`, double-Enter still resolves only once.
+  - **Gotcha discovered during 18b**: Ink's `<App>` already auto-handles Tab / Shift-Tab via its own `useFocusManager` listener (see `node_modules/ink/build/components/App.js`); a manual handler in `AskApp` causes a double-advance. Plan's draft included one — removed.
+  - **Test cadence**: focus state propagates through React's reconciler + `useEffect` re-subscription; 5 ms inter-keystroke ticks race the focus update. 30 ms is the empirical floor — pinned in the test helper with the rationale.
+- [x] `tests/integration/services/prompt/ink-prompt-service.test.ts` (Layer 2, always-on): exercises the IPC contract end-to-end against a fake Host whose `runInteractive` writes the result file synthetically. Covers spec encoding, cleanup on success + error, plain-mode misroute, cancelled-result passthrough.
+- [x] `tests/integration/services/prompt/ink-prompt-service-real.test.ts` (Layer 3, gated on `RUN_INK_REAL=1`): spawns the runner child via `Bun.spawn` to verify the arg-parse boundary (no `--spec` exits non-zero, no args exits non-zero). The full Ink-render smoke (`renders, accepts Enter, writes result`) is further gated on `RUN_INK_TTY=1` because piped stdio disables raw mode and Ink never accepts a keystroke without a PTY harness; manual verification command is documented inline.
 
 **Definition of done:**
-- `orch run --mode=two-pane` prompts via the Ink renderer in the right pane; cancel and submit both clean up the pane.
-- `bun run check` green with the new deps installed.
-- TODO comment for the `bin` entry is in `ink-prompt-service.ts`.
+- [x] `orch run --mode=two-pane` prompts via the Ink renderer in the right pane (verified by mocked-host integration test + ink-app input handling tests; manual two-pane TTY verification deferred to first real use).
+- [x] `bun run check` green with the new deps installed.
+- [x] TODO comment for the `bin` entry is in `ink-prompt-service.ts`.
 
-### Phase 18c (deferred — follow-up PR) — `examples/feature-loop/`
+### Phase 18c — `examples/feature-loop/` ✓
 
-Lands after 18a + 18b are on `main` so the example is written against the shipped public API and the real Ink renderer.
+**Capability:** the loop-with-feedback pattern is shipped as a runnable example, demonstrating `ask()` end-to-end against the v1 public API plus the real Ink renderer.
+
+**Scope:**
+
+- [x] `examples/feature-loop/index.ts` — `default workflow('feature-loop', ...)` with the 5-iteration loop body. Four autonomous Claude steps (`BRAINSTORM`, `PLAN`, `WORK`, `REVIEW`) plus `ASK_CONTINUE` declared with `defaultWhenNoninteractive: { button: 'continue' }`. Iteration keys via `as: \`<step>-${i}\`` so each loop turn gets its own cache slot. `retry` re-runs `WORK` with `answer.notes` threaded through `extraPrompt`.
+- [x] `examples/feature-loop/README.md` — usage doc for plain mode (`bunx orch run feature-loop "..."`), two-pane Ink mode (`--mode=two-pane`), autonomous mode (`--noninteractive`), resume semantics, and where the feature spec files land.
+- [x] `examples/orch.config.ts` — `'feature-loop': 'feature-loop/index.ts'` added to the workflows map.
+
+**Definition of done:**
+- [x] `bun run check` green (lint + typecheck + 1102 unit/integration tests pass).
+- [x] Example uses the shipped public surface (`ask`, `step.define`, `workflow`, `claude` runner, `RunOverrides.{as, extraPrompt}`) — no test-only or internal imports.
 
 ## References & research
 

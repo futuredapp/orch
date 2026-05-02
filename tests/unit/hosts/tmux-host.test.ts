@@ -78,6 +78,48 @@ describe('createTmuxHost setup', () => {
     expect(sendKeys.opts.keys).toEqual(['clear && exec cat'])
     expect(sendKeys.opts.enter).toBe(true)
   })
+
+  // Regression: a previous version installed this backstop globally in
+  // `src/cli/main.ts`, which fired on every exit path and emitted
+  // `\x1b[?1049l` to a real TTY — Apple Terminal and iTerm2 treat that as a
+  // screen-buffer toggle and wiped the user's visible terminal on
+  // `--mode=single-pane` (and any other pre-host error). It now lives on
+  // the two-pane host where it belongs; this test pins that contract.
+  it('registers a hard-exit backstop that emits the DEC private-mode resets so tmux mode leaks survive `process.exit()`', async () => {
+    const tmux = new FakeTmuxService()
+    tmux.setListPanesResult(['%0'])
+    tmux.nextPaneId(paneId('%1'))
+
+    let registeredHandler: (() => void) | undefined
+    const writes: string[] = []
+    const stdout = new Writable({
+      write(chunk, _enc, cb) {
+        writes.push(String(chunk))
+        cb()
+      },
+    }) as unknown as NodeJS.WritableStream
+    ;(stdout as unknown as { isTTY?: boolean }).isTTY = true
+
+    await createTmuxHost({
+      tmux,
+      processService: new FakeProcessService() as ProcessService,
+      clock: new FakeClock(0),
+      runId: 'r-2026-04-23-phased1' as RunId,
+      workflowName: 'compound',
+      stderr: makeStderr().stream,
+      skipVersionCheck: true,
+      stdout,
+      installExitHandler: (h) => {
+        registeredHandler = h
+      },
+    })
+
+    expect(registeredHandler).toBeDefined()
+    registeredHandler?.()
+    const written = writes.join('')
+    expect(written).toContain('\x1b[?1049l')
+    expect(written).toContain('\x1b[?1006l')
+  })
 })
 
 describe('TmuxHost.onRunnerEvent', () => {

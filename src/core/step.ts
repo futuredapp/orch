@@ -1,5 +1,6 @@
 import type { Runner } from '../runners/index.ts'
 import type { Validator } from '../validators/index.ts'
+import type { AskStepConfig } from './ask.ts'
 import { setWorkflowCwd } from './execution-context.ts'
 import { SchemaValidationError, type SchemaWrapper } from './schema.ts'
 import type { InteractiveResult, Path, StepMode } from './types.ts'
@@ -100,14 +101,18 @@ export interface WorktreeStepConfig {
   readonly postCreate?: PostCreateHook
 }
 
-export type StepConfig<T = unknown> = AgentStepConfig<T> | CommitStepConfig | WorktreeStepConfig
+export type StepConfig<T = unknown> =
+  | AgentStepConfig<T>
+  | CommitStepConfig
+  | WorktreeStepConfig
+  | AskStepConfig
 
 export interface Step<T = unknown> {
   readonly name: StepName
   readonly config: StepConfig<T>
 }
 
-const RESERVED_PREFIXES: readonly string[] = ['commit:', 'worktree:']
+const RESERVED_PREFIXES: readonly string[] = ['commit:', 'worktree:', 'ask:']
 
 // ---------------------------------------------------------------------------
 // step.define — input types for the two overloads
@@ -143,7 +148,8 @@ function defineStep(
 ): Step {
   for (const prefix of RESERVED_PREFIXES) {
     if (name.startsWith(prefix)) {
-      const factory = prefix === 'commit:' ? 'commit()' : 'createWorktree()'
+      const factory =
+        prefix === 'commit:' ? 'commit()' : prefix === 'worktree:' ? 'createWorktree()' : 'ask()'
       throw new Error(
         `step.define() cannot use reserved prefix "${prefix}" — use the ${factory} factory instead`,
       )
@@ -222,6 +228,13 @@ export function onCacheHit(config: StepConfig, key: StepName, cachedValue: unkno
       setWorkflowCwd(parsed.data.path as Path)
       return
     }
+    case 'ask':
+      // No-op on cache replay. Cached value is `AskResult`; no schema to
+      // re-validate. Definition-vs-cache drift (button removed, field
+      // renamed) is detected separately by `isAskCacheValid` BEFORE
+      // `runStepOnce` reaches the cache-hit branch — mismatch downgrades the
+      // hit to a miss without throwing. NO sentinel exception.
+      return
     default: {
       const _exhaustive: never = config
       throw new Error(`Unexpected step kind: ${JSON.stringify(_exhaustive)}`)

@@ -1,3 +1,4 @@
+import type { RunMode } from '../core/run-mode.ts'
 import { createFileSessionLogger, type SessionLogger } from '../observability/index.ts'
 import type { Clock, FsService, GitService, ProcessService } from '../services/index.ts'
 import {
@@ -7,6 +8,8 @@ import {
   BunProcessService,
   path,
 } from '../services/index.ts'
+import type { PromptService } from '../services/prompt/index.ts'
+import { InkPromptService, ReadlinePromptService } from '../services/prompt/index.ts'
 import type { Path } from '../services/types.ts'
 import type { RunId, RunRegistry, StateStore } from '../state/index.ts'
 import { FileRunRegistry, FileStateStore } from '../state/index.ts'
@@ -34,6 +37,12 @@ export interface CliDeps {
    *  run's `runId` and own the resulting logger's lifetime (close in their
    *  finally block). Phase 2: file-backed adapter wired to `statePath`. */
   readonly sessionLoggerFor: (runId: RunId) => SessionLogger
+  /**
+   * Prompt-service factory keyed by run mode. Plain returns
+   * `ReadlinePromptService`; two-pane returns `InkPromptService`
+   * (spawn-Ink-child via `host.runInteractive`); single-pane stays deferred.
+   */
+  readonly promptServiceFor: (mode: RunMode) => PromptService
 }
 
 // ---------------------------------------------------------------------------
@@ -64,5 +73,29 @@ export function createDeps(cwd: string, opts: CreateDepsOptions = {}): CliDeps {
     debug,
     sessionLoggerFor: (runId: RunId) =>
       createFileSessionLogger({ fs, clock, runId, basePath, debug }),
+    promptServiceFor: makePromptServiceFactory(fs),
+  }
+}
+
+function makePromptServiceFactory(fs: FsService): (mode: RunMode) => PromptService {
+  return (mode) => {
+    if (mode === 'plain') return new ReadlinePromptService()
+    if (mode === 'two-pane') return new InkPromptService({ fs })
+    return new DeferredSinglePanePromptService(mode)
+  }
+}
+
+/**
+ * Stand-in for single-pane mode (deferred per the run-mode roadmap). Two-pane
+ * runs that don't use `ask()` keep working; the moment a single-pane run hits
+ * `ask()`, we surface a clear error rather than crash at construction.
+ */
+class DeferredSinglePanePromptService implements PromptService {
+  constructor(private readonly mode: RunMode) {}
+  async ask(): Promise<never> {
+    throw new Error(
+      `ask() under --mode=${this.mode} is not yet implemented; ` +
+        'use --mode=plain, --mode=two-pane, or --noninteractive',
+    )
   }
 }

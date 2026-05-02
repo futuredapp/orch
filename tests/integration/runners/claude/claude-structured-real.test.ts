@@ -8,6 +8,7 @@ import { claude } from '../../../../src/runners/index.ts'
 import { BunClock } from '../../../../src/services/clock/index.ts'
 import { FakeFsService, FakeGitService } from '../../../../src/services/index.ts'
 import { BunProcessService } from '../../../../src/services/process/index.ts'
+import { FakePromptService } from '../../../../src/services/prompt/index.ts'
 import { path } from '../../../../src/services/types.ts'
 import { FileStateStore, type RunId } from '../../../../src/state/index.ts'
 import { createFakeHost } from '../../../helpers/fake-host.ts'
@@ -33,6 +34,8 @@ function makeDeps(): WorkflowDeps {
     runId: rid('r-2026-04-12-real1'),
     cwd: path(process.cwd()),
     host: createFakeHost(),
+    promptService: new FakePromptService(),
+    interactivity: 'interactive' as const,
   }
 }
 

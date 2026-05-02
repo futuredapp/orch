@@ -16,6 +16,7 @@ import {
   FakeProcessService,
   path,
 } from '../../../src/services/index.ts'
+import { FakePromptService } from '../../../src/services/prompt/index.ts'
 import { FileStateStore, type RunId, runId as runIdFactory } from '../../../src/state/index.ts'
 
 function bufferStream(): { stream: NodeJS.WritableStream; text: () => string } {
@@ -62,6 +63,8 @@ async function runTwoStepPlainWorkflow(format: 'text' | 'json'): Promise<{
     fsService: fs,
     gitService: new FakeGitService(),
     host,
+    promptService: new FakePromptService(),
+    interactivity: 'interactive' as const,
   }
 
   const wf = workflow('demo', async (run) => {
@@ -119,6 +122,8 @@ describe('--mode=plain — step:failed frame', () => {
       fsService: fs,
       gitService: new FakeGitService(),
       host,
+      promptService: new FakePromptService(),
+      interactivity: 'interactive' as const,
     }
 
     let caught: unknown
@@ -187,6 +192,8 @@ describe('--mode=plain — formatted_output tee', () => {
       fsService: fs,
       gitService: new FakeGitService(),
       host,
+      promptService: new FakePromptService(),
+      interactivity: 'interactive' as const,
       logger,
     }
 

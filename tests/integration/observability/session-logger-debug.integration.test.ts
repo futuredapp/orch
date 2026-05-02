@@ -40,6 +40,7 @@ import {
   FakeProcessService,
   path,
 } from '../../../src/services/index.ts'
+import { FakePromptService } from '../../../src/services/prompt/index.ts'
 import { FileStateStore, type RunId, runId as runIdFactory } from '../../../src/state/index.ts'
 
 const RUN_ID: RunId = runIdFactory('r-2026-04-24-641780-4l')
@@ -126,6 +127,8 @@ function makeRig(opts: RigOptions): Rig {
     fsService: bunFs,
     gitService: new FakeGitService(),
     host,
+    promptService: new FakePromptService(),
+    interactivity: 'interactive' as const,
     logger,
   }
 

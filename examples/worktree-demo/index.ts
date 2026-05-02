@@ -32,6 +32,7 @@ import {
   path,
 } from '../../src/services/index.ts'
 import { FileStateStore, generateRunId } from '../../src/state/index.ts'
+import { ReadlinePromptService } from '../../src/services/prompt/index.ts'
 
 const here = import.meta.dir
 const stateDir = nodePath.join(here, 'state')
@@ -56,6 +57,8 @@ const deps: WorkflowDeps = {
     runId: runIdVal,
     processService,
   }),
+  promptService: new ReadlinePromptService(),
+  interactivity: 'interactive',
 }
 
 const wf = workflow('worktree-demo', async (run) => {

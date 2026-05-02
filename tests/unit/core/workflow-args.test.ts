@@ -10,6 +10,7 @@ import {
   FakeProcessService,
   path,
 } from '../../../src/services/index.ts'
+import { FakePromptService } from '../../../src/services/prompt/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
 import { createFakeHost } from '../../helpers/fake-host.ts'
 
@@ -28,6 +29,8 @@ function makeDeps(args?: WorkflowArgs): WorkflowDeps {
     runId: rid('r-2026-04-14-031568-o6'),
     cwd: path('/workspace'),
     host: createFakeHost(),
+    promptService: new FakePromptService(),
+    interactivity: 'interactive' as const,
     ...(args !== undefined ? { args } : {}),
   } as WorkflowDeps
 }

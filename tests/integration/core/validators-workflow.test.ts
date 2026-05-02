@@ -11,6 +11,7 @@ import {
   FakeProcessService,
   path,
 } from '../../../src/services/index.ts'
+import { FakePromptService } from '../../../src/services/prompt/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
 import { __resetValidatorRegistryForTests } from '../../../src/validators/define-validator.ts'
 import {
@@ -41,6 +42,8 @@ function makeDeps(cwd: string, basePath: string): WorkflowDeps {
     fsService: bunFs,
     gitService: new FakeGitService(),
     host: createFakeHost(),
+    promptService: new FakePromptService(),
+    interactivity: 'interactive' as const,
   }
 }
 

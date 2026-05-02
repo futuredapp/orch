@@ -16,6 +16,7 @@ import {
   FakeProcessService,
   path,
 } from '../../../src/services/index.ts'
+import { FakePromptService } from '../../../src/services/prompt/index.ts'
 import { FakeTmuxService, paneId } from '../../../src/services/tmux/index.ts'
 import { FileStateStore, type RunId, runId as runIdFactory } from '../../../src/state/index.ts'
 
@@ -73,6 +74,8 @@ describe('two-pane mocked workflow', () => {
       fsService: fs,
       gitService: new FakeGitService(),
       host,
+      promptService: new FakePromptService(),
+      interactivity: 'interactive' as const,
     }
 
     await workflow('demo', async (run) => {
@@ -132,6 +135,8 @@ describe('two-pane mocked workflow', () => {
       fsService: fs,
       gitService: new FakeGitService(),
       host,
+      promptService: new FakePromptService(),
+      interactivity: 'interactive' as const,
     }
 
     await workflow('demo', async (run) => {
@@ -201,6 +206,8 @@ describe('two-pane mocked workflow', () => {
       fsService: fs,
       gitService: new FakeGitService(),
       host,
+      promptService: new FakePromptService(),
+      interactivity: 'interactive' as const,
       logger,
     }
 

@@ -5,6 +5,7 @@ import { envKeys as envKeyList, orchLog, redactReproduceCommand } from '../obser
 import { runRunner } from '../runners/index.ts'
 import type { Clock, FsService, GitService, ProcessService } from '../services/index.ts'
 import { GitCommandError } from '../services/index.ts'
+import type { PromptService } from '../services/prompt/index.ts'
 import type { StateStore, StepEntry, TranscriptSidecar } from '../state/index.ts'
 import {
   anyNeedsHeadSha,
@@ -13,6 +14,7 @@ import {
   type ValidatorCtx,
   type ValidatorServices,
 } from '../validators/index.ts'
+import { isAskCacheValid, runAskStep } from './ask-executor.ts'
 import {
   InteractiveParallelError,
   ResumeError,
@@ -162,6 +164,25 @@ export interface WorkflowDeps {
    * care about logs (null adapter is the zero-cost default in the CLI path).
    */
   readonly logger?: SessionLogger
+  /**
+   * Renders interactive prompts for `ask()` steps; supplied by the host
+   * wiring at the composition root. The plain CLI path uses
+   * `ReadlinePromptService`; tests wire `FakePromptService`. Required —
+   * absent → ask() steps cannot run.
+   */
+  readonly promptService: PromptService
+  /**
+   * Run-level interactivity axis (orthogonal to RunMode).
+   *
+   *  - 'interactive' (default): ask() renders normally.
+   *  - 'noninteractive': ask() resolves from `defaultWhenNoninteractive`,
+   *    or throws `AskNoDefaultError` if none declared.
+   *
+   * Sourced from the CLI flag (`--interactive` / `--noninteractive`) or the
+   * `ORCH_NONINTERACTIVE=1` env var per invocation. NOT persisted to
+   * RunState — resume reads whatever the resumer passes.
+   */
+  readonly interactivity: 'interactive' | 'noninteractive'
 }
 
 // ---------------------------------------------------------------------------
@@ -951,18 +972,27 @@ async function runStepOnce(
   const state = await deps.stateStore.loadRun(deps.runId)
   const cached = state?.steps[key]
   if (cached !== undefined) {
-    // Kind-agnostic cache-hit dispatch: agent re-validates schema, worktree
-    // reapplies the ALS cwd switch, commit is a no-op. Keeping the switch
-    // exhaustive in step.ts stops the next step primitive from accreting a
-    // third special case here.
-    onCacheHit(s.config, key, cached.value)
-    // Cached events do not mint a fresh span — the step's structured records
-    // live in the original run's logs. Emit a run-level lifecycle line so the
-    // timeline still shows the cache hit.
-    deps.host.onLifecycleEvent({ type: 'step:cached', stepName: key })
-    void deps.logger?.append('lifecycle', { type: 'step:cached', stepName: key }).catch(() => {})
-    orchLog(deps.logger, 'cache-hit', { stepName: key, kind: s.config.kind })
-    return cached.value
+    // Ask cache may be stale if the step's buttons or field keys changed
+    // between runs. Predicate-based detection (NOT a thrown sentinel): when
+    // invalid, we log a one-liner and fall through to the normal execution
+    // path, which atomically replaces the stale entry. Cancelled cache stays
+    // valid across button/field changes — cancel doesn't depend on shape.
+    if (s.config.kind === 'ask' && !isAskCacheValid(s.config, cached.value)) {
+      orchLog(deps.logger, 'cache-stale', { stepName: key, kind: 'ask' })
+    } else {
+      // Kind-agnostic cache-hit dispatch: agent re-validates schema, worktree
+      // reapplies the ALS cwd switch, commit is a no-op. Keeping the switch
+      // exhaustive in step.ts stops the next step primitive from accreting a
+      // third special case here.
+      onCacheHit(s.config, key, cached.value)
+      // Cached events do not mint a fresh span — the step's structured records
+      // live in the original run's logs. Emit a run-level lifecycle line so the
+      // timeline still shows the cache hit.
+      deps.host.onLifecycleEvent({ type: 'step:cached', stepName: key })
+      void deps.logger?.append('lifecycle', { type: 'step:cached', stepName: key }).catch(() => {})
+      orchLog(deps.logger, 'cache-hit', { stepName: key, kind: s.config.kind })
+      return cached.value
+    }
   }
 
   const stepSpan = deps.logger?.forStep(key)
@@ -991,6 +1021,19 @@ async function runStepOnce(
         config,
         key,
         currentCwd(deps.cwd),
+        overrides,
+      )
+      break
+    case 'ask':
+      result = await runAskStep(
+        {
+          clock: deps.clock,
+          host: deps.host,
+          promptService: deps.promptService,
+          interactivity: deps.interactivity,
+        },
+        config,
+        key,
         overrides,
       )
       break

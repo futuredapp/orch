@@ -10,6 +10,7 @@ import {
   BunProcessService,
   path as orchPath,
 } from '../../../src/services/index.ts'
+import { FakePromptService } from '../../../src/services/prompt/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
 import { createFakeHost } from '../../helpers/fake-host.ts'
 
@@ -70,6 +71,8 @@ async function makeDeps(
     runId: runId ?? ('r-2026-04-13-638488-e2' as RunId),
     cwd: orchPath(repoDir),
     host: createFakeHost(),
+    promptService: new FakePromptService(),
+    interactivity: 'interactive' as const,
   }
 }
 
@@ -138,6 +141,8 @@ describe.skipIf(!canRun)('commit step with real git', () => {
         runId,
         cwd: orchPath(repoDir),
         host: createFakeHost(),
+        promptService: new FakePromptService(),
+        interactivity: 'interactive' as const,
       }
     }
 

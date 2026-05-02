@@ -11,6 +11,7 @@ import {
   FakeGitService,
   FakeProcessService,
 } from '../../../src/services/index.ts'
+import { FakePromptService } from '../../../src/services/prompt/index.ts'
 import { FileStateStore } from '../../../src/state/index.ts'
 import { createFakeHost, type FakeHost } from '../../helpers/fake-host.ts'
 
@@ -49,6 +50,8 @@ export function makeDeps(overrides?: {
     runId: overrides?.runId ?? rid('r-2026-04-30-100000-w1'),
     cwd: overrides?.cwd ?? path('/workspace/proj'),
     host: createFakeHost(),
+    promptService: new FakePromptService(),
+    interactivity: 'interactive' as const,
   }
 }
 

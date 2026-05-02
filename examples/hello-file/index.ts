@@ -24,6 +24,7 @@ import {
   path,
 } from '../../src/services/index.ts'
 import { FileStateStore, generateRunId, type RunId, runId } from '../../src/state/index.ts'
+import { ReadlinePromptService } from '../../src/services/prompt/index.ts'
 
 const here = import.meta.dir
 const sandboxDir = nodePath.join(here, 'sandbox')
@@ -72,6 +73,8 @@ const deps: WorkflowDeps = {
     runId: runIdVal,
     processService,
   }),
+  promptService: new ReadlinePromptService(),
+  interactivity: 'interactive',
 }
 
 const wf = workflow('hello-file-demo', async (run) => {

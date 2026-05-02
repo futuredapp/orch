@@ -23,12 +23,17 @@
     "test:watch": "bun test --watch tests/unit"
   },
   "dependencies": {
+    "ink": "^7.0.1",
+    "ink-text-input": "^6.0.0",
+    "react": "^19.2.0",
     "zod": "^3.23.8",
     "zod-to-json-schema": "^3.25.2"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.10",
     "@types/bun": "latest",
+    "@types/react": "^19.2.0",
+    "ink-testing-library": "^4.0.0",
     "typescript": "^5.6.0"
   },
   "engines": {

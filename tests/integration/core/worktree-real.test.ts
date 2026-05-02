@@ -14,6 +14,7 @@ import {
   path as orchPath,
   type Path,
 } from '../../../src/services/index.ts'
+import { FakePromptService } from '../../../src/services/prompt/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
 import { createFakeHost } from '../../helpers/fake-host.ts'
 import { createTempGitRepo, type TempGitRepo } from '../../helpers/temp-git-repo.ts'
@@ -67,6 +68,8 @@ async function makeDeps(repoCwd: Path, runId?: RunId): Promise<WorkflowDeps> {
     runId: runId ?? ('r-2026-04-30-200000-w1' as RunId),
     cwd: repoCwd,
     host: createFakeHost(),
+    promptService: new FakePromptService(),
+    interactivity: 'interactive' as const,
   }
 }
 

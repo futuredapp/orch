@@ -16,6 +16,7 @@ import {
   FakeProcessService,
   path,
 } from '../../../src/services/index.ts'
+import { FakePromptService } from '../../../src/services/prompt/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
 import { createFakeHost, type FakeHost } from '../../helpers/fake-host.ts'
 
@@ -42,6 +43,8 @@ function makeDeps(overrides?: {
     runId: overrides?.runId ?? rid('r-2026-04-14-097860-gx'),
     cwd: path('/workspace'),
     host,
+    promptService: new FakePromptService(),
+    interactivity: 'interactive' as const,
   }
 }
 

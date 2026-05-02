@@ -73,9 +73,16 @@ describe('step.define', () => {
     expect(() => step.define('worktree:foo', { agent })).toThrow('worktree:')
   })
 
+  it('rejects names starting with the reserved ask: prefix and points to ask()', () => {
+    const agent = makeFakeRunner()
+
+    expect(() => step.define('ask:foo', { agent })).toThrow('ask()')
+  })
+
   it.each([
     ['commit:', 'commit:foo'],
     ['worktree:', 'worktree:bar'],
+    ['ask:', 'ask:baz'],
   ])('rejects reserved prefix %s (table-driven)', (prefix, name) => {
     const agent = makeFakeRunner()
 
@@ -222,6 +229,22 @@ describe('onCacheHit — kind-agnostic dispatch', () => {
     expect(() => onCacheHit(config, stepName('commit:after-research'), null)).not.toThrow()
     expect(() =>
       onCacheHit(config, stepName('commit:after-research'), { sha: 'abc' }),
+    ).not.toThrow()
+  })
+
+  it('ask kind is a no-op on cache replay (validity is checked separately)', () => {
+    const config: StepConfig = {
+      kind: 'ask',
+      question: 'q?',
+      fields: {},
+      buttons: ['ok'],
+    }
+
+    expect(() =>
+      onCacheHit(config, stepName('ask:q'), { cancelled: true, fields: {} }),
+    ).not.toThrow()
+    expect(() =>
+      onCacheHit(config, stepName('ask:q'), { cancelled: false, button: 'ok', fields: {} }),
     ).not.toThrow()
   })
 

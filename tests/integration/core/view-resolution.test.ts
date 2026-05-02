@@ -16,6 +16,7 @@ import {
   FakeProcessService,
   path,
 } from '../../../src/services/index.ts'
+import { FakePromptService } from '../../../src/services/prompt/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
 
 function bufferStream(): { stream: NodeJS.WritableStream; text: () => string } {
@@ -65,6 +66,8 @@ describe('view resolution under --mode=plain', () => {
       fsService: fs,
       gitService: new FakeGitService(),
       host,
+      promptService: new FakePromptService(),
+      interactivity: 'interactive' as const,
     }
 
     const wf = workflow('silent-demo', async (run) => {
@@ -122,6 +125,8 @@ describe('view resolution under --mode=plain', () => {
       fsService: fs,
       gitService: new FakeGitService(),
       host,
+      promptService: new FakePromptService(),
+      interactivity: 'interactive' as const,
     }
 
     const wf = workflow('noisy-demo', async (run) => {
@@ -169,6 +174,8 @@ describe('view resolution error surfacing', () => {
       fsService: fs,
       gitService: new FakeGitService(),
       host,
+      promptService: new FakePromptService(),
+      interactivity: 'interactive' as const,
     }
 
     const wf = workflow('interactive-plain', async (run) => {

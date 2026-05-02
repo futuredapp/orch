@@ -24,6 +24,7 @@ import {
   FakeProcessService,
   path,
 } from '../../../src/services/index.ts'
+import { FakePromptService } from '../../../src/services/prompt/index.ts'
 import { FakeTmuxService, paneId } from '../../../src/services/tmux/index.ts'
 import { FileRunRegistry, FileStateStore } from '../../../src/state/index.ts'
 
@@ -83,11 +84,24 @@ function makeDeps(): CliDeps {
     statePath: basePath,
     debug: false,
     sessionLoggerFor: (rid) => createNullSessionLogger({ runId: rid }),
+    promptServiceFor: () => new FakePromptService(),
   }
 }
 
-const DEFAULT_OPTS: CliOpts = { mode: 'two-pane', format: 'text', noAttach: false, debug: false }
-const NO_ATTACH_OPTS: CliOpts = { mode: 'two-pane', format: 'text', noAttach: true, debug: false }
+const DEFAULT_OPTS: CliOpts = {
+  mode: 'two-pane',
+  format: 'text',
+  noAttach: false,
+  debug: false,
+  interactivity: 'interactive',
+}
+const NO_ATTACH_OPTS: CliOpts = {
+  mode: 'two-pane',
+  format: 'text',
+  noAttach: true,
+  debug: false,
+  interactivity: 'interactive',
+}
 
 describe('runCmd auto-attach — argv shape', () => {
   it('spawns tmux -L <socket> attach-session -t orch via the host', async () => {

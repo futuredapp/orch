@@ -11,7 +11,13 @@ export async function runsCmd(
   deps: CliDeps,
   _positional: string,
   _args: WorkflowArgs = {},
-  _opts: CliOpts = { mode: undefined, format: 'text', noAttach: false, debug: false },
+  _opts: CliOpts = {
+    mode: undefined,
+    format: 'text',
+    noAttach: false,
+    debug: false,
+    interactivity: 'interactive',
+  },
 ): Promise<number> {
   const allRuns = await deps.registry.listRuns()
   const recentIds = allRuns.slice(-DEFAULT_LIMIT)

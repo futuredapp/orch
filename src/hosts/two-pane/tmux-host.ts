@@ -115,6 +115,19 @@ export interface TmuxHostOptions {
    * `logs/tmux/` directory. Optional because non-debug runs never create it.
    */
   readonly fs?: FsService
+  /**
+   * Hook used to register a hard-exit backstop that emits the DEC private-
+   * mode resets (mouse tracking, alt-screen, bracketed paste). Defaults to
+   * `process.on('exit', handler)`. Tests inject their own to capture the
+   * registered handler without touching the global process.
+   *
+   * Lives on the two-pane host (not on the CLI entry point) because tmux is
+   * the only host that sets those modes. Plain mode and pre-host error paths
+   * must not register this backstop — Apple Terminal/iTerm2 treat
+   * `\x1b[?1049l` as a screen-buffer toggle, which wipes the visible
+   * terminal when the alt-screen was never entered.
+   */
+  readonly installExitHandler?: (handler: () => void) => void
 }
 
 export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
@@ -220,6 +233,19 @@ export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
           onError: (err) => opts.stderr.write(`[orch tmux] pipe-pane: ${String(err)}\n`),
         })
       : undefined
+
+  // Hard-exit backstop. Graceful exits route through `teardown()`, which
+  // also calls `restoreTerminalModes`; this catches the cases where a hard
+  // `process.exit()` (unhandled error, signal handler timeout) skips
+  // teardown entirely. Idempotent — if both fire, the second write is a
+  // no-op on a clean terminal. Registered only after the tmux session
+  // actually exists, so no other code path leaks the resets to stdout.
+  const stdoutForReset = opts.stdout ?? process.stdout
+  const installExitHandler =
+    opts.installExitHandler ?? ((handler: () => void) => process.on('exit', handler))
+  installExitHandler(() => {
+    restoreTerminalModes(stdoutForReset)
+  })
 
   return buildHost({
     tmux,

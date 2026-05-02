@@ -17,7 +17,6 @@ import {
   type PlainFormat,
   registerBuiltinHosts,
 } from '../hosts/index.ts'
-import { restoreTerminalModes } from '../hosts/two-pane/terminal-reset.ts'
 import type { ProcessService } from '../services/process/index.ts'
 import { dryRunCmd } from './commands/dry-run.ts'
 import { logsCmd } from './commands/logs.ts'
@@ -68,6 +67,13 @@ export interface CliOpts {
    * trace). All-or-nothing. Defaults to `ORCH_DEBUG=1` in the environment.
    */
   readonly debug: boolean
+  /**
+   * Run-level interactivity axis (orthogonal to mode). 'noninteractive'
+   * resolves `ask()` steps from declared defaults instead of rendering a
+   * prompt. Sourced from `--interactive` / `--noninteractive` flags or
+   * `ORCH_NONINTERACTIVE=1` env var. NOT persisted to state.
+   */
+  readonly interactivity: 'interactive' | 'noninteractive'
 }
 
 // ---------------------------------------------------------------------------
@@ -99,6 +105,8 @@ Options:
   --format <f>             text | json — plain mode only; json suppresses the banner
   --no-attach              two-pane only: skip auto-attach; print attach hint and keep running
   --debug                  turn on heavy session logs (agent stdout/stderr, tmux pipe-pane, subprocess spawns, orch.log)
+  --interactive            ask() prompts render normally (default); cancel via Ctrl-C / Ctrl-D
+  --noninteractive         ask() resolves declared defaults (CI, scheduled runs); errors if no default
 `
 
 // ---------------------------------------------------------------------------
@@ -114,6 +122,7 @@ export function parseArgv(argv: string[]): {
   format: PlainFormat
   noAttach: boolean
   debug: boolean
+  interactivity: 'interactive' | 'noninteractive'
 } {
   const { values, positionals } = parseArgs({
     args: argv,
@@ -124,6 +133,8 @@ export function parseArgv(argv: string[]): {
       format: { type: 'string' },
       'no-attach': { type: 'boolean', default: false },
       debug: { type: 'boolean', default: false },
+      interactive: { type: 'boolean' },
+      noninteractive: { type: 'boolean' },
       tmux: { type: 'boolean' },
       observe: { type: 'boolean' },
     },
@@ -156,6 +167,7 @@ export function parseArgv(argv: string[]): {
   const format = parseFormatFlag(values.format)
   const noAttach = values['no-attach'] === true
   const debug = values.debug === true || process.env.ORCH_DEBUG === '1'
+  const interactivity = parseInteractivityFlags(values)
 
   if (format === 'json' && mode !== undefined && mode !== 'plain') {
     throw new ArgvError(`--format=json is only valid with --mode=plain (got --mode=${mode})`)
@@ -170,7 +182,22 @@ export function parseArgv(argv: string[]): {
     format,
     noAttach,
     debug,
+    interactivity,
   }
+}
+
+function parseInteractivityFlags(values: {
+  interactive?: unknown
+  noninteractive?: unknown
+}): 'interactive' | 'noninteractive' {
+  const interactive = values.interactive === true
+  const noninteractive = values.noninteractive === true
+  if (interactive && noninteractive) {
+    throw new ArgvError('Cannot specify both --interactive and --noninteractive')
+  }
+  if (noninteractive) return 'noninteractive'
+  if (interactive) return 'interactive'
+  return process.env.ORCH_NONINTERACTIVE === '1' ? 'noninteractive' : 'interactive'
 }
 
 function parseModeFlag(raw: unknown): RunMode | undefined {
@@ -342,6 +369,7 @@ async function main(): Promise<never> {
     format: parsed.format,
     noAttach: parsed.noAttach,
     debug: parsed.debug,
+    interactivity: parsed.interactivity,
   }
   const hostFactory = pickHostFactory(
     resolution.mode,
@@ -354,16 +382,17 @@ async function main(): Promise<never> {
 }
 
 // Guard: only runs when this file is the entry point, not when imported by tests.
+//
+// NOTE: terminal-mode reset on hard exit was previously installed here as a
+// global `process.on('exit', ...)` backstop. That fired on every exit path,
+// including `--mode=plain` and the pre-host error paths (e.g.
+// `--mode=single-pane` deferral, missing tmux on `--mode=two-pane`). Apple
+// Terminal and iTerm2 in some configs interpret the alt-screen-exit byte
+// (`\x1b[?1049l`) as a screen-buffer toggle rather than a state-set, which
+// wiped the user's visible terminal — including the error message just
+// written to stderr. The backstop now lives inside `createTmuxHost` (the
+// only host that actually sets those modes) so it never fires on paths that
+// don't need it.
 if (import.meta.main) {
-  // Backstop for terminal-mode cleanup. The two-pane host's teardown already
-  // emits DEC private-mode resets, and signal handlers in executeWithAttach
-  // route through teardown — but a hard `process.exit(code)` from anywhere
-  // (unhandled error path, signal handler timeout) skips those. This fires
-  // on every clean exit path and tolerates being called a second time: the
-  // reset sequences are idempotent. Gated on `isTTY` inside the helper, so
-  // piped runs stay clean.
-  process.on('exit', () => {
-    restoreTerminalModes(process.stdout)
-  })
   main()
 }

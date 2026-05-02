@@ -48,6 +48,7 @@ import {
   FakeGitService,
   path,
 } from '../../../src/services/index.ts'
+import { FakePromptService } from '../../../src/services/prompt/index.ts'
 import { RealTmuxService } from '../../../src/services/tmux/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
 
@@ -128,6 +129,8 @@ async function runOnce(opts: {
     workflowName: 'demo',
     args: {},
     host,
+    promptService: new FakePromptService(),
+    interactivity: 'interactive' as const,
     logger: createNullSessionLogger({ runId }),
   }
 

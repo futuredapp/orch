@@ -236,6 +236,8 @@ export async function resumeCmd(
       host,
       transcriptSidecar,
       logger,
+      promptService: deps.promptServiceFor(host.mode),
+      interactivity: opts.interactivity,
     }
 
     return await executeWithAttach({

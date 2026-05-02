@@ -19,6 +19,7 @@ import {
   FakeProcessService,
   path,
 } from '../../../src/services/index.ts'
+import { FakePromptService } from '../../../src/services/prompt/index.ts'
 import { FakeTmuxService, paneId } from '../../../src/services/tmux/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
 
@@ -73,6 +74,8 @@ describe('two-pane D2 — failing step', () => {
       fsService: fs,
       gitService: new FakeGitService(),
       host,
+      promptService: new FakePromptService(),
+      interactivity: 'interactive' as const,
     }
 
     let caught: unknown
@@ -126,6 +129,8 @@ describe('two-pane D2 — parallel rollup', () => {
       fsService: fs,
       gitService: new FakeGitService(),
       host,
+      promptService: new FakePromptService(),
+      interactivity: 'interactive' as const,
     }
 
     await workflow('demo', async (run) => {

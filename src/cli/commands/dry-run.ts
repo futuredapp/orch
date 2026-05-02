@@ -18,7 +18,13 @@ export async function dryRunCmd(
   deps: CliDeps,
   name: string,
   args: WorkflowArgs,
-  _opts: CliOpts = { mode: undefined, format: 'text', noAttach: false, debug: false },
+  _opts: CliOpts = {
+    mode: undefined,
+    format: 'text',
+    noAttach: false,
+    debug: false,
+    interactivity: 'interactive',
+  },
 ): Promise<number> {
   if (!name) {
     process.stderr.write('Usage: orch dry-run <name> [prompt]\n')

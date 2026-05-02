@@ -11,6 +11,7 @@ import {
   FakeProcessService,
   path,
 } from '../../../../src/services/index.ts'
+import { FakePromptService } from '../../../../src/services/prompt/index.ts'
 import { FileRunRegistry, FileStateStore, type RunId } from '../../../../src/state/index.ts'
 import { makeStepEntry } from '../../../helpers/make-step-entry.ts'
 
@@ -36,6 +37,7 @@ function makeDeps(): CliDeps {
     statePath: basePath,
     debug: false,
     sessionLoggerFor: (rid) => createNullSessionLogger({ runId: rid }),
+    promptServiceFor: () => new FakePromptService(),
   }
 }
 
