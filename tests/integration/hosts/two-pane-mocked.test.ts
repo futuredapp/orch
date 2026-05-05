@@ -240,4 +240,79 @@ describe('two-pane mocked workflow', () => {
       .join('')
     expect(ansi).toBe(rightPayloads)
   })
+
+  it('captures workflow-body console.log between steps instead of leaking it to tmux', async () => {
+    const fs = new FakeFsService()
+    const processService = new FakeProcessService()
+    const clock = new FakeClock(1_700_000_000_000)
+    const stderr = bufferStream()
+    const stdout = bufferStream().stream
+    ;(stdout as NodeJS.WritableStream & { isTTY?: boolean }).isTTY = true
+    const basePath = path('/state')
+    const stdioRunId = runIdFactory('r-2026-05-04-000001-so')
+
+    const tmux = new FakeTmuxService()
+    tmux.setListPanesResult(['%0'])
+    tmux.nextPaneId(paneId('%7'))
+
+    const logger = createFileSessionLogger({
+      fs,
+      clock,
+      runId: stdioRunId,
+      basePath,
+      debug: false,
+    })
+
+    const host = await createTmuxHost({
+      tmux,
+      processService,
+      clock,
+      runId: stdioRunId,
+      workflowName: 'demo',
+      stderr: stderr.stream,
+      stdout,
+      skipVersionCheck: true,
+      logger,
+    })
+
+    const planAgent = new FakeRunner(processService)
+    planAgent.script({ structuredOutput: 'plan-done' })
+    const workAgent = new FakeRunner(processService)
+    workAgent.script({ structuredOutput: 'work-done' })
+
+    const deps: WorkflowDeps = {
+      stateStore: new FileStateStore({ fs, basePath }),
+      processService,
+      clock,
+      runId: stdioRunId,
+      cwd: path('/workspace'),
+      fsService: fs,
+      gitService: new FakeGitService(),
+      host,
+      promptService: new FakePromptService(),
+      interactivity: 'interactive' as const,
+      logger,
+    }
+
+    try {
+      await workflow('demo', async (run) => {
+        await run(step.define('plan', { agent: planAgent }))
+        // biome-ignore lint/suspicious/noConsole: regression covers workflow-body console output
+        console.log('WORKFLOW_BODY_LOG', { exitCode: 0 })
+        await run(step.define('work', { agent: workAgent }))
+      }).execute(deps)
+    } finally {
+      await host.teardown()
+      await logger.close()
+    }
+
+    const tmuxPayloads = tmux.recordedCalls
+      .filter((c) => c.method === 'sendKeys')
+      .map((c) => (c.method === 'sendKeys' ? c.opts.keys.join('') : ''))
+      .join('')
+    expect(tmuxPayloads).not.toContain('WORKFLOW_BODY_LOG')
+
+    const captured = await fs.readFile(path(`${basePath}/${stdioRunId}/logs/orch-stdio.log`))
+    expect(captured).toContain('[stdout] WORKFLOW_BODY_LOG { exitCode: 0 }')
+  })
 })

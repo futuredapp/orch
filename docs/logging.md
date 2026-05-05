@@ -26,6 +26,12 @@ wrote for that run.
 | `README.md` | run-local navigation | generated per run; has grep recipes for this specific `runId` |
 | `agents/<stepName>/` | per-step folder | self-describing landing site for one step's run; see below |
 
+Two-pane auto-attach also creates `orch-stdio.log` on the first captured
+workflow-body console/stdout write. This keeps user workflow `console.log`
+output out of the tmux panes while preserving it for post-run debugging.
+Lines are tagged with `[stdout]` or `[stderr]`. Plain mode and `--no-attach`
+keep stdout inline.
+
 ### Per-step folder (`agents/<stepName>/`)
 
 One folder per step that produced at least one event. Always-on (no

@@ -49,6 +49,7 @@ import {
   renderRollupPayload,
 } from './parallel-rollup.ts'
 import { startPipePaneCapture } from './pipe-pane-capture.ts'
+import { installStdioCapture, type StdioCapture } from './stdio-capture.ts'
 import { restoreTerminalModes } from './terminal-reset.ts'
 
 // Defaults mirror the old `src/cli/tmux-wiring.ts`. Kept in-file because they
@@ -234,13 +235,15 @@ export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
         })
       : undefined
 
+  const stdoutForReset = opts.stdout ?? process.stdout
+  const stdioCapture = maybeInstallStdioCapture(opts, stdoutForReset)
+
   // Hard-exit backstop. Graceful exits route through `teardown()`, which
   // also calls `restoreTerminalModes`; this catches the cases where a hard
   // `process.exit()` (unhandled error, signal handler timeout) skips
   // teardown entirely. Idempotent — if both fire, the second write is a
   // no-op on a clean terminal. Registered only after the tmux session
   // actually exists, so no other code path leaks the resets to stdout.
-  const stdoutForReset = opts.stdout ?? process.stdout
   const installExitHandler =
     opts.installExitHandler ?? ((handler: () => void) => process.on('exit', handler))
   installExitHandler(() => {
@@ -264,6 +267,22 @@ export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
     tee: createPerStepTee(opts.logger),
     ...(opts.logger !== undefined ? { logger: opts.logger } : {}),
     ...(pipePaneCapture !== undefined ? { pipePaneCapture } : {}),
+    ...(stdioCapture !== undefined ? { stdioCapture } : {}),
+  })
+}
+
+function maybeInstallStdioCapture(
+  opts: TmuxHostOptions,
+  stdout: NodeJS.WritableStream,
+): StdioCapture | undefined {
+  if (opts.skipAttach === true) return undefined
+  if (opts.logger === undefined || opts.logger.logsDir === null) return undefined
+  if ((stdout as NodeJS.WritableStream & { readonly isTTY?: boolean }).isTTY !== true) {
+    return undefined
+  }
+  return installStdioCapture({
+    target: opts.logger.streamSink('orch-stdio.log'),
+    stdout: stdout as NodeJS.WriteStream,
   })
 }
 
@@ -289,6 +308,8 @@ interface BuildHostDeps {
   readonly tee: PerStepTee
   /** --debug pipe-pane capture. Stopped on teardown to drop the pipes. */
   readonly pipePaneCapture?: import('./pipe-pane-capture.ts').PipePaneCapture
+  /** Captures workflow-body console/stdout writes while tmux owns the TTY. */
+  readonly stdioCapture?: StdioCapture
 }
 
 function buildHost(deps: BuildHostDeps): Host {
@@ -491,6 +512,9 @@ function buildHost(deps: BuildHostDeps): Host {
     // still leaves bytes on disk before the run-ended record.
     await deps.tee.drain()
     await deps.queue.drain()
+    if (deps.stdioCapture !== undefined) {
+      await deps.stdioCapture.restore()
+    }
     // Stop pipe-pane capture BEFORE killSession so tmux closes the pipe
     // cleanly instead of ripping the `cat` process out from under the pane.
     if (deps.pipePaneCapture !== undefined) {
