@@ -509,7 +509,7 @@ v1 ships four phases, each a PR-sized chunk:
 
 ---
 
-### Phase 19 — `command()` step primitive ☐
+### Phase 19 — `command()` step primitive ✓
 
 **Goal:** arbitrary shell commands as a first-class workflow step. `command(name, opts)` returns `Step<CommandResult>` that spawns `argv` via `ProcessService.spawn`, streams stdout/stderr live into the active host pane, and returns `{ exitCode, stdout, stderr, durationMs }` for downstream agent steps to consume via `extraContext`.
 
@@ -532,6 +532,8 @@ v1 ships four phases, each a PR-sized chunk:
 **Detailed plan:** [`docs/plans/2026-05-05-feat-command-step-plan.md`](2026-05-05-feat-command-step-plan.md)
 
 **Brainstorm:** [`docs/brainstorms/2026-05-05-custom-command-step-brainstorm.md`](../brainstorms/2026-05-05-custom-command-step-brainstorm.md)
+
+**Landed:** 2026-05-05
 
 ---
 

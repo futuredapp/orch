@@ -2,7 +2,7 @@
 title: "feat: `command()` step — run arbitrary shell commands as a first-class workflow primitive"
 type: feat
 date: 2026-05-05
-status: active
+status: completed
 brainstorm: docs/brainstorms/2026-05-05-custom-command-step-brainstorm.md
 related:
   - docs/plans/implementation-phases.md
