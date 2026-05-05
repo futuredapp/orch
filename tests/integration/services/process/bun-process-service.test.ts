@@ -91,4 +91,37 @@ describe('BunProcessService', () => {
     // Should not deadlock — the fact we get here is the real assertion
     expect(typeof result.exitCode).toBe('number')
   })
+
+  it('yields stderr lines live as the child writes them, before wait() resolves', async () => {
+    const svc = new BunProcessService()
+
+    // Write one stderr line, then sleep — the live stream must yield it
+    // before the process exits. If the implementation buffered stderr until
+    // exit, the iterator would be parked in `next()` until the sleep ended.
+    const handle = svc.spawn({
+      argv: ['sh', '-c', 'printf "early\\n" 1>&2; sleep 1; exit 0'],
+      cwd,
+      env,
+    })
+
+    const stderrIter = handle.stderr[Symbol.asyncIterator]()
+    const firstLinePromise = stderrIter.next()
+    const timeoutPromise = new Promise<{ readonly timedOut: true }>((resolve) =>
+      setTimeout(() => resolve({ timedOut: true }), 250),
+    )
+    const winner = await Promise.race([firstLinePromise, timeoutPromise])
+
+    // Drain remaining stderr + wait so the test never leaks.
+    const drainRest = (async () => {
+      for (let r = await stderrIter.next(); r.done !== true; r = await stderrIter.next()) {
+        /* discard */
+      }
+    })()
+    const drainStdout = collect(handle.stdout)
+    await Promise.all([drainStdout, drainRest, handle.wait()])
+
+    expect('timedOut' in winner).toBe(false)
+    if ('timedOut' in winner) return
+    expect(winner.value).toBe('early')
+  })
 })

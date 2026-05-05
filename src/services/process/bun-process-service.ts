@@ -8,8 +8,6 @@ import type {
 } from './process-service.ts'
 import { ProcessSpawnError } from './process-service.ts'
 
-const STDERR_TAIL_SIZE = 200
-
 export class BunProcessService implements ProcessService {
   spawn(opts: SpawnOptions): SpawnHandle {
     if (!existsSync(opts.cwd)) {
@@ -30,17 +28,17 @@ export class BunProcessService implements ProcessService {
       throw new ProcessSpawnError(`Failed to spawn: ${opts.argv.join(' ')}`, err)
     }
 
-    // Pump stderr eagerly to prevent pipe backpressure deadlock.
-    // SpawnHandle.stderr iterates the tail buffer, not the live stream.
-    const stderrTail: string[] = []
-    const stderrStream = proc.stderr as ReadableStream<Uint8Array>
-    const stderrDone = drainStderr(stderrStream, stderrTail, STDERR_TAIL_SIZE)
-
+    // Both streams are line-framed and live: a consumer that drains them
+    // concurrently observes lines as soon as the child writes a '\n'. The
+    // command() step relies on this for its byte-for-byte pane streaming
+    // promise; runners rely on it for the `--debug` raw-line hook. Callers
+    // MUST drain stderr concurrently with stdout to avoid pipe backpressure
+    // deadlock — see Watch-outs S1 in process-service.ts.
     const stdoutStream = proc.stdout as ReadableStream<Uint8Array>
+    const stderrStream = proc.stderr as ReadableStream<Uint8Array>
     return {
       stdout: frameLines(stdoutStream),
-
-      stderr: replayBuffer(stderrTail, stderrDone),
+      stderr: frameLines(stderrStream),
 
       async wait() {
         await proc.exited
@@ -81,25 +79,5 @@ export class BunProcessService implements ProcessService {
         proc.kill(signal)
       },
     }
-  }
-}
-
-async function drainStderr(
-  stderr: ReadableStream<Uint8Array>,
-  tail: string[],
-  maxLines: number,
-): Promise<void> {
-  for await (const line of frameLines(stderr)) {
-    tail.push(line)
-    if (tail.length > maxLines) {
-      tail.shift()
-    }
-  }
-}
-
-async function* replayBuffer(tail: string[], done: Promise<void>): AsyncGenerator<string> {
-  await done
-  for (const line of tail) {
-    yield line
   }
 }
