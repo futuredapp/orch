@@ -29,7 +29,7 @@ describe('codex() factory', () => {
 
     expect(runner.name).toBe('codex')
     expect(runner.supports.structuredOutput).toBe(true)
-    expect(runner.supports.interactive).toBe(false)
+    expect(runner.supports.interactive).toBe(true)
   })
 
   it('returns a frozen runner object', () => {
@@ -56,6 +56,7 @@ describe('buildCommand', () => {
       '--',
       'hello world',
     ])
+    expect(cmd.env.FORCE_COLOR).toBeUndefined()
   })
 
   it('includes -- separator before prompt', async () => {
@@ -280,5 +281,94 @@ describe('checkCodexVersion (via buildCommand)', () => {
     await runner.buildCommand(ctxFor('second'))
 
     expect(spawnCount).toBe(1)
+  })
+})
+
+describe('buildCommand interactive mode', () => {
+  it('builds the default interactive argv with --full-auto, the -- separator, and the prompt', async () => {
+    const deps = makeDeps()
+    const runner = codex({}, deps)
+    const cmd = await runner.buildCommand(ctxFor('hello world', { mode: 'interactive' }))
+
+    // No `exec`, no `--json`, no `--skip-git-repo-check`, no `--ephemeral` —
+    // those are exec-only and would error against the interactive subcommand.
+    expect(cmd.argv).toEqual(['codex', '--full-auto', '--', 'hello world'])
+  })
+
+  it('replaces --full-auto with --sandbox <mode> when the user picks a non-default sandbox', async () => {
+    const deps = makeDeps()
+    const runner = codex({ sandbox: 'read-only' }, deps)
+    const cmd = await runner.buildCommand(ctxFor('test', { mode: 'interactive' }))
+
+    expect(cmd.argv).not.toContain('--full-auto')
+    expect(cmd.argv).toContain('--sandbox')
+    expect(cmd.argv).toContain('read-only')
+  })
+
+  it('places model, user flags, and extraArgs after the sandbox flag and before the -- separator', async () => {
+    const deps = makeDeps()
+    const runner = codex({ model: 'o4-mini', flags: ['--ask-for-approval', 'on-request'] }, deps)
+    const cmd = await runner.buildCommand(
+      ctxFor('p', { mode: 'interactive', extraArgs: ['--no-alt-screen'] }),
+    )
+
+    expect(cmd.argv).toEqual([
+      'codex',
+      '--full-auto',
+      '-m',
+      'o4-mini',
+      '--ask-for-approval',
+      'on-request',
+      '--no-alt-screen',
+      '--',
+      'p',
+    ])
+  })
+
+  it('throws synchronously when ctx.schema is set and ctx.mode is interactive', async () => {
+    const deps = makeDeps()
+    const runner = codex({}, deps)
+
+    expect(
+      runner.buildCommand(
+        ctxFor('test', {
+          mode: 'interactive',
+          schema: { jsonSchema: '{"type":"object"}' },
+        }),
+      ),
+    ).rejects.toThrow(/--output-schema.*exec-only/)
+  })
+
+  it('applies the same flag denylist in interactive mode as in autonomous mode', async () => {
+    const deps = makeDeps()
+    const runner = codex({ flags: ['--config', 'evil.toml'] }, deps)
+
+    expect(runner.buildCommand(ctxFor('test', { mode: 'interactive' }))).rejects.toThrow(
+      /flag "--config" is on the denylist/,
+    )
+  })
+
+  it('reuses the versionChecked closure flag across modes so the preflight runs once total', async () => {
+    const deps = makeDeps()
+    let spawnCount = 0
+    const origSpawn = deps.ps.spawn.bind(deps.ps)
+    deps.ps.spawn = (opts) => {
+      if (opts.argv[0] === 'codex' && opts.argv[1] === '--version') spawnCount++
+      return origSpawn(opts)
+    }
+
+    const runner = codex({}, deps)
+    await runner.buildCommand(ctxFor('first'))
+    await runner.buildCommand(ctxFor('second', { mode: 'interactive' }))
+
+    expect(spawnCount).toBe(1)
+  })
+
+  it('sets FORCE_COLOR=3 in env for interactive mode', async () => {
+    const deps = makeDeps()
+    const runner = codex({}, deps)
+    const cmd = await runner.buildCommand(ctxFor('test', { mode: 'interactive' }))
+
+    expect(cmd.env.FORCE_COLOR).toBe('3')
   })
 })

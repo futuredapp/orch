@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { codex, isTerminalEvent, runRunner } from '../../../../src/runners/index.ts'
-import type { RunnerContext } from '../../../../src/runners/types.ts'
+import type { RunnerContext, RunnerEvent, TranscriptLine } from '../../../../src/runners/types.ts'
 import { FakeClock } from '../../../../src/services/clock/fake-clock.ts'
 import { FakeFsService } from '../../../../src/services/fs/fake-fs-service.ts'
 import { FakeProcessService } from '../../../../src/services/process/fake-process-service.ts'
@@ -131,5 +131,49 @@ describe('CodexRunner mocked integration', () => {
     const dashIdx = cmd.argv.indexOf('--')
     expect(dashIdx).toBeGreaterThan(-1)
     expect(cmd.argv[dashIdx + 1]).toBe('test prompt')
+  })
+
+  it('formats command_execution and agent_message into the expected transcript lines via runRunner', async () => {
+    const { fs, ps, clock } = makeDeps()
+    const runner = codex({}, { fs, ps })
+    const ctx = ctxFor('list and report')
+
+    const cmd = await runner.buildCommand(ctx)
+    const fixtureLines = loadFixtureLines('full-transcript.jsonl')
+    ps.when(cmd.argv).respondWith({ stdout: fixtureLines, exitCode: 0 })
+
+    const seenLines: TranscriptLine[] = []
+    const onEvent = (evt: RunnerEvent): void => {
+      for (const line of runner.toTranscriptLines(evt)) seenLines.push(line)
+    }
+
+    const resultPromise = runRunner(runner, ctx, { processService: ps, clock, onEvent })
+    clock.advance(750)
+    const result = await resultPromise
+
+    expect(result.finalEvent.type).toBe('turn-complete')
+    expect(result.exitCode).toBe(0)
+
+    // Suppressed events (thread.started, turn.started, item.started) leave no
+    // lines. We expect: thinking, bash success, bash failure, assistant, done.
+    expect(seenLines).toEqual([
+      { kind: 'line', category: 'thinking', label: 'thinking', body: '' },
+      { kind: 'line', category: 'tool-call', label: 'bash', body: '/bin/zsh -lc ls' },
+      {
+        kind: 'line',
+        category: 'tool-error',
+        label: 'bash',
+        body: '/bin/zsh -lc false\n  exit 1',
+      },
+      { kind: 'line', category: 'assistant', label: 'assistant>', body: 'All done.' },
+      {
+        kind: 'block',
+        heading: 'done',
+        rows: [
+          ['tokens', 'in: 250 · out: 42'],
+          ['result', 'All done.'],
+        ],
+      },
+    ])
   })
 })

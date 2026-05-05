@@ -313,31 +313,31 @@ The brainstorm at `docs/brainstorms/2026-05-01-codex-runner-parity-brainstorm.md
 
 **Phase A:**
 
-- [ ] `codex({...}, deps).supports.interactive === true`.
-- [ ] Interactive argv matches the documented shape: `['codex', '--full-auto', '--', '<prompt>']` by default; `--sandbox <mode>` replaces `--full-auto` for non-default sandboxes; `-m`, user `flags`, and `extraArgs` slot in after the sandbox flag and before the `--` separator.
-- [ ] `await runner.buildCommand({ mode: 'interactive', schema: { jsonSchema: '...' } })` throws synchronously with a message naming `--output-schema` and "exec-only".
-- [ ] Interactive `cmd.env.FORCE_COLOR === '3'`; autonomous `cmd.env.FORCE_COLOR` is undefined.
-- [ ] Flag denylist applies in both modes (e.g. `flags: ['--config', 'evil.toml']` rejected with the same error in interactive as in autonomous).
-- [ ] Version preflight runs once across the runner's lifetime regardless of mode (one autonomous + one interactive `buildCommand` call together produce a single `codex --version` spawn).
-- [ ] Autonomous argv is byte-identical to today's output (the existing `'produces correct default argv'` test at `build-command.test.ts:44` passes unchanged).
+- [x] `codex({...}, deps).supports.interactive === true`.
+- [x] Interactive argv matches the documented shape: `['codex', '--full-auto', '--', '<prompt>']` by default; `--sandbox <mode>` replaces `--full-auto` for non-default sandboxes; `-m`, user `flags`, and `extraArgs` slot in after the sandbox flag and before the `--` separator.
+- [x] `await runner.buildCommand({ mode: 'interactive', schema: { jsonSchema: '...' } })` throws synchronously with a message naming `--output-schema` and "exec-only".
+- [x] Interactive `cmd.env.FORCE_COLOR === '3'`; autonomous `cmd.env.FORCE_COLOR` is undefined.
+- [x] Flag denylist applies in both modes (e.g. `flags: ['--config', 'evil.toml']` rejected with the same error in interactive as in autonomous).
+- [x] Version preflight runs once across the runner's lifetime regardless of mode (one autonomous + one interactive `buildCommand` call together produce a single `codex --version` spawn).
+- [x] Autonomous argv is byte-identical to today's output (the existing `'produces correct default argv'` test at `build-command.test.ts:44` passes unchanged).
 
 **Phase B:**
 
-- [ ] `toTranscriptLines(turnCompleteEvent)` returns a `block` line with heading `done` and rows matching the table above (tokens, optionally cache/reasoning/result).
-- [ ] `toTranscriptLines(turnFailedEvent)` returns a `block` line with heading `failed` and one row `('message', <err>)`.
-- [ ] `toTranscriptLines(itemCompletedEvent)` returns the correct `TranscriptLine[]` per the seven `item.type` mappings.
-- [ ] Unknown `item.type` produces a single `system` line `· item.<type>`.
-- [ ] Unknown info `event.type` produces a single `system` line `· <event.type>`.
-- [ ] `item.started`, `turn.started`, `thread.started` produce `[]` (suppressed; `thread.started` revisited in Phase 15).
-- [ ] Truncation limits match Claude's table for each comparable category.
-- [ ] Unknown payload fields fall back gracefully (passthrough reads via typed helpers; missing field → omitted row, not a crash).
+- [x] `toTranscriptLines(turnCompleteEvent)` returns a `block` line with heading `done` and rows matching the table above (tokens, optionally cache/reasoning/result).
+- [x] `toTranscriptLines(turnFailedEvent)` returns a `block` line with heading `failed` and one row `('message', <err>)`.
+- [x] `toTranscriptLines(itemCompletedEvent)` returns the correct `TranscriptLine[]` per the seven `item.type` mappings.
+- [x] Unknown `item.type` produces a single `system` line `· item.<type>`.
+- [x] Unknown info `event.type` produces a single `system` line `· <event.type>`.
+- [x] `item.started`, `turn.started`, `thread.started` produce `[]` (suppressed; `thread.started` revisited in Phase 15).
+- [x] Truncation limits match Claude's table for each comparable category.
+- [x] Unknown payload fields fall back gracefully (passthrough reads via typed helpers; missing field → omitted row, not a crash).
 
 **Phase C:**
 
-- [ ] `examples/codex-riddle-solver/index.ts` step 1 declares `mode: 'interactive'`.
-- [ ] `examples/codex-riddle-solver/README.md` no longer says "Codex declares supports.interactive = false" or that interactive mode "is not supported."
-- [ ] `docs/getting-started.md` line 756/757 corrected.
-- [ ] Running the demo in a real terminal produces a TUI for step 1 and an autonomous transcript for step 2.
+- [x] `examples/codex-riddle-solver/index.ts` step 1 declares `mode: 'interactive'`.
+- [x] `examples/codex-riddle-solver/README.md` no longer says "Codex declares supports.interactive = false" or that interactive mode "is not supported."
+- [x] `docs/getting-started.md` line 756/757 corrected.
+- [ ] Running the demo in a real terminal produces a TUI for step 1 and an autonomous transcript for step 2. *(Manual smoke — pending real-terminal verification.)*
 
 ### Non-functional requirements
 

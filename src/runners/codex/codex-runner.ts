@@ -5,6 +5,7 @@ import type { ProcessService } from '../../services/process/process-service.ts'
 import { path } from '../../services/types.ts'
 import type { RunnerCommand, RunnerContext, RunnerEvent, TerminalEvent } from '../types.ts'
 import { defineRunner } from '../types.ts'
+import { toCodexTranscriptLines } from './format-event.ts'
 
 // Section order: schemas, types, denylist, parser, version preflight, factory.
 
@@ -36,9 +37,11 @@ const CodexTurnFailed = z
 // Exported types
 // ---------------------------------------------------------------------------
 
+type SandboxMode = 'full-auto' | 'read-only' | 'workspace-write' | 'danger-full-access'
+
 export interface CodexOptions {
   readonly model?: string
-  readonly sandbox?: 'full-auto' | 'read-only' | 'workspace-write' | 'danger-full-access'
+  readonly sandbox?: SandboxMode
   readonly flags?: readonly string[]
 }
 
@@ -180,6 +183,58 @@ async function checkCodexVersion(ps: ProcessService): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Argv builders
+// ---------------------------------------------------------------------------
+//
+// Interactive vs autonomous share **nothing** — different subcommand
+// (`codex` vs `codex exec`), different flag matrices (e.g. `--json` is
+// exec-only; `--ask-for-approval` is interactive-only), different output
+// shapes. Each mode gets its own builder; `buildCommand` dispatches.
+
+function buildInteractiveArgv(
+  ctx: RunnerContext,
+  opts: { model?: string; sandbox: SandboxMode; flags?: readonly string[] },
+): readonly string[] {
+  const argv: string[] = ['codex']
+  if (opts.sandbox === 'full-auto') argv.push('--full-auto')
+  else argv.push('--sandbox', opts.sandbox)
+  if (opts.model) argv.push('-m', opts.model)
+  argv.push(...(opts.flags ?? []))
+  argv.push(...ctx.extraArgs)
+  argv.push('--', ctx.prompt)
+  return argv
+}
+
+async function buildAutonomousArgv(
+  ctx: RunnerContext,
+  opts: { model?: string; sandbox: SandboxMode; flags?: readonly string[]; fs: FsService },
+): Promise<readonly string[]> {
+  const argv: string[] = ['codex', 'exec', '--json', '--skip-git-repo-check', '--ephemeral']
+
+  if (opts.sandbox === 'full-auto') {
+    argv.push('--full-auto')
+  } else {
+    argv.push('--sandbox', opts.sandbox)
+  }
+
+  if (opts.model) {
+    argv.push('-m', opts.model)
+  }
+
+  if (ctx.schema) {
+    const dir = await opts.fs.tempDir('codex-schema')
+    const filePath = path(`${dir}/schema.json`)
+    await opts.fs.writeFile(filePath, ctx.schema.jsonSchema)
+    argv.push('--output-schema', filePath)
+  }
+
+  argv.push(...(opts.flags ?? []))
+  argv.push(...ctx.extraArgs)
+  argv.push('--', ctx.prompt)
+  return argv
+}
+
+// ---------------------------------------------------------------------------
 // Factory
 // ---------------------------------------------------------------------------
 
@@ -198,43 +253,40 @@ export function codex(
 
   return defineRunner({
     name: 'codex',
-    supports: { interactive: false, structuredOutput: true },
+    supports: { interactive: true, structuredOutput: true },
     defaultView: { kind: 'transcript', pane: 'right' },
 
     async buildCommand(ctx: RunnerContext): Promise<RunnerCommand> {
-      lastAgentMessage = undefined // Reset per invocation
+      lastAgentMessage = undefined // Reset per invocation, regardless of mode
 
       for (const flag of flags ?? []) assertFlagAllowed(flag)
       for (const flag of ctx.extraArgs) assertFlagAllowed(flag)
+
+      if (ctx.mode === 'interactive' && ctx.schema) {
+        throw new Error(
+          'codex(): schema-typed steps cannot run in interactive mode — ' +
+            '--output-schema is exec-only, and schema-shaped output has no ' +
+            'meaning in the interactive TUI',
+        )
+      }
 
       if (!versionChecked) {
         await checkCodexVersion(deps.ps)
         versionChecked = true
       }
 
-      const argv: string[] = ['codex', 'exec', '--json', '--skip-git-repo-check', '--ephemeral']
-
-      if (sandbox === 'full-auto') {
-        argv.push('--full-auto')
-      } else {
-        argv.push('--sandbox', sandbox)
+      if (ctx.mode === 'interactive') {
+        return {
+          argv: buildInteractiveArgv(ctx, { model, sandbox, flags }),
+          // FORCE_COLOR=3 mirrors Claude's interactive path — harmless for
+          // Ratatui (Codex's TUI does its own TTY/COLORTERM detection) and
+          // useful when the inherited stdio path strips color hints. ctx.env
+          // wins last so workflow authors can disable it.
+          env: mergeEnv(process.env, { FORCE_COLOR: '3' }, ctx.env),
+        }
       }
 
-      if (model) {
-        argv.push('-m', model)
-      }
-
-      if (ctx.schema) {
-        const dir = await deps.fs.tempDir('codex-schema')
-        const filePath = path(`${dir}/schema.json`)
-        await deps.fs.writeFile(filePath, ctx.schema.jsonSchema)
-        argv.push('--output-schema', filePath)
-      }
-
-      argv.push(...(flags ?? []))
-      argv.push(...ctx.extraArgs)
-      argv.push('--', ctx.prompt)
-
+      const argv = await buildAutonomousArgv(ctx, { model, sandbox, flags, fs: deps.fs })
       // Env: passthrough by default (see mergeEnv contract). Codex has no
       // mode-specific extras today, so the middle layer is `{}`. `ctx.env`
       // wins last on conflict — the workflow YAML is the override surface.
@@ -280,9 +332,6 @@ export function codex(
       }
     },
 
-    // Phase A placeholder. Codex's formatter lands in Phase B; until then
-    // every Codex event is suppressed from the readable transcript. The JSON
-    // path and on-disk transcript.ndjson are unaffected.
-    toTranscriptLines: () => [],
+    toTranscriptLines: toCodexTranscriptLines,
   })
 }

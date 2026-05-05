@@ -753,8 +753,8 @@ This is the short list of things that will bite you if you forget them.
 1. **Anything between `run()` calls must be idempotent**, or wrap it in `run.custom(name, fn)`. This is the one non-obvious constraint from the resume model.
 2. **Give repeat `run()` calls a distinct `as:` name.** `run(WORK)` twice without `as:` is an error.
 3. **Don't parallelize work that has ordering constraints.** Use a plain `for` loop. `parallel()` is for genuinely independent work.
-4. **Interactive steps are Claude-only in v1.** Codex doesn't have a programmatic escalation path from its interactive TUI, so Codex steps are headless — either one-shot `codex exec` or orchestrator-mediated chains.
-5. **Structured outputs use `codex exec`, not `codex` or `codex resume`.** This is a Codex CLI limitation, not ours. The orchestrator picks the right invocation automatically; just don't expect `returns:` to work in an interactive Codex step (there are no interactive Codex steps in v1 anyway).
+4. **Both Claude and Codex support interactive steps.** Codex's interactive TUI is Ratatui; Claude's is Ink. The runner picks the right subcommand based on `mode: 'interactive'` (`codex …` vs `codex exec …`).
+5. **Structured outputs use `codex exec`, not `codex` or `codex resume`.** `--output-schema` is exec-only; a `returns:`-typed step in interactive Codex mode throws synchronously at `buildCommand` time.
 6. **If your workflow function grows past ~100 lines, split it.** The DSL is just TypeScript, so you *can* write a 400-line workflow. Don't. Pull steps into `steps.ts`, pull helpers into their own files, or use presets.
 7. **Resume is per-step, not per-line.** A run that crashed mid-step re-runs that step from scratch. Design steps to be re-runnable.
 

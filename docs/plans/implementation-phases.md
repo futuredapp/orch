@@ -411,6 +411,12 @@ Legend: ☐ not started · ◐ in progress · ✓ landed
 
 ---
 
+### Codex runner parity — interactive + transcript rendering ◐
+
+**In progress.** See [`docs/plans/2026-05-01-feat-codex-runner-parity-plan.md`](2026-05-01-feat-codex-runner-parity-plan.md). Phase A (interactive argv), Phase B (transcript formatter), and Phase C (demo + docs sweep) all on this branch.
+
+---
+
 ### Reframe — step-declared views + run modes ◐
 
 **Queued.** See [`docs/plans/2026-04-18-feat-orch-reframe-step-views-run-modes-plan.md`](2026-04-18-feat-orch-reframe-step-views-run-modes-plan.md) for the full plan and the starting-state section (baseline commit range `15f8ef3..1d45c4b`).
