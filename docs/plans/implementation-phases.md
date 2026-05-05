@@ -509,6 +509,32 @@ v1 ships four phases, each a PR-sized chunk:
 
 ---
 
+### Phase 19 — `command()` step primitive ☐
+
+**Goal:** arbitrary shell commands as a first-class workflow step. `command(name, opts)` returns `Step<CommandResult>` that spawns `argv` via `ProcessService.spawn`, streams stdout/stderr live into the active host pane, and returns `{ exitCode, stdout, stderr, durationMs }` for downstream agent steps to consume via `extraContext`.
+
+**Deliverables:**
+- `src/services/process/bun-process-service.ts` — Phase 0 prerequisite: live stderr (drop the 200-line tail buffer; both streams are line-framed and live).
+- `src/core/command.ts` — new file: `command(name, opts)` factory, `tail(text, n)` helper, `CommandStepConfig`, `CommandResult`, `CommandResultSchema` (Zod), `runCommandStep` executor.
+- `src/core/step.ts` — `CommandStepConfig` joins the discriminated `StepConfig` union; `'command:'` joins `RESERVED_PREFIXES`; `onCacheHit` validates the cached `CommandResult`.
+- `src/core/workflow.ts` — `runStepOnce` `case 'command'` with step:start/complete/failed lifecycle plus parallel-branch updates.
+- `src/hosts/host.ts` — `Host` gains `onCommandLine(spec: CommandLine): void`.
+- `src/hosts/plain/plain-host.ts` — implements `onCommandLine` (prefixed text or `ev: 'command-line'` NDJSON).
+- `src/hosts/two-pane/tmux-host.ts` — implements `onCommandLine` (raw byte enqueue on the resolved pane via `PaneQueue`; ANSI preserved).
+- `src/core/index.ts` — public-barrel exports for `command`, `tail`, `CommandResultSchema`, and the `Command*` types.
+
+**Tests:**
+- **Unit** — factory validation, schema, onCacheHit branch, tail helper.
+- **Integration (mocked)** — capture, host streaming, pane routing, silent, env merge, cwd resolution, halt vs continue, lifecycle, persistence + cache, parallel composition, override rejection.
+- **Integration (mocked, host-side)** — plain host text/JSON; tmux host enqueue right/left, ANSI passthrough, post-teardown drop.
+- **Integration (real, auto-skip without `bun`/`sh`)** — `bun --version`, mixed streams, halt/continue exit codes, `tail()` on real output, cwd override.
+
+**Detailed plan:** [`docs/plans/2026-05-05-feat-command-step-plan.md`](2026-05-05-feat-command-step-plan.md)
+
+**Brainstorm:** [`docs/brainstorms/2026-05-05-custom-command-step-brainstorm.md`](../brainstorms/2026-05-05-custom-command-step-brainstorm.md)
+
+---
+
 ### Phase 18 — TUI `ask()` step ◐
 
 **Goal:** `ask({ name, question, fields, buttons, defaultWhenNoninteractive? })` returns `Step<AskResult>` that pauses a workflow and renders a centered prompt. Composes with `run()`, memoization (`as:`), resume, and a new orthogonal `--interactive` / `--noninteractive` axis.
