@@ -1,6 +1,8 @@
 import type { Runner } from '../runners/index.ts'
 import type { Validator } from '../validators/index.ts'
 import type { AskStepConfig } from './ask.ts'
+import type { CommandStepConfig } from './command.ts'
+import { CommandResultSchema } from './command.ts'
 import { setWorkflowCwd } from './execution-context.ts'
 import { SchemaValidationError, type SchemaWrapper } from './schema.ts'
 import type { InteractiveResult, Path, StepMode } from './types.ts'
@@ -106,13 +108,21 @@ export type StepConfig<T = unknown> =
   | CommitStepConfig
   | WorktreeStepConfig
   | AskStepConfig
+  | CommandStepConfig
 
 export interface Step<T = unknown> {
   readonly name: StepName
   readonly config: StepConfig<T>
 }
 
-const RESERVED_PREFIXES: readonly string[] = ['commit:', 'worktree:', 'ask:']
+const RESERVED_PREFIXES: readonly string[] = ['commit:', 'worktree:', 'ask:', 'command:']
+
+const RESERVED_FACTORIES: Readonly<Record<string, string>> = {
+  'commit:': 'commit()',
+  'worktree:': 'createWorktree()',
+  'ask:': 'ask()',
+  'command:': 'command()',
+}
 
 // ---------------------------------------------------------------------------
 // step.define — input types for the two overloads
@@ -148,8 +158,7 @@ function defineStep(
 ): Step {
   for (const prefix of RESERVED_PREFIXES) {
     if (name.startsWith(prefix)) {
-      const factory =
-        prefix === 'commit:' ? 'commit()' : prefix === 'worktree:' ? 'createWorktree()' : 'ask()'
+      const factory = RESERVED_FACTORIES[prefix] ?? 'the matching factory'
       throw new Error(
         `step.define() cannot use reserved prefix "${prefix}" — use the ${factory} factory instead`,
       )
@@ -235,6 +244,17 @@ export function onCacheHit(config: StepConfig, key: StepName, cachedValue: unkno
       // `runStepOnce` reaches the cache-hit branch — mismatch downgrades the
       // hit to a miss without throwing. NO sentinel exception.
       return
+    case 'command': {
+      const parsed = CommandResultSchema.safeParse(cachedValue)
+      if (!parsed.success) {
+        const issues = parsed.error.issues.map((i) => i.message).join(', ')
+        throw new Error(`command cache entry "${key}" is malformed: ${issues}`)
+      }
+      // Side effects already happened on the original run; resume just
+      // returns the cached value. Authors who want a real rerun pass `as:`
+      // with a unique suffix or wipe the state entry.
+      return
+    }
     default: {
       const _exhaustive: never = config
       throw new Error(`Unexpected step kind: ${JSON.stringify(_exhaustive)}`)

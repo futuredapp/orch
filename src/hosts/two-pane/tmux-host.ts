@@ -32,6 +32,7 @@ import type { ProcessService } from '../../services/process/index.ts'
 import type { PaneId, SocketName, TmuxService } from '../../services/tmux/index.ts'
 import { initOrchSession, paneId, RealTmuxService, socketName } from '../../services/tmux/index.ts'
 import type {
+  CommandLine,
   Host,
   InteractiveResult,
   InteractiveSpawn,
@@ -330,17 +331,33 @@ function buildHost(deps: BuildHostDeps): Host {
     deps.stderr.write(`${line}\n`)
   }
 
-  const enqueueRight = (payload: string): void => {
+  const enqueueOnPane = (paneId: PaneId, payload: string): void => {
     if (torndown) return
     void deps.queue
-      .enqueue(deps.rightPaneId, () =>
+      .enqueue(paneId, () =>
         deps.tmux.sendKeys({
           socket: deps.socket,
-          target: deps.rightPaneId,
+          target: paneId,
           keys: [payload],
         }),
       )
       .catch(handleSendError)
+  }
+
+  const enqueueRight = (payload: string): void => {
+    enqueueOnPane(deps.rightPaneId, payload)
+  }
+
+  const onCommandLine = ({ stream, line, step, pane }: CommandLine): void => {
+    if (torndown) return
+    // Bytes go raw (no `[step] ` prefix) so ANSI passthrough stays
+    // byte-for-byte. Per-step formatted_output tee mirrors the bytes for
+    // post-mortem grep — same shape as runner transcripts.
+    const payload = `${line}\r\n`
+    deps.tee.write(step, payload)
+    const target = pane === 'left' ? deps.leftPaneId : deps.rightPaneId
+    enqueueOnPane(target, payload)
+    void stream // both streams stream into the same pane in v1
   }
 
   const onLifecycleEvent = (event: StepLifecycleEvent): void => {
@@ -541,6 +558,7 @@ function buildHost(deps: BuildHostDeps): Host {
     writeBanner,
     onRunnerEvent,
     onLifecycleEvent,
+    onCommandLine,
     attach,
     runInteractive,
     attachForeground,

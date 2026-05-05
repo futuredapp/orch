@@ -7,6 +7,12 @@ export type {
   FieldValues,
 } from './ask.ts'
 export { ask } from './ask.ts'
+export type {
+  CommandOpts,
+  CommandResult,
+  CommandStepConfig,
+} from './command.ts'
+export { CommandResultSchema, command, tail } from './command.ts'
 export type { CommitResult } from './commit.ts'
 export { commit } from './commit.ts'
 export {

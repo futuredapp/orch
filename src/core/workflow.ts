@@ -15,6 +15,7 @@ import {
   type ValidatorServices,
 } from '../validators/index.ts'
 import { isAskCacheValid, runAskStep } from './ask-executor.ts'
+import { runCommandStep } from './command.ts'
 import {
   InteractiveParallelError,
   ResumeError,
@@ -1037,6 +1038,44 @@ async function runStepOnce(
         overrides,
       )
       break
+    case 'command': {
+      const inParallel = currentParallelDepth() > 0
+      const startedAt = deps.clock.now()
+      emitStepLifecycle(deps.host, stepSpan, {
+        type: 'step:start',
+        stepName: key,
+        mode: 'autonomous',
+      })
+      if (inParallel) {
+        emitStepLifecycle(deps.host, stepSpan, {
+          type: 'step:parallel-branch-update',
+          stepName: key,
+          branchStatus: 'running',
+        })
+      }
+      try {
+        result = await runCommandStep(
+          {
+            processService: deps.processService,
+            clock: deps.clock,
+            host: deps.host,
+            ...(deps.logger !== undefined ? { logger: deps.logger } : {}),
+            ...(stepSpan !== undefined ? { stepSpan } : {}),
+          },
+          config,
+          key,
+          currentCwd(deps.cwd),
+          overrides,
+        )
+      } catch (err) {
+        const durationMs = deps.clock.now() - startedAt
+        emitStepFailure(deps.host, stepSpan, key, err, inParallel, durationMs)
+        throw err
+      }
+      const durationMs = deps.clock.now() - startedAt
+      emitStepSuccess(deps.host, stepSpan, key, inParallel, durationMs)
+      break
+    }
     default: {
       const _exhaustive: never = config
       throw new Error(`Unexpected step kind: ${JSON.stringify(_exhaustive)}`)

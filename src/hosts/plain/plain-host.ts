@@ -20,6 +20,7 @@ import type { RunnerEvent, TranscriptLine } from '../../runners/index.ts'
 import type { Clock } from '../../services/clock/index.ts'
 import type { ProcessService } from '../../services/process/index.ts'
 import type {
+  CommandLine,
   Host,
   InteractiveResult,
   InteractiveSpawn,
@@ -102,6 +103,15 @@ export function createPlainHost(opts: PlainHostOptions): Host {
     if (teeBuf.length > 0) tee.write(step, teeBuf)
   }
 
+  const onCommandLine = ({ stream, line, step, pane: _pane }: CommandLine): void => {
+    if (opts.format === 'json') {
+      writeJsonLine({ ev: 'command-line', step, stream, line })
+      return
+    }
+    const sink = stream === 'stderr' ? opts.stderr : opts.stdout
+    sink.write(`[${step}] ${line}\n`)
+  }
+
   const onLifecycleEvent = (event: StepLifecycleEvent): void => {
     // Manage the per-step formatted_output.* sinks alongside any text/json
     // bytes the host emits. The tee opens before the first onRunnerEvent
@@ -177,6 +187,7 @@ export function createPlainHost(opts: PlainHostOptions): Host {
     writeBanner,
     onRunnerEvent,
     onLifecycleEvent,
+    onCommandLine,
     attach,
     runInteractive,
     attachForeground,

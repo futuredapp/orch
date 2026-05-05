@@ -59,6 +59,20 @@ export interface InteractiveResult {
   readonly durationMs: number
 }
 
+/**
+ * One framed line of stdout or stderr from a `command()` step. Hosts deliver
+ * these to the right (or `pane`-overridden) pane; plain host prints prefixed
+ * lines to the matching stdio stream. Distinct from `RunnerEvent` because
+ * commands emit unstructured text — the runtime invariant "every onRunnerEvent
+ * has a real Runner upstream" stays true.
+ */
+export interface CommandLine {
+  readonly stream: 'stdout' | 'stderr'
+  readonly line: string
+  readonly step: StepName
+  readonly pane: PaneRole
+}
+
 export interface Host {
   readonly mode: RunMode
   /** First-run banner; emitted once per invocation by the CLI entry point. */
@@ -73,6 +87,13 @@ export interface Host {
   onRunnerEvent(event: RunnerEvent, step: StepName, lines: readonly TranscriptLine[]): void
   /** Called by the workflow executor for every StepLifecycleEvent. */
   onLifecycleEvent(event: StepLifecycleEvent): void
+  /**
+   * Called by the workflow executor for every line of stdout/stderr produced
+   * by a `command()` step. Plain host prints `[<step>] <line>` to the matching
+   * stdio stream (or NDJSON under `format=json`); two-pane host enqueues the
+   * line on the resolved pane via the per-pane queue, preserving ANSI bytes.
+   */
+  onCommandLine(spec: CommandLine): void
   /**
    * Attach a view on a given pane. Phase A only uses this for interactive
    * steps (to signal the host that a step owns the screen); plain ignores

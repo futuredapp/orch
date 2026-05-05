@@ -37,6 +37,7 @@ function makeHost({ handler, mode = 'two-pane' }: FakeHostOptions): Host {
     writeBanner: () => {},
     onRunnerEvent: () => {},
     onLifecycleEvent: () => {},
+    onCommandLine: () => {},
     attach: async (pane) => ({
       pane,
       async detach() {

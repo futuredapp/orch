@@ -7,6 +7,7 @@
 // goes through this barrel — see CLAUDE.md rule #7.
 
 export type {
+  CommandLine,
   Host,
   InteractiveResult,
   InteractiveSpawn,

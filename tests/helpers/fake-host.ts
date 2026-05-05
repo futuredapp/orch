@@ -15,6 +15,7 @@ import type { RunMode } from '../../src/core/run-mode.ts'
 import type { StepName } from '../../src/core/types.ts'
 import type { StepLifecycleEvent } from '../../src/core/workflow.ts'
 import type {
+  CommandLine,
   Host,
   InteractiveResult,
   InteractiveSpawn,
@@ -35,7 +36,15 @@ export interface RecordedLifecycleEvent {
   readonly event: StepLifecycleEvent
 }
 
-export type RecordedHostEvent = RecordedRunnerEvent | RecordedLifecycleEvent
+export interface RecordedCommandLineEvent {
+  readonly kind: 'command-line'
+  readonly spec: CommandLine
+}
+
+export type RecordedHostEvent =
+  | RecordedRunnerEvent
+  | RecordedLifecycleEvent
+  | RecordedCommandLineEvent
 
 export interface FakeHostOptions {
   readonly mode?: RunMode
@@ -80,6 +89,9 @@ export function createFakeHost(opts: FakeHostOptions = {}): FakeHost {
     },
     onLifecycleEvent(event: StepLifecycleEvent): void {
       recorded.push({ kind: 'lifecycle', event })
+    },
+    onCommandLine(spec: CommandLine): void {
+      recorded.push({ kind: 'command-line', spec })
     },
     async attach(pane: PaneRole): Promise<PaneAttachment> {
       attachments.push(pane)
