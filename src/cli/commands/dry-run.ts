@@ -24,6 +24,9 @@ export async function dryRunCmd(
     noAttach: false,
     debug: false,
     interactivity: 'interactive',
+    latest: false,
+    step: undefined,
+    follow: false,
   },
 ): Promise<number> {
   if (!name) {

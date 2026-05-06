@@ -74,6 +74,24 @@ export interface CliOpts {
    * `ORCH_NONINTERACTIVE=1` env var. NOT persisted to state.
    */
   readonly interactivity: 'interactive' | 'noninteractive'
+  /**
+   * `--latest` — `orch logs` only. Resolve the runId to the most recent run
+   * at command time (snapshot — does not switch if a new run starts during
+   * tail). Mutually exclusive with a positional runId.
+   */
+  readonly latest: boolean
+  /**
+   * `--step <name>` — `orch logs` only. Print only the named step's
+   * transcript. Exact match; no-match exits 2 with the list of valid step
+   * names. Required when `--follow` is set.
+   */
+  readonly step: string | undefined
+  /**
+   * `--follow`, `-f` — `orch logs` only. Tail the named step's transcript
+   * until the run reaches a terminal status (completed, failed, cancelled)
+   * or SIGINT. Requires `--step`.
+   */
+  readonly follow: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -96,6 +114,7 @@ Commands:
   runs                     List recent runs
   status <id>              Show status of a run
   logs <runId>             Stream the per-step transcript for a run
+  logs --latest            Stream the most recent run's transcript
   dry-run <name> [prompt]  Preflight check + first-step peek
 
 Options:
@@ -107,6 +126,11 @@ Options:
   --debug                  turn on heavy session logs (agent stdout/stderr, tmux pipe-pane, subprocess spawns, orch.log)
   --interactive            ask() prompts render normally (default); cancel via Ctrl-C / Ctrl-D
   --noninteractive         ask() resolves declared defaults (CI, scheduled runs); errors if no default
+
+Logs options (orch logs):
+  --latest                 Resolve <runId> to the most recent run (snapshot at command time)
+  --step <name>            Print only the named step's transcript (exact match)
+  -f, --follow             Tail the named step until completed/failed/cancelled or SIGINT (requires --step)
 `
 
 // ---------------------------------------------------------------------------
@@ -123,6 +147,9 @@ export function parseArgv(argv: string[]): {
   noAttach: boolean
   debug: boolean
   interactivity: 'interactive' | 'noninteractive'
+  latest: boolean
+  step: string | undefined
+  follow: boolean
 } {
   const { values, positionals } = parseArgs({
     args: argv,
@@ -137,6 +164,11 @@ export function parseArgv(argv: string[]): {
       noninteractive: { type: 'boolean' },
       tmux: { type: 'boolean' },
       observe: { type: 'boolean' },
+      // `orch logs` flags. Surfaced via parseArgv so `logsCmd` reads them
+      // off `CliOpts` like every other CLI option.
+      latest: { type: 'boolean', default: false },
+      step: { type: 'string' },
+      follow: { type: 'boolean', short: 'f', default: false },
     },
     strict: false,
     allowPositionals: true,
@@ -183,6 +215,9 @@ export function parseArgv(argv: string[]): {
     noAttach,
     debug,
     interactivity,
+    latest: values.latest === true,
+    step: typeof values.step === 'string' ? values.step : undefined,
+    follow: values.follow === true,
   }
 }
 
@@ -259,6 +294,26 @@ async function loadConfigDefaultMode(
 
 export function buildBanner(resolution: RunModeResolution): string {
   return `[orch] mode=${resolution.mode} (${resolution.source}: ${resolution.reason}) · --mode=... to override`
+}
+
+/**
+ * Two-pane non-JSON-only hint pointing at the live-progress command.
+ * Returns `undefined` for any other combination so the caller can
+ * unconditionally `if (hint) write(hint)` without re-checking gates.
+ *
+ * Two-pane appliance mode locks down wheel-scroll and the prefix table
+ * (PR A — strict tmux sandbox), so users who want to step away or watch
+ * progress from a second terminal need this command. Plain mode and JSON
+ * output don't — plain prints the transcript inline; JSON suppresses the
+ * banner entirely.
+ */
+export function buildTwoPaneLogsHint(
+  resolution: RunModeResolution,
+  format: PlainFormat,
+): string | undefined {
+  if (format === 'json') return undefined
+  if (resolution.mode !== 'two-pane') return undefined
+  return '[orch] live progress: orch logs --latest --follow --step <step-name>'
 }
 
 function pickHostFactory(
@@ -362,6 +417,8 @@ async function main(): Promise<never> {
 
   if (parsed.format !== 'json') {
     process.stderr.write(`${buildBanner(resolution)}\n`)
+    const hint = buildTwoPaneLogsHint(resolution, parsed.format)
+    if (hint !== undefined) process.stderr.write(`${hint}\n`)
   }
 
   const opts: CliOpts = {
@@ -370,6 +427,9 @@ async function main(): Promise<never> {
     noAttach: parsed.noAttach,
     debug: parsed.debug,
     interactivity: parsed.interactivity,
+    latest: parsed.latest,
+    step: parsed.step,
+    follow: parsed.follow,
   }
   const hostFactory = pickHostFactory(
     resolution.mode,

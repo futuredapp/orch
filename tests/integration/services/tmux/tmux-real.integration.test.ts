@@ -5,6 +5,7 @@
 import { afterEach, describe, expect, it } from 'bun:test'
 import { realpath } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
+import { BunFsService } from '../../../../src/services/fs/index.ts'
 import { BunProcessService } from '../../../../src/services/process/index.ts'
 import {
   initOrchSession,
@@ -135,7 +136,7 @@ describe.skipIf(!canRun)('RealTmuxService against a real tmux server', () => {
     // `buildPaneDiedCommand(socket)`. We re-derive it here rather than
     // import it so the test stays independent of that helper's surface and
     // would catch a regression even if the helper were refactored.
-    await initOrchSession(tmux, {
+    await initOrchSession(tmux, new BunFsService(), {
       socket,
       session: 'main',
       width: 200,
@@ -175,7 +176,7 @@ describe.skipIf(!canRun)('RealTmuxService against a real tmux server', () => {
     const tmux = new RealTmuxService({ processService: new BunProcessService() })
     const socket = newSocket('panedied-clean')
 
-    await initOrchSession(tmux, {
+    await initOrchSession(tmux, new BunFsService(), {
       socket,
       session: 'main',
       width: 200,
@@ -297,5 +298,161 @@ describe.skipIf(!canRun)('RealTmuxService against a real tmux server', () => {
 
     expect(paneA).toMatch(/^%\d+$/)
     expect(paneB).toMatch(/^%\d+$/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Strict appliance-mode (PR A) — verifies that the lockdown actually takes
+// effect on a real tmux server. These tests prove the *behavior* is in place
+// (history-limit 0, prefix None, only the four allowlist bindings, status-
+// right hint visible, pane-died hook intact), not just that we sent the
+// right argv.
+// ---------------------------------------------------------------------------
+
+const runShell = async (
+  argv: readonly string[],
+): Promise<{ readonly stdout: string; readonly exitCode: number }> => {
+  const proc = Bun.spawn([...argv], { stdout: 'pipe', stderr: 'ignore' })
+  const stdout = await new Response(proc.stdout).text()
+  const exitCode = await proc.exited
+  return { stdout, exitCode }
+}
+
+describe.skipIf(!canRun)('initOrchSession strict-sandbox lockdown on real tmux', () => {
+  const initStrict = async (socket: SocketName) => {
+    const tmux = new RealTmuxService({ processService: new BunProcessService() })
+    await initOrchSession(tmux, new BunFsService(), {
+      socket,
+      session: 'main',
+      width: 200,
+      height: 50,
+      paneDiedCommand: `run-shell "tmux -L ${socket} wait-for -S pane-exit-#{hook_pane}"`,
+    })
+    return tmux
+  }
+
+  it('list-keys -T root contains exactly the four allowlist bindings after init', async () => {
+    const socket = newSocket('strict-root-keys')
+    await initStrict(socket)
+
+    const { stdout, exitCode } = await runShell(['tmux', '-L', socket, 'list-keys', '-T', 'root'])
+    expect(exitCode).toBe(0)
+    const lines = stdout.split('\n').filter((l) => l.trim().length > 0)
+    expect(lines).toHaveLength(4)
+    expect(stdout).toContain('MouseDrag1Border')
+    expect(stdout).toContain('MouseDown1Pane')
+    expect(stdout).toContain('M-Left')
+    expect(stdout).toContain('M-Right')
+  })
+
+  it('list-keys for prefix, copy-mode, and copy-mode-vi tables are all empty after init', async () => {
+    const socket = newSocket('strict-empty-tables')
+    await initStrict(socket)
+
+    // tmux `list-keys -T <table>` returns exit 1 with stderr "table … is
+    // empty" once every binding is wiped — empty stdout regardless of exit
+    // code is the contract that proves the table is gone.
+    for (const table of ['prefix', 'copy-mode', 'copy-mode-vi'] as const) {
+      const { stdout } = await runShell(['tmux', '-L', socket, 'list-keys', '-T', table])
+      expect(stdout.trim()).toBe('')
+    }
+  })
+
+  it('show-options -g prefix returns None after init so C-b is inert', async () => {
+    const socket = newSocket('strict-prefix-none')
+    await initStrict(socket)
+
+    const { stdout, exitCode } = await runShell([
+      'tmux',
+      '-L',
+      socket,
+      'show-options',
+      '-g',
+      'prefix',
+    ])
+    expect(exitCode).toBe(0)
+    expect(stdout).toMatch(/prefix\s+None/)
+  })
+
+  it('display-message #{history_size} returns 0 for the initial pane after init', async () => {
+    // tmux/tmux#4705 — history-limit is captured at pane allocation. The
+    // `-f` config path applied in initOrchSession is the only way to make
+    // the initial pane's grid honor 0.
+    const socket = newSocket('strict-history-initial')
+    const tmux = await initStrict(socket)
+
+    const initial = await tmux.listPanes({ socket, session: 'main', format: '#{pane_id}' })
+    const first = initial[0]
+    if (first === undefined) throw new Error('expected initial pane')
+    const initialPane = paneId(first)
+
+    const size = await tmux.displayMessage({
+      socket,
+      target: initialPane,
+      format: '#{history_size}',
+    })
+    expect(size).toBe('0')
+  })
+
+  it('display-message #{history_size} stays 0 on a freshly split pane after a 200-line stream', async () => {
+    const socket = newSocket('strict-history-stream')
+    const tmux = await initStrict(socket)
+
+    const split = await tmux.splitPane({
+      socket,
+      session: 'main',
+      orientation: 'h',
+      percent: 30,
+      command: 'cat',
+    })
+
+    const lines = Array.from({ length: 200 }, (_, i) => `line ${i}`).join('\n')
+    await tmux.sendKeys({ socket, target: split, keys: [lines], enter: true })
+    // Give cat a moment to render the keystrokes back to the pane.
+    await new Promise((r) => setTimeout(r, 200))
+
+    const size = await tmux.displayMessage({
+      socket,
+      target: split,
+      format: '#{history_size}',
+    })
+    expect(size).toBe('0')
+  })
+
+  it('show-hooks -g pane-died reveals the lifecycle hook still installed after the unbind-key wipe', async () => {
+    // Hooks live in a separate namespace from key tables, so `unbind-key -a`
+    // must not affect them. Querying the specific hook returns its command;
+    // `show-hooks -g` without a name lists every default hook label and is
+    // a poor signal for "this specific hook is set".
+    const socket = newSocket('strict-hooks-survive')
+    await initStrict(socket)
+
+    const { stdout, exitCode } = await runShell([
+      'tmux',
+      '-L',
+      socket,
+      'show-hooks',
+      '-g',
+      'pane-died',
+    ])
+    expect(exitCode).toBe(0)
+    expect(stdout).toContain('pane-died')
+    expect(stdout).toContain('pane-exit-#{hook_pane}')
+  })
+
+  it('show-options -g status-right contains the orch logs hint after init', async () => {
+    const socket = newSocket('strict-status-right')
+    await initStrict(socket)
+
+    const { stdout, exitCode } = await runShell([
+      'tmux',
+      '-L',
+      socket,
+      'show-options',
+      '-g',
+      'status-right',
+    ])
+    expect(exitCode).toBe(0)
+    expect(stdout).toContain('logs --latest --follow')
   })
 })

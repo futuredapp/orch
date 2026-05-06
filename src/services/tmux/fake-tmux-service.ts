@@ -1,5 +1,6 @@
 import type {
   AttachSessionOptions,
+  BindKeyOptions,
   CapturePaneOptions,
   CreateSessionOptions,
   DisplayMessageOptions,
@@ -16,6 +17,7 @@ import type {
   SignalChannelOptions,
   SplitPaneOptions,
   TmuxService,
+  UnbindKeyOptions,
   WaitForOptions,
 } from './tmux-service.ts'
 import { paneId } from './tmux-service.ts'
@@ -53,6 +55,8 @@ export type RecordedCall =
   | { readonly method: 'pipePane'; readonly opts: PipePaneOptions }
   | { readonly method: 'listPanes'; readonly opts: ListPanesOptions }
   | { readonly method: 'respawnPane'; readonly opts: RespawnPaneOptions }
+  | { readonly method: 'unbindKey'; readonly opts: UnbindKeyOptions }
+  | { readonly method: 'bindKey'; readonly opts: BindKeyOptions }
 
 export class FakeTmuxService implements TmuxService {
   readonly #calls: RecordedCall[] = []
@@ -164,5 +168,13 @@ export class FakeTmuxService implements TmuxService {
 
   async respawnPane(opts: RespawnPaneOptions): Promise<void> {
     this.#calls.push({ method: 'respawnPane', opts })
+  }
+
+  async unbindKey(opts: UnbindKeyOptions): Promise<void> {
+    this.#calls.push({ method: 'unbindKey', opts })
+  }
+
+  async bindKey(opts: BindKeyOptions): Promise<void> {
+    this.#calls.push({ method: 'bindKey', opts })
   }
 }

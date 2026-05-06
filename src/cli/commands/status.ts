@@ -17,6 +17,9 @@ export async function statusCmd(
     noAttach: false,
     debug: false,
     interactivity: 'interactive',
+    latest: false,
+    step: undefined,
+    follow: false,
   },
 ): Promise<number> {
   if (!idArg) {

@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 import {
   FakeTmuxService,
-  initOrchSession,
   paneId,
   socketName,
   TmuxCommandError,
@@ -167,91 +166,9 @@ describe('FakeTmuxService.displayMessage', () => {
   })
 })
 
-// ---------------------------------------------------------------------------
-// initOrchSession lifecycle helper
-// ---------------------------------------------------------------------------
-
-describe('initOrchSession', () => {
-  it('creates the session, sets remain-on-exit and mouse, and registers the pane-died hook in order', async () => {
-    const tmux = new FakeTmuxService()
-    const socket = socketName('orch-1')
-
-    await initOrchSession(tmux, {
-      socket,
-      session: 'main',
-      width: 200,
-      height: 50,
-      paneDiedCommand: 'run-shell "tmux wait-for -S done"',
-    })
-
-    const [first, second, third, fourth] = tmux.recordedCalls
-    expect(first?.method).toBe('createSession')
-    expect(second?.method).toBe('setOption')
-    expect(third?.method).toBe('setOption')
-    expect(fourth?.method).toBe('setHook')
-  })
-
-  it('enables mouse mode globally so users can drag pane borders to resize', async () => {
-    const tmux = new FakeTmuxService()
-
-    await initOrchSession(tmux, {
-      socket: socketName('orch-1'),
-      session: 'main',
-      width: 200,
-      height: 50,
-      paneDiedCommand: 'run-shell "true"',
-    })
-
-    const mouseCall = tmux.recordedCalls.find(
-      (c) => c.method === 'setOption' && c.opts.name === 'mouse',
-    )
-    expect(mouseCall?.method).toBe('setOption')
-    if (mouseCall?.method === 'setOption') {
-      expect(mouseCall.opts.value).toBe('on')
-      expect(mouseCall.opts.global).toBe(true)
-    }
-  })
-
-  it('uses remain-on-exit "on" so the pane-died hook fires for every agent exit', async () => {
-    const tmux = new FakeTmuxService()
-
-    await initOrchSession(tmux, {
-      socket: socketName('orch-1'),
-      session: 'main',
-      width: 200,
-      height: 50,
-      paneDiedCommand: 'run-shell "true"',
-    })
-
-    const setOptionCall = tmux.recordedCalls.find((c) => c.method === 'setOption')
-    expect(setOptionCall?.method).toBe('setOption')
-    if (setOptionCall?.method === 'setOption') {
-      expect(setOptionCall.opts.name).toBe('remain-on-exit')
-      expect(setOptionCall.opts.value).toBe('on')
-      expect(setOptionCall.opts.global).toBe(true)
-    }
-  })
-
-  it('registers the pane-died hook globally with the caller-provided command', async () => {
-    const tmux = new FakeTmuxService()
-
-    await initOrchSession(tmux, {
-      socket: socketName('orch-1'),
-      session: 'main',
-      width: 200,
-      height: 50,
-      paneDiedCommand: 'run-shell "tmux -L orch-1 wait-for -S pane-exit-#{hook_pane}"',
-    })
-
-    const hookCall = tmux.recordedCalls.find((c) => c.method === 'setHook')
-    expect(hookCall?.method).toBe('setHook')
-    if (hookCall?.method === 'setHook') {
-      expect(hookCall.opts.hook).toBe('pane-died')
-      expect(hookCall.opts.global).toBe(true)
-      expect(hookCall.opts.command).toContain('pane-exit-#{hook_pane}')
-    }
-  })
-})
+// initOrchSession is covered by tests/unit/services/tmux/session-init.test.ts —
+// the strict-sandbox lockdown rewrote the call sequence, so the focused tests
+// for shape, ordering, and option contents live there.
 
 // ---------------------------------------------------------------------------
 // FakeTmuxService.capturePane / pipePane / listPanes (phase 13c additions)

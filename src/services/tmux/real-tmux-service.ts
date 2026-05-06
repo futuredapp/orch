@@ -6,6 +6,7 @@ import type { ProcessService } from '../process/index.ts'
 import { path } from '../types.ts'
 import type {
   AttachSessionOptions,
+  BindKeyOptions,
   CapturePaneOptions,
   CreateSessionOptions,
   DisplayMessageOptions,
@@ -22,6 +23,7 @@ import type {
   SignalChannelOptions,
   SplitPaneOptions,
   TmuxService,
+  UnbindKeyOptions,
   WaitForOptions,
 } from './tmux-service.ts'
 import { paneId, TmuxCommandError } from './tmux-service.ts'
@@ -73,14 +75,19 @@ export class RealTmuxService implements TmuxService {
   }
 
   async createSession(opts: CreateSessionOptions): Promise<void> {
-    // `-f /dev/null` — ignore user's `.tmux.conf`. Deterministic layout.
+    // `-f <path>` is load-bearing for `history-limit 0` (tmux/tmux#4705 —
+    // captured at pane allocation, so a post-create `set -g` does not shrink
+    // the initial pane). The strict-sandbox path supplies a generated config
+    // file via `opts.configPath`; callers that don't need that pin keep the
+    // historical `/dev/null` to ignore the user's `~/.tmux.conf`.
     // `-d` — detached. Orchestrator attaches later from a different call.
+    const configPath = opts.configPath ?? '/dev/null'
     const argv = [
       'tmux',
       '-L',
       opts.socket,
       '-f',
-      '/dev/null',
+      configPath,
       'new-session',
       '-d',
       '-s',
@@ -313,6 +320,39 @@ export class RealTmuxService implements TmuxService {
 
     const { stderr, exitCode } = await this.#run(argv)
     if (exitCode !== 0) throw fail(exitCode, stderr, 'tmux respawn-pane failed')
+  }
+
+  async unbindKey(opts: UnbindKeyOptions): Promise<void> {
+    const argv = ['tmux', '-L', opts.socket, 'unbind-key', '-a', '-T', opts.table]
+    const { stderr, exitCode } = await this.#run(argv)
+    if (exitCode !== 0) throw fail(exitCode, stderr, 'tmux unbind-key failed')
+  }
+
+  async bindKey(opts: BindKeyOptions): Promise<void> {
+    // tmux's command stream is line-oriented; a NUL or newline in `key`
+    // would corrupt argv. Reject loudly — the single caller passes
+    // hardcoded constants, so this only ever fires on a programming bug.
+    if (opts.key.includes('\n') || opts.key.includes('\0')) {
+      throw new Error(`bindKey: key ${JSON.stringify(opts.key)} contains '\\n' or '\\0'`)
+    }
+
+    // Tmux 3.6a's `bind-key` does NOT accept `--` between the key and the
+    // command argv (verified empirically — `bind-key … -- resize-pane -M`
+    // fails with "unknown command: --"). The grammar is
+    // `bind-key [-nr] [-N note] [-T table] key command [args...]`, where
+    // `command` is one positional token (the tmux command name). We pass
+    // argv directly and rely on the BindKeyOptions contract — hardcoded
+    // constants only — to keep injection out of the picture.
+    const argv = ['tmux', '-L', opts.socket, 'bind-key']
+    if (opts.table === 'root-no-prefix') {
+      argv.push('-n')
+    } else {
+      argv.push('-T', opts.table)
+    }
+    argv.push(opts.key, ...opts.command)
+
+    const { stderr, exitCode } = await this.#run(argv)
+    if (exitCode !== 0) throw fail(exitCode, stderr, 'tmux bind-key failed')
   }
 
   async #run(

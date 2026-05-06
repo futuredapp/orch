@@ -46,6 +46,9 @@ const DEFAULT_OPTS: CliOpts = {
   noAttach: false,
   debug: false,
   interactivity: 'interactive',
+  latest: false,
+  step: undefined,
+  follow: false,
 }
 
 const DEFAULT_HOST_FACTORY: HostFactory = async (args) =>

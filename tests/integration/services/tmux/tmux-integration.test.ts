@@ -41,6 +41,38 @@ describe('RealTmuxService.createSession', () => {
     })
   })
 
+  it('passes configPath as the -f flag when provided', async () => {
+    // The strict-sandbox path supplies a generated config so `history-limit 0`
+    // is captured at pane allocation (tmux/tmux#4705). Without `-f <path>`,
+    // the initial pane keeps its full default scrollback grid.
+    const proc = new FakeProcessService()
+    const expectedArgv = [
+      'tmux',
+      '-L',
+      'orch-1',
+      '-f',
+      '/tmp/orch-init/init.tmux.conf',
+      'new-session',
+      '-d',
+      '-s',
+      'main',
+      '-x',
+      '200',
+      '-y',
+      '50',
+    ]
+    proc.when(expectedArgv).respondWith({ exitCode: 0 })
+    const tmux = new RealTmuxService({ processService: proc })
+
+    await tmux.createSession({
+      socket: socketName('orch-1'),
+      session: 'main',
+      width: 200,
+      height: 50,
+      configPath: path('/tmp/orch-init/init.tmux.conf'),
+    })
+  })
+
   it('throws TmuxCommandError with the captured stderr when new-session fails', async () => {
     const proc = new FakeProcessService()
     proc
@@ -593,5 +625,146 @@ describe('RealTmuxService.respawnPane', () => {
       argv: ['cat'],
       killRunning: true,
     })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// unbindKey / bindKey (PR A — strict tmux sandbox)
+// ---------------------------------------------------------------------------
+
+describe('RealTmuxService.unbindKey', () => {
+  it('emits unbind-key -a -T <table> for the requested table', async () => {
+    const proc = new FakeProcessService()
+    proc
+      .when(['tmux', '-L', 'orch-1', 'unbind-key', '-a', '-T', 'root'])
+      .respondWith({ exitCode: 0 })
+    const tmux = new RealTmuxService({ processService: proc })
+
+    await tmux.unbindKey({ socket: socketName('orch-1'), table: 'root' })
+  })
+
+  it('emits unbind-key for the copy-mode-vi table verbatim', async () => {
+    // The four wiped tables are all named keys in the appliance allowlist;
+    // copy-mode-vi catches the failure mode where the table name is hard-
+    // coded somewhere in the adapter.
+    const proc = new FakeProcessService()
+    proc
+      .when(['tmux', '-L', 'orch-1', 'unbind-key', '-a', '-T', 'copy-mode-vi'])
+      .respondWith({ exitCode: 0 })
+    const tmux = new RealTmuxService({ processService: proc })
+
+    await tmux.unbindKey({ socket: socketName('orch-1'), table: 'copy-mode-vi' })
+  })
+
+  it('throws TmuxCommandError when unbind-key exits non-zero', async () => {
+    const proc = new FakeProcessService()
+    proc
+      .when(['tmux', '-L', 'orch-1', 'unbind-key', '-a', '-T', 'root'])
+      .respondWith({ exitCode: 1, stderr: ['no server running'] })
+    const tmux = new RealTmuxService({ processService: proc })
+
+    await expect(
+      tmux.unbindKey({ socket: socketName('orch-1'), table: 'root' }),
+    ).rejects.toBeInstanceOf(TmuxCommandError)
+  })
+})
+
+describe('RealTmuxService.bindKey', () => {
+  it("emits bind-key -n <key> <command...> when table is 'root-no-prefix'", async () => {
+    // `-n` is tmux shorthand for "root with no prefix". Tmux 3.6a's
+    // `bind-key` grammar is `<key> <command-name> [args...]` — there is no
+    // `--` separator (it errors with "unknown command: --").
+    const proc = new FakeProcessService()
+    proc
+      .when(['tmux', '-L', 'orch-1', 'bind-key', '-n', 'M-Left', 'select-pane', '-L'])
+      .respondWith({ exitCode: 0 })
+    const tmux = new RealTmuxService({ processService: proc })
+
+    await tmux.bindKey({
+      socket: socketName('orch-1'),
+      table: 'root-no-prefix',
+      key: 'M-Left',
+      command: ['select-pane', '-L'],
+    })
+  })
+
+  it('emits bind-key -T <table> <key> <command...> for non-root-no-prefix tables', async () => {
+    const proc = new FakeProcessService()
+    proc
+      .when([
+        'tmux',
+        '-L',
+        'orch-1',
+        'bind-key',
+        '-T',
+        'root',
+        'MouseDrag1Border',
+        'resize-pane',
+        '-M',
+      ])
+      .respondWith({ exitCode: 0 })
+    const tmux = new RealTmuxService({ processService: proc })
+
+    await tmux.bindKey({
+      socket: socketName('orch-1'),
+      table: 'root',
+      key: 'MouseDrag1Border',
+      command: ['resize-pane', '-M'],
+    })
+  })
+
+  it('rejects a key containing a newline before any subprocess is spawned', async () => {
+    const proc = new FakeProcessService()
+    const tmux = new RealTmuxService({ processService: proc })
+
+    await expect(
+      tmux.bindKey({
+        socket: socketName('orch-1'),
+        table: 'root',
+        key: 'M-Left\nbad',
+        command: ['select-pane', '-L'],
+      }),
+    ).rejects.toThrow(/contains '\\n' or '\\0'/)
+  })
+
+  it('rejects a key containing a NUL byte before any subprocess is spawned', async () => {
+    const proc = new FakeProcessService()
+    const tmux = new RealTmuxService({ processService: proc })
+
+    await expect(
+      tmux.bindKey({
+        socket: socketName('orch-1'),
+        table: 'root',
+        key: 'M-Left bad',
+        command: ['select-pane', '-L'],
+      }),
+    ).rejects.toThrow(/contains '\\n' or '\\0'/)
+  })
+
+  it('throws TmuxCommandError when bind-key exits non-zero', async () => {
+    const proc = new FakeProcessService()
+    proc
+      .when([
+        'tmux',
+        '-L',
+        'orch-1',
+        'bind-key',
+        '-T',
+        'root',
+        'MouseDrag1Border',
+        'resize-pane',
+        '-M',
+      ])
+      .respondWith({ exitCode: 1, stderr: ['unknown key'] })
+    const tmux = new RealTmuxService({ processService: proc })
+
+    await expect(
+      tmux.bindKey({
+        socket: socketName('orch-1'),
+        table: 'root',
+        key: 'MouseDrag1Border',
+        command: ['resize-pane', '-M'],
+      }),
+    ).rejects.toBeInstanceOf(TmuxCommandError)
   })
 })

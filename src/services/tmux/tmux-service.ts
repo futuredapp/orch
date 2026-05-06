@@ -73,6 +73,16 @@ export interface CreateSessionOptions {
   readonly width: number
   /** Terminal height in rows (forwarded to `-y`). */
   readonly height: number
+  /**
+   * Path to a tmux config file passed as `-f <path>`. Load-bearing for
+   * `history-limit 0`: tmux captures `history-limit` at pane allocation
+   * (tmux/tmux#4705), so a `set -g history-limit 0` issued *after*
+   * `new-session` does NOT shrink the initial pane's already-allocated
+   * grid. The `-f` path is read before any pane exists. When omitted, the
+   * adapter passes `-f /dev/null` (the appliance default that ignores the
+   * user's `~/.tmux.conf`).
+   */
+  readonly configPath?: Path
 }
 
 export interface SplitPaneOptions {
@@ -221,6 +231,51 @@ export interface RespawnPaneOptions {
 }
 
 // ---------------------------------------------------------------------------
+// Key-binding tables (PR A — strict tmux sandbox)
+// ---------------------------------------------------------------------------
+//
+// Tmux groups bindings into "key tables". `root` (mouse + key events without a
+// prefix), `prefix` (events after the prefix key), `copy-mode`, and
+// `copy-mode-vi` are the four namespaces that can fire `send-keys -X` against
+// the running pane — the source of every "not in a mode" leak the appliance
+// fix wipes out. `bind-key -n <key>` is shorthand for "bind in `root` without
+// the prefix"; we expose it as a virtual `'root-no-prefix'` table so callers
+// don't have to thread `-n` through a separate flag.
+
+/** A tmux key-table name accepted by `unbind-key`. */
+export type KeyTable = 'root' | 'prefix' | 'copy-mode' | 'copy-mode-vi'
+
+/**
+ * A tmux key-table accepted by `bind-key`. `'root-no-prefix'` emits
+ * `bind-key -n` (root with no prefix); all other values emit
+ * `bind-key -T <table>`.
+ */
+export type BindTable = KeyTable | 'root-no-prefix'
+
+export interface UnbindKeyOptions {
+  readonly socket: SocketName
+  readonly table: KeyTable
+}
+
+export interface BindKeyOptions {
+  readonly socket: SocketName
+  readonly table: BindTable
+  /**
+   * Tmux key sequence (e.g. `MouseDrag1Border`, `M-Left`). Adapter rejects
+   * `\n` / `\0`.
+   */
+  readonly key: string
+  /**
+   * Raw argv passed verbatim to tmux. Hardcoded constants only — no user
+   * input ever reaches this seam (the single caller, `initOrchSession`,
+   * iterates over a frozen `ALLOWLIST`). Tmux does not re-parse argv; it
+   * interprets command-language metacharacters (`;`, `${}`, `#{}`, quotes,
+   * backslash) only inside *strings*, which never reach this path.
+   */
+  readonly command: readonly string[]
+}
+
+// ---------------------------------------------------------------------------
 // TmuxService
 // ---------------------------------------------------------------------------
 
@@ -312,4 +367,23 @@ export interface TmuxService {
    * metacharacters are safe.
    */
   respawnPane(opts: RespawnPaneOptions): Promise<void>
+
+  /**
+   * `tmux -L <socket> unbind-key -a -T <table>` — wipe every binding in the
+   * named key table. The strict-sandbox lockdown wipes `root`, `prefix`,
+   * `copy-mode`, and `copy-mode-vi` so no default binding can fire
+   * `send-keys -X` against a pane outside copy-mode (the source of the
+   * "not in a mode" leak — tmux/tmux#638, tmux/tmux#3705).
+   */
+  unbindKey(opts: UnbindKeyOptions): Promise<void>
+
+  /**
+   * `tmux -L <socket> bind-key {-T <table> | -n} <key> <command> [args...]`
+   * — install a single binding. Tmux's bind-key grammar takes the command
+   * name as a single positional token (no `--` separator — tmux 3.6a errors
+   * with "unknown command: --"). Adapters MUST reject `key` strings
+   * containing `\n` or `\0` (which corrupt tmux's command stream).
+   * Hardcoded callers only — see `BindKeyOptions.command`.
+   */
+  bindKey(opts: BindKeyOptions): Promise<void>
 }

@@ -28,6 +28,7 @@ import {
 import type { RunnerEvent, TranscriptLine } from '../../runners/index.ts'
 import type { Clock } from '../../services/clock/index.ts'
 import type { FsService } from '../../services/fs/index.ts'
+import { BunFsService } from '../../services/fs/index.ts'
 import type { ProcessService } from '../../services/process/index.ts'
 import type { PaneId, SocketName, TmuxService } from '../../services/tmux/index.ts'
 import { initOrchSession, paneId, RealTmuxService, socketName } from '../../services/tmux/index.ts'
@@ -143,10 +144,17 @@ export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
 
   const tmux: TmuxService =
     opts.tmux ?? new RealTmuxService({ processService: opts.processService })
+  // `initOrchSession` writes the strict-sandbox tmux config via FsService
+  // (see plan AD-3 — `history-limit 0` must be set BEFORE `new-session`).
+  // CLI runs always supply `opts.fs` (`createDeps().fsService`); tests using
+  // FakeTmuxService that omit it fall back to a real BunFsService that writes
+  // a tiny temp file — harmless because the recorded createSession call is
+  // fake-side and never actually reads the path.
+  const fs: FsService = opts.fs ?? new BunFsService()
   const socket = socketName(`orch-${opts.runId}`)
   const queue = createPaneQueue()
 
-  await initOrchSession(tmux, {
+  await initOrchSession(tmux, fs, {
     socket,
     session: SESSION,
     width: WIDTH,

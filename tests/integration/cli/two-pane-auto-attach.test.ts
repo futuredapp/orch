@@ -94,6 +94,9 @@ const DEFAULT_OPTS: CliOpts = {
   noAttach: false,
   debug: false,
   interactivity: 'interactive',
+  latest: false,
+  step: undefined,
+  follow: false,
 }
 const NO_ATTACH_OPTS: CliOpts = {
   mode: 'two-pane',
@@ -101,6 +104,9 @@ const NO_ATTACH_OPTS: CliOpts = {
   noAttach: true,
   debug: false,
   interactivity: 'interactive',
+  latest: false,
+  step: undefined,
+  follow: false,
 }
 
 describe('runCmd auto-attach — argv shape', () => {

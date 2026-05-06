@@ -539,9 +539,30 @@ Lossy on branches — a stub replay only goes down one side of an `if`. It's a "
 
 Resolution precedence: `--mode=<x>` > `orch.config.ts` `defaultMode` > `CI=true → plain` > TTY + tmux ≥ 3.2 → `two-pane` > fallback `plain`. The first-run banner prints on stderr with the chosen mode + why, unless `--format=json` suppresses stdout-noise for log consumers.
 
-#### Detach, `--no-attach`, and nested tmux
+#### Appliance mode (two-pane only)
 
-- **Detach.** Press `Ctrl-b d` inside the tmux UI. orch prints `[orch] detached. run continues in background.` with `tmux … attach` and `orch logs <runId>` hints. The workflow keeps running in the same orch process until it completes.
+When you run `orch run <workflow> --mode=two-pane`, orch owns the terminal until the
+run completes. The session is locked down to four interactions:
+
+| Action              | How                                          |
+|---------------------|----------------------------------------------|
+| Resize the divider  | Drag the pane border with the mouse          |
+| Switch focus        | Click a pane, or press `M-Left` / `M-Right`  |
+| Select text         | Hold your terminal's modifier-drag (often Shift; Option on macOS Terminal) |
+| Watch live progress | `orch logs --latest --follow --step <name>` in another tab |
+
+Mouse-wheel scrolling is disabled — real history lives in `.orch/state/<runId>/logs/`
+(see [logging.md](logging.md)). The tmux status bar shows the live-progress hint at
+all times.
+
+The run ends in one of three ways: clean completion, step failure, or `Ctrl-C` to
+orch (SIGINT cancels). There is no mid-run detach in v1.
+
+> `M-Left` / `M-Right` may be intercepted by SSH/mosh, Windows Terminal, or an outer
+> multiplexer; click-to-focus and drag-to-resize always work.
+
+#### `--no-attach` and nested tmux
+
 - **`--no-attach`.** Skip auto-attach entirely — orch creates the session, prints the "attach with …" hint, and runs to completion without taking the TTY. Use for CI, screenshot scripts, and any case where you want to attach manually from a second terminal. Pairing `--mode=two-pane --no-attach` is the supported way to run two-pane on a headless box (no TTY required).
 - **Nested tmux.** Running orch from inside a tmux session fails fast (`$TMUX` detected) — auto-attach inside nested tmux routes the client to the outer server and produces a confusing cascade. Escape options in the error message: attach from a pane, run orch outside tmux, or `--mode=plain`.
 

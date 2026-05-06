@@ -17,6 +17,9 @@ export async function runsCmd(
     noAttach: false,
     debug: false,
     interactivity: 'interactive',
+    latest: false,
+    step: undefined,
+    follow: false,
   },
 ): Promise<number> {
   const allRuns = await deps.registry.listRuns()
