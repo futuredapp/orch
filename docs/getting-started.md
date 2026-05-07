@@ -566,6 +566,12 @@ orch (SIGINT cancels). There is no mid-run detach in v1.
 - **`--no-attach`.** Skip auto-attach entirely — orch creates the session, prints the "attach with …" hint, and runs to completion without taking the TTY. Use for CI, screenshot scripts, and any case where you want to attach manually from a second terminal. Pairing `--mode=two-pane --no-attach` is the supported way to run two-pane on a headless box (no TTY required).
 - **Nested tmux.** Running orch from inside a tmux session fails fast (`$TMUX` detected) — auto-attach inside nested tmux routes the client to the outer server and produces a confusing cascade. Escape options in the error message: attach from a pane, run orch outside tmux, or `--mode=plain`.
 
+#### The Steps TUI (two-pane left pane)
+
+Under `--mode=two-pane`, the left pane is a navigable Ink TUI: live driver's seat (current step, elapsed, totals), history browser (`↑/↓` to scroll past steps, `⏎` to inspect — replays autonomous transcripts, opens a details panel for `commit:` / `worktree:` / `ask:`, replays the captured pane log for `command:` steps, and resumes interactive Claude/Codex sessions in a second tmux window). `f` snaps back to the live step; `q` quits the TUI; the run continues silently. After the workflow finishes the TUI stays mounted with an end-of-run summary so you can review past steps before pressing `q`.
+
+The canonical walkthrough lives at [`examples/steps-tui-demo/`](../examples/steps-tui-demo/) — a five-step workflow that exercises every per-kind Enter behavior in under two minutes.
+
 ### `two-pane` — the tmux layout
 
 `--mode=two-pane` uses tmux on a dedicated socket (`tmux -L orchestrator`) so it doesn't clobber your own tmux sessions. Two panes:
