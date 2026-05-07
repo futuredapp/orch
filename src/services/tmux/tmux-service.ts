@@ -16,6 +16,9 @@ import type { Path } from '../types.ts'
 /** A tmux pane id produced by `split-window -P -F '#{pane_id}'` (e.g. `%42`). */
 export type PaneId = string & { readonly __brand: 'PaneId' }
 
+/** A tmux window id produced by `new-window -P -F '#{window_id}'` (e.g. `@7`). */
+export type WindowId = string & { readonly __brand: 'WindowId' }
+
 /**
  * A tmux server socket name (tmux `-L`). Restricted to `[a-z0-9-]+` so that
  * interpolation into `run-shell` templates cannot inject metacharacters.
@@ -23,6 +26,7 @@ export type PaneId = string & { readonly __brand: 'PaneId' }
 export type SocketName = string & { readonly __brand: 'SocketName' }
 
 const PANE_ID_PATTERN = /^%\d+$/
+const WINDOW_ID_PATTERN = /^@\d+$/
 const SOCKET_NAME_PATTERN = /^[a-z0-9-]+$/
 
 /** Smart constructor for `PaneId`. Accepts only `%\d+`. */
@@ -31,6 +35,14 @@ export const paneId = (s: string): PaneId => {
     throw new Error(`paneId(): invalid pane id ${JSON.stringify(s)} (expected /^%\\d+$/)`)
   }
   return s as PaneId
+}
+
+/** Smart constructor for `WindowId`. Accepts only `@\d+`. */
+export const windowId = (s: string): WindowId => {
+  if (!WINDOW_ID_PATTERN.test(s)) {
+    throw new Error(`windowId(): invalid window id ${JSON.stringify(s)} (expected /^@\\d+$/)`)
+  }
+  return s as WindowId
 }
 
 /** Smart constructor for `SocketName`. Accepts only `[a-z0-9-]+`. */
@@ -257,6 +269,42 @@ export interface UnbindKeyOptions {
   readonly table: KeyTable
 }
 
+export interface NewWindowOptions {
+  readonly socket: SocketName
+  readonly session: string
+  /** Display name for the new window — surfaced in `status-left`. */
+  readonly name: string
+  /** Initial cwd for the placeholder process. */
+  readonly cwd: Path
+  /**
+   * Optional argv for the placeholder process. Defaults to `['cat']` so the
+   * window stays alive (so `respawn-pane` can attach the replay process)
+   * but does not interpret bytes sent to it.
+   */
+  readonly argv?: readonly string[]
+  /**
+   * Optional per-window environment overrides. Each entry becomes a
+   * `-e KEY=VAL` flag on the new-window argv. Adapters MUST reject keys
+   * containing `=` or newline (corrupts argv shape).
+   */
+  readonly env?: Readonly<Record<string, string>>
+}
+
+export interface NewWindowResult {
+  readonly windowId: WindowId
+  readonly paneId: PaneId
+}
+
+export interface SelectWindowOptions {
+  readonly socket: SocketName
+  readonly target: WindowId
+}
+
+export interface KillWindowOptions {
+  readonly socket: SocketName
+  readonly target: WindowId
+}
+
 export interface BindKeyOptions {
   readonly socket: SocketName
   readonly table: BindTable
@@ -386,4 +434,24 @@ export interface TmuxService {
    * Hardcoded callers only — see `BindKeyOptions.command`.
    */
   bindKey(opts: BindKeyOptions): Promise<void>
+
+  /**
+   * `tmux -L <socket> new-window -d -a -P -F '#{window_id}\t#{pane_id}' …`.
+   * Creates a new window in the given session, returning the new window id +
+   * its initial pane id parsed from stdout. Used by Phase 2's per-kind Enter
+   * dispatch to render the selected step's view in window 1 without touching
+   * window 0's live agent. After creation, adapters pin
+   * `automatic-rename off` so OSC sequences in the replayed bytes can't
+   * mutate the window title.
+   */
+  newWindow(opts: NewWindowOptions): Promise<NewWindowResult>
+
+  /** `tmux -L <socket> select-window -t <window-id>` — switch the active
+   *  window for every attached client. */
+  selectWindow(opts: SelectWindowOptions): Promise<void>
+
+  /** `tmux -L <socket> kill-window -t <window-id>` — destroy the window and
+   *  every pane in it. Adapters MUST tolerate "window not found" as a no-op
+   *  (idempotent teardown). */
+  killWindow(opts: KillWindowOptions): Promise<void>
 }

@@ -103,7 +103,7 @@ describe('two-pane mocked workflow', () => {
     expect(anyPayload).toContain('[work] assistant> work thinking')
   })
 
-  it('left pane receives the status-view rollup (not transcript lines)', async () => {
+  it('left pane is no longer painted by startStatusLoop (steps-view daemon owns it)', async () => {
     const fs = new FakeFsService()
     const processService = new FakeProcessService()
     const clock = new FakeClock(1_700_000_000_000)
@@ -121,6 +121,9 @@ describe('two-pane mocked workflow', () => {
       workflowName: 'demo',
       stderr: stderr.stream,
       skipVersionCheck: true,
+      // Steps-view daemon disabled — `basePath` is unset and the spawn would
+      // need a real bun child anyway. The deletion-verification assertion
+      // below proves no `startStatusLoop` writes reach the left pane.
     })
 
     const agent = new FakeRunner(processService)
@@ -147,17 +150,11 @@ describe('two-pane mocked workflow', () => {
     const leftWrites = tmux.recordedCalls.filter(
       (c) => c.method === 'sendKeys' && c.opts.target === paneId('%0'),
     )
-    // First write is `clear && exec cat`; subsequent writes are the status
-    // rollup. Every rollup write must contain the workflow title and the
-    // step name — never a runner-event line.
-    const rollupWrites = leftWrites
-      .slice(1)
-      .map((c) => (c.method === 'sendKeys' ? c.opts.keys.join('') : ''))
-    expect(rollupWrites.length).toBeGreaterThan(0)
-    const combined = rollupWrites.join('\n')
-    expect(combined).toContain('demo')
-    expect(combined).toContain('plan')
-    expect(combined).not.toMatch(/assistant>/)
+    // The only sendKeys to %0 is the initial `clear && exec cat` setup. With
+    // startStatusLoop removed, no rollup frames land on the left pane.
+    expect(leftWrites.length).toBe(1)
+    const onlyWrite = leftWrites[0]?.method === 'sendKeys' ? leftWrites[0].opts.keys.join('') : ''
+    expect(onlyWrite).toContain('clear && exec cat')
   })
 
   it('persists rendered transcript bytes to agents/<step>/formatted_output.{ansi,txt}', async () => {

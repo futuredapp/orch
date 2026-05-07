@@ -38,10 +38,13 @@ function formatInfo(event: InfoEvent): readonly TranscriptLine[] {
       return formatItemCompleted(event)
     // Suppressed: `item.started` is duplicated by the matching `item.completed`
     // (which carries results); `turn.started` has no useful payload;
-    // `thread.started` becomes meaningful only when Phase 15 (resume) lands.
+    // `thread.started` / `session-started` are runner-internal — the
+    // synthesized `session-started` type is consumed by the workflow executor
+    // for sessionId capture, not the transcript renderer.
     case 'item.started':
     case 'turn.started':
     case 'thread.started':
+    case 'session-started':
       return []
     default:
       return [{ kind: 'line', category: 'system', body: `· ${event.type}` }]

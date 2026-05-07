@@ -37,6 +37,15 @@ export interface StepEntry {
    * bounded-buffer mode.
    */
   readonly transcriptTruncated: boolean
+  /**
+   * Resume primitive for interactive agent steps — the upstream session /
+   * thread identifier the runner consumed (Claude `--session-id`, Codex
+   * `thread.started.thread_id`). Captured by the workflow executor only for
+   * steps that emit it; absent on autonomous steps and on runners that lack
+   * a resume primitive. Old state files (pre-Phase 3) load with this field
+   * undefined and round-trip without injecting a `null` key.
+   */
+  readonly sessionId?: string
 }
 
 /** Mirrors `WorkflowArgs` from `src/core/workflow.ts`. Kept structural here
@@ -121,6 +130,10 @@ export const StepEntrySchema = z.object({
   transcriptPath: z.string().optional(),
   transcriptEventCount: z.number().int().nonnegative().default(0),
   transcriptTruncated: z.boolean().default(false),
+  // Phase 3 — additive, no schemaVersion bump. Old state files (no field)
+  // load with sessionId === undefined; new state writes the key only when
+  // captured (spread-when-defined in rebuildSteps).
+  sessionId: z.string().min(1).optional(),
 })
 
 const PersistedWorkflowArgsSchema = z.object({
@@ -163,6 +176,7 @@ function rebuildSteps(
       ...(s.transcriptPath !== undefined ? { transcriptPath: s.transcriptPath } : {}),
       transcriptEventCount: s.transcriptEventCount,
       transcriptTruncated: s.transcriptTruncated,
+      ...(s.sessionId !== undefined ? { sessionId: s.sessionId } : {}),
     }
   }
   return steps

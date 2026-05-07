@@ -19,12 +19,7 @@ import { summarizeFailure } from '../../core/failure-summary.ts'
 import type { RunMode } from '../../core/run-mode.ts'
 import type { RunId, StepName } from '../../core/types.ts'
 import type { StepLifecycleEvent } from '../../core/workflow.ts'
-import {
-  orchLog,
-  type SessionLogger,
-  type StatusLoop,
-  startStatusLoop,
-} from '../../observability/index.ts'
+import { orchLog, type SessionLogger } from '../../observability/index.ts'
 import type { RunnerEvent, TranscriptLine } from '../../runners/index.ts'
 import type { Clock } from '../../services/clock/index.ts'
 import type { FsService } from '../../services/fs/index.ts'
@@ -32,6 +27,9 @@ import { BunFsService } from '../../services/fs/index.ts'
 import type { ProcessService } from '../../services/process/index.ts'
 import type { PaneId, SocketName, TmuxService } from '../../services/tmux/index.ts'
 import { initOrchSession, paneId, RealTmuxService, socketName } from '../../services/tmux/index.ts'
+import type { Path } from '../../services/types.ts'
+import { path as toPath } from '../../services/types.ts'
+import type { StateStore } from '../../state/index.ts'
 import type {
   CommandLine,
   Host,
@@ -51,7 +49,9 @@ import {
   renderRollupPayload,
 } from './parallel-rollup.ts'
 import { startPipePaneCapture } from './pipe-pane-capture.ts'
+import { createRightPaneController, type RightPaneController } from './right-pane-controller.ts'
 import { installStdioCapture, type StdioCapture } from './stdio-capture.ts'
+import { type StartStepsViewHandle, type StepsIntent, startStepsView } from './steps-view/index.ts'
 import { restoreTerminalModes } from './terminal-reset.ts'
 
 // Defaults mirror the old `src/cli/tmux-wiring.ts`. Kept in-file because they
@@ -131,6 +131,50 @@ export interface TmuxHostOptions {
    * terminal when the alt-screen was never entered.
    */
   readonly installExitHandler?: (handler: () => void) => void
+  /**
+   * `<cwd>/.orch/state` — the run-state base directory. The steps-view daemon
+   * uses this to compute `<basePath>/<runId>/` for tailing `state.json` and
+   * `tui-intents.ndjson`. Required when the steps view is enabled; ignored
+   * otherwise.
+   */
+  readonly basePath?: Path
+  /**
+   * Skip starting the steps-view daemon. Tests using `FakeTmuxService` set
+   * this `true` because `runInteractive({ pane: 'left' })` would dispatch
+   * recorded calls that the existing harness does not expect. Default
+   * `false` — production runs always start the steps view.
+   */
+  readonly disableStepsView?: boolean
+  /**
+   * Optional handler for the steps-view's parsed user intents (Enter on a
+   * step, follow-live, quit). When unset and a `stateStore` is supplied,
+   * tmux-host wires the built-in `right-pane-controller` here. Setting this
+   * explicitly bypasses the controller — useful for tests that want to
+   * record intents directly.
+   */
+  readonly onStepsIntent?: (intent: StepsIntent) => void
+  /**
+   * State store for the right-pane-controller's per-kind dispatch (Phase 2
+   * Enter behavior). When unset, the steps view still renders but Enter is a
+   * no-op. The CLI always sets this; tests can omit to disable replay.
+   */
+  readonly stateStore?: StateStore
+  /**
+   * Phase 3 resume launcher. When provided, agent-interactive Enter calls
+   * `resumeRunner.resumeCommand(...)` and spawns the resume CLI in window 1.
+   * The CLI usually forwards the workflow's primary runner; tests omit to
+   * exercise the refusal path.
+   */
+  readonly resumeRunner?: import('../../runners/types.ts').Runner
+  /**
+   * Renderer used by the right-pane-controller to format autonomous-agent
+   * transcripts on Enter-to-inspect. The CLI defaults this to Claude's
+   * `toClaudeTranscriptLines` (Phase A pragma — same posture as
+   * `cli/commands/logs.ts`). Without it, replay falls back to a JSON
+   * stringify which is unreadable. Phase E will swap the default for a
+   * runner-registry dispatch keyed off `state.json`.
+   */
+  readonly transcriptRenderer?: import('../../runners/types.ts').Runner['toTranscriptLines']
 }
 
 export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
@@ -209,15 +253,6 @@ export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
     ?.append('lifecycle', { type: 'pane-created', pane: 'R', paneId: rightPaneId })
     .catch(() => {})
 
-  const statusLoop: StatusLoop = startStatusLoop({
-    tmux,
-    socket,
-    target: leftPaneId,
-    clock: opts.clock,
-    runTitle: opts.workflowName,
-    onError: (err) => opts.stderr.write(`[orch tmux] ${String(err)}\n`),
-  })
-
   // Under `--no-attach`, the CLI keeps the old hint-only behavior. Under
   // auto-attach (the default), the hint is moot — the attach client takes
   // over the TTY immediately — and would scroll above the two panes.
@@ -259,13 +294,21 @@ export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
     restoreTerminalModes(stdoutForReset)
   })
 
-  return buildHost({
+  // Track which steps are currently mid-flight on the right pane. Flipped
+  // by `buildHost`'s `onLifecycleEvent` on `step:start`/`step:complete`/
+  // `step:failed`. Read by the right-pane-controller's busy gate so Enter
+  // refuses to clobber a live transcript or interactive agent.
+  const inFlight = new Set<StepName>()
+
+  // Build the host first; startStepsView spawns its child via the host's
+  // own `runInteractive({ pane: 'left' })` and the host therefore must exist
+  // before the spawn.
+  const innerHost = buildHost({
     tmux,
     socket,
     queue,
     leftPaneId,
     rightPaneId,
-    statusLoop,
     stderr: opts.stderr,
     clock: opts.clock,
     runId: opts.runId,
@@ -274,10 +317,159 @@ export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
     cwd: opts.cwd ?? process.cwd(),
     stdout: opts.stdout ?? process.stdout,
     tee: createPerStepTee(opts.logger),
+    inFlight,
     ...(opts.logger !== undefined ? { logger: opts.logger } : {}),
     ...(pipePaneCapture !== undefined ? { pipePaneCapture } : {}),
     ...(stdioCapture !== undefined ? { stdioCapture } : {}),
   })
+
+  // Phase 4: track quit-intent + attach exit for awaitForegroundShutdown. We
+  // settle each deferred at most once; the host's awaitForegroundShutdown
+  // races them so the CLI can keep the TUI mounted past workflow completion.
+  const quitDeferred = createDeferred()
+  const attachDeferred = createDeferred()
+  let stepsHandle: StartStepsViewHandle | undefined
+  let rightPaneController: RightPaneController | undefined
+  if (opts.disableStepsView !== true && opts.basePath !== undefined) {
+    const basePath = opts.basePath
+    const stateDir = toPath(`${basePath}/${opts.runId}`)
+    const cwdPath = toPath(opts.cwd ?? process.cwd())
+    const envForChild = filterDefinedEnv(opts.env ?? process.env)
+
+    // Wire the right-pane-controller when the caller supplied a stateStore
+    // and didn't override `onStepsIntent` themselves. The controller swaps
+    // the right pane in place via `respawn-pane`; the busy gate reads
+    // `inFlight` so Enter never clobbers a live transcript.
+    let onIntent: ((intent: StepsIntent) => void) | undefined = opts.onStepsIntent
+    if (opts.onStepsIntent === undefined && opts.stateStore !== undefined) {
+      rightPaneController = createRightPaneController({
+        tmux,
+        socket,
+        leftPaneId,
+        rightPaneId,
+        paneQueue: queue,
+        stateStore: opts.stateStore,
+        runId: opts.runId,
+        stateDir,
+        cwd: cwdPath,
+        env: envForChild,
+        stderr: opts.stderr,
+        isRightPaneBusy: () => inFlight.size > 0,
+        ...(opts.logger !== undefined ? { logger: opts.logger } : {}),
+        ...(opts.resumeRunner !== undefined ? { resumeRunner: opts.resumeRunner } : {}),
+        ...(opts.transcriptRenderer !== undefined
+          ? { transcriptRenderer: opts.transcriptRenderer }
+          : {}),
+      })
+      onIntent = rightPaneController.onIntent
+    }
+
+    // Compose: forward intents to the original handler AND mark the quit
+    // deferred so `awaitForegroundShutdown` can resolve. The compose stays
+    // tiny — the underlying handler still owns its semantics.
+    const composedIntent = (intent: StepsIntent): void => {
+      onIntent?.(intent)
+      if (intent.type === 'quit') quitDeferred.resolve()
+    }
+
+    stepsHandle = await startStepsView({
+      host: innerHost,
+      tmux,
+      socket,
+      leftPaneId,
+      paneQueue: queue,
+      stateDir,
+      basePath,
+      runId: opts.runId,
+      workflowName: opts.workflowName,
+      cwd: cwdPath,
+      env: envForChild,
+      stderr: opts.stderr,
+      ...(opts.logger !== undefined ? { logger: opts.logger } : {}),
+      onIntent: composedIntent,
+    })
+  }
+
+  return wrapHostWithStepsView(innerHost, stepsHandle, rightPaneController, {
+    quitPromise: quitDeferred.promise,
+    attachPromise: attachDeferred.promise,
+    settleAttach: attachDeferred.resolve,
+  })
+}
+
+interface Deferred {
+  readonly promise: Promise<void>
+  readonly resolve: () => void
+}
+
+function createDeferred(): Deferred {
+  let resolve: () => void = () => {}
+  const promise = new Promise<void>((r) => {
+    resolve = r
+  })
+  return { promise, resolve }
+}
+
+function filterDefinedEnv(
+  env: Readonly<Record<string, string | undefined>>,
+): Readonly<Record<string, string>> {
+  const out: Record<string, string> = {}
+  for (const [k, v] of Object.entries(env)) {
+    if (typeof v === 'string') out[k] = v
+  }
+  return out
+}
+
+interface ShutdownDeps {
+  readonly quitPromise: Promise<void>
+  readonly attachPromise: Promise<void>
+  readonly settleAttach: () => void
+}
+
+function wrapHostWithStepsView(
+  inner: Host,
+  steps: StartStepsViewHandle | undefined,
+  controller: RightPaneController | undefined,
+  shutdown: ShutdownDeps,
+): Host {
+  // Wrap attachForeground unconditionally so awaitForegroundShutdown's
+  // attach-exited branch settles even when the steps-view daemon is
+  // disabled (test fixtures, headless runs).
+  const wrappedAttachForeground = async (): Promise<void> => {
+    try {
+      await inner.attachForeground()
+    } finally {
+      shutdown.settleAttach()
+    }
+  }
+
+  // Foreground shutdown signal: whichever of (attach exited | quit pressed)
+  // settles first. Both are resolved-only (never reject), so Promise.race is
+  // safe — no rejection short-circuit can leak through.
+  const awaitForegroundShutdown = async (): Promise<void> => {
+    await Promise.race([shutdown.quitPromise, shutdown.attachPromise])
+  }
+
+  if (steps === undefined && controller === undefined) {
+    return {
+      ...inner,
+      attachForeground: wrappedAttachForeground,
+      awaitForegroundShutdown,
+    }
+  }
+  return {
+    ...inner,
+    attachForeground: wrappedAttachForeground,
+    awaitForegroundShutdown,
+    teardown: async () => {
+      // Order: stop intent dispatch (controller) first so a late intent can't
+      // reach the tearing-down tmux server, then stop the tailer + child,
+      // then the inner host (which kills the session).
+      if (controller !== undefined) await controller.stop()
+      if (steps !== undefined) await steps.stop()
+      await inner.teardown()
+    },
+  }
 }
 
 function maybeInstallStdioCapture(
@@ -301,7 +493,6 @@ interface BuildHostDeps {
   readonly queue: PaneQueue
   readonly leftPaneId: PaneId
   readonly rightPaneId: PaneId
-  readonly statusLoop: StatusLoop
   readonly stderr: NodeJS.WritableStream
   readonly clock: Clock
   readonly runId: RunId
@@ -315,6 +506,13 @@ interface BuildHostDeps {
    *  before pane-queue enqueue so the file mirrors per-step ordering even
    *  when two parallel branches interleave on the right pane. */
   readonly tee: PerStepTee
+  /**
+   * Shared mid-flight step set. The host flips entries on `step:start`/
+   * `step:complete`/`step:failed`; the right-pane-controller reads it via
+   * `isRightPaneBusy()` so Enter doesn't clobber a live transcript or an
+   * interactive agent.
+   */
+  readonly inFlight: Set<StepName>
   /** --debug pipe-pane capture. Stopped on teardown to drop the pipes. */
   readonly pipePaneCapture?: import('./pipe-pane-capture.ts').PipePaneCapture
   /** Captures workflow-body console/stdout writes while tmux owns the TTY. */
@@ -369,7 +567,9 @@ function buildHost(deps: BuildHostDeps): Host {
   }
 
   const onLifecycleEvent = (event: StepLifecycleEvent): void => {
-    deps.statusLoop.onStepEvent(event)
+    // The steps-view daemon tails on-disk lifecycle events directly — no
+    // in-process forwarding needed. This handler only manages right-pane
+    // side-effects (per-step tee, failure pane, parallel rollup).
     // Open/close per-step formatted_output.* sinks alongside the on-pane
     // bytes. The tee writes happen inside onRunnerEvent (below) before
     // pane-queue enqueue so the per-step file mirrors per-step ordering.
@@ -377,6 +577,14 @@ function buildHost(deps: BuildHostDeps): Host {
       deps.tee.open(event.stepName)
     } else if (event.type === 'step:complete' || event.type === 'step:failed') {
       deps.tee.close(event.stepName)
+    }
+    // Mid-flight tracking for the right-pane busy gate. Both autonomous and
+    // interactive starts add; complete/failed remove. Cached steps never
+    // appear here — they don't run on the right pane.
+    if (event.type === 'step:start') {
+      deps.inFlight.add(event.stepName)
+    } else if (event.type === 'step:complete' || event.type === 'step:failed') {
+      deps.inFlight.delete(event.stepName)
     }
     if (event.type === 'step:failed' && !torndown) {
       const summary = summarizeFailure({
@@ -450,8 +658,10 @@ function buildHost(deps: BuildHostDeps): Host {
 
   const runInteractive = async (spawn: InteractiveSpawn): Promise<InteractiveResult> => {
     const startedAt = deps.clock.now()
+    const paneRole = spawn.pane ?? 'right'
+    const targetPane = paneRole === 'left' ? deps.leftPaneId : deps.rightPaneId
 
-    // respawn-pane enqueues behind any pending sendKeys on the right pane so
+    // respawn-pane enqueues behind any pending sendKeys on the target pane so
     // no transcript keystroke races the interactive child's stdin.
     // `env: spawn.env` carries the runner's full env (built via mergeEnv) into
     // the child via tmux's `-e KEY=VAL` flags — the only seam where the
@@ -461,10 +671,10 @@ function buildHost(deps: BuildHostDeps): Host {
     // keeps the cwd it was created with, which is `/` (RealTmuxService runs
     // every tmux subprocess from `/`). The agent then can't write to its
     // project files.
-    await deps.queue.enqueue(deps.rightPaneId, () =>
+    await deps.queue.enqueue(targetPane, () =>
       deps.tmux.respawnPane({
         socket: deps.socket,
-        target: deps.rightPaneId,
+        target: targetPane,
         argv: spawn.argv,
         killRunning: true,
         env: spawn.env,
@@ -481,21 +691,26 @@ function buildHost(deps: BuildHostDeps): Host {
     try {
       await deps.tmux.waitFor({
         socket: deps.socket,
-        channel: `pane-exit-${deps.rightPaneId}`,
+        channel: `pane-exit-${targetPane}`,
       })
     } finally {
-      // Restore the `cat` placeholder so the next autonomous step's
-      // transcript has a pane to write to.
-      await deps.queue
-        .enqueue(deps.rightPaneId, () =>
-          deps.tmux.respawnPane({
-            socket: deps.socket,
-            target: deps.rightPaneId,
-            argv: [PLACEHOLDER_CMD],
-            killRunning: true,
-          }),
-        )
-        .catch(handleSendError)
+      // Right pane only: restore the `cat` placeholder so the next autonomous
+      // step's transcript has a pane to write to. Left-pane spawns (the
+      // steps-view daemon) skip this — when the daemon exits the caller writes
+      // a takeover message via PaneQueue and the cat placeholder would just
+      // race that write.
+      if (paneRole === 'right') {
+        await deps.queue
+          .enqueue(targetPane, () =>
+            deps.tmux.respawnPane({
+              socket: deps.socket,
+              target: targetPane,
+              argv: [PLACEHOLDER_CMD],
+              killRunning: true,
+            }),
+          )
+          .catch(handleSendError)
+      }
     }
 
     // tmux's `pane-died` hook doesn't give us the child's exit code through
@@ -531,7 +746,6 @@ function buildHost(deps: BuildHostDeps): Host {
     // branch in `attachForeground`, not the "attach died unexpectedly" path.
     teardownStarted = true
     torndown = true
-    deps.statusLoop.stop()
     rollup.reset()
     // Flush any open per-step formatted_output sinks so SIGINT mid-step
     // still leaves bytes on disk before the run-ended record.
@@ -561,6 +775,14 @@ function buildHost(deps: BuildHostDeps): Host {
     orchLog(deps.logger, 'host-teardown', { mode })
   }
 
+  // Inner stub: `wrapHostWithStepsView` always replaces this with a real
+  // implementation that races the quit + attach signals. Kept as a stub so
+  // the inner Host satisfies the port type even when constructed in
+  // isolation (e.g. exhaustive type-checks on every Host return shape).
+  const awaitForegroundShutdown = async (): Promise<void> => {
+    /* overridden by wrapHostWithStepsView */
+  }
+
   return {
     mode,
     writeBanner,
@@ -570,6 +792,7 @@ function buildHost(deps: BuildHostDeps): Host {
     attach,
     runInteractive,
     attachForeground,
+    awaitForegroundShutdown,
     teardown,
   }
 }

@@ -12,11 +12,15 @@ import type {
   DisplayMessageOptions,
   KillPaneOptions,
   KillSessionOptions,
+  KillWindowOptions,
   ListPanesOptions,
+  NewWindowOptions,
+  NewWindowResult,
   PaneId,
   PipePaneOptions,
   RespawnPaneOptions,
   SelectPaneOptions,
+  SelectWindowOptions,
   SendKeysOptions,
   SetHookOptions,
   SetOptionOptions,
@@ -26,7 +30,7 @@ import type {
   UnbindKeyOptions,
   WaitForOptions,
 } from './tmux-service.ts'
-import { paneId, TmuxCommandError } from './tmux-service.ts'
+import { paneId, TmuxCommandError, windowId } from './tmux-service.ts'
 
 // ---------------------------------------------------------------------------
 // Environment
@@ -326,6 +330,88 @@ export class RealTmuxService implements TmuxService {
     const argv = ['tmux', '-L', opts.socket, 'unbind-key', '-a', '-T', opts.table]
     const { stderr, exitCode } = await this.#run(argv)
     if (exitCode !== 0) throw fail(exitCode, stderr, 'tmux unbind-key failed')
+  }
+
+  async newWindow(opts: NewWindowOptions): Promise<NewWindowResult> {
+    const argv: string[] = [
+      'tmux',
+      '-L',
+      opts.socket,
+      'new-window',
+      '-d',
+      '-a',
+      '-t',
+      opts.session,
+      '-n',
+      opts.name,
+      '-c',
+      opts.cwd,
+      '-P',
+      '-F',
+      '#{window_id}\t#{pane_id}',
+    ]
+    if (opts.env !== undefined) {
+      for (const [k, v] of Object.entries(opts.env)) {
+        if (k.includes('=') || k.includes('\n')) {
+          throw new Error(`newWindow: env key ${JSON.stringify(k)} contains '=' or newline`)
+        }
+        argv.push('-e', `${k}=${v}`)
+      }
+    }
+    if (opts.argv !== undefined && opts.argv.length > 0) {
+      argv.push(...opts.argv)
+    } else {
+      argv.push('cat')
+    }
+
+    const { stdout, stderr, exitCode } = await this.#run(argv)
+    if (exitCode !== 0) throw fail(exitCode, stderr, 'tmux new-window failed')
+
+    const first = stdout.split('\n').find((l) => l.trim().length > 0) ?? ''
+    const parts = first.split('\t')
+    const wid = parts[0]?.trim() ?? ''
+    const pid = parts[1]?.trim() ?? ''
+    if (wid.length === 0 || pid.length === 0) {
+      throw new TmuxCommandError(
+        exitCode,
+        truncateStderr(stderr),
+        `tmux new-window returned unexpected output: ${JSON.stringify(first)}`,
+      )
+    }
+    const result: NewWindowResult = { windowId: windowId(wid), paneId: paneId(pid) }
+    // Pin `automatic-rename off` belt-and-braces against OSC sequences in the
+    // replay payload re-enabling it. Failure here is non-fatal — log via stderr
+    // path? — actually just bubble up; this is internal-only argv, the callsite
+    // already accepts a TmuxCommandError from new-window.
+    const setArgv = [
+      'tmux',
+      '-L',
+      opts.socket,
+      'set-option',
+      '-t',
+      result.windowId,
+      'automatic-rename',
+      'off',
+    ]
+    const setRes = await this.#run(setArgv)
+    if (setRes.exitCode !== 0) {
+      throw fail(setRes.exitCode, setRes.stderr, 'tmux set-option automatic-rename failed')
+    }
+    return result
+  }
+
+  async selectWindow(opts: SelectWindowOptions): Promise<void> {
+    const argv = ['tmux', '-L', opts.socket, 'select-window', '-t', opts.target]
+    const { stderr, exitCode } = await this.#run(argv)
+    if (exitCode !== 0) throw fail(exitCode, stderr, 'tmux select-window failed')
+  }
+
+  async killWindow(opts: KillWindowOptions): Promise<void> {
+    const argv = ['tmux', '-L', opts.socket, 'kill-window', '-t', opts.target]
+    const { stderr, exitCode } = await this.#run(argv)
+    if (exitCode === 0) return
+    if (/can't find window|window not found/i.test(stderr)) return
+    throw fail(exitCode, stderr, 'tmux kill-window failed')
   }
 
   async bindKey(opts: BindKeyOptions): Promise<void> {

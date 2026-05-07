@@ -5,15 +5,22 @@ import { FakeFsService } from '../../../../src/services/fs/fake-fs-service.ts'
 import { FakeProcessService } from '../../../../src/services/process/fake-process-service.ts'
 
 describe('parseCodexLine', () => {
-  it('parses thread.started as info event with thread_id in payload', () => {
+  it('surfaces thread.started as a session-started info event with sessionId in payload', () => {
+    // Phase 3: parseCodexLine synthesizes a `session-started` event for any
+    // `thread.started` line carrying a `thread_id` so the workflow executor
+    // can capture the resume identifier through the same shape Claude exposes
+    // for system-init.
     const line = JSON.stringify({ type: 'thread.started', thread_id: 'thread-abc' })
 
     const evt = parseCodexLine(line)
 
     expect(evt).not.toBeNull()
     expect(evt?.kind).toBe('info')
-    expect(evt?.type).toBe('thread.started')
+    expect(evt?.type).toBe('session-started')
     if (evt?.kind === 'info') {
+      expect(evt.payload?.sessionId).toBe('thread-abc')
+      // Original payload is preserved so any downstream consumer that wanted
+      // the legacy field can still read it.
       expect(evt.payload?.thread_id).toBe('thread-abc')
     }
   })

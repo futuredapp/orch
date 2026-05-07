@@ -13,11 +13,15 @@ export type {
   KeyTable,
   KillPaneOptions,
   KillSessionOptions,
+  KillWindowOptions,
   ListPanesOptions,
+  NewWindowOptions,
+  NewWindowResult,
   PaneId,
   PipePaneOptions,
   RespawnPaneOptions,
   SelectPaneOptions,
+  SelectWindowOptions,
   SendKeysOptions,
   SetHookOptions,
   SetOptionOptions,
@@ -27,5 +31,6 @@ export type {
   TmuxService,
   UnbindKeyOptions,
   WaitForOptions,
+  WindowId,
 } from './tmux-service.ts'
-export { paneId, socketName, TmuxCommandError } from './tmux-service.ts'
+export { paneId, socketName, TmuxCommandError, windowId } from './tmux-service.ts'

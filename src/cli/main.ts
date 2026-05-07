@@ -17,6 +17,7 @@ import {
   type PlainFormat,
   registerBuiltinHosts,
 } from '../hosts/index.ts'
+import { toClaudeTranscriptLines } from '../runners/index.ts'
 import type { ProcessService } from '../services/process/index.ts'
 import { dryRunCmd } from './commands/dry-run.ts'
 import { logsCmd } from './commands/logs.ts'
@@ -280,8 +281,8 @@ async function loadConfigDefaultMode(
   cwd: ReturnType<typeof createDeps>['cwd'],
 ): Promise<RunMode | undefined> {
   try {
-    const cfg = await loadConfig(cwd)
-    return cfg.defaultMode
+    const loaded = await loadConfig(cwd)
+    return loaded.config.defaultMode
   } catch (err) {
     // A missing/invalid config is not fatal for mode resolution — commands
     // that actually need the config will surface the error. Falling through
@@ -321,12 +322,22 @@ function pickHostFactory(
   format: PlainFormat,
   processService: ProcessService,
   noAttach: boolean,
+  basePath: import('../services/types.ts').Path,
 ): HostFactory {
   const registry = createHostRegistry()
+  // Phase A pragma (mirrors `cli/commands/logs.ts`'s `toClaudeTranscriptLines`
+  // call): persisted NDJSON doesn't carry a runner tag yet, so we default the
+  // ⏎-to-inspect renderer to Claude's. Phase E swaps this for a runner-
+  // registry dispatch keyed off `state.json`.
+  const tmuxOverrides = {
+    basePath,
+    transcriptRenderer: toClaudeTranscriptLines,
+    ...(noAttach ? { skipAttach: true as const } : {}),
+  }
   registerBuiltinHosts(registry, {
     processService,
     format,
-    tmuxOverrides: noAttach ? { skipAttach: true } : undefined,
+    tmuxOverrides,
   })
   return registry.resolve(mode)
 }
@@ -436,6 +447,7 @@ async function main(): Promise<never> {
     parsed.format,
     deps.processService,
     parsed.noAttach,
+    deps.statePath,
   )
   const code = await handler(deps, parsed.positional, parsed.args, opts, hostFactory)
   process.exit(code)

@@ -25,6 +25,9 @@ function fakeHost(mode: Host['mode'] = 'plain'): FakeHostState {
     host: {
       mode,
       attachForeground: () => attachPromise,
+      // Plain mode resolves immediately; two-pane mirrors attachPromise so
+      // the foreground signal still settles when the attach client exits.
+      awaitForegroundShutdown: () => (mode === 'plain' ? Promise.resolve() : attachPromise),
       teardown: async () => {
         state.teardownCalls++
       },

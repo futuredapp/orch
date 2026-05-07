@@ -147,6 +147,19 @@ export function parseClaudeLine(line: string): import('../types.ts').RunnerEvent
     return parseResultEnvelope(obj)
   }
 
+  // Surface the system-init line as a `session-started` info event so the
+  // workflow executor (and downstream consumers) can capture `sessionId`
+  // without grovelling for `subtype === 'init'` everywhere. The original
+  // payload is preserved verbatim under `payload` — format-event.ts still
+  // renders it via the same formatSystemInit path.
+  if (obj.type === 'system' && obj.subtype === 'init' && typeof obj.session_id === 'string') {
+    return {
+      kind: 'info',
+      type: 'session-started',
+      payload: { sessionId: obj.session_id, ...obj },
+    }
+  }
+
   return {
     kind: 'info',
     type: obj.type,
@@ -236,6 +249,23 @@ export function claude(opts: ClaudeOptions = {}): Readonly<Runner> {
       if (!parsed.success) return undefined
       if (parsed.data.structured_output !== undefined) return parsed.data.structured_output
       return parsed.data.result
+    },
+
+    resumeCommand(ctx: RunnerContext, sessionId: string): RunnerCommand {
+      // Resume always launches Claude in interactive mode — the user pressed
+      // Enter on a finished interactive step and wants to continue the
+      // conversation, not re-run a one-shot autonomous job. `--bare` would
+      // strip the TUI; we explicitly omit it.
+      const argv = [
+        'claude',
+        '--resume',
+        sessionId,
+        ...(model ? ['--model', model] : []),
+        ...(flags ?? []),
+        ...ctx.extraArgs,
+      ]
+      const env = mergeEnv(process.env, { FORCE_COLOR: '3' }, ctx.env)
+      return { argv, env }
     },
   })
 }

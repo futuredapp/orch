@@ -110,6 +110,18 @@ export function parseCodexLine(line: string): RunnerEvent | null {
   const terminal = parseTerminalEvent(obj)
   if (terminal) return terminal
 
+  // Surface the thread.started line as a `session-started` info event so the
+  // workflow executor (and downstream consumers) capture Codex's `thread_id`
+  // through the same shape Claude exposes via system-init. The original
+  // payload is preserved verbatim so format-event.ts can still suppress it.
+  if (obj.type === 'thread.started' && typeof obj.thread_id === 'string') {
+    return {
+      kind: 'info',
+      type: 'session-started',
+      payload: { sessionId: obj.thread_id, ...obj },
+    }
+  }
+
   return {
     kind: 'info',
     type: obj.type,
@@ -333,5 +345,13 @@ export function codex(
     },
 
     toTranscriptLines: toCodexTranscriptLines,
+
+    resumeCommand(ctx: RunnerContext, sessionId: string): RunnerCommand {
+      // Codex resume is its own subcommand. The current sandbox/model flags
+      // don't apply to `codex resume` (it inherits the original thread's
+      // configuration); we only thread through caller-supplied extras.
+      const argv = ['codex', 'resume', sessionId, ...(flags ?? []), ...ctx.extraArgs]
+      return { argv, env: mergeEnv(process.env, { FORCE_COLOR: '3' }, ctx.env) }
+    },
   })
 }

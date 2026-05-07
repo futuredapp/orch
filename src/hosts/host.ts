@@ -44,7 +44,7 @@ export interface PaneAttachment {
 /**
  * Arguments for running an interactive process on the host. The plain host
  * maps this to `spawnForeground`; the tmux host maps it to `respawn-pane -k`
- * on the right pane and then waits on `wait-for pane-exit-<paneId>`.
+ * on the targeted pane and then waits on `wait-for pane-exit-<paneId>`.
  */
 export interface InteractiveSpawn {
   readonly argv: readonly string[]
@@ -52,6 +52,20 @@ export interface InteractiveSpawn {
   readonly cwd: Path
   /** Step name — used by hosts for logging / pane hints. */
   readonly stepName: StepName
+  /**
+   * Which pane (under tmux) the spawn targets. Defaults to `'right'`.
+   *
+   * - `'right'` (default): tmux-host respawns the right pane, waits for the
+   *   child's exit, then respawns `cat` back so the next transcript stream
+   *   has a clean placeholder. This is the interactive-step path.
+   * - `'left'`: tmux-host respawns the left pane and SKIPS the `cat` restore
+   *   on exit — the left pane is the steps-view daemon's home; on
+   *   unexpected exit the caller takes over the pane via `PaneQueue`.
+   *
+   * Plain host ignores this field; the foreground spawn is the same
+   * regardless of pane.
+   */
+  readonly pane?: PaneRole
 }
 
 export interface InteractiveResult {
@@ -124,6 +138,26 @@ export interface Host {
    * state diagram.
    */
   attachForeground(): Promise<void>
+  /**
+   * Wait for the foreground shutdown signal — whichever happens first:
+   *
+   * - The user explicitly quits the foreground UI (two-pane: `q` intent from
+   *   the steps-view daemon; SIGINT in plain mode resolves through the same
+   *   handler chain).
+   * - `attachForeground()` resolves on its own (two-pane: user detached, or
+   *   the tmux session died externally; plain: immediate).
+   *
+   * Plain mode resolves immediately — there's no foreground UI to wait on.
+   * Two-pane resolves on the first of `attachForeground exits | quit intent
+   * fires`. The CLI races this against the workflow promise; whichever
+   * settles first drives the shutdown sequence.
+   *
+   * Phase 4: replaces the previous "workflow promise drives the race"
+   * contract so the steps-view daemon can keep the TUI mounted past
+   * workflow completion (showing the end-of-run summary) until the user
+   * presses `q`.
+   */
+  awaitForegroundShutdown(): Promise<void>
   teardown(): Promise<void>
 }
 

@@ -59,10 +59,17 @@ export class ConfigLoadError extends Error {
 // model as Vite/Vitest/Tailwind. Document but do not sandbox.
 
 /**
- * Walk up from `cwd` to `/` looking for `orch.config.ts`. Returns the first
- * hit. Mirrors how `vite.config.ts` / `tsconfig.json` resolve, so an
- * `orch.config.ts` at the repo root works regardless of which subdirectory
- * the user invokes orch from. `deps.exists` is the seam tests fake out.
+ * Walk up from `cwd` to `/` looking for the orch config. At each level we
+ * probe two locations, in order:
+ *   1. `<dir>/.orch/orch.config.ts` — recommended isolated layout (everything
+ *      orch-related lives inside `.orch/`, host project root stays clean).
+ *   2. `<dir>/orch.config.ts` — legacy/root-level layout, still supported.
+ * The `.orch/` location wins when both exist at the same level so a project
+ * mid-migration switches over the moment the new file is created.
+ *
+ * Mirrors how `vite.config.ts` / `tsconfig.json` resolve, so a config at the
+ * repo root works regardless of which subdirectory the user invokes orch
+ * from. `deps.exists` is the seam tests fake out.
  */
 export async function findConfigPath(
   cwd: Path,
@@ -70,8 +77,10 @@ export async function findConfigPath(
 ): Promise<Path | undefined> {
   let current = cwd
   while (true) {
-    const candidate = path(`${current}/orch.config.ts`)
-    if (await deps.exists(candidate)) return candidate
+    const isolated = path(`${current}/.orch/orch.config.ts`)
+    if (await deps.exists(isolated)) return isolated
+    const rootLevel = path(`${current}/orch.config.ts`)
+    if (await deps.exists(rootLevel)) return rootLevel
     const parent = parentDir(current)
     if (parent === current) return undefined
     current = path(parent)
@@ -91,7 +100,19 @@ async function realExists(p: Path): Promise<boolean> {
   )
 }
 
-export async function loadConfig(cwd: Path): Promise<OrchestratorConfig> {
+/**
+ * Result of loading the orch config. `configDir` is the directory of the
+ * resolved `orch.config.ts` (or `.orch/orch.config.ts`) and is the base
+ * against which relative workflow paths in the config are resolved. Keeping
+ * it next to `config` lets callers stay decoupled from `findConfigPath`.
+ */
+export interface LoadedConfig {
+  readonly config: OrchestratorConfig
+  readonly configPath: Path
+  readonly configDir: Path
+}
+
+export async function loadConfig(cwd: Path): Promise<LoadedConfig> {
   // Discover upward so a config at the repo root works from any subdir.
   const configPath =
     (await findConfigPath(cwd, { exists: realExists })) ?? path(`${cwd}/orch.config.ts`)
@@ -127,23 +148,30 @@ export async function loadConfig(cwd: Path): Promise<OrchestratorConfig> {
     throw new ConfigLoadError(`Invalid config at ${configPath}: ${summary}`, configPath)
   }
 
-  return result.data
+  return { config: result.data, configPath, configDir: path(parentDir(configPath)) }
 }
 
 // ---------------------------------------------------------------------------
 // resolveWorkflow — maps a workflow name to an absolute Path
 // ---------------------------------------------------------------------------
 // Returns branded Path — path() rejects ".." components (traversal guard).
+//
+// Relative workflow entries are resolved against `baseDir`, which the CLI
+// supplies as the directory containing the resolved orch.config.ts (matches
+// Vite/tsconfig conventions). This keeps a config like
+//   { workflows: { work: 'work.ts' } }
+// pointing at the workflow next to the config regardless of where the user
+// invoked orch from.
 
-export function resolveWorkflow(config: OrchestratorConfig, name: string, cwd: Path): Path {
+export function resolveWorkflow(config: OrchestratorConfig, name: string, baseDir: Path): Path {
   const entry = config.workflows[name]
   if (entry === undefined) {
     const available = Object.keys(config.workflows).join(', ')
     throw new Error(`Unknown workflow "${name}". Available: ${available || '(none)'}`)
   }
 
-  // Resolve relative paths against cwd
-  const resolved = entry.startsWith('/') ? entry : `${cwd}/${entry}`
+  // Resolve relative paths against the config directory
+  const resolved = entry.startsWith('/') ? entry : `${baseDir}/${entry}`
   // path() rejects ".." — this is the traversal guard
   return path(resolved)
 }

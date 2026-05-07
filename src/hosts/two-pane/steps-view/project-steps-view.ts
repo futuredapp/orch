@@ -1,0 +1,123 @@
+// ---------------------------------------------------------------------------
+// projectStepsView — pure projector: state.json + overlay → StepsViewState.
+// ---------------------------------------------------------------------------
+//
+// No I/O, no React. The composing factory in `steps-view-model.ts` calls this
+// every time the underlying state.json or lifecycle.ndjson changes.
+
+import type { RunState } from '../../../state/index.ts'
+import type { LiveOverlay } from './live-overlay.ts'
+import type {
+  EndOfRunSummary,
+  RunHeader,
+  StepRow,
+  StepStatus,
+  StepsViewState,
+} from './step-types.ts'
+
+export interface ProjectArgs {
+  readonly run: RunState | undefined
+  readonly overlay: ReadonlyMap<string, LiveOverlay>
+  readonly workflowName: string
+  readonly runIdFallback: string
+}
+
+export function projectStepsView(args: ProjectArgs): StepsViewState {
+  const run = args.run
+  const stepNames = new Set<string>()
+  const steps: StepRow[] = []
+  const persisted = run?.steps ?? {}
+
+  for (const name of Object.keys(persisted)) {
+    if (stepNames.has(name)) continue
+    stepNames.add(name)
+    const entry = persisted[name]
+    if (entry === undefined) continue
+    const live = args.overlay.get(name)
+    steps.push(
+      buildRow(name, entry.value, entry.mode, entry.transcriptPath, entry.sessionId, live, entry),
+    )
+  }
+  for (const [name, live] of args.overlay) {
+    if (stepNames.has(name)) continue
+    stepNames.add(name)
+    steps.push(buildRow(name, undefined, live.mode, undefined, undefined, live, undefined))
+  }
+
+  const header: RunHeader = {
+    runId: run?.id ?? args.runIdFallback,
+    workflowName: args.workflowName,
+    startedAt: run?.startedAt ?? 0,
+  }
+  const runStatus = run?.status ?? 'running'
+  if (runStatus === 'running') {
+    return { status: 'live', run: header, steps }
+  }
+
+  const summary = summarize(run, steps)
+  if (runStatus === 'crashed') {
+    return { status: 'crashed', run: header, steps, summary }
+  }
+  if (summary.stepsFailed > 0) {
+    return { status: 'failed', run: header, steps, summary }
+  }
+  return { status: 'completed', run: header, steps, summary }
+}
+
+interface PersistedHints {
+  readonly startedAt?: number
+  readonly endedAt?: number
+}
+
+function buildRow(
+  name: string,
+  value: unknown,
+  persistedMode: 'interactive' | 'autonomous' | undefined,
+  transcriptPath: string | undefined,
+  sessionId: string | undefined,
+  live: LiveOverlay | undefined,
+  persisted: PersistedHints | undefined,
+): StepRow {
+  const status: StepStatus = live?.status ?? 'completed'
+  const startedAt = live?.startedAt ?? persisted?.startedAt
+  const endedAt = live?.endedAt ?? persisted?.endedAt
+  const base = {
+    name,
+    status,
+    ...(startedAt !== undefined ? { startedAt } : {}),
+    ...(endedAt !== undefined ? { endedAt } : {}),
+  }
+  if (name.startsWith('commit:')) return { kind: 'commit', value, ...base }
+  if (name.startsWith('worktree:')) return { kind: 'worktree', value, ...base }
+  if (name.startsWith('ask:')) return { kind: 'ask', value, ...base }
+  if (name.startsWith('command:')) return { kind: 'command', ...base }
+  const mode = live?.mode ?? persistedMode ?? 'autonomous'
+  if (mode === 'interactive') {
+    return {
+      kind: 'agent',
+      mode: 'interactive',
+      ...base,
+      ...(sessionId !== undefined ? { sessionId } : {}),
+    }
+  }
+  return {
+    kind: 'agent',
+    mode: 'autonomous',
+    ...base,
+    ...(transcriptPath !== undefined ? { transcriptPath } : {}),
+  }
+}
+
+function summarize(run: RunState | undefined, steps: readonly StepRow[]): EndOfRunSummary {
+  const startedAt = run?.startedAt ?? 0
+  const endedAt = run?.endedAt ?? startedAt
+  const completed = steps.filter((s) => s.status === 'completed').length
+  const failed = steps.filter((s) => s.status === 'failed').length
+  return {
+    endedAt,
+    durationMs: Math.max(0, endedAt - startedAt),
+    stepsTotal: steps.length,
+    stepsCompleted: completed,
+    stepsFailed: failed,
+  }
+}

@@ -36,6 +36,7 @@ async function buildHost(tmux: FakeTmuxService) {
     workflowName: 'compound',
     stderr: stderr.stream,
     skipVersionCheck: true,
+    disableStepsView: true,
   })
   return { host, stderr }
 }
@@ -109,6 +110,7 @@ describe('createTmuxHost setup', () => {
       stderr: makeStderr().stream,
       skipVersionCheck: true,
       stdout,
+      disableStepsView: true,
       installExitHandler: (h) => {
         registeredHandler = h
       },

@@ -208,6 +208,7 @@ export async function resumeCmd(
         logger,
         processService: instrumentedProcess,
         fs: deps.fsService,
+        stateStore: deps.stateStore,
       })
     } catch (err) {
       if (err instanceof HostCreationError) {

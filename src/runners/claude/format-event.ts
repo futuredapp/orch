@@ -33,6 +33,10 @@ export function toClaudeTranscriptLines(event: RunnerEvent): readonly Transcript
 function formatInfo(event: InfoEvent): readonly TranscriptLine[] {
   switch (event.type) {
     case 'system':
+    case 'session-started':
+      // `session-started` is the synthesized type the runner emits for the
+      // system-init line (see parseClaudeLine). Render through the same
+      // formatter so transcripts stay visually identical pre/post-Phase 3.
       return formatSystemInit(event)
     case 'assistant':
       return formatAssistantMessage(event)

@@ -6,11 +6,15 @@ import type {
   DisplayMessageOptions,
   KillPaneOptions,
   KillSessionOptions,
+  KillWindowOptions,
   ListPanesOptions,
+  NewWindowOptions,
+  NewWindowResult,
   PaneId,
   PipePaneOptions,
   RespawnPaneOptions,
   SelectPaneOptions,
+  SelectWindowOptions,
   SendKeysOptions,
   SetHookOptions,
   SetOptionOptions,
@@ -20,7 +24,7 @@ import type {
   UnbindKeyOptions,
   WaitForOptions,
 } from './tmux-service.ts'
-import { paneId } from './tmux-service.ts'
+import { paneId, windowId } from './tmux-service.ts'
 
 // ---------------------------------------------------------------------------
 // FakeTmuxService — hybrid command-recorder + scriptable returns
@@ -57,6 +61,9 @@ export type RecordedCall =
   | { readonly method: 'respawnPane'; readonly opts: RespawnPaneOptions }
   | { readonly method: 'unbindKey'; readonly opts: UnbindKeyOptions }
   | { readonly method: 'bindKey'; readonly opts: BindKeyOptions }
+  | { readonly method: 'newWindow'; readonly opts: NewWindowOptions }
+  | { readonly method: 'selectWindow'; readonly opts: SelectWindowOptions }
+  | { readonly method: 'killWindow'; readonly opts: KillWindowOptions }
 
 export class FakeTmuxService implements TmuxService {
   readonly #calls: RecordedCall[] = []
@@ -64,7 +71,9 @@ export class FakeTmuxService implements TmuxService {
   readonly #displayResults: string[] = []
   readonly #captureResults: string[] = []
   readonly #listPanesResults: (readonly string[])[] = []
+  readonly #newWindowResults: NewWindowResult[] = []
   #nextSplitPaneCounter = 1
+  #nextWindowCounter = 1
 
   /** Read-only view of every call received, in order. */
   get recordedCalls(): readonly RecordedCall[] {
@@ -89,6 +98,11 @@ export class FakeTmuxService implements TmuxService {
   /** Script the next `listPanes` return value. Queue, consumed FIFO. */
   setListPanesResult(value: readonly string[]): void {
     this.#listPanesResults.push(value)
+  }
+
+  /** Script the next `newWindow` return value. Queue, consumed FIFO. */
+  nextNewWindowResult(value: NewWindowResult): void {
+    this.#newWindowResults.push(value)
   }
 
   async createSession(opts: CreateSessionOptions): Promise<void> {
@@ -176,5 +190,23 @@ export class FakeTmuxService implements TmuxService {
 
   async bindKey(opts: BindKeyOptions): Promise<void> {
     this.#calls.push({ method: 'bindKey', opts })
+  }
+
+  async newWindow(opts: NewWindowOptions): Promise<NewWindowResult> {
+    this.#calls.push({ method: 'newWindow', opts })
+    const scripted = this.#newWindowResults.shift()
+    if (scripted !== undefined) return scripted
+    const wid = windowId(`@${this.#nextWindowCounter}`)
+    const pid = paneId(`%${100 + this.#nextWindowCounter}`)
+    this.#nextWindowCounter++
+    return { windowId: wid, paneId: pid }
+  }
+
+  async selectWindow(opts: SelectWindowOptions): Promise<void> {
+    this.#calls.push({ method: 'selectWindow', opts })
+  }
+
+  async killWindow(opts: KillWindowOptions): Promise<void> {
+    this.#calls.push({ method: 'killWindow', opts })
   }
 }

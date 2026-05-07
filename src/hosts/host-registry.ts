@@ -49,6 +49,13 @@ export interface HostFactoryInputs {
    * baseline (non-debug) runs can safely omit it.
    */
   readonly fs?: import('../services/fs/index.ts').FsService
+  /**
+   * Optional StateStore — required by the two-pane host's right-pane
+   * controller (Enter-to-inspect dispatch). Without it, intents from the
+   * Ink steps-view are received and logged but never trigger a replay
+   * window. The CLI threads in `deps.stateStore` for `run` / `resume`.
+   */
+  readonly stateStore?: import('../state/index.ts').StateStore
 }
 
 export type HostFactory = (inputs: HostFactoryInputs) => Promise<Host>
@@ -123,6 +130,7 @@ export function registerBuiltinHosts(registry: HostRegistry, deps: RegisterBuilt
       ...(deps.tmuxOverrides ?? {}),
       ...(args.logger !== undefined ? { logger: args.logger } : {}),
       ...(args.fs !== undefined ? { fs: args.fs } : {}),
+      ...(args.stateStore !== undefined ? { stateStore: args.stateStore } : {}),
     }),
   )
 }

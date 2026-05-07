@@ -173,6 +173,10 @@ export function createPlainHost(opts: PlainHostOptions): Host {
     /* plain never takes the TTY — the workflow stream IS the foreground. */
   }
 
+  const awaitForegroundShutdown = async (): Promise<void> => {
+    /* plain mode has no foreground UI — workflow completion drives shutdown. */
+  }
+
   const teardown = async (): Promise<void> => {
     // Drain any per-step formatted_output sinks left open by SIGINT mid-step
     // so the partial bytes hit disk before the run-ended record.
@@ -191,6 +195,7 @@ export function createPlainHost(opts: PlainHostOptions): Host {
     attach,
     runInteractive,
     attachForeground,
+    awaitForegroundShutdown,
     teardown,
   }
 }

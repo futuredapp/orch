@@ -117,6 +117,16 @@ export interface Runner {
    * logged once; the event is still persisted to disk via the JSON path.
    */
   toTranscriptLines(event: RunnerEvent): readonly TranscriptLine[]
+  /**
+   * Build the argv + env that resumes a previously captured session.
+   * Optional — runners that lack a resume primitive omit it; the right-pane
+   * controller refuses with a footer message at the call site.
+   *
+   * Capability check: `typeof runner.resumeCommand === 'function'`. There is
+   * NO `supports.resume` flag — the optional method is the single source of
+   * truth.
+   */
+  resumeCommand?(ctx: RunnerContext, sessionId: string): RunnerCommand | Promise<RunnerCommand>
 }
 
 // ---------------------------------------------------------------------------
@@ -155,6 +165,13 @@ const RunnerAdapterSchema = z.object({
   toTranscriptLines: z.custom<Runner['toTranscriptLines']>((v) => typeof v === 'function', {
     message: 'expected function',
   }),
+  // Optional resume primitive. Without this slot, defineRunner(...) rejects
+  // any runner that declares resumeCommand at validation time.
+  resumeCommand: z
+    .custom<NonNullable<Runner['resumeCommand']>>((v) => typeof v === 'function', {
+      message: 'expected function',
+    })
+    .optional(),
 })
 
 export function defineRunner<T extends Runner>(config: T): Readonly<T> {

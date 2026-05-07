@@ -459,6 +459,12 @@ async function runInteractiveStep(
     mode: 'interactive',
     transcriptEventCount: 0,
     transcriptTruncated: false,
+    // Phase 3: top-level sessionId so the right-pane controller doesn't have
+    // to grovel inside `value: InteractiveResult` to drive resume. Only set
+    // when the runner declares a resume primitive — runners without resume
+    // get no sessionId persisted (the right-pane controller's capability
+    // check at the call site is the single source of truth for "resumable").
+    ...(typeof config.agent.resumeCommand === 'function' ? { sessionId } : {}),
   }
 
   await writeInteractiveSession(deps.logger, stepSpan, {

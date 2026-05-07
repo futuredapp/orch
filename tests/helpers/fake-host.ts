@@ -54,6 +54,7 @@ export interface RecordedInteractiveSpawn {
   readonly argv: readonly string[]
   readonly env: Readonly<Record<string, string>>
   readonly stepName: StepName
+  readonly pane?: PaneRole
 }
 
 export interface FakeHost extends Host {
@@ -107,12 +108,16 @@ export function createFakeHost(opts: FakeHostOptions = {}): FakeHost {
         argv: spawn.argv,
         env: spawn.env,
         stepName: spawn.stepName,
+        ...(spawn.pane !== undefined ? { pane: spawn.pane } : {}),
       })
       return nextInteractive
     },
     async attachForeground(): Promise<void> {
       /* FakeHost never takes the TTY — executor tests race this against the
          workflow promise and get immediate resolution. */
+    },
+    async awaitForegroundShutdown(): Promise<void> {
+      /* FakeHost has no foreground UI — workflow completion drives shutdown. */
     },
     async teardown(): Promise<void> {
       /* no-op */

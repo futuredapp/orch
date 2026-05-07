@@ -1,0 +1,144 @@
+// ---------------------------------------------------------------------------
+// StepsViewModel — composing factory: tailers + projector + emitter.
+// ---------------------------------------------------------------------------
+//
+// No React, no Ink, no transcript reads at projection time. The model layers a
+// live overlay (derived from `<stateDir>/logs/lifecycle.ndjson`) on top of the
+// persisted `<stateDir>/state.json` so the UI sees currently-running steps
+// before they hit disk. Every change to either file re-projects.
+//
+// Pure types live in `step-types.ts`. The pure projector lives in
+// `project-steps-view.ts`. The lifecycle-event folder lives in
+// `live-overlay.ts`. This file is the composition root only.
+
+import { EventEmitter } from 'node:events'
+import type { FsService } from '../../../services/fs/index.ts'
+import type { Path } from '../../../services/types.ts'
+import { path as toPath } from '../../../services/types.ts'
+import type { RunId, RunState, StateStore } from '../../../state/index.ts'
+import { applyLifecycleEvent, type LiveOverlay } from './live-overlay.ts'
+import { projectStepsView } from './project-steps-view.ts'
+import type { StepsViewState } from './step-types.ts'
+import { type TailNdjsonHandle, tailNdjson } from './tail-ndjson.ts'
+import { type TailStateJsonHandle, tailStateJson } from './tail-state-json.ts'
+
+export interface CreateStepsViewModelOptions {
+  readonly stateDir: Path
+  readonly workflowName: string
+  readonly fs: FsService
+  readonly stateStore: StateStore
+  readonly runId: RunId
+  readonly clock: { readonly now: () => number }
+}
+
+export interface StepsViewModel {
+  /** Latest state, or `undefined` until the first projection has fired. */
+  state(): StepsViewState | undefined
+  on(event: 'change', handler: (state: StepsViewState) => void): void
+  off(event: 'change', handler: (state: StepsViewState) => void): void
+  /** Begin tailing files. Resolves once the initial projection has emitted. */
+  start(): Promise<void>
+  /** Stop tailers. Idempotent. Future change events are silenced. */
+  stop(): Promise<void>
+}
+
+export function createStepsViewModel(opts: CreateStepsViewModelOptions): StepsViewModel {
+  const emitter = new EventEmitter()
+  const overlay = new Map<string, LiveOverlay>()
+  let latest: StepsViewState | undefined
+  let currentRun: RunState | undefined
+  let stateTail: TailStateJsonHandle | undefined
+  let lifecycleTail: TailNdjsonHandle | undefined
+  let stopped = false
+
+  const reproject = (): void => {
+    if (stopped) return
+    const next = projectStepsView({
+      run: currentRun,
+      overlay,
+      workflowName: opts.workflowName,
+      runIdFallback: opts.runId,
+    })
+    latest = next
+    emitter.emit('change', next)
+  }
+
+  const reloadState = async (): Promise<void> => {
+    try {
+      currentRun = await opts.stateStore.loadRun(opts.runId)
+    } catch {
+      // Schema corruption — keep last good state; the next write will retry.
+      return
+    }
+    reproject()
+  }
+
+  const start = async (): Promise<void> => {
+    if (stopped) return
+    stateTail = tailStateJson({
+      filePath: toPath(`${opts.stateDir}/state.json`),
+      onChange: () => {
+        void reloadState()
+      },
+    })
+    lifecycleTail = tailNdjson({
+      filePath: toPath(`${opts.stateDir}/logs/lifecycle.ndjson`),
+      fs: opts.fs,
+      onLine: (raw) => {
+        try {
+          const parsed = JSON.parse(raw) as {
+            readonly type?: string
+            readonly stepName?: string
+            readonly mode?: string
+          }
+          if (typeof parsed.type !== 'string') return
+          applyLifecycleEvent(
+            overlay,
+            { type: parsed.type, stepName: parsed.stepName, mode: parsed.mode },
+            opts.clock.now(),
+          )
+          reproject()
+        } catch {
+          // malformed line — ignore
+        }
+      },
+    })
+    await stateTail.start()
+    await lifecycleTail.start()
+    if (latest === undefined) reproject()
+  }
+
+  const stop = async (): Promise<void> => {
+    if (stopped) return
+    stopped = true
+    if (stateTail !== undefined) await stateTail.stop()
+    if (lifecycleTail !== undefined) await lifecycleTail.stop()
+    emitter.removeAllListeners()
+  }
+
+  return {
+    state: () => latest,
+    on: (event, handler) => {
+      emitter.on(event, handler)
+    },
+    off: (event, handler) => {
+      emitter.off(event, handler)
+    },
+    start,
+    stop,
+  }
+}
+
+export type { LiveOverlay } from './live-overlay.ts'
+// Public re-exports — callers import from the barrel which re-exports from
+// here, so existing imports stay source-compatible after the split.
+export { applyLifecycleEvent } from './live-overlay.ts'
+export type { ProjectArgs } from './project-steps-view.ts'
+export { projectStepsView } from './project-steps-view.ts'
+export type {
+  EndOfRunSummary,
+  RunHeader,
+  StepRow,
+  StepStatus,
+  StepsViewState,
+} from './step-types.ts'

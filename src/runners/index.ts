@@ -1,5 +1,5 @@
 export type { ClaudeOptions, ClaudeResultErrorT, ClaudeResultSuccessT } from './claude/index.ts'
-export { claude, parseClaudeLine } from './claude/index.ts'
+export { claude, parseClaudeLine, toClaudeTranscriptLines } from './claude/index.ts'
 export type { CodexOptions } from './codex/index.ts'
 export { CodexVersionError, codex, parseCodexLine } from './codex/index.ts'
 export type { InteractiveRunResult, RunnerResult } from './execute.ts'

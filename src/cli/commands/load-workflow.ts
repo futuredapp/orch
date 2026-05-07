@@ -29,8 +29,11 @@ function extractDefault(mod: unknown): unknown {
 
 export async function loadWorkflow(cwd: Path, name: string): Promise<LoadResult | LoadError> {
   let config: OrchestratorConfig
+  let configDir: Path
   try {
-    config = await loadConfig(cwd)
+    const loaded = await loadConfig(cwd)
+    config = loaded.config
+    configDir = loaded.configDir
   } catch (err) {
     if (err instanceof ConfigLoadError) {
       process.stderr.write(`${err.message}\n`)
@@ -41,7 +44,7 @@ export async function loadWorkflow(cwd: Path, name: string): Promise<LoadResult 
 
   let workflowPath: Path
   try {
-    workflowPath = resolveWorkflow(config, name, cwd)
+    workflowPath = resolveWorkflow(config, name, configDir)
   } catch (err) {
     process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`)
     return { code: EXIT.CONFIG_ERROR }

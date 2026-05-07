@@ -138,6 +138,11 @@ const APPLIANCE_CONFIG_LINES = [
   // passes through to the running shell/agent unmodified. Supported by
   // tmux 2.4+; orch's floor is 3.2.
   'set -g prefix None',
+  // Latest-attaching client drives the window grid. Without this, two clients
+  // (e.g. parent's auto-attach + the steps-view replay window) negotiate to
+  // the smallest size and letterbox the larger client. Phase 2's two-window
+  // dance assumes this so window 1's replay can render at the full pane.
+  'set -g window-size latest',
 ] as const
 
 const writeAppliancConfig = async (fs: FsService): Promise<Path> => {

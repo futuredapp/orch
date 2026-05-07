@@ -14,6 +14,13 @@ export interface FakeScript {
   readonly events?: readonly InfoEvent[]
   readonly structuredOutput?: unknown
   readonly failWith?: { readonly message: string; readonly exitCode?: number }
+  /**
+   * When set, the script prepends a synthetic `session-started` info event
+   * with `payload: { sessionId }`. Mirrors the shape claude-runner /
+   * codex-runner emit for system-init / thread.started lines so workflow
+   * tests can drive the sessionId-capture path with a deterministic value.
+   */
+  readonly sessionId?: string
 }
 
 export class FakeRunner implements Runner {
@@ -25,6 +32,7 @@ export class FakeRunner implements Runner {
   #nonce: string
   #scriptsEnqueued = 0
   #invocations = 0
+  #resumeArgvBuilder?: (sessionId: string) => readonly string[]
 
   constructor(processService: FakeProcessService) {
     this.#fps = processService
@@ -33,6 +41,15 @@ export class FakeRunner implements Runner {
 
   script(s: FakeScript): this {
     const lines: string[] = []
+
+    if (s.sessionId !== undefined) {
+      const synthetic: InfoEvent = {
+        kind: 'info',
+        type: 'session-started',
+        payload: { sessionId: s.sessionId },
+      }
+      lines.push(JSON.stringify(synthetic))
+    }
 
     for (const evt of s.events ?? []) {
       lines.push(JSON.stringify(evt))
@@ -98,5 +115,28 @@ export class FakeRunner implements Runner {
       }
     }
     return []
+  }
+
+  /**
+   * Configure the argv `resumeCommand` will return. Calling this enables the
+   * `resumeCommand` method (the slot is `undefined` until set, mirroring
+   * runners that lack a resume primitive). Default builder produces
+   *   `[':fake-resume:', <nonce>, <sessionId>]`
+   * — opaque on purpose so test assertions don't accidentally couple to a
+   * realistic CLI shape.
+   */
+  withResumeCommand(builder?: (sessionId: string) => readonly string[]): this {
+    this.#resumeArgvBuilder =
+      builder ?? ((sessionId: string) => [':fake-resume:', this.#nonce, sessionId])
+    return this
+  }
+
+  get resumeCommand(): Runner['resumeCommand'] {
+    if (this.#resumeArgvBuilder === undefined) return undefined
+    const builder = this.#resumeArgvBuilder
+    return (ctx: RunnerContext, sessionId: string): RunnerCommand => ({
+      argv: builder(sessionId),
+      env: ctx.env,
+    })
   }
 }

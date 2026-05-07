@@ -1,0 +1,37 @@
+// Public barrel — single import surface for the steps-view module.
+// Cross-module consumers (TmuxHost, future right-pane-controller) MUST import
+// from here, not from internal files. Internal cross-imports between files in
+// this directory use relative paths.
+
+export type { ColumnSet } from './adaptive-columns.ts'
+export { COLUMN_THRESHOLDS, pickColumns } from './adaptive-columns.ts'
+export type { EndOfRunFooterProps, EndOfRunSummaryProps } from './end-of-run-summary.tsx'
+export { EndOfRunFooter, EndOfRunSummary } from './end-of-run-summary.tsx'
+export type {
+  StartStepsViewHandle,
+  StartStepsViewOptions,
+  StepsIntent,
+} from './start-steps-view.ts'
+export { StepsIntentSchema, startStepsView } from './start-steps-view.ts'
+export type { StepsViewIntent, StepsViewKeyEvent, StepsViewProps } from './steps-view.tsx'
+export { HelpOverlay, ParallelGroup, StepsView } from './steps-view.tsx'
+export type { StepsSelection } from './steps-view-hooks.ts'
+export { useAdaptiveColumns, useStepsSelection } from './steps-view-hooks.ts'
+export type {
+  CreateStepsViewModelOptions,
+  LiveOverlay,
+  RunHeader,
+  StepRow,
+  StepStatus,
+  StepsViewModel,
+  StepsViewState,
+} from './steps-view-model.ts'
+export {
+  applyLifecycleEvent,
+  createStepsViewModel,
+  projectStepsView,
+} from './steps-view-model.ts'
+export type { TailNdjsonHandle, TailNdjsonOptions } from './tail-ndjson.ts'
+export { tailNdjson } from './tail-ndjson.ts'
+export type { TailStateJsonHandle, TailStateJsonOptions } from './tail-state-json.ts'
+export { tailStateJson } from './tail-state-json.ts'
