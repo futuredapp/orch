@@ -1,14 +1,15 @@
-// Integration coverage for the resume launcher's failure path. The runner's
-// `resumeCommand` throws, and the controller must (a) write the canonical
-// `"resume failed — press f to return..."` footer to the per-step replay
-// file, (b) respawn the right pane with `cat <file>` so the user can see the
-// message, and (c) NOT spawn a new window.
+// Integration coverage for the resume failure path under the U8 swap-based
+// model. When `resumeCommand` throws, the controller writes the canonical
+// `"resume failed — press f to return..."` footer to the per-step `.replay/`
+// file and registers a `file-tail` source over it on the scratch session,
+// then swaps the visible right pane to it. No respawnPane on the visible
+// right pane.
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { Writable } from 'node:stream'
+import { createRightPaneController } from '../../../../src/hosts/two-pane/pane-map/index.ts'
 import { createPaneQueue } from '../../../../src/hosts/two-pane/pane-queue.ts'
-import { createRightPaneController } from '../../../../src/hosts/two-pane/right-pane-controller.ts'
 import {
   defineRunner,
   type Runner,
@@ -27,6 +28,8 @@ import {
 
 const RUN_ID: RunId = toRunId('r-2026-05-06-300000-fl')
 const RIGHT_PANE = paneId('%1')
+const SCRATCH_SOCKET = socketName('orch-scratch-fail')
+const SCRATCH_SESSION = { socket: SCRATCH_SOCKET, session: 'orch-scratch' }
 
 function makeStep(overrides: Partial<StepEntry> & Pick<StepEntry, 'name'>): StepEntry {
   return {
@@ -116,9 +119,10 @@ afterEach(async () => {
   await rm(tempDir, { recursive: true, force: true })
 })
 
-describe('resume launcher — failure path (mocked tmux)', () => {
-  it('writes the canonical "resume failed" footer when resumeCommand throws', async () => {
+describe('resume launcher — failure path (U8 swap-based, mocked tmux)', () => {
+  it('writes the canonical "resume failed" footer and tails it from a hidden pane', async () => {
     const tmux = new FakeTmuxService()
+    tmux.nextPaneId(paneId('%500'))
     const { stream, chunks } = bufferingStderr()
     const stateDir = `${tempDir}/state`
     await mkdir(stateDir, { recursive: true })
@@ -138,24 +142,34 @@ describe('resume launcher — failure path (mocked tmux)', () => {
       env: {},
       stderr: stream,
       resumeRunner: failingRunner(),
+      scratchSession: SCRATCH_SESSION,
     })
 
     controller.onIntent({ type: 'enter', stepName: 'x' })
     await flush()
 
-    // Footer lands in the replay file (the controller cats that file).
+    // Footer lands in the replay file (the controller tails that file).
     const replayBytes = await Bun.file(`${stateDir}/.replay/x.txt`).text()
     expect(replayBytes).toContain('resume failed')
     expect(replayBytes).toContain('press f to return')
 
-    // The controller respawns the right pane with cat <file> so the user
-    // can read the failure footer in place. No new window is created.
-    const respawns = tmux.recordedCalls.filter((c) => c.method === 'respawnPane')
-    expect(respawns).toHaveLength(1)
-    const first = respawns[0]
-    if (first?.method !== 'respawnPane') throw new Error('expected respawn')
-    expect(first.opts.target).toBe(RIGHT_PANE)
-    expect(first.opts.argv[0]).toBe('cat')
+    // The controller registers a `file-tail` source on the scratch session
+    // over that file. No respawnPane on the visible right pane.
+    const splits = tmux.recordedCalls.filter((c) => c.method === 'splitPane')
+    expect(splits).toHaveLength(1)
+    const split = splits[0]
+    if (split?.method !== 'splitPane') throw new Error('expected splitPane')
+    const argv = split.opts.argv
+    if (argv === undefined) throw new Error('expected argv on splitPane')
+    expect(argv[0]).toBe('tail')
+    expect(argv[4]).toMatch(/\.replay\/x\.txt$/)
+
+    const respawns = tmux.recordedCalls.filter(
+      (c) => c.method === 'respawnPane' && c.opts.target === RIGHT_PANE,
+    )
+    expect(respawns).toHaveLength(0)
+
+    // No new window.
     expect(tmux.recordedCalls.some((c) => c.method === 'newWindow')).toBe(false)
 
     expect(chunks.join('')).toContain('synthetic resume failure')

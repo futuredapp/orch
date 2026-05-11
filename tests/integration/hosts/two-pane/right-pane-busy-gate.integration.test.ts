@@ -1,12 +1,8 @@
-// Integration coverage for the busy-gate seam in tmux-host: when the host
-// gets `step:start` + `step:complete` lifecycle events, the inFlight Set is
-// flipped under the hood. The controller's `isRightPaneBusy` reads it.
-//
-// We test the host wiring by toggling lifecycle events through the host port
-// and asserting no spurious respawn-pane('cat …') calls are issued by the
-// host itself. End-to-end gate behavior is covered by the controller-level
-// busy-gate unit tests; this file proves the host's lifecycle plumbing
-// doesn't double-fire respawns.
+// Integration coverage for the post-U8 invariant: there is no busy gate.
+// Past-step Enter is always allowed because the swap model is non-destructive
+// (the live source remains registered and intact; Enter swaps the visible
+// slot to a separate hidden replay pane). The legacy `isRightPaneBusy` option
+// is gone — this test pins the new shape.
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { mkdir, mkdtemp, rm } from 'node:fs/promises'
@@ -90,8 +86,8 @@ afterEach(async () => {
   await rm(tempDir, { recursive: true, force: true })
 })
 
-describe('right-pane busy gate plumbing in tmux-host', () => {
-  it('does not issue stray cat-respawns while a step is in flight or after it completes', async () => {
+describe('right-pane: busy-gate removal (U8)', () => {
+  it('issues no stray sendKeys footer or respawn-cat on the visible right pane while a step is in flight or after it completes', async () => {
     const tmux = new FakeTmuxService()
     tmux.setListPanesResult(['%0'])
     tmux.nextPaneId(paneId('%1'))
@@ -113,13 +109,10 @@ describe('right-pane busy gate plumbing in tmux-host', () => {
       fs: new FakeFsService(),
       basePath,
       stateStore: makeStore({ plan: makeStep({ name: 'plan', mode: 'autonomous' }) }),
-      // Daemon child needs a real bun spawn — disable for this test. The
-      // busy-gate-from-controller end-to-end is covered by the unit tests.
       disableStepsView: true,
     })
 
-    // Toggle step lifecycle through the host port. The host wires this into
-    // the inFlight Set; nothing on the right pane should respawn-cat.
+    // Toggle step lifecycle through the host port.
     host.onLifecycleEvent({ type: 'step:start', stepName: 'plan' as StepName, mode: 'autonomous' })
     await flush()
     host.onLifecycleEvent({
@@ -129,10 +122,21 @@ describe('right-pane busy gate plumbing in tmux-host', () => {
     })
     await flush()
 
-    const catRespawns = tmux.recordedCalls.filter(
-      (c) => c.method === 'respawnPane' && c.opts.argv[0] === 'cat',
+    // Post-U8: there is no busy-gate footer message and no cat-respawn on the
+    // visible right pane.
+    const catRespawnsOnRight = tmux.recordedCalls.filter(
+      (c) =>
+        c.method === 'respawnPane' && c.opts.target === paneId('%1') && c.opts.argv[0] === 'cat',
     )
-    expect(catRespawns).toHaveLength(0)
+    expect(catRespawnsOnRight).toHaveLength(0)
+
+    const busyFooterSends = tmux.recordedCalls.filter(
+      (c) =>
+        c.method === 'sendKeys' &&
+        c.opts.target === paneId('%1') &&
+        c.opts.keys.join('').includes('disabled while step running'),
+    )
+    expect(busyFooterSends).toHaveLength(0)
 
     await host.teardown()
   })

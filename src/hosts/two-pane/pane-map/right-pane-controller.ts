@@ -7,14 +7,12 @@
 // to the visible right pane is a `tmux swap-pane` issued by `showSource`;
 // no caller directly respawns or sendKeys-blasts the visible slot.
 //
-// **U3 status (pure refactor):** the new public methods
-// (`registerSource`/`showSource`/`unregisterSource`/`followLive`/
-// `emitBanner`) exist on the surface, but the host's lifecycle hooks
-// haven't been rewired yet. Until U5 lands, `onIntent` continues to use
-// the legacy respawn-on-rightPaneId paths verbatim ported from the old
-// controller. The new methods are wired to scratch-session pane spawns;
-// U5/U6/U7/U8 progressively rewire `onIntent` and the host's lifecycle
-// hooks to drive them.
+// The public surface is four pane-map methods (`registerSource`, `showSource`,
+// `unregisterSource`, `followLive`) plus `onIntent` for the steps-view
+// keypress channel. The host wires `registerSource` / `unregisterSource` from
+// `step:start` / `step:complete` lifecycle events; `onIntent('enter')`
+// resolves a `PaneSpec` per step kind, registers the replay source (warm-
+// cached on second view), and swaps it in.
 //
 // **Visible-slot invariant.** `swap-pane` exchanges processes between two
 // pane positions, but pane ids stay attached to their original processes.
@@ -23,7 +21,8 @@
 // and updates it after every swap; future swaps target the up-to-date
 // destination.
 
-import { appendFile, mkdir, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, stat, writeFile } from 'node:fs/promises'
+import type { StepName } from '../../../core/types.ts'
 import { orchLog, type SessionLogger } from '../../../observability/index.ts'
 import type { Runner } from '../../../runners/index.ts'
 import type { PaneId, SocketName, TmuxService } from '../../../services/tmux/index.ts'
@@ -45,7 +44,6 @@ import {
 import { type PaneSpec, type SourceKey, sourceKeyToString } from './pane-spec.ts'
 import type { ScratchSessionHandle } from './scratch-session.ts'
 
-const PLACEHOLDER_CMD = 'cat'
 // Bound the first-view backfill when a hidden pane is swapped in for the
 // first time. `-F` (capital) retries on inode changes so a tee reopen
 // mid-run does not break the follow.
@@ -66,11 +64,12 @@ export interface RightPaneControllerOptions {
   readonly logger?: SessionLogger
   /**
    * Handle to the per-run scratch session that hosts hidden panes. Required
-   * by the new `registerSource` / `showSource` / `unregisterSource` /
-   * `followLive` methods (the pane-map surface). Optional because the
-   * legacy `onIntent` path doesn't need it — pre-U5 tests that exercise
-   * only `onIntent` can omit it. The host always provides it in
-   * production.
+   * for every pane-map operation (`registerSource` / `showSource` /
+   * `unregisterSource` / `followLive`) and for `onIntent('enter')`, which
+   * registers a replay source on enter. Kept optional in the type so unit
+   * tests that only exercise the banner / view-mode plumbing can omit it,
+   * but any method that needs a hidden pane will throw with a clear error
+   * when it's not configured.
    */
   readonly scratchSession?: ScratchSessionHandle
   /**
@@ -81,32 +80,21 @@ export interface RightPaneControllerOptions {
   readonly transcriptRenderer?: Runner['toTranscriptLines']
   /**
    * Resume launcher. When provided, agent-interactive Enter calls
-   * `resumeRunner.resumeCommand(...)` and respawns the right pane with the
-   * resulting argv. Without it, agent-interactive Enter shows the refusal
-   * message.
+   * `resumeRunner.resumeCommand(...)` and spawns the resulting argv as a
+   * `pty` source in the scratch session. Without it (or when the step has
+   * no `sessionId`, or the runner has no `resumeCommand`), Enter falls back
+   * to a `file-tail` over a refusal-text file.
    */
   readonly resumeRunner?: Runner
-  /**
-   * Busy gate. The host flips this true while a step is mid-flight on the
-   * right pane. Enter is refused with a footer message + `replay-blocked-
-   * busy` log when the gate returns true.
-   *
-   * **U3 status:** kept until U5 lands the new swap-based live path. The
-   * busy gate is structurally unnecessary in the swap model (past-step
-   * Enter is safe by construction), but until `onIntent('enter')` is
-   * migrated to swap-pane the legacy respawn path can still clobber a
-   * live transcript — so the gate stays.
-   */
-  readonly isRightPaneBusy?: () => boolean
   /**
    * Absolute path to the parent → child IPC channel for banner + view-mode
    * snapshots. The controller appends one JSON line per `emitBanner` /
    * `setViewMode` / banner-clear; the steps-view model in the child tails
    * this file and re-projects.
    *
-   * Optional because pre-U5 callers that don't exercise the new surface can
-   * omit it. When omitted, `emitBanner` / `setViewMode` are no-ops past the
-   * in-memory state update — the IPC write is silently skipped.
+   * Optional so unit tests that don't assert on the IPC stream can omit it.
+   * When omitted, `emitBanner` / `setViewMode` still update in-memory state
+   * but the IPC write is silently skipped.
    */
   readonly tuiOverlayPath?: Path
 }
@@ -119,30 +107,22 @@ export interface RightPaneController {
    * stores the pane id under the source key. Idempotent — calling with the
    * same key is a no-op.
    *
-   * `U3 dead-code surface`: not yet called by the host. U5/U6/U7 wire this
-   * to lifecycle hooks.
    */
   registerSource(key: SourceKey, spec: PaneSpec): Promise<void>
   /**
    * Swap the visible right pane to the hidden pane that's rendering `key`.
    * No-op if `currentKey === key` or `key` is not in the map.
-   *
-   * `U3 dead-code surface`: not yet called by the host.
    */
   showSource(key: SourceKey): Promise<void>
   /**
    * Remove a source from the map. The rule is type-specific:
    *   - `live`: rekeyed to `replay` (warm cache, no kill).
    *   - `interactive`/`rollup`/`placeholder`: kill the hidden pane.
-   *
-   * `U3 dead-code surface`: not yet called by the host.
    */
   unregisterSource(key: SourceKey): Promise<void>
   /**
    * Swap to the most-recently-registered live or interactive source, or to
    * rollup if registered, or to placeholder if neither exists.
-   *
-   * `U3 dead-code surface`: not yet called by the host.
    */
   followLive(): Promise<void>
   /**
@@ -162,7 +142,6 @@ export interface RightPaneController {
    * surface it. Caller passes `kind` + `text` + optional `ttlMs`; `seq` is
    * controller-assigned.
    *
-   * Pure-add surface for U5/U8/U6 to consume — U4 ships only the plumbing.
    */
   emitBanner(input: Omit<Banner, 'seq'>): Promise<void>
   /**
@@ -170,7 +149,6 @@ export interface RightPaneController {
    * overlay IPC channel. Independent of `banner` — both can change in the
    * same projection cycle.
    *
-   * Pure-add surface for U5/U8/U6 to consume — U4 ships only the plumbing.
    */
   setViewMode(view: ViewMode): Promise<void>
   /** Tear down: drop references, stop accepting intents. */
@@ -179,7 +157,6 @@ export interface RightPaneController {
 
 export function createRightPaneController(opts: RightPaneControllerOptions): RightPaneController {
   let stopped = false
-  let priorEnterFired = false
 
   // ---------------------------------------------------------------------------
   // New pane-map state (used by registerSource/showSource/...).
@@ -257,7 +234,7 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
   }
 
   // ---------------------------------------------------------------------------
-  // New public methods (U3 dead-code surface; wired in U5+)
+  // Pane-map operations — every right-pane state change funnels through here.
   // ---------------------------------------------------------------------------
 
   const requireScratchSession = (): ScratchSessionHandle => {
@@ -435,28 +412,14 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
   }
 
   // ---------------------------------------------------------------------------
-  // Legacy onIntent path (verbatim port from old controller).
-  // Kept until U5/U6/U8 rewire onIntent to use the new methods above.
+  // onIntent — swap-based replay path (U8).
+  //
+  // Enter on a past step resolves a `PaneSpec` for that step's replay source,
+  // registers it in the scratch session (or reuses a warm-cached entry), then
+  // swaps the visible right pane to it. The legacy `respawnPane`-on-right-pane
+  // path is gone — every right-pane state change now funnels through
+  // `controller.showSource(...)`.
   // ---------------------------------------------------------------------------
-
-  const closeReplay = async (): Promise<void> => {
-    if (!priorEnterFired) return
-    priorEnterFired = false
-    logLifecycle({ type: 'replay-pane-closing' })
-    try {
-      await opts.paneQueue.enqueue(opts.rightPaneId, () =>
-        opts.tmux.respawnPane({
-          socket: opts.socket,
-          target: opts.rightPaneId,
-          argv: [PLACEHOLDER_CMD],
-          killRunning: true,
-        }),
-      )
-    } catch (err) {
-      opts.stderr.write(`[orch tui] follow-live respawn failed: ${String(err)}\n`)
-      logLifecycle({ type: 'replay-pane-close-failed', error: String(err) })
-    }
-  }
 
   const lookupStep = async (stepName: string): Promise<StepRow | undefined> => {
     const run = await opts.stateStore.loadRun(opts.runId)
@@ -473,47 +436,54 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
     return undefined
   }
 
-  const writeBusyFooter = async (stepName: string): Promise<void> => {
-    const message = `── ${stepName} ──\r\n⏎ disabled while step running — press q to quit\r\n`
-    try {
-      await opts.paneQueue.enqueue(opts.rightPaneId, () =>
-        opts.tmux.sendKeys({
-          socket: opts.socket,
-          target: opts.rightPaneId,
-          keys: [message],
-        }),
-      )
-    } catch (err) {
-      opts.stderr.write(`[orch tui] busy-footer send failed: ${String(err)}\n`)
+  const replayKeyFor = (step: StepRow): SourceKey => {
+    if (step.kind === 'agent' && step.mode === 'interactive') {
+      return { type: 'interactive', stepName: step.name as StepName }
     }
+    return { type: 'replay', stepName: step.name as StepName }
   }
 
   const dispatchEnter = async (stepName: string): Promise<void> => {
     if (stopped) return
-    if (opts.isRightPaneBusy?.() === true) {
-      logLifecycle({ type: 'replay-blocked-busy', stepName })
-      await writeBusyFooter(stepName)
-      return
-    }
 
     const step = await lookupStep(stepName)
     if (step === undefined) {
       logLifecycle({ type: 'replay-lookup-miss', stepName })
       return
     }
+    // Cached steps never produced a transcript; surface that as a transient
+    // info banner rather than swapping to an empty replay pane.
+    if (step.status === 'cached') {
+      logLifecycle({ type: 'replay-cached-skip', stepName })
+      await emitBanner({
+        kind: 'info',
+        text: `step ${stepName} — cached (no transcript captured)`,
+        ttlMs: 4000,
+      })
+      return
+    }
 
+    const replayKey = replayKeyFor(step)
     try {
-      await dispatchByKind(opts, step)
-      priorEnterFired = true
+      if (!panes.has(sourceKeyToString(replayKey))) {
+        const spec = await resolveReplaySpec(opts, step)
+        await registerSource(replayKey, spec)
+      }
+      await showSource(replayKey)
+      await setViewMode({ mode: 'replay', stepName: step.name })
       logLifecycle({
         type: 'replay-pane-opened',
         stepName,
-        paneId: String(opts.rightPaneId),
+        sourceKey: sourceKeyToString(replayKey),
       })
       orchLog(opts.logger, 'replay-kind-dispatched', { stepName, kind: step.kind })
     } catch (err) {
       opts.stderr.write(`[orch tui] replay dispatch failed: ${String(err)}\n`)
       logLifecycle({ type: 'replay-pane-failed', stepName, error: String(err) })
+      await emitBanner({
+        kind: 'error',
+        text: `replay failed for ${stepName} — ${String(err)}`,
+      })
     }
   }
 
@@ -525,11 +495,11 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
       return
     }
     if (intent.type === 'follow-live') {
-      void closeReplay()
+      void followLive()
       return
     }
     if (intent.type === 'quit') {
-      void closeReplay()
+      void followLive()
       return
     }
     if (intent.type === 'dismiss-banner') {
@@ -560,51 +530,133 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
 }
 
 // ---------------------------------------------------------------------------
-// Legacy per-kind dispatch helpers. Will be replaced by `resolveReplaySpec`
-// in U8 (commit/worktree/ask write a .replay/<step>.txt file; tail -F over
-// it).
+// resolveReplaySpec — per-kind PaneSpec resolution for `onIntent('enter')`.
+//
+// The contract:
+//   - agent/autonomous → prefer the persisted ANSI tee
+//     (`<logsDir>/agents/<stepName>/formatted_output.ansi`); fall back to a
+//     JSON-NDJSON re-render written into `.replay/<safe>.txt` when the tee
+//     is missing or empty (e.g. cancelled mid-run, or a fixture that never
+//     opened the tee).
+//   - agent/interactive → call the runner's `resumeCommand(...)` and spawn
+//     it as a `pty` source so arrow keys / Ctrl-C / resize work natively.
+//     A missing runner / missing `sessionId` / runner-without-resume falls
+//     back to a `file-tail` over a refusal text written to `.replay/`.
+//   - command → tail the captured pane log directly when it exists,
+//     otherwise tail a placeholder text file (`.replay/<safe>.txt`).
+//   - commit / worktree / ask → render `kind-details` into `.replay/<safe>.txt`
+//     and tail it. `tail -F` of a static file backfills the bytes then idles.
 // ---------------------------------------------------------------------------
 
-async function dispatchByKind(opts: RightPaneControllerOptions, step: StepRow): Promise<void> {
+async function resolveReplaySpec(
+  opts: RightPaneControllerOptions,
+  step: StepRow,
+): Promise<PaneSpec> {
   if (step.kind === 'agent') {
     if (step.mode === 'interactive') {
-      await dispatchAgentInteractive(opts, step)
-      return
+      return resolveInteractiveReplaySpec(opts, step)
     }
-    const transcriptPath = step.transcriptPath
-    if (transcriptPath === undefined) {
-      await respawnCatInline(
-        opts,
-        step.name,
-        `── ${step.name} ──\r\n(no transcript recorded for this step)\r\n`,
-      )
-      return
-    }
-    const text = await renderTranscriptToString({
-      transcriptPath: toPath(`${opts.stateDir}/${transcriptPath}`),
-      stepName: step.name,
-      ...(opts.transcriptRenderer !== undefined
-        ? { toTranscriptLines: opts.transcriptRenderer }
-        : {}),
-    })
-    await respawnCatInline(opts, step.name, text)
-    return
+    return resolveAutonomousReplaySpec(opts, step)
   }
   if (step.kind === 'command') {
     const paneLogPath = toPath(`${opts.stateDir}/logs/tmux/${opts.rightPaneId}.log`)
     const source = await resolveCommandPaneSource({ stepName: step.name, paneLogPath })
     if (source.kind === 'file') {
-      await respawnCatPath(opts, source.path)
-      return
+      return { kind: 'file-tail', path: source.path }
     }
-    await respawnCatInline(opts, step.name, source.text)
-    return
+    const filePath = replayFilePath(opts, step.name)
+    await writeReplayFile(opts, filePath, source.text)
+    return { kind: 'file-tail', path: filePath }
   }
-  if (step.kind === 'commit' || step.kind === 'worktree' || step.kind === 'ask') {
-    const payload = renderKindDetails({ step })
-    await respawnCatInline(opts, step.name, payload)
-    return
+  // commit / worktree / ask
+  const payload = renderKindDetails({ step })
+  const filePath = replayFilePath(opts, step.name)
+  await writeReplayFile(opts, filePath, payload)
+  return { kind: 'file-tail', path: filePath }
+}
+
+async function resolveAutonomousReplaySpec(
+  opts: RightPaneControllerOptions,
+  step: StepRow & { kind: 'agent'; mode: 'autonomous' },
+): Promise<PaneSpec> {
+  // Primary: the live tee that U5 wired now sits frozen on disk. Tailing it
+  // directly preserves byte-fidelity (ANSI colors + control sequences) so a
+  // post-mortem replay reads exactly like the live transcript.
+  const teePath = autonomousTeePath(opts.logger, step.name as StepName)
+  if (teePath !== null) {
+    try {
+      const info = await stat(teePath)
+      if (info.size > 0) return { kind: 'file-tail', path: teePath }
+    } catch {
+      /* falls through to JSON re-render */
+    }
   }
+  // Fallback: re-render the NDJSON sidecar into the warm-cache file. Covers
+  // fixtures without a logger and runs that never persisted a tee (e.g. a
+  // cancelled run with only `events.ndjson` on disk).
+  const filePath = replayFilePath(opts, step.name)
+  if (step.transcriptPath === undefined) {
+    await writeReplayFile(
+      opts,
+      filePath,
+      `── ${step.name} ──\r\n(no transcript recorded for this step)\r\n`,
+    )
+    return { kind: 'file-tail', path: filePath }
+  }
+  const text = await renderTranscriptToString({
+    transcriptPath: toPath(`${opts.stateDir}/${step.transcriptPath}`),
+    stepName: step.name,
+    ...(opts.transcriptRenderer !== undefined
+      ? { toTranscriptLines: opts.transcriptRenderer }
+      : {}),
+  })
+  await writeReplayFile(opts, filePath, text)
+  return { kind: 'file-tail', path: filePath }
+}
+
+async function resolveInteractiveReplaySpec(
+  opts: RightPaneControllerOptions,
+  step: StepRow & { kind: 'agent'; mode: 'interactive' },
+): Promise<PaneSpec> {
+  const refusal = describeResumeRefusal(opts.resumeRunner, step.sessionId)
+  if (refusal !== undefined) {
+    const filePath = replayFilePath(opts, step.name)
+    await writeReplayFile(opts, filePath, `── ${step.name} ──\r\n${refusal}\r\n`)
+    return { kind: 'file-tail', path: filePath }
+  }
+  const runner = opts.resumeRunner as Runner
+  const resumeFn = runner.resumeCommand as NonNullable<Runner['resumeCommand']>
+  const sessionId = step.sessionId as string
+  try {
+    const cmd = await resumeFn(
+      { cwd: opts.cwd, env: opts.env, prompt: '', extraArgs: [], mode: 'interactive' },
+      sessionId,
+    )
+    return {
+      kind: 'pty',
+      argv: cmd.argv,
+      ...(cmd.env !== undefined ? { env: cmd.env } : {}),
+      cwd: opts.cwd,
+    }
+  } catch (err) {
+    opts.stderr.write(`[orch tui] resume failed: ${String(err)}\n`)
+    // Surface the failure in the warm-cache file so the user sees something
+    // when they enter the step. The dispatcher additionally emits an error
+    // banner so the message is durable above the steps grid.
+    const filePath = replayFilePath(opts, step.name)
+    await writeReplayFile(
+      opts,
+      filePath,
+      `── ${step.name} ──\r\nresume failed — press f to return to live, q to close\r\n`,
+    )
+    return { kind: 'file-tail', path: filePath }
+  }
+}
+
+function autonomousTeePath(logger: SessionLogger | undefined, stepName: StepName): Path | null {
+  if (logger === undefined) return null
+  if (logger.logsDir === null) return null
+  return toPath(`${logger.logsDir}/agents/${stepName}/formatted_output.ansi`)
 }
 
 function replayFilePath(opts: RightPaneControllerOptions, stepName: string): Path {
@@ -612,36 +664,14 @@ function replayFilePath(opts: RightPaneControllerOptions, stepName: string): Pat
   return toPath(`${opts.stateDir}/.replay/${safe}.txt`)
 }
 
-async function respawnCatInline(
+async function writeReplayFile(
   opts: RightPaneControllerOptions,
-  stepName: string,
+  filePath: Path,
   text: string,
 ): Promise<void> {
-  const filePath = replayFilePath(opts, stepName)
   const dirPath = toPath(`${opts.stateDir}/.replay`)
-  await opts.paneQueue.enqueue(opts.rightPaneId, async () => {
-    await mkdir(dirPath, { recursive: true })
-    await writeFile(filePath, text, 'utf8')
-    await opts.tmux.respawnPane({
-      socket: opts.socket,
-      target: opts.rightPaneId,
-      argv: [PLACEHOLDER_CMD, filePath],
-      killRunning: true,
-      cwd: opts.cwd,
-    })
-  })
-}
-
-async function respawnCatPath(opts: RightPaneControllerOptions, filePath: Path): Promise<void> {
-  await opts.paneQueue.enqueue(opts.rightPaneId, () =>
-    opts.tmux.respawnPane({
-      socket: opts.socket,
-      target: opts.rightPaneId,
-      argv: [PLACEHOLDER_CMD, filePath],
-      killRunning: true,
-      cwd: opts.cwd,
-    }),
-  )
+  await mkdir(dirPath, { recursive: true })
+  await writeFile(filePath, text, 'utf8')
 }
 
 function describeResumeRefusal(
@@ -658,41 +688,4 @@ function describeResumeRefusal(
     return 'resume unavailable — this step has no captured sessionId'
   }
   return undefined
-}
-
-async function dispatchAgentInteractive(
-  opts: RightPaneControllerOptions,
-  step: StepRow & { kind: 'agent'; mode: 'interactive' },
-): Promise<void> {
-  const refusal = describeResumeRefusal(opts.resumeRunner, step.sessionId)
-  if (refusal !== undefined) {
-    await respawnCatInline(opts, step.name, `── ${step.name} ──\r\n${refusal}\r\n`)
-    return
-  }
-  const runner = opts.resumeRunner as Runner
-  const resumeFn = runner.resumeCommand as NonNullable<Runner['resumeCommand']>
-  const sessionId = step.sessionId as string
-  try {
-    const cmd = await resumeFn(
-      { cwd: opts.cwd, env: opts.env, prompt: '', extraArgs: [], mode: 'interactive' },
-      sessionId,
-    )
-    await opts.paneQueue.enqueue(opts.rightPaneId, () =>
-      opts.tmux.respawnPane({
-        socket: opts.socket,
-        target: opts.rightPaneId,
-        argv: cmd.argv,
-        killRunning: true,
-        env: cmd.env,
-        cwd: opts.cwd,
-      }),
-    )
-  } catch (err) {
-    opts.stderr.write(`[orch tui] resume failed: ${String(err)}\n`)
-    await respawnCatInline(
-      opts,
-      step.name,
-      `── ${step.name} ──\r\nresume failed — press f to return to live, q to close\r\n`,
-    )
-  }
 }

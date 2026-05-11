@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { Writable } from 'node:stream'
+import { createRightPaneController } from '../../../../src/hosts/two-pane/pane-map/index.ts'
 import { createPaneQueue } from '../../../../src/hosts/two-pane/pane-queue.ts'
-import { createRightPaneController } from '../../../../src/hosts/two-pane/right-pane-controller.ts'
 import { FakeTmuxService, paneId, socketName } from '../../../../src/services/tmux/index.ts'
 import { path as toPath } from '../../../../src/services/types.ts'
 import {
@@ -13,13 +13,16 @@ import {
   runId as toRunId,
 } from '../../../../src/state/index.ts'
 
-// Integration coverage for the commit/worktree/ask kind-details panel: drive
-// the end-to-end controller path with seeded StepEntry values and assert the
-// rendered payload reaches `<stateDir>/.replay/<step>.txt` and the controller
-// respawns the right pane with `cat <file>` (no window-1).
+// Integration coverage for the commit/worktree/ask kind-details panel under
+// the U8 swap-based replay model: the controller writes the rendered payload
+// to `<stateDir>/.replay/<step>.txt` and registers a `file-tail` source on
+// the scratch session that tails it, then swaps the visible right pane to
+// the hidden tail pane. No `respawnPane` on the visible right pane.
 
 const RUN_ID: RunId = toRunId('r-2026-05-06-100000-cc')
 const RIGHT_PANE = paneId('%1')
+const SCRATCH_SOCKET = socketName('orch-scratch-kind')
+const SCRATCH_SESSION = { socket: SCRATCH_SOCKET, session: 'orch-scratch' }
 
 function makeStep(overrides: Partial<StepEntry> & Pick<StepEntry, 'name'>): StepEntry {
   return {
@@ -84,8 +87,8 @@ afterEach(async () => {
   await rm(tempDir, { recursive: true, force: true })
 })
 
-describe('kind-details rendered through the right-pane controller', () => {
-  it('writes commit / worktree / ask payloads to .replay/<step>.txt and respawns cat <file>', async () => {
+describe('kind-details rendered through the swap-based replay controller (U8)', () => {
+  it('writes commit / worktree / ask payloads to .replay/<step>.txt and tails them on scratch', async () => {
     const tmux = new FakeTmuxService()
     const stateDir = `${tempDir}/state`
     await mkdir(stateDir, { recursive: true })
@@ -112,21 +115,39 @@ describe('kind-details rendered through the right-pane controller', () => {
       cwd: toPath(tempDir),
       env: {},
       stderr: bufferStream(),
+      scratchSession: SCRATCH_SESSION,
     })
 
+    tmux.nextPaneId(paneId('%100'))
     controller.onIntent({ type: 'enter', stepName: 'commit:feat' })
     await flush()
+    tmux.nextPaneId(paneId('%101'))
     controller.onIntent({ type: 'enter', stepName: 'worktree:feat' })
     await flush()
+    tmux.nextPaneId(paneId('%102'))
     controller.onIntent({ type: 'enter', stepName: 'ask:approve' })
     await flush()
 
-    const respawns = tmux.recordedCalls.filter((c) => c.method === 'respawnPane')
-    expect(respawns).toHaveLength(3)
-    for (const r of respawns) {
-      if (r?.method !== 'respawnPane') throw new Error('unreachable')
-      expect(r.opts.target).toBe(RIGHT_PANE)
-      expect(r.opts.argv[0]).toBe('cat')
+    const splits = tmux.recordedCalls.filter((c) => c.method === 'splitPane')
+    expect(splits).toHaveLength(3)
+    for (const s of splits) {
+      if (s.method !== 'splitPane') throw new Error('unreachable')
+      expect(s.opts.session).toBe('orch-scratch')
+      const argv = s.opts.argv
+      if (argv === undefined) throw new Error('expected argv on splitPane')
+      expect(argv[0]).toBe('tail')
+      expect(argv[3]).toBe('-F')
+      // path arg sits at argv[4]
+      expect(typeof argv[4]).toBe('string')
+    }
+
+    const swaps = tmux.recordedCalls.filter((c) => c.method === 'swapPane')
+    expect(swaps).toHaveLength(3)
+    for (const sw of swaps) {
+      if (sw.method !== 'swapPane') throw new Error('unreachable')
+      // First swap targets the original right pane id, subsequent swaps
+      // target whichever hidden pane got moved into the visible slot — but
+      // never the literal RIGHT_PANE for any second-or-later swap.
     }
 
     const commit = await Bun.file(`${stateDir}/.replay/commit:feat.txt`).text()
@@ -137,6 +158,12 @@ describe('kind-details rendered through the right-pane controller', () => {
     expect(worktree).toContain('branch:  feat/x')
     expect(ask).toContain('button: submit')
     expect(ask).toContain('name: martin')
+
+    // No respawnPane on the visible right pane.
+    const respawnsOnVisible = tmux.recordedCalls.filter(
+      (c) => c.method === 'respawnPane' && c.opts.target === RIGHT_PANE,
+    )
+    expect(respawnsOnVisible).toHaveLength(0)
 
     await controller.stop()
   })

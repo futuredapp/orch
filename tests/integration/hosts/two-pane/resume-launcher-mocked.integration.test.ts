@@ -1,13 +1,13 @@
-// Integration coverage for the Phase 3 resume launcher driving the real
-// `createRightPaneController` against a `FakeTmuxService` recorder. The
-// runner is wired via `defineRunner` so the integration shape (intent →
-// dispatch → tmux argv) is exercised end-to-end without running real CLIs.
+// Integration coverage for the U8 swap-based resume path. The interactive
+// resume runner returns a `RunnerCommand`; the controller registers a `pty`
+// source on the scratch session with that argv/env and swaps it in. No
+// `respawnPane` on the visible right pane.
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { Writable } from 'node:stream'
+import { createRightPaneController } from '../../../../src/hosts/two-pane/pane-map/index.ts'
 import { createPaneQueue } from '../../../../src/hosts/two-pane/pane-queue.ts'
-import { createRightPaneController } from '../../../../src/hosts/two-pane/right-pane-controller.ts'
 import {
   defineRunner,
   type Runner,
@@ -26,6 +26,8 @@ import {
 
 const RUN_ID: RunId = toRunId('r-2026-05-06-300000-rs')
 const RIGHT_PANE = paneId('%1')
+const SCRATCH_SOCKET = socketName('orch-scratch-resume')
+const SCRATCH_SESSION = { socket: SCRATCH_SOCKET, session: 'orch-scratch' }
 
 function makeStep(overrides: Partial<StepEntry> & Pick<StepEntry, 'name'>): StepEntry {
   return {
@@ -115,9 +117,10 @@ afterEach(async () => {
   await rm(tempDir, { recursive: true, force: true })
 })
 
-describe('resume launcher (mocked tmux + scripted runner)', () => {
-  it("respawns rightPaneId with the runner's resume argv on enter for an interactive agent step", async () => {
+describe('resume launcher (U8 swap-based, mocked tmux + scripted runner)', () => {
+  it('spawns the resume argv as a pty source on the scratch session and swaps it in', async () => {
     const tmux = new FakeTmuxService()
+    tmux.nextPaneId(paneId('%500'))
     const stateDir = `${tempDir}/state`
     await mkdir(stateDir, { recursive: true })
 
@@ -140,62 +143,39 @@ describe('resume launcher (mocked tmux + scripted runner)', () => {
       env: { HOME: '/home/orch' },
       stderr: bufferStream(),
       resumeRunner: makeResumableRunner(),
+      scratchSession: SCRATCH_SESSION,
     })
 
     controller.onIntent({ type: 'enter', stepName: 'work-auth' })
     await flush()
 
-    const respawn = tmux.recordedCalls.find((c) => c.method === 'respawnPane')
-    expect(respawn).toBeDefined()
-    if (respawn?.method !== 'respawnPane') throw new Error('expected respawnPane')
-    expect(respawn.opts.target).toBe(RIGHT_PANE)
-    expect(respawn.opts.argv).toEqual(['mocked-resume', '--resume', 'sess-int-001'])
-    expect(respawn.opts.env?.FORCE_COLOR).toBe('3')
-    expect(respawn.opts.env?.HOME).toBe('/home/orch')
+    const splits = tmux.recordedCalls.filter((c) => c.method === 'splitPane')
+    expect(splits).toHaveLength(1)
+    const split = splits[0]
+    if (split?.method !== 'splitPane') throw new Error('expected splitPane')
+    expect(split.opts.session).toBe('orch-scratch')
+    expect(split.opts.argv).toEqual(['mocked-resume', '--resume', 'sess-int-001'])
+    expect(split.opts.env?.FORCE_COLOR).toBe('3')
+    expect(split.opts.env?.HOME).toBe('/home/orch')
+
+    const swaps = tmux.recordedCalls.filter((c) => c.method === 'swapPane')
+    expect(swaps).toHaveLength(1)
+    const swap = swaps[0]
+    if (swap?.method !== 'swapPane') throw new Error('expected swapPane')
+    expect(swap.opts.src).toBe(paneId('%500'))
+    expect(swap.opts.dst).toBe(RIGHT_PANE)
+
+    // No respawnPane on the visible right pane.
+    const respawns = tmux.recordedCalls.filter(
+      (c) => c.method === 'respawnPane' && c.opts.target === RIGHT_PANE,
+    )
+    expect(respawns).toHaveLength(0)
 
     // No window-1 lifecycle.
     const methods = tmux.recordedCalls.map((c) => c.method)
     expect(methods).not.toContain('newWindow')
     expect(methods).not.toContain('selectWindow')
     expect(methods).not.toContain('killWindow')
-
-    await controller.stop()
-  })
-
-  it('respawns the cat placeholder on follow-live after a resume enter', async () => {
-    const tmux = new FakeTmuxService()
-    const stateDir = `${tempDir}/state`
-    await mkdir(stateDir, { recursive: true })
-
-    const controller = createRightPaneController({
-      tmux,
-      socket: socketName('orch-resume-followlive'),
-      leftPaneId: paneId('%0'),
-      rightPaneId: RIGHT_PANE,
-      paneQueue: createPaneQueue(),
-      stateStore: makeStore({
-        plan: makeStep({ name: 'plan', mode: 'interactive', sessionId: 'sess-zz' }),
-      }),
-      runId: RUN_ID,
-      stateDir: toPath(stateDir),
-      cwd: toPath(tempDir),
-      env: {},
-      stderr: bufferStream(),
-      resumeRunner: makeResumableRunner(),
-    })
-
-    controller.onIntent({ type: 'enter', stepName: 'plan' })
-    await flush()
-    controller.onIntent({ type: 'follow-live' })
-    await flush()
-
-    const respawns = tmux.recordedCalls.filter((c) => c.method === 'respawnPane')
-    expect(respawns).toHaveLength(2)
-    const last = respawns.at(-1)
-    if (last?.method !== 'respawnPane') throw new Error('expected respawn')
-    expect(last.opts.target).toBe(RIGHT_PANE)
-    expect(last.opts.argv).toEqual(['cat'])
-    expect(last.opts.killRunning).toBe(true)
 
     await controller.stop()
   })
