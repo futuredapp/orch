@@ -26,6 +26,7 @@ import type {
   SetOptionOptions,
   SignalChannelOptions,
   SplitPaneOptions,
+  SwapPaneOptions,
   TmuxService,
   UnbindKeyOptions,
   WaitForOptions,
@@ -65,6 +66,29 @@ const truncateStderr = (stderr: string): string =>
 const fail = (exitCode: number, stderr: string, prefix: string): TmuxCommandError => {
   const redacted = truncateStderr(stderr)
   return new TmuxCommandError(exitCode, redacted, `${prefix} (exit ${exitCode}): ${redacted}`)
+}
+
+const appendEnvFlags = (
+  argv: string[],
+  env: Readonly<Record<string, string>>,
+  prefix: string,
+): void => {
+  for (const [k, v] of Object.entries(env)) {
+    // `=` or newline in a key corrupts the `-e KEY=VAL` argv shape (tmux
+    // splits on the first `=` only). Values pass through verbatim.
+    if (k.includes('=') || k.includes('\n')) {
+      throw new Error(`${prefix}: env key ${JSON.stringify(k)} contains '=' or newline`)
+    }
+    argv.push('-e', `${k}=${v}`)
+  }
+}
+
+const assertNoNullByteArgv = (entries: readonly string[], prefix: string): void => {
+  for (const a of entries) {
+    if (a.includes('\0')) {
+      throw new Error(`${prefix}: argv element ${JSON.stringify(a)} contains '\\0'`)
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -107,7 +131,7 @@ export class RealTmuxService implements TmuxService {
 
   async splitPane(opts: SplitPaneOptions): Promise<PaneId> {
     const orientationFlag = opts.orientation === 'h' ? '-h' : '-v'
-    const argv = [
+    const argv: string[] = [
       'tmux',
       '-L',
       opts.socket,
@@ -121,7 +145,16 @@ export class RealTmuxService implements TmuxService {
       '-F',
       '#{pane_id}',
     ]
-    if (opts.command !== undefined) argv.push(opts.command)
+    if (opts.argv !== undefined) {
+      // argv variant — env, cwd, and array argv. tmux concatenates trailing
+      // argv into the shell-command position, so push it last.
+      if (opts.env !== undefined) appendEnvFlags(argv, opts.env, 'splitPane')
+      if (opts.cwd !== undefined) argv.push('-c', opts.cwd)
+      assertNoNullByteArgv(opts.argv, 'splitPane')
+      argv.push(...opts.argv)
+    } else if (opts.command !== undefined) {
+      argv.push(opts.command)
+    }
 
     const { stdout, stderr, exitCode } = await this.#run(argv)
     if (exitCode !== 0) throw fail(exitCode, stderr, 'tmux split-window failed')
@@ -137,6 +170,12 @@ export class RealTmuxService implements TmuxService {
         `tmux split-window returned unexpected pane id: ${JSON.stringify(trimmed)}`,
       )
     }
+  }
+
+  async swapPane(opts: SwapPaneOptions): Promise<void> {
+    const argv = ['tmux', '-L', opts.socket, 'swap-pane', '-s', opts.src, '-t', opts.dst]
+    const { stderr, exitCode } = await this.#run(argv)
+    if (exitCode !== 0) throw fail(exitCode, stderr, 'tmux swap-pane failed')
   }
 
   async sendKeys(opts: SendKeysOptions): Promise<void> {

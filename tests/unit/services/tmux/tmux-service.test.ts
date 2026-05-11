@@ -319,6 +319,58 @@ describe('FakeTmuxService.respawnPane', () => {
   })
 })
 
+describe('FakeTmuxService.swapPane', () => {
+  it('records the swap call with src and dst pane ids in the order received', async () => {
+    const tmux = new FakeTmuxService()
+    const socket = socketName('orch-1')
+
+    await tmux.swapPane({ socket, src: paneId('%5'), dst: paneId('%9') })
+
+    const call = tmux.recordedCalls.at(-1)
+    if (call?.method !== 'swapPane') throw new Error('expected swapPane call')
+    expect(call.opts.src).toBe(paneId('%5'))
+    expect(call.opts.dst).toBe(paneId('%9'))
+  })
+})
+
+describe('FakeTmuxService.splitPane argv variant', () => {
+  it('records the argv shape separately from the command shape with env and cwd fields', async () => {
+    const tmux = new FakeTmuxService()
+    const socket = socketName('orch-1')
+
+    await tmux.splitPane({
+      socket,
+      session: 'orch-scratch',
+      orientation: 'h',
+      percent: 30,
+      argv: ['tail', '-n', '5000', '-F', '/tmp/foo.log'],
+      env: { FORCE_COLOR: '3' },
+    })
+
+    const call = tmux.recordedCalls.at(-1)
+    if (call?.method !== 'splitPane') throw new Error('expected splitPane call')
+    expect(call.opts.argv).toEqual(['tail', '-n', '5000', '-F', '/tmp/foo.log'])
+    expect(call.opts.env).toEqual({ FORCE_COLOR: '3' })
+    expect(call.opts.command).toBeUndefined()
+  })
+
+  it('records argv elements verbatim even when they contain shell metacharacters', async () => {
+    const tmux = new FakeTmuxService()
+
+    await tmux.splitPane({
+      socket: socketName('orch-1'),
+      session: 'orch-scratch',
+      orientation: 'v',
+      percent: 50,
+      argv: ['tail', '-F', '/tmp/$(rm -rf ~).log'],
+    })
+
+    const call = tmux.recordedCalls.at(-1)
+    if (call?.method !== 'splitPane') throw new Error('expected splitPane call')
+    expect(call.opts.argv?.[2]).toBe('/tmp/$(rm -rf ~).log')
+  })
+})
+
 describe('FakeTmuxService.waitFor', () => {
   it('records a wait without timeoutMs so interactive callers can assert the no-timeout contract', async () => {
     const tmux = new FakeTmuxService()

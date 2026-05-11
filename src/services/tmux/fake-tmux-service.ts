@@ -20,6 +20,7 @@ import type {
   SetOptionOptions,
   SignalChannelOptions,
   SplitPaneOptions,
+  SwapPaneOptions,
   TmuxService,
   UnbindKeyOptions,
   WaitForOptions,
@@ -45,6 +46,7 @@ import { paneId, windowId } from './tmux-service.ts'
 export type RecordedCall =
   | { readonly method: 'createSession'; readonly opts: CreateSessionOptions }
   | { readonly method: 'splitPane'; readonly opts: SplitPaneOptions }
+  | { readonly method: 'swapPane'; readonly opts: SwapPaneOptions }
   | { readonly method: 'sendKeys'; readonly opts: SendKeysOptions }
   | { readonly method: 'waitFor'; readonly opts: WaitForOptions }
   | { readonly method: 'signalChannel'; readonly opts: SignalChannelOptions }
@@ -115,6 +117,10 @@ export class FakeTmuxService implements TmuxService {
     if (scripted !== undefined) return scripted
     const synthetic = paneId(`%${this.#nextSplitPaneCounter++}`)
     return synthetic
+  }
+
+  async swapPane(opts: SwapPaneOptions): Promise<void> {
+    this.#calls.push({ method: 'swapPane', opts })
   }
 
   async sendKeys(opts: SendKeysOptions): Promise<void> {

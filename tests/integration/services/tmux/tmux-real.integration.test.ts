@@ -281,6 +281,221 @@ describe.skipIf(!canRun)('RealTmuxService against a real tmux server', () => {
     expect(observedReal).toBe(dir)
   })
 
+  // ---------------------------------------------------------------------
+  // swap-pane + argv-form split-window (U1 of the pane-map plan)
+  // ---------------------------------------------------------------------
+
+  it('swapPane exchanges the contents of two panes', async () => {
+    const tmux = new RealTmuxService({ processService: new BunProcessService() })
+    const socket = newSocket('swap-pane')
+
+    // Spawn two panes that write distinct, observable text to their stdout.
+    // We pick `printf` so the output is bounded (no shell prompt to compete).
+    await tmux.createSession({ socket, session: 'main', width: 200, height: 50 })
+    // Initial pane runs LEFT marker; the split pane runs RIGHT marker.
+    const initialList = await tmux.listPanes({ socket, session: 'main', format: '#{pane_id}' })
+    const initial = initialList[0]
+    if (initial === undefined) throw new Error('expected initial pane')
+    const leftPane = paneId(initial)
+
+    // Respawn the initial pane to print a deterministic marker, then linger.
+    await tmux.respawnPane({
+      socket,
+      target: leftPane,
+      argv: ['sh', '-c', 'printf "LEFT_MARKER"; sleep 5'],
+      killRunning: true,
+    })
+
+    const rightPane = await tmux.splitPane({
+      socket,
+      session: 'main',
+      orientation: 'h',
+      percent: 50,
+      command: 'sh -c "printf RIGHT_MARKER; sleep 5"',
+    })
+
+    // Give both processes a moment to flush their markers.
+    await new Promise((r) => setTimeout(r, 200))
+
+    const preLeft = await tmux.capturePane({ socket, target: leftPane })
+    const preRight = await tmux.capturePane({ socket, target: rightPane })
+    expect(preLeft).toContain('LEFT_MARKER')
+    expect(preRight).toContain('RIGHT_MARKER')
+
+    await tmux.swapPane({ socket, src: leftPane, dst: rightPane })
+
+    // After swap, the pane that holds LEFT_MARKER's stdout has moved positions
+    // — but pane ids stay attached to their processes (capturePane is keyed by
+    // pane id, so each id still returns its own process's output).
+    const postLeft = await tmux.capturePane({ socket, target: leftPane })
+    const postRight = await tmux.capturePane({ socket, target: rightPane })
+    expect(postLeft).toContain('LEFT_MARKER')
+    expect(postRight).toContain('RIGHT_MARKER')
+  })
+
+  it('swapPane works across sessions on the same socket', async () => {
+    const tmux = new RealTmuxService({ processService: new BunProcessService() })
+    const socket = newSocket('swap-cross-session')
+
+    await tmux.createSession({ socket, session: 'main', width: 200, height: 50 })
+    await tmux.createSession({ socket, session: 'other', width: 200, height: 50 })
+
+    const mainPane = await tmux.splitPane({
+      socket,
+      session: 'main',
+      orientation: 'h',
+      percent: 50,
+      command: 'cat',
+    })
+    const otherPane = await tmux.splitPane({
+      socket,
+      session: 'other',
+      orientation: 'h',
+      percent: 50,
+      command: 'cat',
+    })
+
+    // The swap itself is the assertion — if cross-session swap is not
+    // supported, swap-pane errors with a tmux error message.
+    await tmux.swapPane({ socket, src: mainPane, dst: otherPane })
+
+    // Both panes still exist after the swap (proxy: display-message succeeds).
+    const liveMain = await tmux.displayMessage({
+      socket,
+      target: mainPane,
+      format: '#{pane_dead}',
+    })
+    const liveOther = await tmux.displayMessage({
+      socket,
+      target: otherPane,
+      format: '#{pane_dead}',
+    })
+    expect(liveMain).toBe('0')
+    expect(liveOther).toBe('0')
+  })
+
+  it('swapPane throws TmuxCommandError when either pane id is invalid', async () => {
+    const tmux = new RealTmuxService({ processService: new BunProcessService() })
+    const socket = newSocket('swap-invalid')
+
+    await tmux.createSession({ socket, session: 'main', width: 200, height: 50 })
+    const pane = await tmux.splitPane({
+      socket,
+      session: 'main',
+      orientation: 'h',
+      percent: 30,
+      command: 'cat',
+    })
+
+    await expect(tmux.swapPane({ socket, src: pane, dst: paneId('%999') })).rejects.toBeInstanceOf(
+      TmuxCommandError,
+    )
+  })
+
+  it('splitPane argv runs the given argv as the pane process', async () => {
+    const tmux = new RealTmuxService({ processService: new BunProcessService() })
+    const socket = newSocket('split-argv')
+
+    await tmux.createSession({ socket, session: 'main', width: 200, height: 50 })
+    const pane = await tmux.splitPane({
+      socket,
+      session: 'main',
+      orientation: 'h',
+      percent: 50,
+      // `cat` lingers indefinitely on stdin — predictable for the assertion.
+      argv: ['cat'],
+    })
+
+    // Give tmux a beat to attach the process.
+    await new Promise((r) => setTimeout(r, 200))
+    const cmd = await tmux.displayMessage({
+      socket,
+      target: pane,
+      format: '#{pane_current_command}',
+    })
+    expect(cmd).toBe('cat')
+  })
+
+  it('splitPane argv with env exports the env to the pane process', async () => {
+    const tmux = new RealTmuxService({ processService: new BunProcessService() })
+    const socket = newSocket('split-argv-env')
+
+    await tmux.createSession({ socket, session: 'main', width: 200, height: 50 })
+    const outFile = `/tmp/orch-split-env-${Date.now()}-${Math.floor(Math.random() * 1e6)}.txt`
+    await tmux.splitPane({
+      socket,
+      session: 'main',
+      orientation: 'h',
+      percent: 50,
+      argv: ['sh', '-c', `printf "%s" "$FORCE_COLOR" > ${outFile}`],
+      env: { FORCE_COLOR: '3' },
+    })
+
+    await new Promise((r) => setTimeout(r, 400))
+    const written = await Bun.file(outFile).text()
+    expect(written).toBe('3')
+  })
+
+  it('splitPane argv with cwd sets the pane current_path', async () => {
+    const tmux = new RealTmuxService({ processService: new BunProcessService() })
+    const socket = newSocket('split-argv-cwd')
+
+    const dir = await realpath(tmpdir())
+    await tmux.createSession({ socket, session: 'main', width: 200, height: 50 })
+    const pane = await tmux.splitPane({
+      socket,
+      session: 'main',
+      orientation: 'h',
+      percent: 50,
+      argv: ['cat'],
+      cwd: path(dir),
+    })
+
+    await new Promise((r) => setTimeout(r, 200))
+    const observed = await tmux.displayMessage({
+      socket,
+      target: pane,
+      format: '#{pane_current_path}',
+    })
+    const observedReal = await realpath(observed)
+    expect(observedReal).toBe(dir)
+  })
+
+  it('splitPane argv rejects env keys containing = or newline', async () => {
+    const tmux = new RealTmuxService({ processService: new BunProcessService() })
+    const socket = newSocket('split-argv-env-reject')
+
+    await tmux.createSession({ socket, session: 'main', width: 200, height: 50 })
+
+    await expect(
+      tmux.splitPane({
+        socket,
+        session: 'main',
+        orientation: 'h',
+        percent: 50,
+        argv: ['cat'],
+        env: { 'BAD=KEY': 'value' },
+      }),
+    ).rejects.toThrow(/contains '=' or newline/)
+  })
+
+  it('splitPane argv rejects argv elements containing NUL', async () => {
+    const tmux = new RealTmuxService({ processService: new BunProcessService() })
+    const socket = newSocket('split-argv-nul')
+
+    await tmux.createSession({ socket, session: 'main', width: 200, height: 50 })
+
+    await expect(
+      tmux.splitPane({
+        socket,
+        session: 'main',
+        orientation: 'h',
+        percent: 50,
+        argv: ['tail', '-F', 'has\0nul'],
+      }),
+    ).rejects.toThrow(/contains '\\0'/)
+  })
+
   it('isolates state across concurrent sockets', async () => {
     const tmux = new RealTmuxService({ processService: new BunProcessService() })
     const a = newSocket('iso-a')

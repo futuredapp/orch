@@ -97,7 +97,7 @@ export interface CreateSessionOptions {
   readonly configPath?: Path
 }
 
-export interface SplitPaneOptions {
+interface SplitPaneCommonOptions {
   readonly socket: SocketName
   readonly session: string
   /**
@@ -106,8 +106,60 @@ export interface SplitPaneOptions {
   readonly orientation: 'h' | 'v'
   /** Percentage of the parent pane the new split should occupy (1–99). */
   readonly percent: number
-  /** Optional shell command to run in the new pane. Defaults to `cat`. */
+}
+
+export interface SplitPaneWithCommandOptions extends SplitPaneCommonOptions {
+  /**
+   * Optional shell command to run in the new pane (tmux concatenates trailing
+   * argv into a single string and runs it via `/bin/sh -c`). Defaults to tmux's
+   * default (the user's shell). Use the argv variant instead for commands that
+   * carry user-influenced tokens.
+   */
   readonly command?: string
+  readonly argv?: undefined
+  readonly env?: undefined
+  readonly cwd?: undefined
+}
+
+export interface SplitPaneWithArgvOptions extends SplitPaneCommonOptions {
+  /**
+   * Argv for the new pane's process. Array-only, never a shell string — tmux
+   * passes each element verbatim, so step names or paths containing `;`, `$()`,
+   * `\n`, or backticks cannot inject. Load-bearing for hidden pane spawns that
+   * carry user-influenced paths (e.g. `tail -n 5000 -F <path>`).
+   */
+  readonly argv: readonly string[]
+  /**
+   * Optional per-pane environment overrides. Each entry becomes a tmux
+   * `-e KEY=VAL` flag on the `split-window` argv, so the new process inherits
+   * the tmux server's env extended (and overridden) by these entries.
+   * Adapters MUST reject keys containing `=` or newline. Only valid in the
+   * argv variant.
+   */
+  readonly env?: Readonly<Record<string, string>>
+  /**
+   * Optional `-c <cwd>` flag — sets the pane's initial working directory.
+   * Without it, tmux inherits the cwd of the tmux client that issued
+   * `split-window`. Only valid in the argv variant.
+   */
+  readonly cwd?: Path
+  readonly command?: undefined
+}
+
+/**
+ * Either a shell-command split (`command?: string`) or an argv split
+ * (`argv: string[]`, with optional `env` and `cwd`). The two variants are
+ * mutually exclusive at the type level — the argv branch is the only way to
+ * carry `env` or `cwd`.
+ */
+export type SplitPaneOptions = SplitPaneWithCommandOptions | SplitPaneWithArgvOptions
+
+export interface SwapPaneOptions {
+  readonly socket: SocketName
+  /** Source pane. Its contents are exchanged with `dst`. */
+  readonly src: PaneId
+  /** Destination pane. Its contents are exchanged with `src`. */
+  readonly dst: PaneId
 }
 
 export interface SendKeysOptions {
@@ -333,9 +385,22 @@ export interface TmuxService {
 
   /**
    * `tmux -L <socket> split-window -P -F '#{pane_id}' ...` — returns the new
-   * pane id parsed from stdout.
+   * pane id parsed from stdout. Supports two variants: a legacy shell-command
+   * split (`command?: string`) and an argv split (`argv: string[]` with
+   * optional `env` and `cwd`). The argv variant is the only one that carries
+   * env / cwd; the two variants are mutually exclusive at the type level.
    */
   splitPane(opts: SplitPaneOptions): Promise<PaneId>
+
+  /**
+   * `tmux -L <socket> swap-pane -s <src> -t <dst>` — exchange the contents of
+   * two panes. Pane ids are server-wide (`%N`), so `swap-pane` works across
+   * sessions on the same tmux server. The visible content moves between panes;
+   * pane ids stay attached to their original processes, so a caller that
+   * tracks "which pane is in the visible slot" must update its bookkeeping
+   * after every swap.
+   */
+  swapPane(opts: SwapPaneOptions): Promise<void>
 
   /** `tmux -L <socket> send-keys -t <pane> -l <keys...>` (+ optional Enter). */
   sendKeys(opts: SendKeysOptions): Promise<void>
