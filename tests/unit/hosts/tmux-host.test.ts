@@ -385,11 +385,13 @@ describe('TmuxHost.teardown', () => {
 
     await host.teardown()
 
+    // Two sessions are torn down: the per-run scratch session FIRST so its
+    // hidden panes can't outlive their swap target, then the visible orch
+    // session.
     const killCalls = tmux.recordedCalls.filter((c) => c.method === 'killSession')
-    expect(killCalls).toHaveLength(1)
-    if (killCalls[0]?.method === 'killSession') {
-      expect(killCalls[0].opts.session).toBe('orch')
-    }
+    expect(killCalls).toHaveLength(2)
+    const sessions = killCalls.map((c) => (c.method === 'killSession' ? c.opts.session : ''))
+    expect(sessions).toEqual(['orch-scratch', 'orch'])
   })
 
   it('is idempotent — a second teardown does not re-issue kill-session', async () => {
@@ -402,7 +404,8 @@ describe('TmuxHost.teardown', () => {
     await host.teardown()
     await host.teardown()
 
+    // Idempotent — orch-scratch + orch (no doubles on second teardown).
     const killCalls = tmux.recordedCalls.filter((c) => c.method === 'killSession')
-    expect(killCalls).toHaveLength(1)
+    expect(killCalls).toHaveLength(2)
   })
 })

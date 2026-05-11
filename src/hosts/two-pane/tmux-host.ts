@@ -42,6 +42,13 @@ import { createPerStepTee, type PerStepTee } from '../plain/per-step-tee.ts'
 import { renderTranscriptLine } from '../plain/render-line.ts'
 import { assertNoNestedTmux, createAttachForeground } from './attach-foreground.ts'
 import { renderFailurePanePayload } from './failure-pane.ts'
+import {
+  createRightPaneController,
+  createScratchSession,
+  type RightPaneController,
+  type ScratchSessionHandle,
+  teardownScratchSession,
+} from './pane-map/index.ts'
 import { createPaneQueue, type PaneQueue } from './pane-queue.ts'
 import {
   createRollupAggregator,
@@ -49,7 +56,6 @@ import {
   renderRollupPayload,
 } from './parallel-rollup.ts'
 import { startPipePaneCapture } from './pipe-pane-capture.ts'
-import { createRightPaneController, type RightPaneController } from './right-pane-controller.ts'
 import { installStdioCapture, type StdioCapture } from './stdio-capture.ts'
 import { type StartStepsViewHandle, type StepsIntent, startStepsView } from './steps-view/index.ts'
 import { restoreTerminalModes } from './terminal-reset.ts'
@@ -242,6 +248,25 @@ export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
     }),
   )
 
+  // Bootstrap ordering: the scratch session is created BEFORE the visible
+  // right-pane split. If scratch creation fails (fd exhaustion, server
+  // OOM, etc.), the visible right pane has not yet been split — so no
+  // orphaned UI exists and the error bubbles up cleanly to the run
+  // startup path.
+  const scratchSession = await createScratchSession({
+    tmux,
+    socket,
+    width: WIDTH,
+    height: HEIGHT,
+  })
+  void opts.logger
+    ?.append('lifecycle', {
+      type: 'scratch-session-created',
+      socket,
+      session: scratchSession.session,
+    })
+    .catch(() => {})
+
   const rightPaneId = await tmux.splitPane({
     socket,
     session: SESSION,
@@ -318,6 +343,7 @@ export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
     stdout: opts.stdout ?? process.stdout,
     tee: createPerStepTee(opts.logger),
     inFlight,
+    scratchSession,
     ...(opts.logger !== undefined ? { logger: opts.logger } : {}),
     ...(pipePaneCapture !== undefined ? { pipePaneCapture } : {}),
     ...(stdioCapture !== undefined ? { stdioCapture } : {}),
@@ -354,6 +380,7 @@ export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
         cwd: cwdPath,
         env: envForChild,
         stderr: opts.stderr,
+        scratchSession,
         isRightPaneBusy: () => inFlight.size > 0,
         ...(opts.logger !== undefined ? { logger: opts.logger } : {}),
         ...(opts.resumeRunner !== undefined ? { resumeRunner: opts.resumeRunner } : {}),
@@ -513,6 +540,8 @@ interface BuildHostDeps {
    * interactive agent.
    */
   readonly inFlight: Set<StepName>
+  /** Per-run scratch session that hosts hidden panes for the pane-map. */
+  readonly scratchSession: ScratchSessionHandle
   /** --debug pipe-pane capture. Stopped on teardown to drop the pipes. */
   readonly pipePaneCapture?: import('./pipe-pane-capture.ts').PipePaneCapture
   /** Captures workflow-body console/stdout writes while tmux owns the TTY. */
@@ -759,6 +788,16 @@ function buildHost(deps: BuildHostDeps): Host {
     if (deps.pipePaneCapture !== undefined) {
       await deps.pipePaneCapture.stop()
     }
+    // Kill the scratch session BEFORE the visible session so the hidden
+    // panes that host file-tail / pty sources can't outlive their swap
+    // target. `teardownScratchSession` is idempotent and tolerates "session
+    // not found" (matches the main killSession's contract).
+    try {
+      await teardownScratchSession(deps.tmux, deps.scratchSession)
+    } catch (err) {
+      deps.stderr.write(`[orch tmux] scratch kill-session failed: ${String(err)}\n`)
+    }
+    void deps.logger?.append('lifecycle', { type: 'scratch-session-torndown' }).catch(() => {})
     // Kill the session last so all pending writes have already drained.
     // `killSession` tolerates "session not found" — a racing teardown or an
     // already-gone server is the outcome we want.
