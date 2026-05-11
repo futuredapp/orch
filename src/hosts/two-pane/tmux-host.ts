@@ -47,6 +47,7 @@ import {
   createScratchSession,
   type RightPaneController,
   type ScratchSessionHandle,
+  type SourceKey,
   teardownScratchSession,
 } from './pane-map/index.ts'
 import { createPaneQueue, type PaneQueue } from './pane-queue.ts'
@@ -739,58 +740,89 @@ function buildHost(deps: BuildHostDeps): Host {
   const runInteractive = async (spawn: InteractiveSpawn): Promise<InteractiveResult> => {
     const startedAt = deps.clock.now()
     const paneRole = spawn.pane ?? 'right'
-    const targetPane = paneRole === 'left' ? deps.leftPaneId : deps.rightPaneId
 
-    // respawn-pane enqueues behind any pending sendKeys on the target pane so
-    // no transcript keystroke races the interactive child's stdin.
-    // `env: spawn.env` carries the runner's full env (built via mergeEnv) into
-    // the child via tmux's `-e KEY=VAL` flags — the only seam where the
-    // interactive agent picks up `ANTHROPIC_API_KEY`, OAuth keychain bootstrap
-    // vars, and `FORCE_COLOR=3` for Claude.
-    // `cwd: spawn.cwd` becomes tmux's `-c <dir>` flag — without it, the pane
-    // keeps the cwd it was created with, which is `/` (RealTmuxService runs
-    // every tmux subprocess from `/`). The agent then can't write to its
-    // project files.
-    await deps.queue.enqueue(targetPane, () =>
-      deps.tmux.respawnPane({
-        socket: deps.socket,
-        target: targetPane,
-        argv: spawn.argv,
-        killRunning: true,
-        env: spawn.env,
-        cwd: spawn.cwd,
-      }),
-    )
+    // Left-pane spawns (the steps-view daemon) stay on the legacy respawnPane
+    // path: the left pane is owned by the steps-view child, never by the
+    // pane-map controller. The daemon's lifecycle is bookended by the
+    // caller's PaneQueue takeover message on exit, not by a placeholder
+    // restore — and the controller's `interactive` source kind would kill
+    // the hidden pane on unregister, which is wrong for the daemon path.
+    if (paneRole === 'left') {
+      const targetPane = deps.leftPaneId
+      await deps.queue.enqueue(targetPane, () =>
+        deps.tmux.respawnPane({
+          socket: deps.socket,
+          target: targetPane,
+          argv: spawn.argv,
+          killRunning: true,
+          env: spawn.env,
+          cwd: spawn.cwd,
+        }),
+      )
+      try {
+        await deps.tmux.waitFor({
+          socket: deps.socket,
+          channel: `pane-exit-${targetPane}`,
+        })
+      } catch {
+        /* left-pane wait failure is non-fatal — the daemon caller handles
+           pane takeover on its own. */
+      }
+      return { exitCode: 0, durationMs: deps.clock.now() - startedAt }
+    }
 
-    // The global `pane-died` hook (installed by `initOrchSession`) signals
-    // `pane-exit-<paneId>` when the child exits. Interactive steps wait
-    // indefinitely — the agent's `pane-died` hook is the only signal that
-    // can release this wait, and the user may pause the agent for arbitrary
-    // periods. Autonomous callers can still pass `timeoutMs` to bound their
-    // own waits.
+    // Right-pane interactive: U6's pane-map path. Register a `pty` source on
+    // the scratch session, swap it into the visible slot, wait for the
+    // hidden pane's `pane-died` hook, then unregister (which kills the
+    // hidden pane and swaps placeholder back in).
+    //
+    // The controller is required for this path. When a fixture omits
+    // basePath + stateStore, the controller is undefined — that's a wiring
+    // error for any interactive test, and we surface it explicitly rather
+    // than fall back to the legacy respawnPane path (which would re-
+    // introduce the kernel pty echo + ANSI corruption that U5/U6 removed).
+    if (controller === undefined) {
+      throw new Error(
+        'tmux-host.runInteractive: right-pane interactive requires a configured right-pane controller (set basePath + stateStore on createTmuxHost).',
+      )
+    }
+    const sourceKey: SourceKey = { type: 'interactive', stepName: spawn.stepName }
+    // registerSource spawns a hidden pane in the scratch session with the
+    // runner argv + env + cwd; the pane is a real PTY (isTTY === true) so
+    // arrow keys / Ctrl-C / resize reflow / color all work natively.
+    await controller.registerSource(sourceKey, {
+      kind: 'pty',
+      argv: spawn.argv,
+      env: spawn.env,
+      cwd: spawn.cwd,
+    })
+    const hiddenPaneId = controller.getPaneId(sourceKey)
+    if (hiddenPaneId === undefined) {
+      // Should never happen — registerSource just succeeded. Defensive
+      // throw rather than silently waiting on a stale visible-pane id.
+      throw new Error(
+        `tmux-host.runInteractive: controller.getPaneId returned undefined immediately after registerSource for ${spawn.stepName}`,
+      )
+    }
+    // Swap visible ↔ hidden so the interactive pane is what the user sees.
+    await controller.showSource(sourceKey)
     try {
+      // Wait on the HIDDEN pane id's pane-died hook. The global hook
+      // installed by `initOrchSession` fires for any pane death on the
+      // server (cross-session OK), so `pane-exit-<hiddenPaneId>` resolves
+      // when the runner exits even though the pane lives in the scratch
+      // session.
       await deps.tmux.waitFor({
         socket: deps.socket,
-        channel: `pane-exit-${targetPane}`,
+        channel: `pane-exit-${hiddenPaneId}`,
       })
     } finally {
-      // Right pane only: restore the `cat` placeholder so the next autonomous
-      // step's transcript has a pane to write to. Left-pane spawns (the
-      // steps-view daemon) skip this — when the daemon exits the caller writes
-      // a takeover message via PaneQueue and the cat placeholder would just
-      // race that write.
-      if (paneRole === 'right') {
-        await deps.queue
-          .enqueue(targetPane, () =>
-            deps.tmux.respawnPane({
-              socket: deps.socket,
-              target: targetPane,
-              argv: [PLACEHOLDER_CMD],
-              killRunning: true,
-            }),
-          )
-          .catch(handleSendError)
-      }
+      // unregisterSource for `interactive` kills the hidden pane and (if
+      // the interactive source was current) swaps the placeholder back to
+      // the visible slot. The old post-exit `respawnPane(['cat'])` restore
+      // is gone — the visible right pane never ran the runner argv
+      // directly, so there's nothing on it to clean up.
+      await controller.unregisterSource(sourceKey).catch(handleSendError)
     }
 
     // tmux's `pane-died` hook doesn't give us the child's exit code through

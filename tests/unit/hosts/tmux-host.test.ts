@@ -6,6 +6,7 @@ import { Writable } from 'node:stream'
 import { stepName } from '../../../src/core/types.ts'
 import { createTmuxHost } from '../../../src/hosts/index.ts'
 import type { RunnerEvent } from '../../../src/runners/index.ts'
+import { FakeFsService } from '../../../src/services/fs/index.ts'
 import {
   FakeClock,
   FakeProcessService,
@@ -13,7 +14,7 @@ import {
   path,
 } from '../../../src/services/index.ts'
 import { FakeTmuxService, paneId } from '../../../src/services/tmux/index.ts'
-import type { RunId } from '../../../src/state/index.ts'
+import { FileStateStore, type RunId } from '../../../src/state/index.ts'
 
 function makeStderr(): { stream: NodeJS.WritableStream; text: () => string } {
   const chunks: string[] = []
@@ -37,6 +38,32 @@ async function buildHost(tmux: FakeTmuxService) {
     stderr: stderr.stream,
     skipVersionCheck: true,
     disableStepsView: true,
+  })
+  return { host, stderr }
+}
+
+// Variant that wires basePath + stateStore so the right-pane controller is
+// created. U6's interactive path requires the controller: the runner pane is
+// a hidden PTY in the scratch session, and `swapPane` is the only way to
+// surface it. Tests that exercise `runInteractive` on the right pane go
+// through this fixture.
+async function buildHostWithController(tmux: FakeTmuxService) {
+  const stderr = makeStderr()
+  const fs = new FakeFsService()
+  const basePath = path('/state')
+  const stateStore = new FileStateStore({ fs, basePath })
+  const host = await createTmuxHost({
+    tmux,
+    fs,
+    processService: new FakeProcessService() as ProcessService,
+    clock: new FakeClock(0),
+    runId: 'r-2026-04-23-phased1' as RunId,
+    workflowName: 'compound',
+    stderr: stderr.stream,
+    skipVersionCheck: true,
+    disableStepsView: true,
+    basePath,
+    stateStore,
   })
   return { host, stderr }
 }
@@ -270,18 +297,20 @@ describe('TmuxHost.onLifecycleEvent — step:parallel-branch-update', () => {
 })
 
 describe('TmuxHost.runInteractive', () => {
-  it('respawns the right pane with runner argv + env + cwd, then restores cat without env or cwd on exit', async () => {
+  it('splits a scratch-session pane with runner argv + env + cwd, swaps it visible, and kills it on exit (U6)', async () => {
     const tmux = new FakeTmuxService()
     tmux.setListPanesResult(['%0'])
+    // First splitPane → visible right pane (%42). Second splitPane → the
+    // hidden PTY pane in the scratch session (synthesized as %1 by the
+    // FakeTmuxService counter).
     tmux.nextPaneId(paneId('%42'))
 
-    const { host } = await buildHost(tmux)
+    const { host } = await buildHostWithController(tmux)
 
-    // The asymmetry in env and cwd is the design: the runner respawn carries
-    // both `spawn.env` (so ANTHROPIC_API_KEY / OAuth bootstrap vars /
-    // FORCE_COLOR=3 reach the agent) and `spawn.cwd` (so the agent's tools
-    // see the project directory, not tmux's `/`). The placeholder restore
-    // deliberately omits both — `cat` needs nothing.
+    // The runner argv, env, and cwd all flow into the scratch-session
+    // splitPane call. `spawn.env` carries ANTHROPIC_API_KEY / OAuth
+    // bootstrap vars / FORCE_COLOR=3; `spawn.cwd` becomes tmux's `-c <dir>`
+    // flag — without it, the pane keeps tmux's default cwd of `/`.
     const spawnEnv = { ANTHROPIC_API_KEY: 'sk-test', FORCE_COLOR: '3' }
     const result = await host.runInteractive({
       argv: ['claude', '--resume', 'abc'],
@@ -292,36 +321,53 @@ describe('TmuxHost.runInteractive', () => {
 
     expect(result.exitCode).toBe(0)
 
-    const respawns = tmux.recordedCalls.filter((c) => c.method === 'respawnPane')
-    expect(respawns).toHaveLength(2)
-    // First respawn: runner argv with killRunning=true, env carrying spawn.env,
-    // and cwd carrying spawn.cwd. Without cwd plumbing, the pane keeps its
-    // existing cwd (`/` in production) and the agent can't write project files.
-    const first = respawns[0]
-    if (first?.method !== 'respawnPane') throw new Error('expected respawnPane call')
-    expect(first.opts.argv).toEqual(['claude', '--resume', 'abc'])
-    expect(first.opts.killRunning).toBe(true)
-    expect(first.opts.env).toEqual(spawnEnv)
-    expect(first.opts.cwd).toBe(path('/tmp'))
-    // Second respawn: restore `cat`. Env and cwd are intentionally omitted —
-    // placeholder needs no environment or working directory, and a stale
-    // runner env or cwd would leak into the next pane state. The asymmetry
-    // is the contract.
-    const second = respawns[1]
-    if (second?.method !== 'respawnPane') throw new Error('expected respawnPane call')
-    expect(second.opts.argv).toEqual(['cat'])
-    expect(second.opts.killRunning).toBe(true)
-    expect(second.opts.env).toBeUndefined()
-    expect(second.opts.cwd).toBeUndefined()
-    // And we waited on the pane-exit channel between them, with no timeout —
-    // interactive steps must wait indefinitely so the user can pause the
-    // agent for arbitrary periods without orch killing the run.
+    // U6 invariant: NO `respawnPane` on the visible right pane. The
+    // interactive runner lives in a hidden PTY pane in the scratch session;
+    // the visible slot only ever sees `swapPane`.
+    const rightRespawns = tmux.recordedCalls.filter(
+      (c) => c.method === 'respawnPane' && c.opts.target === paneId('%42'),
+    )
+    expect(rightRespawns).toHaveLength(0)
+
+    // The scratch-session splitPane carries the runner argv + env + cwd.
+    // The first splitPane is the visible right pane (placeholder cat); the
+    // second is the interactive PTY pane.
+    const splits = tmux.recordedCalls.filter((c) => c.method === 'splitPane')
+    const ptySplit = splits.find(
+      (c) => c.method === 'splitPane' && 'argv' in c.opts && c.opts.argv?.[0] === 'claude',
+    )
+    if (ptySplit?.method !== 'splitPane') throw new Error('expected pty splitPane call')
+    if (!('argv' in ptySplit.opts)) throw new Error('expected argv-form splitPane')
+    expect(ptySplit.opts.argv).toEqual(['claude', '--resume', 'abc'])
+    expect(ptySplit.opts.env).toEqual(spawnEnv)
+    expect(ptySplit.opts.cwd).toBe(path('/tmp'))
+    expect(ptySplit.opts.session).toBe('orch-scratch')
+
+    // `showSource` issues a `swapPane` from the hidden pane into the visible
+    // slot. There may be other swaps from controller setup or
+    // unregisterSource (placeholder restore) — assert at least one swap
+    // targeted the visible right pane id.
+    const swaps = tmux.recordedCalls.filter((c) => c.method === 'swapPane')
+    expect(swaps.length).toBeGreaterThanOrEqual(1)
+
+    // We wait on the HIDDEN pane id's pane-exit channel, not the visible
+    // right pane. The global pane-died hook keys on the dying pane's id,
+    // and the runner dies in the hidden pane (which lives in the scratch
+    // session). The hidden pane id is `%1` — the next synthesized id after
+    // the visible right pane consumed `%42`.
     const waits = tmux.recordedCalls.filter((c) => c.method === 'waitFor')
     expect(waits).toHaveLength(1)
     const wait = waits[0]
     if (wait?.method !== 'waitFor') throw new Error('expected waitFor call')
-    expect(wait.opts.channel).toBe('pane-exit-%42')
+    expect(wait.opts.channel).toBe('pane-exit-%1')
     expect(wait.opts.timeoutMs).toBeUndefined()
+
+    // unregisterSource for `interactive` kills the hidden pane. The old
+    // post-exit `respawnPane(['cat'])` restore is GONE — the visible
+    // right pane never ran the runner argv, so there's nothing to clean
+    // up on it.
+    const kills = tmux.recordedCalls.filter((c) => c.method === 'killPane')
+    expect(kills.length).toBeGreaterThanOrEqual(1)
   })
 
   it('omits timeoutMs on the pane-exit waitFor so an idle interactive agent never trips a default timeout', async () => {
@@ -329,7 +375,7 @@ describe('TmuxHost.runInteractive', () => {
     tmux.setListPanesResult(['%0'])
     tmux.nextPaneId(paneId('%42'))
 
-    const { host } = await buildHost(tmux)
+    const { host } = await buildHostWithController(tmux)
 
     await host.runInteractive({
       argv: ['claude'],

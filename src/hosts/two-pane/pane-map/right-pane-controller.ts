@@ -146,6 +146,17 @@ export interface RightPaneController {
    */
   followLive(): Promise<void>
   /**
+   * Look up the hidden-pane id for a registered source. Returns `undefined`
+   * when the source is not in the map.
+   *
+   * Used by U6's interactive path: `runInteractive` registers a `pty`
+   * source, then waits on `pane-exit-<hiddenPaneId>` to detect the runner's
+   * exit. The hidden pane id is needed before `unregisterSource` runs
+   * (which kills it), so the host queries the controller right after
+   * register.
+   */
+  getPaneId(key: SourceKey): PaneId | undefined
+  /**
    * Emit a banner. Bumps the controller's monotonic `bannerSeq` and writes a
    * snapshot to the TUI overlay IPC channel so the child renderer can
    * surface it. Caller passes `kind` + `text` + optional `ttlMs`; `seq` is
@@ -530,12 +541,17 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
     stopped = true
   }
 
+  const getPaneId = (key: SourceKey): PaneId | undefined => {
+    return panes.get(sourceKeyToString(key))
+  }
+
   return {
     onIntent,
     registerSource,
     showSource,
     unregisterSource,
     followLive,
+    getPaneId,
     emitBanner,
     setViewMode,
     stop,

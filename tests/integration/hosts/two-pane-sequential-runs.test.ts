@@ -104,8 +104,12 @@ async function runOnce(opts: {
   const tmux = new RealTmuxService({ processService })
   const bunFs = new BunFsService()
 
+  const basePath = path(opts.statePath)
+  const stateStore = new FileStateStore({ fs: bunFs, basePath })
+
   const host = await createTmuxHost({
     tmux,
+    fs: bunFs,
     processService,
     clock: new BunClock(),
     runId,
@@ -116,10 +120,16 @@ async function runOnce(opts: {
     env: {},
     cwd: opts.cwd,
     logger: createNullSessionLogger({ runId }),
+    // U6: right-pane interactive requires the controller. Wire basePath +
+    // stateStore so createTmuxHost constructs one. disableStepsView keeps
+    // this test from spawning the steps-view Ink child (a separate concern).
+    basePath,
+    stateStore,
+    disableStepsView: true,
   })
 
   const wfDeps: WorkflowDeps = {
-    stateStore: new FileStateStore({ fs: bunFs, basePath: path(opts.statePath) }),
+    stateStore,
     processService,
     clock: new BunClock(),
     runId,
