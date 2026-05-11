@@ -14,7 +14,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import * as fs from 'node:fs/promises'
 import { Writable } from 'node:stream'
 import { createPaneQueue } from '../../../../../src/hosts/two-pane/pane-queue.ts'
-import { startStepsView } from '../../../../../src/hosts/two-pane/steps-view/index.ts'
+import {
+  StepsIntentSchema,
+  startStepsView,
+} from '../../../../../src/hosts/two-pane/steps-view/index.ts'
 import { createNullSessionLogger } from '../../../../../src/observability/index.ts'
 import { FakeTmuxService, paneId, socketName } from '../../../../../src/services/tmux/index.ts'
 import { path as toPath } from '../../../../../src/services/types.ts'
@@ -308,5 +311,21 @@ describe('startStepsView', () => {
     }
 
     await handle.stop()
+  })
+})
+
+describe('StepsIntentSchema', () => {
+  it('parses {type: "dismiss-banner"} successfully', () => {
+    expect(() => StepsIntentSchema.parse({ type: 'dismiss-banner' })).not.toThrow()
+  })
+
+  it('rejects unknown intent types', () => {
+    expect(() => StepsIntentSchema.parse({ type: 'unknown-intent' })).toThrow()
+  })
+
+  it('still parses the legacy intents', () => {
+    expect(() => StepsIntentSchema.parse({ type: 'quit' })).not.toThrow()
+    expect(() => StepsIntentSchema.parse({ type: 'follow-live' })).not.toThrow()
+    expect(() => StepsIntentSchema.parse({ type: 'enter', stepName: 'plan' })).not.toThrow()
   })
 })

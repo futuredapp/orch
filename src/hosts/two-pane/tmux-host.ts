@@ -382,6 +382,7 @@ export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
         stderr: opts.stderr,
         scratchSession,
         isRightPaneBusy: () => inFlight.size > 0,
+        tuiOverlayPath: toPath(`${stateDir}/tui-overlay.ndjson`),
         ...(opts.logger !== undefined ? { logger: opts.logger } : {}),
         ...(opts.resumeRunner !== undefined ? { resumeRunner: opts.resumeRunner } : {}),
         ...(opts.transcriptRenderer !== undefined

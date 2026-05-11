@@ -21,6 +21,7 @@ import { projectStepsView } from './project-steps-view.ts'
 import type { StepsViewState } from './step-types.ts'
 import { type TailNdjsonHandle, tailNdjson } from './tail-ndjson.ts'
 import { type TailStateJsonHandle, tailStateJson } from './tail-state-json.ts'
+import { DEFAULT_TUI_OVERLAY, parseTuiOverlayLine, type TuiOverlay } from './tui-overlay.ts'
 
 export interface CreateStepsViewModelOptions {
   readonly stateDir: Path
@@ -45,10 +46,12 @@ export interface StepsViewModel {
 export function createStepsViewModel(opts: CreateStepsViewModelOptions): StepsViewModel {
   const emitter = new EventEmitter()
   const overlay = new Map<string, LiveOverlay>()
+  let tuiOverlay: TuiOverlay = DEFAULT_TUI_OVERLAY
   let latest: StepsViewState | undefined
   let currentRun: RunState | undefined
   let stateTail: TailStateJsonHandle | undefined
   let lifecycleTail: TailNdjsonHandle | undefined
+  let tuiOverlayTail: TailNdjsonHandle | undefined
   let stopped = false
 
   const reproject = (): void => {
@@ -58,6 +61,8 @@ export function createStepsViewModel(opts: CreateStepsViewModelOptions): StepsVi
       overlay,
       workflowName: opts.workflowName,
       runIdFallback: opts.runId,
+      view: tuiOverlay.view,
+      ...(tuiOverlay.banner !== undefined ? { banner: tuiOverlay.banner } : {}),
     })
     latest = next
     emitter.emit('change', next)
@@ -103,8 +108,19 @@ export function createStepsViewModel(opts: CreateStepsViewModelOptions): StepsVi
         }
       },
     })
+    tuiOverlayTail = tailNdjson({
+      filePath: toPath(`${opts.stateDir}/tui-overlay.ndjson`),
+      fs: opts.fs,
+      onLine: (raw) => {
+        const next = parseTuiOverlayLine(raw)
+        if (next === undefined) return
+        tuiOverlay = next
+        reproject()
+      },
+    })
     await stateTail.start()
     await lifecycleTail.start()
+    await tuiOverlayTail.start()
     if (latest === undefined) reproject()
   }
 
@@ -113,6 +129,7 @@ export function createStepsViewModel(opts: CreateStepsViewModelOptions): StepsVi
     stopped = true
     if (stateTail !== undefined) await stateTail.stop()
     if (lifecycleTail !== undefined) await lifecycleTail.stop()
+    if (tuiOverlayTail !== undefined) await tuiOverlayTail.stop()
     emitter.removeAllListeners()
   }
 
@@ -136,9 +153,17 @@ export { applyLifecycleEvent } from './live-overlay.ts'
 export type { ProjectArgs } from './project-steps-view.ts'
 export { projectStepsView } from './project-steps-view.ts'
 export type {
+  Banner,
   EndOfRunSummary,
   RunHeader,
   StepRow,
   StepStatus,
   StepsViewState,
+  ViewMode,
 } from './step-types.ts'
+export type { TuiOverlay, TuiOverlaySnapshot } from './tui-overlay.ts'
+export {
+  DEFAULT_TUI_OVERLAY,
+  parseTuiOverlayLine,
+  serializeTuiOverlayLine,
+} from './tui-overlay.ts'

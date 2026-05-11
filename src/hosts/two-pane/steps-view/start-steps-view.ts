@@ -35,6 +35,7 @@ export const StepsIntentSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('enter'), stepName: z.string().min(1) }),
   z.object({ type: z.literal('follow-live') }),
   z.object({ type: z.literal('quit') }),
+  z.object({ type: z.literal('dismiss-banner') }),
 ])
 
 export type StepsIntent = z.infer<typeof StepsIntentSchema>

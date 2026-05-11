@@ -59,6 +59,7 @@ const ENDED_STATE: StepsViewState = {
     },
   ],
   summary: { ...SUMMARY, stepsTotal: 2, stepsCompleted: 2, stepsFailed: 0 },
+  view: { mode: 'live' },
 }
 
 function tick(): Promise<void> {

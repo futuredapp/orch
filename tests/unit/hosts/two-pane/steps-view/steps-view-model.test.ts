@@ -158,4 +158,52 @@ describe('projectStepsView', () => {
       expect(state.summary.stepsTotal).toBe(0)
     }
   })
+
+  it('defaults view to {mode:"live"} when omitted, with no banner', () => {
+    const state = projectStepsView({ run: undefined, overlay: new Map(), ...HEADER })
+
+    expect(state.view).toEqual({ mode: 'live' })
+    expect(state.banner).toBeUndefined()
+  })
+
+  it('propagates a replay view-mode through to the projected state', () => {
+    const state = projectStepsView({
+      run: undefined,
+      overlay: new Map(),
+      view: { mode: 'replay', stepName: 'plan' },
+      ...HEADER,
+    })
+
+    expect(state.view).toEqual({ mode: 'replay', stepName: 'plan' })
+  })
+
+  it('propagates a banner verbatim onto the projected state', () => {
+    const banner = { kind: 'info', text: 'step plan complete', ttlMs: 4000, seq: 1 } as const
+
+    const state = projectStepsView({
+      run: undefined,
+      overlay: new Map(),
+      banner,
+      ...HEADER,
+    })
+
+    expect(state.banner).toEqual(banner)
+  })
+
+  it('preserves view + banner on terminal-status runs (completed/failed/crashed)', () => {
+    const run = makeRunState({ status: 'completed', startedAt: 0, endedAt: 5, steps: {} })
+    const banner = { kind: 'error', text: 'oops', seq: 9 } as const
+
+    const state = projectStepsView({
+      run,
+      overlay: new Map(),
+      banner,
+      view: { mode: 'replay', stepName: 'plan' },
+      ...HEADER,
+    })
+
+    expect(state.status).toBe('completed')
+    expect(state.view).toEqual({ mode: 'replay', stepName: 'plan' })
+    expect(state.banner).toEqual(banner)
+  })
 })

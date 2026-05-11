@@ -42,6 +42,7 @@ const liveState: StepsViewState = {
       startedAt: 2_000,
     },
   ],
+  view: { mode: 'live' },
 }
 
 const completedState: StepsViewState = {
@@ -64,6 +65,7 @@ const completedState: StepsViewState = {
     stepsCompleted: 1,
     stepsFailed: 0,
   },
+  view: { mode: 'live' },
 }
 
 describe('<StepsView> frame snapshots at width 110', () => {
@@ -77,8 +79,11 @@ describe('<StepsView> frame snapshots at width 110', () => {
     expect(frame).toContain('orch · demo · r-2026-04-10-458000-q8')
     expect(frame).toContain('plan')
     expect(frame).toContain('work')
-    // Keymap footer (the precise chars are the contract).
-    expect(frame).toContain('↑/↓ ⏎ f ? q')
+    // View-mode footer (live). Replaced the static `↑/↓ ⏎ f ? q` keymap in U4.
+    expect(frame).toContain('▶ live')
+    expect(frame).toContain('⏎ view step')
+    expect(frame).toContain('q quit')
+    expect(frame).toContain('? help')
   })
 
   it('renders the end-of-run footer when the run is no longer live', () => {

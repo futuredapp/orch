@@ -18,6 +18,7 @@ export { HelpOverlay, ParallelGroup, StepsView } from './steps-view.tsx'
 export type { StepsSelection } from './steps-view-hooks.ts'
 export { useAdaptiveColumns, useStepsSelection } from './steps-view-hooks.ts'
 export type {
+  Banner,
   CreateStepsViewModelOptions,
   LiveOverlay,
   RunHeader,
@@ -25,11 +26,17 @@ export type {
   StepStatus,
   StepsViewModel,
   StepsViewState,
+  TuiOverlay,
+  TuiOverlaySnapshot,
+  ViewMode,
 } from './steps-view-model.ts'
 export {
   applyLifecycleEvent,
   createStepsViewModel,
+  DEFAULT_TUI_OVERLAY,
+  parseTuiOverlayLine,
   projectStepsView,
+  serializeTuiOverlayLine,
 } from './steps-view-model.ts'
 export type { TailNdjsonHandle, TailNdjsonOptions } from './tail-ndjson.ts'
 export { tailNdjson } from './tail-ndjson.ts'

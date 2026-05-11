@@ -99,8 +99,9 @@ describe('Host.awaitForegroundShutdown', () => {
     const stateDir = `${tmpDir}/${RUN_ID}`
     await fs.mkdir(stateDir, { recursive: true })
 
-    let captured: ((intent: { type: 'quit' | 'enter' | 'follow-live' }) => void) | undefined
-    const onStepsIntent = (intent: { type: 'quit' | 'enter' | 'follow-live' }): void => {
+    type IntentLike = { type: 'quit' | 'enter' | 'follow-live' | 'dismiss-banner' }
+    let captured: ((intent: IntentLike) => void) | undefined
+    const onStepsIntent = (intent: IntentLike): void => {
       captured?.(intent)
     }
 

@@ -23,7 +23,7 @@
 // and updates it after every swap; future swaps target the up-to-date
 // destination.
 
-import { mkdir, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, writeFile } from 'node:fs/promises'
 import { orchLog, type SessionLogger } from '../../../observability/index.ts'
 import type { Runner } from '../../../runners/index.ts'
 import type { PaneId, SocketName, TmuxService } from '../../../services/tmux/index.ts'
@@ -33,7 +33,15 @@ import { renderKindDetails } from '../kind-details.tsx'
 import type { PaneQueue } from '../pane-queue.ts'
 import { resolveCommandPaneSource } from '../replay-command-pane.ts'
 import { renderTranscriptToString } from '../replay-transcript.ts'
-import { projectStepsView, type StepRow, type StepsIntent } from '../steps-view/index.ts'
+import {
+  type Banner,
+  projectStepsView,
+  type StepRow,
+  type StepsIntent,
+  serializeTuiOverlayLine,
+  type TuiOverlay,
+  type ViewMode,
+} from '../steps-view/index.ts'
 import { type PaneSpec, type SourceKey, sourceKeyToString } from './pane-spec.ts'
 import type { ScratchSessionHandle } from './scratch-session.ts'
 
@@ -90,6 +98,17 @@ export interface RightPaneControllerOptions {
    * live transcript — so the gate stays.
    */
   readonly isRightPaneBusy?: () => boolean
+  /**
+   * Absolute path to the parent → child IPC channel for banner + view-mode
+   * snapshots. The controller appends one JSON line per `emitBanner` /
+   * `setViewMode` / banner-clear; the steps-view model in the child tails
+   * this file and re-projects.
+   *
+   * Optional because pre-U5 callers that don't exercise the new surface can
+   * omit it. When omitted, `emitBanner` / `setViewMode` are no-ops past the
+   * in-memory state update — the IPC write is silently skipped.
+   */
+  readonly tuiOverlayPath?: Path
 }
 
 export interface RightPaneController {
@@ -126,6 +145,23 @@ export interface RightPaneController {
    * `U3 dead-code surface`: not yet called by the host.
    */
   followLive(): Promise<void>
+  /**
+   * Emit a banner. Bumps the controller's monotonic `bannerSeq` and writes a
+   * snapshot to the TUI overlay IPC channel so the child renderer can
+   * surface it. Caller passes `kind` + `text` + optional `ttlMs`; `seq` is
+   * controller-assigned.
+   *
+   * Pure-add surface for U5/U8/U6 to consume — U4 ships only the plumbing.
+   */
+  emitBanner(input: Omit<Banner, 'seq'>): Promise<void>
+  /**
+   * Set the persistent footer indicator. Writes a snapshot to the TUI
+   * overlay IPC channel. Independent of `banner` — both can change in the
+   * same projection cycle.
+   *
+   * Pure-add surface for U5/U8/U6 to consume — U4 ships only the plumbing.
+   */
+  setViewMode(view: ViewMode): Promise<void>
   /** Tear down: drop references, stop accepting intents. */
   stop(): Promise<void>
 }
@@ -151,8 +187,62 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
    *  reconstruction during the `live → replay` transform. */
   const keyByString = new Map<string, SourceKey>()
 
+  // ---------------------------------------------------------------------------
+  // TUI overlay state: persistent view-mode + transient banner.
+  // The monotonic `bannerSeq` counter — bumped on every `emitBanner` — is
+  // load-bearing: the renderer's auto-dismiss timer keys on it so identical-
+  // text emits restart the countdown instead of being deduped by React's
+  // effect-dep diff.
+  // ---------------------------------------------------------------------------
+
+  let currentView: ViewMode = { mode: 'live' }
+  let currentBanner: Banner | undefined
+  let bannerSeq = 0
+
   const logLifecycle = (record: Readonly<Record<string, unknown>>): void => {
     void opts.logger?.append('lifecycle', record).catch(() => {})
+  }
+
+  const writeTuiOverlay = async (): Promise<void> => {
+    if (opts.tuiOverlayPath === undefined) return
+    const snapshot: TuiOverlay =
+      currentBanner !== undefined
+        ? { view: currentView, banner: currentBanner }
+        : { view: currentView }
+    try {
+      await appendFile(opts.tuiOverlayPath, serializeTuiOverlayLine(snapshot), 'utf8')
+    } catch (err) {
+      opts.stderr.write(`[orch tui] tui-overlay write failed: ${String(err)}\n`)
+    }
+  }
+
+  const emitBanner = async (input: Omit<Banner, 'seq'>): Promise<void> => {
+    if (stopped) return
+    bannerSeq += 1
+    const next: Banner = {
+      kind: input.kind,
+      text: input.text,
+      seq: bannerSeq,
+      ...(input.ttlMs !== undefined ? { ttlMs: input.ttlMs } : {}),
+    }
+    currentBanner = next
+    logLifecycle({ type: 'banner-emit', banner: next })
+    await writeTuiOverlay()
+  }
+
+  const setViewMode = async (view: ViewMode): Promise<void> => {
+    if (stopped) return
+    currentView = view
+    logLifecycle({ type: 'view-mode-changed', view })
+    await writeTuiOverlay()
+  }
+
+  const dismissBanner = async (): Promise<void> => {
+    if (stopped) return
+    if (currentBanner === undefined) return
+    currentBanner = undefined
+    logLifecycle({ type: 'banner-dismissed' })
+    await writeTuiOverlay()
   }
 
   // ---------------------------------------------------------------------------
@@ -400,6 +490,10 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
     }
     if (intent.type === 'quit') {
       void closeReplay()
+      return
+    }
+    if (intent.type === 'dismiss-banner') {
+      void dismissBanner()
     }
   }
 
@@ -414,6 +508,8 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
     showSource,
     unregisterSource,
     followLive,
+    emitBanner,
+    setViewMode,
     stop,
   }
 }

@@ -7,22 +7,37 @@
 //   - `useStepsSelection(steps)`  — sticky-on-stepName selection w/ ↑/↓/f
 //
 // Keymap: `↑/↓` move selection · `⏎` fire intent · `f` snap-to-live ·
-// `?` help overlay · `q` quit.
+// `Esc` close help / dismiss error banner · `?` help overlay · `q` quit.
+//
+// View-mode footer: when `state.view.mode === 'live'` the footer reads
+// `▶ live · …`; when `'replay'` it reads `⏸ viewing <stepName> · f live · …`.
+// `state.banner` (when present) renders as a single-line box above the steps
+// grid. Info banners auto-clear after `ttlMs ?? 4000` via a `useEffect` keyed
+// on `banner.seq` so rapid identical-text emits restart the timer. Error
+// banners persist until replaced by a new emit or dismissed with `Esc`
+// (precedence: help-close > dismiss-banner > no-op).
 //
 // `<StepRow>` is `React.memo`'d with threshold-bucketed prop equality so a
 // flood of viewmodel changes (10/sec on a hot step) doesn't redraw every row.
 
 import { Box, Text, useInput } from 'ink'
 import type React from 'react'
-import { memo, useState } from 'react'
+import { memo, useEffect, useState } from 'react'
 import { formatElapsed, stepGlyph, stripAnsi } from '../../../observability/index.ts'
 import type { ColumnSet } from './adaptive-columns.ts'
 import { EndOfRunFooter, EndOfRunSummary } from './end-of-run-summary.tsx'
-import type { StepRow as StepRowData, StepsViewState } from './step-types.ts'
+import type { Banner, StepRow as StepRowData, StepsViewState, ViewMode } from './step-types.ts'
 import { useAdaptiveColumns, useStepsSelection } from './steps-view-hooks.ts'
 
 export type { StepsSelection } from './steps-view-hooks.ts'
 export { useAdaptiveColumns, useStepsSelection } from './steps-view-hooks.ts'
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const DEFAULT_INFO_TTL_MS = 4000
+const STEP_NAME_MAX = 30
 
 // ---------------------------------------------------------------------------
 // Public component
@@ -50,6 +65,7 @@ export type StepsViewIntent =
   | { readonly type: 'enter'; readonly stepName: string }
   | { readonly type: 'follow-live' }
   | { readonly type: 'quit' }
+  | { readonly type: 'dismiss-banner' }
 
 export interface StepsViewKeyEvent {
   readonly ts: number
@@ -89,6 +105,15 @@ export function StepsView({
       }
       return
     }
+    if (key.escape) {
+      // Esc precedence (help already handled above): dismiss an error banner,
+      // otherwise no-op. Info banners auto-clear and are not manually
+      // dismissable — that matches the brainstorm's single-slot semantics.
+      if (state.banner !== undefined && state.banner.kind === 'error') {
+        onIntent({ type: 'dismiss-banner' })
+      }
+      return
+    }
     if (key.upArrow) {
       moveUp()
       return
@@ -117,6 +142,23 @@ export function StepsView({
     }
   })
 
+  // Info-banner auto-dismiss. The controller emits a new banner OBJECT for
+  // every snapshot (different seq → different reference), so depending on
+  // `banner` is sufficient to fire this effect once per emit. Successive info
+  // banners with identical text still re-arm the timer because the parent's
+  // monotonic `seq` makes the banner object a fresh reference each time.
+  // Error banners do not auto-dismiss regardless of `ttlMs`.
+  const banner = state.banner
+  useEffect(() => {
+    if (banner === undefined || banner.kind !== 'info') return
+    const handle = setTimeout(() => {
+      onIntent({ type: 'dismiss-banner' })
+    }, banner.ttlMs ?? DEFAULT_INFO_TTL_MS)
+    return () => {
+      clearTimeout(handle)
+    }
+  }, [banner, onIntent])
+
   const isTerminal = state.status !== 'live'
 
   return (
@@ -126,6 +168,7 @@ export function StepsView({
       ) : (
         <Text>{renderHeader(state)}</Text>
       )}
+      {banner !== undefined ? <BannerBox banner={banner} /> : null}
       {state.steps.length === 0 ? (
         <Text dimColor>(no steps yet)</Text>
       ) : (
@@ -142,8 +185,29 @@ export function StepsView({
         </Box>
       )}
       {isTerminal ? <EndOfRunFooter status={state.status} /> : null}
-      {!helpOpen && !isTerminal ? <Keymap /> : null}
+      {!helpOpen && !isTerminal ? <ViewModeFooter view={state.view} /> : null}
       {helpOpen ? <HelpOverlay /> : null}
+    </Box>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// <BannerBox> — single-line banner above the steps grid.
+// ---------------------------------------------------------------------------
+
+function BannerBox({ banner }: { readonly banner: Banner }): React.ReactElement {
+  if (banner.kind === 'error') {
+    return (
+      <Box>
+        <Text color="red">{`! ${truncate(banner.text, 200)} · Esc dismiss`}</Text>
+      </Box>
+    )
+  }
+  return (
+    <Box>
+      <Text color="cyan" dimColor>
+        {truncate(banner.text, 200)}
+      </Text>
     </Box>
   )
 }
@@ -217,7 +281,7 @@ export function ParallelGroup({ parentName, children }: ParallelGroupProps): Rea
 }
 
 // ---------------------------------------------------------------------------
-// <HelpOverlay> + <Keymap>
+// <HelpOverlay> + <ViewModeFooter>
 // ---------------------------------------------------------------------------
 
 export function HelpOverlay(): React.ReactElement {
@@ -225,21 +289,39 @@ export function HelpOverlay(): React.ReactElement {
     <Box flexDirection="column" borderStyle="round" paddingX={1} marginTop={1}>
       <Text bold>Keymap</Text>
       <Text>↑/↓ move selection</Text>
-      <Text>⏎ replay step in right pane</Text>
-      <Text>⏎ disabled while a step is running</Text>
-      <Text>f follow live step</Text>
+      <Text>⏎ view selected step</Text>
+      <Text>f follow live (or rollup) — returns to the most recent live source</Text>
+      <Text>Esc close this help · dismiss error banner</Text>
       <Text>? toggle this help</Text>
       <Text>q quit (run continues)</Text>
+      <Text> </Text>
+      <Text dimColor>Footer indicator: ▶ live · ⏸ viewing &lt;step&gt;</Text>
+      <Text dimColor>Banner: info auto-clears (~4s) · error persists until Esc or next emit</Text>
     </Box>
   )
 }
 
-function Keymap(): React.ReactElement {
+function ViewModeFooter({ view }: { readonly view: ViewMode }): React.ReactElement {
   return (
     <Box marginTop={1}>
-      <Text dimColor>↑/↓ ⏎ f ? q</Text>
+      <Text dimColor>{renderViewModeFooter(view)}</Text>
     </Box>
   )
+}
+
+function renderViewModeFooter(view: ViewMode): string {
+  // `f` is hidden in live mode — it's a no-op when already on the most-recent
+  // live source. Re-introduced when the parallel-switcher UX ships and `f`
+  // carries cycle-between-branches semantics.
+  if (view.mode === 'live') {
+    return '▶ live · ⏎ view step · q quit · ? help'
+  }
+  return `⏸ viewing ${truncate(view.stepName, STEP_NAME_MAX)} · f live · ⏎ view another · q quit · ? help`
+}
+
+function truncate(text: string, max: number): string {
+  if (text.length <= max) return text
+  return `${text.slice(0, max - 1)}…`
 }
 
 function renderHeader(state: StepsViewState): string {

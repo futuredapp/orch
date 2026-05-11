@@ -114,6 +114,7 @@ export async function runStepsViewRunner(opts: ParsedOpts): Promise<void> {
     status: 'live',
     run: { runId: opts.runId, workflowName: opts.workflowName, startedAt: 0 },
     steps: [],
+    view: { mode: 'live' },
   }
 
   let resolved = false

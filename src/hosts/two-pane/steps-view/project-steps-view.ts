@@ -8,11 +8,13 @@
 import type { RunState } from '../../../state/index.ts'
 import type { LiveOverlay } from './live-overlay.ts'
 import type {
+  Banner,
   EndOfRunSummary,
   RunHeader,
   StepRow,
   StepStatus,
   StepsViewState,
+  ViewMode,
 } from './step-types.ts'
 
 export interface ProjectArgs {
@@ -20,7 +22,13 @@ export interface ProjectArgs {
   readonly overlay: ReadonlyMap<string, LiveOverlay>
   readonly workflowName: string
   readonly runIdFallback: string
+  /** Persistent footer indicator. Default `{mode:'live'}` when omitted. */
+  readonly view?: ViewMode
+  /** Optional transient banner. Default omitted. */
+  readonly banner?: Banner
 }
+
+const DEFAULT_VIEW: ViewMode = { mode: 'live' }
 
 export function projectStepsView(args: ProjectArgs): StepsViewState {
   const run = args.run
@@ -49,19 +57,21 @@ export function projectStepsView(args: ProjectArgs): StepsViewState {
     workflowName: args.workflowName,
     startedAt: run?.startedAt ?? 0,
   }
+  const view = args.view ?? DEFAULT_VIEW
+  const bannerSlot = args.banner !== undefined ? { banner: args.banner } : {}
   const runStatus = run?.status ?? 'running'
   if (runStatus === 'running') {
-    return { status: 'live', run: header, steps }
+    return { status: 'live', run: header, steps, view, ...bannerSlot }
   }
 
   const summary = summarize(run, steps)
   if (runStatus === 'crashed') {
-    return { status: 'crashed', run: header, steps, summary }
+    return { status: 'crashed', run: header, steps, summary, view, ...bannerSlot }
   }
   if (summary.stepsFailed > 0) {
-    return { status: 'failed', run: header, steps, summary }
+    return { status: 'failed', run: header, steps, summary, view, ...bannerSlot }
   }
-  return { status: 'completed', run: header, steps, summary }
+  return { status: 'completed', run: header, steps, summary, view, ...bannerSlot }
 }
 
 interface PersistedHints {

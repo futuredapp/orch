@@ -72,23 +72,36 @@ export interface EndOfRunSummary {
   readonly stepsFailed: number
 }
 
+// `view.mode` is the persistent footer indicator. `'live'` while following the
+// most-recent live source (or rollup); `{mode:'replay', stepName}` after Enter
+// on a past step. Independent of `banner` — the banner is transient feedback,
+// `view` is the durable mode.
+export type ViewMode =
+  | { readonly mode: 'live' }
+  | { readonly mode: 'replay'; readonly stepName: string }
+
+// Single-slot, last-write-wins banner. `seq` is a monotonic counter assigned by
+// the controller's `emitBanner` — the renderer keys its auto-dismiss timeout on
+// `seq` (NOT on `text`) so rapid successive banners with identical text reliably
+// restart the timer instead of being deduped by React's effect dependency check.
+// Info banners auto-clear after `ttlMs ?? 4000`; errors persist until replaced
+// or `Esc`-dismissed.
+export interface Banner {
+  readonly kind: 'info' | 'error'
+  readonly text: string
+  readonly ttlMs?: number
+  readonly seq: number
+}
+
+interface StepsViewStateBase {
+  readonly run: RunHeader
+  readonly steps: readonly StepRow[]
+  readonly view: ViewMode
+  readonly banner?: Banner
+}
+
 export type StepsViewState =
-  | { readonly status: 'live'; readonly run: RunHeader; readonly steps: readonly StepRow[] }
-  | {
-      readonly status: 'completed'
-      readonly run: RunHeader
-      readonly steps: readonly StepRow[]
-      readonly summary: EndOfRunSummary
-    }
-  | {
-      readonly status: 'failed'
-      readonly run: RunHeader
-      readonly steps: readonly StepRow[]
-      readonly summary: EndOfRunSummary
-    }
-  | {
-      readonly status: 'crashed'
-      readonly run: RunHeader
-      readonly steps: readonly StepRow[]
-      readonly summary: EndOfRunSummary
-    }
+  | ({ readonly status: 'live' } & StepsViewStateBase)
+  | ({ readonly status: 'completed'; readonly summary: EndOfRunSummary } & StepsViewStateBase)
+  | ({ readonly status: 'failed'; readonly summary: EndOfRunSummary } & StepsViewStateBase)
+  | ({ readonly status: 'crashed'; readonly summary: EndOfRunSummary } & StepsViewStateBase)
