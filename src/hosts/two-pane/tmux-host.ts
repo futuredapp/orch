@@ -3,17 +3,24 @@
 // ---------------------------------------------------------------------------
 //
 // Two panes: left runs a `cat` placeholder with the status rollup drawn into
-// it; right runs a `cat` placeholder that receives transcript lines (for
-// autonomous steps) or is respawned with the runner argv (for interactive
-// steps). The placeholders matter — `send-keys -l` writes bytes to the pane's
-// stdin, so if the pane ran a shell, every transcript line would be shell
-// input. `cat` just echoes; any future swap of the placeholder must be a
-// non-interpreting process (see tmux-service's respawn-pane contract).
+// it; right is a *swap target* for the pane-map controller (post-2026-05-11
+// unified-pane-map plan). Hidden source panes — runner PTYs, `tail -F` over
+// per-step tees, the parallel-block rollup tail — live on a sibling tmux
+// session (`orch-scratch`) and are `tmux swap-pane`d into the visible right
+// slot on demand. The visible right pane never directly hosts a runner
+// process; bytes always arrive via swap. The left pane is unchanged (still
+// owns the steps-view daemon).
 //
 // Every pane write goes through the shared PaneQueue — transcript fan-out,
 // status rollup, and respawn-pane -k all serialize per pane so a pending
 // transcript keystroke can never land on an interactive process that just
 // took the pane over.
+//
+// **File size.** This file exceeds the project's 300-LOC warning cap.
+// The host is the natural integration seam between three subsystems
+// (runners, lifecycle, pane-map) and splitting it for size alone would
+// obscure that integration. Revisit if/when this file exceeds 700 LOC
+// after the parallel-switcher pass.
 
 import { summarizeFailure } from '../../core/failure-summary.ts'
 import type { RunMode } from '../../core/run-mode.ts'

@@ -6,6 +6,19 @@ status: shipped
 
 # Autonomous transcript rendering — runner-owned formatting
 
+> **2026-05-11 addendum (pane-map plan, U5/U8 shipped).** The right pane in
+> two-pane mode no longer receives transcript bytes via `tmux sendKeys`. The
+> host writes rendered bytes to a per-step ANSI tee
+> (`logs/agents/<step>/formatted_output.ansi`); a hidden pane runs
+> `tail -n 5000 -F <that file>` and the visible right pane is swapped to it.
+> Same bytes, different delivery channel — `renderTranscriptLine` is still
+> the only place that owns formatting, and the per-runner
+> `toTranscriptLines` is still the only place that owns event shape.
+> First-view backfill is bounded at 5000 lines (~500KB of ANSI) so cold-view
+> replay of a long step doesn't scroll through 10MB on swap-in. Past-step
+> `⏎` replay reads the same persisted tee directly (warm cache after first
+> view) and falls back to a JSON re-render only when the tee is missing.
+
 ## Symptom
 
 A 6-turn autonomous Claude run rendered as five `· <type>` lines and nothing

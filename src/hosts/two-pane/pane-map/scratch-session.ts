@@ -1,12 +1,22 @@
 // ---------------------------------------------------------------------------
-// scratch-session — per-run sibling tmux session that hosts hidden panes.
+// scratch-session — per-run sibling tmux session that hosts hidden source panes.
 // ---------------------------------------------------------------------------
 //
-// Every "source" the right pane can show lives as a hidden pane in this
-// session. The visible `orch` session's right pane is swapped with one of
-// these hidden panes on demand. The session has no clients (no `tmux
-// attach`); it exists purely to give swap-pane somewhere to spawn process
-// state.
+// Vocabulary (used across the pane-map module):
+//   - **Visible pane** — the right pane the user sees in the `orch` session.
+//     Always a swap target; never directly hosts a runner / tail / rollup
+//     process. Its pane id changes after every successful `swap-pane`.
+//   - **Hidden source pane** — a pane in this scratch session that hosts the
+//     actual process for one source (autonomous tail, command-step tail,
+//     parallel-block rollup tail, interactive runner PTY, kind-details
+//     placeholder, frozen replay tail). One hidden pane per `SourceKey`
+//     entry in the controller's `panes` map.
+//   - **Swap target** — what the visible pane *is*, not what it does. Every
+//     state change funnels through `tmux swap-pane src=<hidden>, dst=<visible>`.
+//   - **Scratch session** — this one (`orch-scratch`). Deliberately
+//     unattached: no `tmux attach` is ever issued against it, so the only
+//     way a user observes a hidden pane is via swap. Avoid "attach" in
+//     comments and identifiers.
 //
 // Bootstrap ordering (load-bearing — see `tmux-host.ts`):
 //   1. `orch` session is created by `initOrchSession`.
@@ -17,7 +27,7 @@
 //   4. `createRightPaneController` runs against both sessions.
 //
 // Teardown: `teardownScratchSession` runs BEFORE killing the `orch` session
-// so the hidden panes never outlive their swap target.
+// so the hidden source panes never outlive their swap target.
 //
 // User-config resilience: `destroy-unattached off` is set explicitly on the
 // session at create time. A user's `~/.tmux.conf` with `destroy-unattached

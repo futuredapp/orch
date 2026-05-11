@@ -1,10 +1,26 @@
 ---
 date: 2026-04-14
 topic: interactive-mode-colors
-status: shipped-partial
+status: superseded
+superseded_by: docs/plans/2026-05-11-001-feat-decouple-live-runner-unified-pane-map-plan.md
 ---
 
 # Interactive mode: restoring colors without a PTY
+
+> **2026-05-11 — superseded for the two-pane right-pane case.** The unified
+> pane-map design (U6) spawns interactive runners directly into a hidden
+> tmux pane (`tmux split-window`) on a sibling scratch session, then
+> `swap-pane`s it into the visible right slot. The hidden pane is a real
+> PTY (`isTTY === true`), so arrow keys, Ctrl-C, Ctrl-R, resize reflow, and
+> colors all flow natively without the `FORCE_COLOR=3` workaround. The env
+> override is still applied via the runner's `mergeEnv` slot but is
+> redundant inside the tmux pane.
+>
+> This doc remains authoritative for the **plain-host** interactive path,
+> where `Bun.spawn(...)` with inherited stdio (no PTY) is still the
+> mechanism and `FORCE_COLOR=3` is still the workaround. The two-pane
+> "escalate to full PTY" follow-up named below is the design that landed
+> in the pane-map plan.
 
 ## Symptom
 

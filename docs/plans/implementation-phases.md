@@ -537,6 +537,16 @@ v1 ships four phases, each a PR-sized chunk:
 
 ---
 
+### Two-pane right-pane decoupling — unified pane-map ✓
+
+**Goal:** route every visible-right-pane state change through `tmux swap-pane` against hidden source panes on a sibling scratch session. The right pane becomes a pure swap target; live autonomous transcripts, command logs, parallel rollups, interactive runners, and past-step replays each live on their own hidden pane. Past-step `⏎` works mid-flight without a busy gate; second-view replay is O(1).
+
+See [`docs/plans/2026-05-11-001-feat-decouple-live-runner-unified-pane-map-plan.md`](2026-05-11-001-feat-decouple-live-runner-unified-pane-map-plan.md). The plan supersedes [`docs/plans/2026-05-06-feat-replay-in-right-pane-plan.md`](2026-05-06-feat-replay-in-right-pane-plan.md) and the two earlier "decouple-live-runner" brainstorms.
+
+**Landed:** 2026-05-11 (U1, U3–U10).
+
+---
+
 ### Phase 18 — TUI `ask()` step ◐
 
 **Goal:** `ask({ name, question, fields, buttons, defaultWhenNoninteractive? })` returns `Step<AskResult>` that pauses a workflow and renders a centered prompt. Composes with `run()`, memoization (`as:`), resume, and a new orthogonal `--interactive` / `--noninteractive` axis.

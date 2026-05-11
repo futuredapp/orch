@@ -20,7 +20,7 @@ wrote for that run.
 |---|---|---|
 | `spawns.ndjson` | one line per agent launch | argv, envKeys, cwd, mode, exitCode, durationMs — "what did we run?" |
 | `events.ndjson` | merged cross-step RunnerEvents | parsed agent output, cheap for `grep` across steps |
-| `lifecycle.ndjson` | host + step lifecycle | `host-created`, `step:start` / `step:complete` / `step:failed`, `run-ended` |
+| `lifecycle.ndjson` | host + step lifecycle | `host-created`, `step:start` / `step:complete` / `step:failed`, `step:parallel-start` / `step:parallel-complete`, `pane-spawned` / `pane-killed` / `right-pane-swap`, `scratch-session-created` / `scratch-session-torndown`, `run-ended` |
 | `timeline.ndjson` | source-tagged mirror of the three streams above | the AI reader's primary entry point |
 | `run.meta.json` | reproducibility snapshot | orch version, argv, envKeys, os, runId, startedAt |
 | `README.md` | run-local navigation | generated per run; has grep recipes for this specific `runId` |
@@ -58,6 +58,25 @@ Mode-specific shapes:
 `session.json.outputs:` maps a logical name (e.g. `formattedAnsi`) to a
 sibling filename (e.g. `formatted_output.ansi`). Cold readers can
 inventory the folder without prior knowledge.
+
+### Pane-map lifecycle events (two-pane host)
+
+The two-pane host's pane-map controller records every right-pane state
+change. These records sit alongside the per-step lifecycle in
+`lifecycle.ndjson`:
+
+| Event type | Fired when |
+|---|---|
+| `scratch-session-created` | Sibling tmux session (`orch-scratch`) created at host construction; hosts all hidden source panes. |
+| `scratch-session-torndown` | Scratch session killed during host teardown — must precede the visible session kill. |
+| `pane-spawned` | A new hidden pane is created in the scratch session for a source (live transcript tail, replay tail, rollup, interactive PTY). Payload: `sourceKey`, `paneId`. |
+| `pane-killed` | A hidden pane is destroyed (interactive runner exits, rollup unregisters). Payload: `sourceKey`, `paneId`. |
+| `right-pane-swap` | The visible right pane swapped to a different hidden source via `tmux swap-pane`. Payload: `to`, `paneId`. |
+| `live-to-replay-transform` | An autonomous step's `step:complete` rekeys its `live:<step>` source to `replay:<step>` without killing the pane (warm cache). |
+| `view-mode-changed` | The persistent footer mode changed (`live` ↔ `replay`). Pushed to the TUI overlay. |
+| `banner-emit` / `banner-dismissed` | Transient single-slot banner state. |
+| `replay-pane-opened` / `replay-pane-failed` / `replay-cached-skip` / `replay-lookup-miss` | Outcomes of `⏎` on a past step. |
+| `step:parallel-start` / `step:parallel-complete` | Bracket the lifetime of one `parallel(...)` block. Block-scoped (no `stepName`); the rollup source is registered between these events. |
 
 ### Resume truncation
 

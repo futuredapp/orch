@@ -4,7 +4,8 @@ type: handover
 date: 2026-05-11
 plan: docs/plans/2026-05-11-001-feat-decouple-live-runner-unified-pane-map-plan.md
 supersedes: docs/plans/2026-05-11-002-feat-decouple-live-runner-unified-pane-map-handover-after-u4.md
-status: active
+status: superseded
+superseded_by: docs/plans/2026-05-11-004-feat-decouple-live-runner-unified-pane-map-handover-after-u6.md
 ---
 
 # Pane-map plan — handover mid-U5 (uncommitted WIP)

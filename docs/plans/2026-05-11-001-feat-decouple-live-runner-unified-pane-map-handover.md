@@ -3,7 +3,8 @@ title: Handover — Pane-Map Implementation (after U1 + U3)
 type: handover
 date: 2026-05-11
 plan: docs/plans/2026-05-11-001-feat-decouple-live-runner-unified-pane-map-plan.md
-status: active
+status: superseded
+superseded_by: docs/plans/2026-05-11-002-feat-decouple-live-runner-unified-pane-map-handover-after-u4.md
 ---
 
 # Pane-map plan — handover after U1 + U3

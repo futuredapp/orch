@@ -579,6 +579,15 @@ The canonical walkthrough lives at [`examples/steps-tui-demo/`](../examples/step
 - **Left — status pane.** Persistent. Shows current step, elapsed time, running token count, running cost, the list of completed/pending steps, and any pending escalation. Orchestrator paints this; agents never touch it.
 - **Right — agent pane.** Either (a) an interactive agent TUI you talk to directly, or (b) a live pretty-printed stream of tool calls for headless steps. Stays open after failure (`remain-on-exit on`) so you can read the transcript.
 
+#### How the right pane shows you bytes (the pane-map model)
+
+The visible right pane is a **swap target**, not a process host. Every "source of bytes" the user might want to see — a live autonomous transcript, a frozen replay of a past step, an interactive runner PTY, a parallel-block rollup — runs in its own hidden pane on a sibling tmux session (`orch-scratch`). When the user navigates, the orchestrator issues a `tmux swap-pane` so the visible slot now points at the hidden pane that owns the source they asked for. The byte delivery is:
+
+- **Live autonomous & command steps** stream into a per-step ANSI tee on disk (`logs/agents/<step>/formatted_output.ansi`); a hidden pane runs `tail -n 5000 -F <that file>` so the visible right pane sees the live transcript as the file grows. Bound at 5000 lines so first-view backfill stays under ~500KB.
+- **Interactive runners** spawn directly into a hidden PTY pane (real TTY — arrow keys, Ctrl-C, resize all flow natively); the visible slot swaps to it.
+- **Parallel-block rollups** tee into their own meta-step file; the visible slot auto-prefers rollup over individual branches when both are registered.
+- **Past-step replay** (press `⏎` on a finished step) registers a fresh `tail -F` over the step's persisted tee — warm-cached after first view, so the second `⏎` on the same step is an O(1) swap. Press `f` to return to the live source.
+
 ### What the panes actually look like
 
 Here's the layout mid-run, during the `work-auth` step of the first-workflow example from §5:

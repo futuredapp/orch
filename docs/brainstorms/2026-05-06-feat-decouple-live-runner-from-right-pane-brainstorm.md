@@ -1,6 +1,8 @@
 ---
 date: 2026-05-06
 topic: decouple-live-runner-from-right-pane
+status: superseded
+superseded_by: docs/brainstorms/2026-05-11-feat-decouple-live-runner-unified-pane-map-brainstorm.md
 ---
 
 # Decouple the Live Runner From the Visible Right Pane

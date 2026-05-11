@@ -1,7 +1,8 @@
 ---
 title: Replay step output in the right pane (drop window-1)
 type: feat
-status: active
+status: superseded
+superseded_by: docs/plans/2026-05-11-001-feat-decouple-live-runner-unified-pane-map-plan.md
 date: 2026-05-06
 ---
 

@@ -1,11 +1,11 @@
 ---
 title: Decouple Live Runner From Right Pane — Unified Pane-Map
 type: feat
-status: active
+status: completed
 date: 2026-05-11
 origin: docs/brainstorms/2026-05-11-feat-decouple-live-runner-unified-pane-map-brainstorm.md
 supersedes:
-  - docs/plans/2026-05-07-feat-decouple-live-runner-from-right-pane-phase-1-plan.md
+  - docs/plans/2026-05-06-feat-replay-in-right-pane-plan.md
 ---
 
 # Decouple Live Runner From Right Pane — Unified Pane-Map

@@ -1,7 +1,8 @@
 ---
 date: 2026-05-07
 topic: decouple-live-runner-from-right-pane-second-pass
-status: brainstorm — addendum to 2026-05-06-feat-decouple-live-runner-from-right-pane-brainstorm.md
+status: superseded
+superseded_by: docs/brainstorms/2026-05-11-feat-decouple-live-runner-unified-pane-map-brainstorm.md
 extends: 2026-05-06-feat-decouple-live-runner-from-right-pane-brainstorm.md
 ---
 
