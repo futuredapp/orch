@@ -13,6 +13,7 @@ import {
   type ExecutionContext,
   executionContext,
 } from './execution-context.ts'
+import type { StepLifecycleEvent } from './workflow.ts'
 
 // ---------------------------------------------------------------------------
 // Settled types
@@ -80,21 +81,58 @@ export type AwaitedTuple<T extends readonly unknown[]> = {
 }
 
 // ---------------------------------------------------------------------------
+// Block-lifecycle helpers — emit step:parallel-start / step:parallel-complete
+// around the body of either parallel() form so hosts (e.g. two-pane) can
+// register and tear down a block-scoped rollup pane without snooping on
+// step:parallel-branch-update counts.
+// ---------------------------------------------------------------------------
+
+function emitParallelStart(): number {
+  const store = executionContext.getStore()
+  const ref = store?.parallelBlockIdRef
+  const emit = store?.emitLifecycle
+  if (ref === undefined || emit === undefined) {
+    // No host wired (tests calling parallel() directly without a workflow
+    // executor). Skip block lifecycle but keep concurrency semantics intact.
+    return -1
+  }
+  const blockId = ref.current
+  ref.current += 1
+  const event: StepLifecycleEvent = { type: 'step:parallel-start', blockId }
+  emit(event)
+  return blockId
+}
+
+function emitParallelComplete(blockId: number): void {
+  if (blockId < 0) return
+  const store = executionContext.getStore()
+  const emit = store?.emitLifecycle
+  if (emit === undefined) return
+  const event: StepLifecycleEvent = { type: 'step:parallel-complete', blockId }
+  emit(event)
+}
+
+// ---------------------------------------------------------------------------
 // Heterogeneous implementation
 // ---------------------------------------------------------------------------
 
 async function parallelHeterogeneous<T extends readonly Promise<unknown>[]>(
   promises: [...T],
 ): Promise<AwaitedTuple<T>> {
-  if (promises.length === 0) return [] as unknown as AwaitedTuple<T>
+  const blockId = emitParallelStart()
+  try {
+    if (promises.length === 0) return [] as unknown as AwaitedTuple<T>
 
-  const results = await Promise.allSettled(promises)
-  const settled: SettledEntry[] = results.map((r) =>
-    r.status === 'fulfilled'
-      ? { status: 'ok' as const, value: r.value }
-      : { status: 'error' as const, error: r.reason },
-  )
-  return unwrapSettled(settled) as AwaitedTuple<T>
+    const results = await Promise.allSettled(promises)
+    const settled: SettledEntry[] = results.map((r) =>
+      r.status === 'fulfilled'
+        ? { status: 'ok' as const, value: r.value }
+        : { status: 'error' as const, error: r.reason },
+    )
+    return unwrapSettled(settled) as AwaitedTuple<T>
+  } finally {
+    emitParallelComplete(blockId)
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -106,8 +144,6 @@ async function parallelHomogeneous<I, R>(
   fn: (item: I) => Promise<R>,
   options?: { readonly concurrency?: number },
 ): Promise<R[]> {
-  if (items.length === 0) return []
-
   const concurrency = options?.concurrency
   if (concurrency !== undefined && concurrency !== Number.POSITIVE_INFINITY) {
     if (!Number.isInteger(concurrency) || concurrency < 1) {
@@ -117,32 +153,45 @@ async function parallelHomogeneous<I, R>(
     }
   }
 
-  const snapshot = Array.from(items)
-  const depth = currentParallelDepth() + 1
-  // Each branch gets its own fresh store so setWorkflowCwd inside one branch
-  // does not leak to siblings. The outer scope's workflowCwd is inherited at
-  // branch start; the homogeneousBranch marker authorises setWorkflowCwd
-  // (the hard guard rejects mutation in heterogeneous parallel scopes).
-  const wrappedFn = (item: I): Promise<R> => {
-    const outer = executionContext.getStore()
-    const branchStore: ExecutionContext = {
-      parallelDepth: depth,
-      homogeneousBranch: true,
-      ...(outer?.workflowCwd !== undefined ? { workflowCwd: outer.workflowCwd } : {}),
+  const blockId = emitParallelStart()
+  try {
+    if (items.length === 0) return []
+
+    const snapshot = Array.from(items)
+    const depth = currentParallelDepth() + 1
+    // Each branch gets its own fresh store so setWorkflowCwd inside one branch
+    // does not leak to siblings. The outer scope's workflowCwd is inherited at
+    // branch start; the homogeneousBranch marker authorises setWorkflowCwd
+    // (the hard guard rejects mutation in heterogeneous parallel scopes).
+    // `emitLifecycle` and `parallelBlockIdRef` are inherited so nested
+    // `parallel()` calls inside a branch still fire block-lifecycle events.
+    const wrappedFn = (item: I): Promise<R> => {
+      const outer = executionContext.getStore()
+      const branchStore: ExecutionContext = {
+        parallelDepth: depth,
+        homogeneousBranch: true,
+        ...(outer?.workflowCwd !== undefined ? { workflowCwd: outer.workflowCwd } : {}),
+        ...(outer?.emitLifecycle !== undefined ? { emitLifecycle: outer.emitLifecycle } : {}),
+        ...(outer?.parallelBlockIdRef !== undefined
+          ? { parallelBlockIdRef: outer.parallelBlockIdRef }
+          : {}),
+      }
+      return executionContext.run(branchStore, () => fn(item))
     }
-    return executionContext.run(branchStore, () => fn(item))
+
+    const isUnlimited =
+      concurrency === undefined ||
+      concurrency === Number.POSITIVE_INFINITY ||
+      concurrency >= snapshot.length
+
+    const settled = isUnlimited
+      ? await Promise.all(snapshot.map((item) => wrapSettled(() => wrappedFn(item))))
+      : await runWithConcurrencyLimit(snapshot, wrappedFn, concurrency)
+
+    return unwrapSettled(settled)
+  } finally {
+    emitParallelComplete(blockId)
   }
-
-  const isUnlimited =
-    concurrency === undefined ||
-    concurrency === Number.POSITIVE_INFINITY ||
-    concurrency >= snapshot.length
-
-  const settled = isUnlimited
-    ? await Promise.all(snapshot.map((item) => wrapSettled(() => wrappedFn(item))))
-    : await runWithConcurrencyLimit(snapshot, wrappedFn, concurrency)
-
-  return unwrapSettled(settled)
 }
 
 // ---------------------------------------------------------------------------

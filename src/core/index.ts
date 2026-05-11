@@ -56,7 +56,14 @@ export type {
 } from './step.ts'
 export { onCacheHit, PostCreateExecError, step } from './step.ts'
 export type { InteractiveResult, Path, RunId, StepMode, StepName } from './types.ts'
-export { generateRunId, InteractiveResultSchema, path, runId, stepName } from './types.ts'
+export {
+  generateRunId,
+  InteractiveResultSchema,
+  metaStepName,
+  path,
+  runId,
+  stepName,
+} from './types.ts'
 export type {
   PaneRole,
   StepView,

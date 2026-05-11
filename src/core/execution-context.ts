@@ -1,5 +1,8 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import type { Path } from './types.ts'
+// Type-only import — `workflow.ts` already depends on this file at runtime,
+// so a value-level import would create a runtime cycle. Erased after compile.
+import type { StepLifecycleEvent } from './workflow.ts'
 
 // ---------------------------------------------------------------------------
 // ExecutionContext — AsyncLocalStorage for workflow execution state
@@ -11,6 +14,19 @@ import type { Path } from './types.ts'
 // same scope. A homogeneous parallel branch creates its own store so each
 // branch sees the outer `workflowCwd` at start and may diverge without
 // leaking back to siblings.
+//
+// `emitLifecycle` and `parallelBlockIdRef` carry just enough of the workflow
+// host wiring into the ALS scope that `parallel()` can fire
+// `step:parallel-start` / `step:parallel-complete` events without taking a
+// direct dependency on the workflow executor or its WorkflowDeps. The root
+// store sets both; each homogeneous branch inherits them so nested parallel
+// calls keep firing.
+
+/** Mutable counter shared across the run so each `parallel()` invocation gets
+ *  a unique, deterministic block id. */
+export interface ParallelBlockIdRef {
+  current: number
+}
 
 export interface ExecutionContext {
   readonly parallelDepth: number
@@ -19,6 +35,8 @@ export interface ExecutionContext {
   // the interface stays readonly.
   workflowCwd?: Path
   readonly homogeneousBranch?: true
+  readonly emitLifecycle?: (event: StepLifecycleEvent) => void
+  readonly parallelBlockIdRef?: ParallelBlockIdRef
 }
 
 export const executionContext = new AsyncLocalStorage<ExecutionContext>()

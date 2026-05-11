@@ -212,6 +212,9 @@ function textLifecycle(event: StepLifecycleEvent): string {
       return `${event.type} ${event.stepName}`
     case 'step:parallel-branch-update':
       return `${event.type} ${event.stepName} [${event.branchStatus}]`
+    case 'step:parallel-start':
+    case 'step:parallel-complete':
+      return `${event.type} [block ${event.blockId}]`
   }
 }
 
@@ -233,6 +236,10 @@ function jsonLifecycle(event: StepLifecycleEvent): Record<string, unknown> {
         ...(event.elapsedMs !== undefined ? { elapsedMs: event.elapsedMs } : {}),
         ...(event.toolCount !== undefined ? { toolCount: event.toolCount } : {}),
       }
+    case 'step:parallel-start':
+      return { ev: 'step.parallel-start', blockId: event.blockId }
+    case 'step:parallel-complete':
+      return { ev: 'step.parallel-complete', blockId: event.blockId }
   }
 }
 

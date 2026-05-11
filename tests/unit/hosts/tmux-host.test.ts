@@ -253,13 +253,14 @@ describe('TmuxHost.onLifecycleEvent — step:failed', () => {
 })
 
 describe('TmuxHost.onLifecycleEvent — step:parallel-branch-update', () => {
-  it('renders the compact parallel rollup into the right pane on each update', async () => {
+  it('does not fan rollup bytes onto the right pane (U7 invariant — rollup lives in the _rollup tee)', async () => {
     const tmux = new FakeTmuxService()
     tmux.setListPanesResult(['%0'])
     tmux.nextPaneId(paneId('%42'))
 
     const { host } = await buildHost(tmux)
 
+    host.onLifecycleEvent({ type: 'step:parallel-start', blockId: 0 })
     host.onLifecycleEvent({
       type: 'step:parallel-branch-update',
       stepName: stepName('plan'),
@@ -276,23 +277,20 @@ describe('TmuxHost.onLifecycleEvent — step:parallel-branch-update', () => {
       branchStatus: 'completed',
       elapsedMs: 500,
     })
+    host.onLifecycleEvent({ type: 'step:parallel-complete', blockId: 0 })
 
     await host.teardown()
 
-    const rightFrames = tmux.recordedCalls.filter(
+    // U7: rollup payloads no longer reach the visible right pane via
+    // `sendKeys`. They land in the `_rollup` meta tee; the scratch-session
+    // hidden pane tails the tee and reaches the visible slot via `swapPane`.
+    // The integration test in tests/integration/hosts/two-pane/tmux-host-
+    // rollup-pane-map.integration.test.ts covers the tee + register/unregister
+    // path; here we only guard the right-pane invariant.
+    const rightSendKeys = tmux.recordedCalls.filter(
       (c) => c.method === 'sendKeys' && c.opts.target === paneId('%42'),
     )
-    // One frame per update. The latest frame contains the final rollup
-    // with `✓ plan` and `● build`.
-    expect(rightFrames.length).toBeGreaterThanOrEqual(3)
-    const last = rightFrames[rightFrames.length - 1] as {
-      method: 'sendKeys'
-      opts: { keys: readonly string[] }
-    }
-    const payload = last.opts.keys[0] as string
-    expect(payload).toContain('parallel branches:')
-    expect(payload).toContain('✓ plan')
-    expect(payload).toContain('● build')
+    expect(rightSendKeys).toHaveLength(0)
   })
 })
 

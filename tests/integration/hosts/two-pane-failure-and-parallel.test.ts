@@ -104,7 +104,7 @@ describe('two-pane D2 — failing step', () => {
 })
 
 describe('two-pane D2 — parallel rollup', () => {
-  it('emits step:parallel-branch-update events that render as a compact rollup', async () => {
+  it('does not fan rollup bytes onto the right pane (U7 invariant) — no logger, no controller', async () => {
     const fs = new FakeFsService()
     const processService = new FakeProcessService()
     const clock = new FakeClock(1_700_000_000_000)
@@ -141,7 +141,8 @@ describe('two-pane D2 — parallel rollup', () => {
     await workflow('demo', async (run) => {
       // Homogeneous parallel — wraps each branch in the parallelDepth
       // execution context, so the executor emits parallel-branch-update
-      // events we can assert on.
+      // events plus the new step:parallel-start / step:parallel-complete
+      // block-lifecycle events the host listens for in U7.
       await parallel(
         ['a', 'b'],
         (label) => {
@@ -155,10 +156,13 @@ describe('two-pane D2 — parallel rollup', () => {
     }).execute(deps)
     await host.teardown()
 
-    const right = rightPayloads(tmux, '%7').join('')
-    expect(right).toContain('parallel branches:')
-    // Both branches end up completed so the final rollup carries ✓ for each.
-    expect(right).toContain('✓ review-a')
-    expect(right).toContain('✓ review-b')
+    // U7: rollup output lives on a hidden scratch-session pane that tails
+    // the `_rollup` meta tee. With no logger wired and no controller
+    // (basePath + stateStore omitted), the tee is null and the rollup
+    // source is never registered — so the right pane sees nothing for the
+    // rollup. The "happy path with controller + logger" is covered by
+    // tests/integration/hosts/two-pane/tmux-host-rollup-pane-map.integration.test.ts.
+    const rightSendKeys = rightPayloads(tmux, '%7')
+    expect(rightSendKeys).toHaveLength(0)
   })
 })

@@ -114,6 +114,20 @@ export type StepLifecycleEvent =
        */
       readonly toolCount?: number
     }
+  | {
+      /** Fired once at the top of a `parallel(...)` call before any branch's
+       *  `step:start`. Carries a deterministic `blockId` so hosts can correlate
+       *  start with complete (e.g. nested or sequential parallel blocks). */
+      readonly type: 'step:parallel-start'
+      readonly blockId: number
+    }
+  | {
+      /** Fired once after all branches in a `parallel(...)` call settle
+       *  (regardless of pass/fail). The block id matches the corresponding
+       *  `step:parallel-start`. */
+      readonly type: 'step:parallel-complete'
+      readonly blockId: number
+    }
 
 // ---------------------------------------------------------------------------
 // InteractiveContext — passed to onInteractive handler
@@ -292,10 +306,16 @@ function validateSchemaOutput(config: AgentStepConfig, key: StepName, rawValue: 
 // side lifecycle".
 // ---------------------------------------------------------------------------
 
+// Step-scoped subset of `StepLifecycleEvent` — all variants that carry a
+// `stepName`. The block-scoped events (`step:parallel-start` /
+// `step:parallel-complete`) are emitted by `parallel()` directly and never
+// reach this helper.
+type StepScopedLifecycleEvent = Extract<StepLifecycleEvent, { stepName: StepName }>
+
 function emitStepLifecycle(
   host: Host,
   stepSpan: StepSpan | undefined,
-  event: StepLifecycleEvent,
+  event: StepScopedLifecycleEvent,
 ): void {
   host.onLifecycleEvent(event)
   if (stepSpan === undefined) return
@@ -1106,8 +1126,19 @@ async function executeWorkflowFn(fn: WorkflowFn, deps: WorkflowDeps): Promise<vo
     // Wrap the workflow body in an executionContext store so steps inside it
     // (including setWorkflowCwd from createWorktree) can mutate workflowCwd
     // and have subsequent run() calls observe the new cwd via currentCwd().
-    await executionContext.run({ parallelDepth: 0, workflowCwd: undefined }, () =>
-      fn(run, deps.args ?? {}),
+    //
+    // `emitLifecycle` + `parallelBlockIdRef` give `parallel()` (in core/) a
+    // narrow seam to fire `step:parallel-start` / `step:parallel-complete`
+    // without depending on the host or WorkflowDeps.
+    const emitLifecycle = (event: StepLifecycleEvent): void => deps.host.onLifecycleEvent(event)
+    await executionContext.run(
+      {
+        parallelDepth: 0,
+        workflowCwd: undefined,
+        emitLifecycle,
+        parallelBlockIdRef: { current: 0 },
+      },
+      () => fn(run, deps.args ?? {}),
     )
     await deps.stateStore.setStatus(deps.runId, 'completed', deps.clock.now())
     void deps.logger

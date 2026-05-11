@@ -49,3 +49,15 @@ export function stepName(s: string): StepName {
   }
   return s as StepName
 }
+
+// Meta entries reserve a leading `_` to keep them out of the user-facing
+// `stepName()` namespace and to sort above step names in directory listings.
+// Used for internal tee keys like `_rollup` (the parallel-block rollup pane).
+const META_STEP_NAME_PATTERN = /^_[a-z0-9][a-z0-9:-]*$/
+
+export function metaStepName(s: string): StepName {
+  if (!META_STEP_NAME_PATTERN.test(s)) {
+    throw new Error(`metaStepName must match ${META_STEP_NAME_PATTERN}, got "${s}"`)
+  }
+  return s as StepName
+}

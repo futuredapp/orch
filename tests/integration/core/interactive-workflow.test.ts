@@ -131,12 +131,13 @@ describe('interactive workflow mocked round-trip', () => {
       .filter((r): r is { kind: 'lifecycle'; event: StepLifecycleEvent } => r.kind === 'lifecycle')
       .map((r) => r.event)
     expect(events).toHaveLength(4)
-    expect(events[0]?.type).toBe('step:start')
-    expect(events[0]?.stepName as string).toBe('brainstorm')
-    expect(events[1]?.type).toBe('step:complete')
-    expect(events[2]?.type).toBe('step:start')
-    expect(events[2]?.stepName as string).toBe('work')
-    expect(events[3]?.type).toBe('step:complete')
+    const [e0, e1, e2, e3] = events
+    if (e0?.type !== 'step:start') throw new Error(`expected step:start, got ${e0?.type}`)
+    expect(e0.stepName as string).toBe('brainstorm')
+    expect(e1?.type).toBe('step:complete')
+    if (e2?.type !== 'step:start') throw new Error(`expected step:start, got ${e2?.type}`)
+    expect(e2.stepName as string).toBe('work')
+    expect(e3?.type).toBe('step:complete')
   })
 
   it('mode override at run() call site overrides step config', async () => {

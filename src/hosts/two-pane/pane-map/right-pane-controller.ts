@@ -302,19 +302,20 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
       liveSources.push(skey)
     }
     logLifecycle({ type: 'pane-spawned', sourceKey: skey, paneId })
-    // U5: auto-swap-or-banner for live sources. If the user is on live mode,
-    // swap the new source in (most-recent-live wins). If the user is on
-    // replay, leave them there but surface a transient info banner so they
-    // know the new live source is available behind `f`.
-    if (key.type === 'live') {
+    // U5/U7: auto-swap-or-banner for live + rollup sources. If the user is
+    // on live mode, swap the new source in (most-recent-live wins; rollup
+    // takes the visible slot on registration just like a fresh live source).
+    // If the user is on replay, leave them there but surface a transient
+    // info banner so they know the new source is available behind `f`.
+    if (key.type === 'live' || key.type === 'rollup') {
       if (currentView.mode === 'live') {
         await showSource(key)
       } else {
-        await emitBanner({
-          kind: 'info',
-          text: `step ${key.stepName} running — press f to follow`,
-          ttlMs: 4000,
-        })
+        const text =
+          key.type === 'live'
+            ? `step ${key.stepName} running — press f to follow`
+            : `parallel branches running — press f to follow`
+        await emitBanner({ kind: 'info', text, ttlMs: 4000 })
       }
     }
   }

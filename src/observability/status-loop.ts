@@ -131,6 +131,12 @@ export function applyEvent(
   event: StepLifecycleEvent,
   now: number,
 ): void {
+  // Block-scoped events carry a `blockId`, not a `stepName` — they don't
+  // affect the per-step left-pane rollup. The two-pane host consumes them
+  // directly via its `onLifecycleEvent` handler.
+  if (event.type === 'step:parallel-start' || event.type === 'step:parallel-complete') {
+    return
+  }
   const name = event.stepName
   const previous = live.get(name)
 

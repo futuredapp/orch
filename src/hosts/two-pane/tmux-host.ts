@@ -17,7 +17,7 @@
 
 import { summarizeFailure } from '../../core/failure-summary.ts'
 import type { RunMode } from '../../core/run-mode.ts'
-import type { RunId, StepName } from '../../core/types.ts'
+import { metaStepName, type RunId, type StepName } from '../../core/types.ts'
 import type { StepLifecycleEvent } from '../../core/workflow.ts'
 import { orchLog, type SessionLogger } from '../../observability/index.ts'
 import type { RunnerEvent, TranscriptLine } from '../../runners/index.ts'
@@ -69,6 +69,10 @@ const WIDTH = 200
 const HEIGHT = 50
 const RIGHT_PERCENT = 70
 const PLACEHOLDER_CMD = 'cat'
+// U7: fixed meta step key for the parallel-block rollup tee + hidden pane.
+// Leading underscore keeps it out of the user-facing `stepName()` namespace
+// and sorts above step names in directory listings.
+const ROLLUP_STEP_NAME = metaStepName('_rollup')
 // Global pane-died hook that `initOrchSession` wires — fires once per pane
 // death and signals a per-pane `wait-for` channel so interactive runs can
 // detect their child's exit deterministically.
@@ -678,25 +682,45 @@ function buildHost(deps: BuildHostDeps): Host {
         .catch(handleSendError)
       return
     }
+    if (event.type === 'step:parallel-start') {
+      // U7: open the `_rollup` meta tee and register a rollup source on the
+      // scratch session. The hidden pane tails the tee via `tail -F`; the
+      // controller auto-swaps to it when the user is in live mode, or emits
+      // an info banner when they're on a replay.
+      deps.tee.open(ROLLUP_STEP_NAME)
+      const teePath = teePathFor(deps.logger, ROLLUP_STEP_NAME)
+      if (teePath !== null && controller !== undefined) {
+        void controller
+          .registerSource({ type: 'rollup' }, { kind: 'file-tail', path: teePath })
+          .catch(handleSendError)
+      }
+      return
+    }
     if (event.type === 'step:parallel-branch-update') {
-      // U5 keeps the legacy rollup-via-enqueueRight path in place. U7 moves
-      // rollup to its own hidden pane + `_rollup` tee.
+      // U7: rollup snapshot writes to the `_rollup` tee; the hidden pane's
+      // `tail -F` mirrors it into the visible right pane when the rollup
+      // source is current. The legacy direct `sendKeys` on the right pane is
+      // gone — the rollup lives on its own swap-able pane.
       const snapshot = rollup.apply({
         stepName: event.stepName,
         branchStatus: event.branchStatus,
         ...(event.elapsedMs !== undefined ? { elapsedMs: event.elapsedMs } : {}),
         ...(event.toolCount !== undefined ? { toolCount: event.toolCount } : {}),
       })
-      const payload = renderRollupPayload(snapshot)
-      void deps.queue
-        .enqueue(deps.rightPaneId, () =>
-          deps.tmux.sendKeys({
-            socket: deps.socket,
-            target: deps.rightPaneId,
-            keys: [payload],
-          }),
-        )
-        .catch(handleSendError)
+      deps.tee.write(ROLLUP_STEP_NAME, renderRollupPayload(snapshot))
+      return
+    }
+    if (event.type === 'step:parallel-complete') {
+      // U7: unregister BEFORE closing the tee (the hidden pane is killed by
+      // unregisterSource, so there's no consumer reading the trailing bytes
+      // after we close) and reset the aggregator so a subsequent parallel
+      // block starts with a fresh snapshot.
+      if (controller !== undefined) {
+        void controller.unregisterSource({ type: 'rollup' }).catch(handleSendError)
+      }
+      deps.tee.close(ROLLUP_STEP_NAME)
+      rollup.reset()
+      return
     }
   }
 
