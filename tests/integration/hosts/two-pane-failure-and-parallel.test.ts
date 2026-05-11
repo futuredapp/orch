@@ -90,11 +90,16 @@ describe('two-pane D2 — failing step', () => {
 
     expect(caught).toBeInstanceOf(StepError)
 
-    const right = rightPayloads(tmux, '%7').join('')
-    expect(right).toContain('✗ step "plan" failed')
-    expect(right).toContain('model timed out')
-    expect(right).toContain(`orch resume ${runId}`)
-    expect(right).toContain(`orch logs ${runId}`)
+    // U5 invariant: the failure frame no longer fans out via `sendKeys` on
+    // the visible right pane. With no logger wired this fixture has no tee
+    // path, so the only durable signal is the error banner emitted by the
+    // controller — and this fixture has no controller (no basePath /
+    // stateStore). All we assert here is the invariant: zero right-pane
+    // sendKeys. Behavior of the tee + banner is covered by the unit tests
+    // in tests/unit/hosts/tmux-host.test.ts (`TmuxHost.onLifecycleEvent —
+    // step:failed`) and the live-output integration test.
+    const rightSendKeys = rightPayloads(tmux, '%7')
+    expect(rightSendKeys).toHaveLength(0)
   })
 })
 

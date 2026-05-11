@@ -1,31 +1,37 @@
 // Contract test for the *live* path that feeds the right pane while a runner
 // is producing events.
 //
-// Companion to right-pane-live-doubling.real.integration.test.ts, which
-// reproduces the actual doubled-output bug at the kernel pty layer. This
-// file pins the host-layer contract that the eventual fix must preserve:
+// U5 collapsed live output into the file-tail model: the host writes runner
+// bytes to the per-step `formatted_output.ansi` tee; a hidden pane in the
+// scratch session tails that file; the visible right pane is a `swap-pane`
+// target. The bug surfaces this guards against:
 //
-//   - one `sendKeys` call per runner event that emits transcript lines
-//   - no `respawnPane` of the right pane while the autonomous step is live
-//     (respawn is reserved for the replay path)
-//   - the live payload contains real ANSI bytes (we expect them — the
-//     doubling that the user sees is not us emitting them twice from the
-//     formatter)
+//   - the kernel pty echo-doubling that lived on the old `sendKeys` path
+//     (no longer reachable: the host no longer writes runner bytes via
+//     `sendKeys` to the visible right pane)
+//   - rollup / replay / interactive paths corrupting each other (no longer
+//     reachable: every visible-pane change is a single `swap-pane`)
 //
-// If the eventual fix changes the placeholder argv to something like
-// `sh -c 'stty -echo; exec cat'`, that swap will be visible as a different
-// `respawnPane` call at host-bootstrap time but must NOT introduce extra
-// `sendKeys` calls or per-event respawns. These assertions guard that.
+// The shape this file pins:
+//
+//   - zero `sendKeys` calls on the visible right pane for runner-event bytes
+//   - zero `respawnPane` calls on the visible right pane (replay path moved
+//     to scratch+swap)
+//   - one `splitPane` on the scratch session per autonomous step (file-tail
+//     source registered on `step:start`)
 
 import { describe, expect, it } from 'bun:test'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { Writable } from 'node:stream'
 import { step } from '../../../../src/core/step.ts'
 import { type WorkflowDeps, workflow } from '../../../../src/core/workflow.ts'
 import { createTmuxHost } from '../../../../src/hosts/index.ts'
+import { createFileSessionLogger } from '../../../../src/observability/index.ts'
 import { FakeRunner } from '../../../../src/runners/index.ts'
 import {
+  BunFsService,
   FakeClock,
-  FakeFsService,
   FakeGitService,
   FakeProcessService,
   path,
@@ -49,76 +55,112 @@ function bufferStream(): NodeJS.WritableStream {
 
 interface DriveResult {
   readonly tmux: FakeTmuxService
+  readonly teeAnsi: string
+  readonly teeTxt: string
 }
 
 async function driveOneAssistantStep(events: ReadonlyArray<string>): Promise<DriveResult> {
-  const fs = new FakeFsService()
-  const processService = new FakeProcessService()
-  const clock = new FakeClock(1_700_000_000_000)
+  const baseTmp = await mkdtemp(`${tmpdir()}/orch-u5-live-`)
+  try {
+    const basePath = path(`${baseTmp}/state`)
+    const fs = new BunFsService()
+    const processService = new FakeProcessService()
+    const clock = new FakeClock(1_700_000_000_000)
+    const logger = createFileSessionLogger({ fs, clock, runId: RUN_ID, basePath, debug: false })
+    const stateStore = new FileStateStore({ fs, basePath })
 
-  const tmux = new FakeTmuxService()
-  tmux.setListPanesResult(['%0'])
-  tmux.nextPaneId(RIGHT)
+    const tmux = new FakeTmuxService()
+    tmux.setListPanesResult(['%0'])
+    // The host calls splitPane twice: once for the visible right pane (R)
+    // and once for the placeholder source inside the scratch session.
+    // Subsequent splitPane calls (file-tail sources, etc.) just get a
+    // synthesized id from the fake.
+    tmux.nextPaneId(RIGHT)
 
-  const host = await createTmuxHost({
-    tmux,
-    processService,
-    clock,
-    runId: RUN_ID,
-    workflowName: 'demo',
-    stderr: bufferStream(),
-    skipVersionCheck: true,
-  })
+    const host = await createTmuxHost({
+      tmux,
+      processService,
+      clock,
+      runId: RUN_ID,
+      workflowName: 'demo',
+      stderr: bufferStream(),
+      skipVersionCheck: true,
+      logger,
+      basePath,
+      stateStore,
+      disableStepsView: true,
+    })
 
-  const agent = new FakeRunner(processService)
-  agent.script({
-    events: events.map((text) => ({
-      kind: 'info' as const,
-      type: 'assistant',
-      payload: { text },
-    })),
-    structuredOutput: 'done',
-  })
+    const agent = new FakeRunner(processService)
+    agent.script({
+      events: events.map((text) => ({
+        kind: 'info' as const,
+        type: 'assistant',
+        payload: { text },
+      })),
+      structuredOutput: 'done',
+    })
 
-  const deps: WorkflowDeps = {
-    stateStore: new FileStateStore({ fs, basePath: path('/runs') }),
-    processService,
-    clock,
-    runId: RUN_ID,
-    cwd: path('/workspace'),
-    fsService: fs,
-    gitService: new FakeGitService(),
-    host,
-    promptService: new FakePromptService(),
-    interactivity: 'interactive' as const,
+    const deps: WorkflowDeps = {
+      stateStore,
+      processService,
+      clock,
+      runId: RUN_ID,
+      cwd: path('/workspace'),
+      fsService: fs,
+      gitService: new FakeGitService(),
+      host,
+      promptService: new FakePromptService(),
+      interactivity: 'interactive' as const,
+      logger,
+    }
+
+    await workflow('demo', async (run) => {
+      await run(step.define('plan', { agent }))
+    }).execute(deps)
+    await host.teardown()
+    await logger.close()
+
+    const teeAnsi = await fs.readFile(
+      path(`${basePath}/${RUN_ID}/logs/agents/plan/formatted_output.ansi`),
+    )
+    const teeTxt = await fs.readFile(
+      path(`${basePath}/${RUN_ID}/logs/agents/plan/formatted_output.txt`),
+    )
+
+    return { tmux, teeAnsi, teeTxt }
+  } finally {
+    await rm(baseTmp, { recursive: true, force: true }).catch(() => {})
   }
-
-  await workflow('demo', async (run) => {
-    await run(step.define('plan', { agent }))
-  }).execute(deps)
-  await host.teardown()
-
-  return { tmux }
 }
 
-describe('two-pane host live path: single writer per runner event', () => {
-  it('emits exactly one sendKeys call to the right pane per emitted transcript event', async () => {
-    const { tmux } = await driveOneAssistantStep(['first thinking', 'second thinking'])
+describe('two-pane host live path: file-tail source per autonomous step', () => {
+  it('writes runner bytes to the per-step tee instead of the visible right pane', async () => {
+    const { tmux, teeAnsi, teeTxt } = await driveOneAssistantStep([
+      'first thinking',
+      'second thinking',
+    ])
 
+    // No sendKeys traffic to the visible right pane — the file-tail source
+    // pane in scratch tails the tee and mirrors bytes natively.
     const rightSends = tmux.recordedCalls.filter(
       (c) => c.method === 'sendKeys' && c.opts.target === RIGHT,
     )
+    expect(rightSends.length).toBe(0)
 
-    expect(rightSends.length).toBe(2)
+    // The tee captures both events with ANSI bytes intact.
+    expect(teeAnsi).toContain('first thinking')
+    expect(teeAnsi).toContain('second thinking')
+    expect(teeTxt).toContain('first thinking')
+    expect(teeTxt).toContain('second thinking')
   })
 
-  it('does not respawn the right pane during the autonomous step (live path stays on send-keys)', async () => {
+  it('does not respawn the right pane during the autonomous step (file-tail model)', async () => {
     const { tmux } = await driveOneAssistantStep(['only thinking'])
 
-    // The *right* pane must not be respawned for live transcript output.
-    // (The left pane may legitimately respawn for the steps-view daemon, and
-    // host bootstrap can respawn the left placeholder — neither is on the
-    // right-pane live path under test here.)
+    // The right pane must never be respawned. Live transcript flows through
+    // the scratch-session file-tail pane and a single swap-pane. Replay
+    // also uses the scratch session.
     const rightRespawns = tmux.recordedCalls.filter(
       (c) => c.method === 'respawnPane' && c.opts.target === RIGHT,
     )
@@ -126,45 +168,32 @@ describe('two-pane host live path: single writer per runner event', () => {
     expect(rightRespawns.length).toBe(0)
   })
 
-  it('writes ANSI-colored payloads (color: true) so the bug surface is real, not a vacuous render', async () => {
-    const { tmux } = await driveOneAssistantStep(['only thinking'])
+  it('writes ANSI-colored payloads to the tee (color: true)', async () => {
+    const { teeAnsi } = await driveOneAssistantStep(['only thinking'])
 
-    const rightSends = tmux.recordedCalls.filter(
-      (c) => c.method === 'sendKeys' && c.opts.target === RIGHT,
-    )
-    const payload = rightSends
-      .map((c) => (c.method === 'sendKeys' ? c.opts.keys.join('') : ''))
-      .join('')
-
-    // Real ESC byte must be present — proves the formatter is in color mode
-    // and that the bytes hitting `tmux send-keys -l` include escape sequences
-    // (which is the trigger for the kernel pty echo-doubling).
-    expect(payload).toContain(`${ESC}[`)
+    // Real ESC byte must be present in the tee — proves the formatter is in
+    // color mode. The bytes never round-trip through `sendKeys` so the
+    // kernel pty echo-doubling that bit the legacy path cannot recur.
+    expect(teeAnsi).toContain(`${ESC}[`)
   })
 
-  it('never sends a payload that contains literal caret-notation escapes (formatter side)', async () => {
-    // Caret-notation `^[[` is the kernel pty's *display* of an unprintable
-    // ESC byte. It can never appear in raw bytes the host hands to tmux —
-    // if it did, the bug would be in the formatter and stripping pty echo
-    // would not fix it. This pins that the bytes leaving the host are clean.
-    const { tmux } = await driveOneAssistantStep(['first', 'second', 'third'])
+  it('registers a file-tail source on step:start (splitPane on scratch with tail argv)', async () => {
+    const { tmux } = await driveOneAssistantStep(['only thinking'])
 
-    const rightSends = tmux.recordedCalls.filter(
-      (c) => c.method === 'sendKeys' && c.opts.target === RIGHT,
+    // The host calls splitPane on the scratch session for the file-tail
+    // source. argv shape: ['tail', '-n', '5000', '-F', '<tee-path>'].
+    const argvSplits = tmux.recordedCalls.filter(
+      (c) => c.method === 'splitPane' && 'argv' in c.opts && c.opts.argv?.[0] === 'tail',
     )
-
-    for (const c of rightSends) {
-      if (c.method !== 'sendKeys') continue
-      const payload = c.opts.keys.join('')
-      expect(payload).not.toContain('^[[')
-    }
+    expect(argvSplits.length).toBeGreaterThan(0)
+    const first = argvSplits[0]
+    if (first?.method !== 'splitPane' || !('argv' in first.opts)) return
+    const argv = first.opts.argv ?? []
+    expect(argv).toEqual(['tail', '-n', '5000', '-F', argv[4] as string])
+    expect(argv[4]).toContain('agents/plan/formatted_output.ansi')
   })
 
   it('left-pane bootstrap respawn is unrelated to the right-pane live path', async () => {
-    // Sanity: the host does call respawnPane during bootstrap (left pane
-    // gets a `clear && exec cat` setup via sendKeys, not respawn — this
-    // assertion just records what *does* happen so a future fix that adds
-    // a right-pane respawn at bootstrap is visible here.
     const { tmux } = await driveOneAssistantStep(['hello'])
 
     const leftRespawns = tmux.recordedCalls.filter(
@@ -174,13 +203,9 @@ describe('two-pane host live path: single writer per runner event', () => {
       (c) => c.method === 'respawnPane' && c.opts.target === RIGHT,
     )
 
-    // Today the right pane is never respawned on the live path. This is the
-    // load-bearing invariant — the fix may still respawn at bootstrap, but
-    // not per event.
+    // Right pane is never respawned. Load-bearing invariant of the swap
+    // model (every visible-pane change is a swap-pane).
     expect(rightRespawns.length).toBe(0)
-    // Left pane respawn count is informational; we don't pin a number here
-    // because steps-view bootstrap is wired separately. We just record the
-    // existence-or-not for future readers.
     expect(leftRespawns.length).toBeGreaterThanOrEqual(0)
   })
 })

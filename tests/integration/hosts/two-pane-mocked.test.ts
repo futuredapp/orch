@@ -34,16 +34,18 @@ function bufferStream(): { stream: NodeJS.WritableStream; text: () => string } {
 const RUN_ID = 'r-2026-04-23-489539-t7' as RunId
 
 describe('two-pane mocked workflow', () => {
-  it('streams readable transcript lines on the right pane — no raw JSON anywhere', async () => {
+  it('streams readable transcript bytes through the per-step tee (U5: no right-pane sendKeys for transcripts)', async () => {
     const fs = new FakeFsService()
     const processService = new FakeProcessService()
     const clock = new FakeClock(1_700_000_000_000)
     const stderr = bufferStream()
+    const basePath = path('/state')
 
-    // Left pane is %0 (initial shell), right is %7 (split target).
     const tmux = new FakeTmuxService()
     tmux.setListPanesResult(['%0'])
     tmux.nextPaneId(paneId('%7'))
+
+    const logger = createFileSessionLogger({ fs, clock, runId: RUN_ID, basePath, debug: false })
 
     const host = await createTmuxHost({
       tmux,
@@ -53,20 +55,22 @@ describe('two-pane mocked workflow', () => {
       workflowName: 'demo',
       stderr: stderr.stream,
       skipVersionCheck: true,
+      logger,
     })
 
-    const agent = new FakeRunner(processService)
-    agent.script({
+    const planAgent = new FakeRunner(processService)
+    planAgent.script({
       events: [{ kind: 'info', type: 'assistant', payload: { text: 'plan thinking' } }],
       structuredOutput: 'plan-done',
     })
-    agent.script({
+    const workAgent = new FakeRunner(processService)
+    workAgent.script({
       events: [{ kind: 'info', type: 'assistant', payload: { text: 'work thinking' } }],
       structuredOutput: 'work-done',
     })
 
     const deps: WorkflowDeps = {
-      stateStore: new FileStateStore({ fs, basePath: path('/runs') }),
+      stateStore: new FileStateStore({ fs, basePath }),
       processService,
       clock,
       runId: RUN_ID,
@@ -76,31 +80,33 @@ describe('two-pane mocked workflow', () => {
       host,
       promptService: new FakePromptService(),
       interactivity: 'interactive' as const,
+      logger,
     }
 
     await workflow('demo', async (run) => {
-      await run(step.define('plan', { agent }))
-      await run(step.define('work', { agent }))
+      await run(step.define('plan', { agent: planAgent }))
+      await run(step.define('work', { agent: workAgent }))
     }).execute(deps)
     await host.teardown()
+    await logger.close()
 
-    // Assert right-pane writes are human-readable transcript lines, never raw JSON.
-    const rightWrites = tmux.recordedCalls.filter(
+    // U5 invariant: runner-event bytes do not go through sendKeys on the
+    // visible right pane. They flow through the per-step tee; the file-
+    // tail hidden pane mirrors them into the visible slot via swap-pane.
+    const rightTranscriptWrites = tmux.recordedCalls.filter(
       (c) => c.method === 'sendKeys' && c.opts.target === paneId('%7'),
     )
-    expect(rightWrites.length).toBeGreaterThan(0)
-    for (const call of rightWrites) {
-      if (call.method !== 'sendKeys') continue
-      const payload = call.opts.keys.join('')
-      expect(payload).not.toMatch(/runnerEvent:/)
-      expect(payload).not.toMatch(/"kind":\s*"info"/)
-    }
+    expect(rightTranscriptWrites).toHaveLength(0)
 
-    const anyPayload = stripAnsi(
-      rightWrites.map((c) => (c.method === 'sendKeys' ? c.opts.keys.join('') : '')).join(''),
+    // The tee captures the transcript bytes for both steps.
+    const planTxt = await fs.readFile(
+      path(`${basePath}/${RUN_ID}/logs/agents/plan/formatted_output.txt`),
     )
-    expect(anyPayload).toContain('[plan] assistant> plan thinking')
-    expect(anyPayload).toContain('[work] assistant> work thinking')
+    const workTxt = await fs.readFile(
+      path(`${basePath}/${RUN_ID}/logs/agents/work/formatted_output.txt`),
+    )
+    expect(planTxt).toContain('[plan] assistant> plan thinking')
+    expect(workTxt).toContain('[work] assistant> work thinking')
   })
 
   it('left pane is no longer painted by startStatusLoop (steps-view daemon owns it)', async () => {
@@ -230,12 +236,13 @@ describe('two-pane mocked workflow', () => {
     // mirrors the bytes the host emitted.
     expect(ansi).toContain('\r\n')
 
-    // Cross-check: the tee bytes match the right-pane sendKeys payloads.
-    const rightPayloads = tmux.recordedCalls
-      .filter((c) => c.method === 'sendKeys' && c.opts.target === paneId('%7'))
-      .map((c) => (c.method === 'sendKeys' ? c.opts.keys.join('') : ''))
-      .join('')
-    expect(ansi).toBe(rightPayloads)
+    // U5: the tee is the canonical sink for transcript bytes; no sendKeys
+    // round-trip onto the visible right pane. The file-tail pane in scratch
+    // mirrors the tee into the visible slot via swap-pane.
+    const rightSendKeys = tmux.recordedCalls.filter(
+      (c) => c.method === 'sendKeys' && c.opts.target === paneId('%7'),
+    )
+    expect(rightSendKeys).toHaveLength(0)
   })
 
   it('captures workflow-body console.log between steps instead of leaking it to tmux', async () => {

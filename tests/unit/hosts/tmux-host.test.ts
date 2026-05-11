@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'bun:test'
 import { Writable } from 'node:stream'
 import { stepName } from '../../../src/core/types.ts'
-import { createTmuxHost, stripAnsi } from '../../../src/hosts/index.ts'
+import { createTmuxHost } from '../../../src/hosts/index.ts'
 import type { RunnerEvent } from '../../../src/runners/index.ts'
 import {
   FakeClock,
@@ -125,7 +125,7 @@ describe('createTmuxHost setup', () => {
 })
 
 describe('TmuxHost.onRunnerEvent', () => {
-  it('renders human-readable transcript lines on the right pane — never raw JSON', async () => {
+  it('does not sendKeys to the right pane — runner bytes flow through the per-step tee (U5)', async () => {
     const tmux = new FakeTmuxService()
     tmux.setListPanesResult(['%0'])
     tmux.nextPaneId(paneId('%42'))
@@ -140,21 +140,17 @@ describe('TmuxHost.onRunnerEvent', () => {
     host.onRunnerEvent(evt, stepName('plan'), [
       { kind: 'line', category: 'assistant', label: 'assistant>', body: 'hello from plan' },
     ])
-    // The write is queued; wait for teardown to drain.
     await host.teardown()
 
+    // U5 invariant: no direct sendKeys onto the visible right pane for
+    // transcript bytes. The hidden file-tail pane in scratch mirrors the
+    // tee into the visible slot via swap-pane. (This test fixture has no
+    // logger so the NULL tee swallows the bytes; the tee-content shape is
+    // covered by `two-pane-mocked` and `right-pane-live-output` tests.)
     const rightSendKeys = tmux.recordedCalls.filter(
       (c) => c.method === 'sendKeys' && c.opts.target === paneId('%42'),
     )
-    expect(rightSendKeys).toHaveLength(1)
-    const payload = (rightSendKeys[0] as { method: 'sendKeys'; opts: { keys: readonly string[] } })
-      .opts.keys[0] as string
-    // Raw JSON `runnerEvent:…` shape must never appear.
-    expect(payload).not.toMatch(/runnerEvent:/)
-    expect(payload).not.toMatch(/"kind":"info"/)
-    // Human-readable transcript line — tmux always renders with color, so
-    // strip ANSI before the substring assertion.
-    expect(stripAnsi(payload)).toContain('[plan] assistant> hello from plan')
+    expect(rightSendKeys).toHaveLength(0)
   })
 
   it('suppresses runner events whose lines array is empty', async () => {
@@ -175,14 +171,13 @@ describe('TmuxHost.onRunnerEvent', () => {
 })
 
 describe('TmuxHost.onLifecycleEvent — step:failed', () => {
-  it('writes the Story 1.5 failure frame into the right pane, after pending transcript writes', async () => {
+  it('does not sendKeys the failure frame to the right pane — it is appended to the per-step tee (U5)', async () => {
     const tmux = new FakeTmuxService()
     tmux.setListPanesResult(['%0'])
     tmux.nextPaneId(paneId('%42'))
 
     const { host } = await buildHost(tmux)
 
-    // Queue one transcript line first so we can assert ordering.
     host.onRunnerEvent({ kind: 'info', type: 'assistant', payload: {} }, stepName('plan'), [
       { kind: 'line', category: 'assistant', label: 'assistant>', body: 'thinking' },
     ])
@@ -194,18 +189,15 @@ describe('TmuxHost.onLifecycleEvent — step:failed', () => {
 
     await host.teardown()
 
+    // U5 invariant: failure frame is appended to the tee before
+    // unregisterSource freezes the source. No sendKeys onto the visible
+    // right pane. (The error-banner contract is covered by the controller
+    // unit tests; this fixture has no controller because it omits
+    // basePath + stateStore.)
     const rightSendKeys = tmux.recordedCalls.filter(
       (c) => c.method === 'sendKeys' && c.opts.target === paneId('%42'),
     )
-    // One transcript line + one failure frame.
-    expect(rightSendKeys).toHaveLength(2)
-    const framePayload = (
-      rightSendKeys[1] as { method: 'sendKeys'; opts: { keys: readonly string[] } }
-    ).opts.keys[0] as string
-    expect(framePayload).toContain('✗ step "plan" failed')
-    expect(framePayload).toContain('  boom')
-    expect(framePayload).toContain('resume:  orch resume')
-    expect(framePayload).toContain('logs:    orch logs')
+    expect(rightSendKeys).toHaveLength(0)
   })
 
   it('forwards the event to the status loop so the left pane marks failed', async () => {

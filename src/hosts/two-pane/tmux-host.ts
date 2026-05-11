@@ -38,7 +38,7 @@ import type {
   PaneAttachment,
   PaneRole,
 } from '../host.ts'
-import { createPerStepTee, type PerStepTee } from '../plain/per-step-tee.ts'
+import { createPerStepTee, type PerStepTee, teePathFor } from '../plain/per-step-tee.ts'
 import { renderTranscriptLine } from '../plain/render-line.ts'
 import { assertNoNestedTmux, createAttachForeground } from './attach-foreground.ts'
 import { renderFailurePanePayload } from './failure-pane.ts'
@@ -319,14 +319,52 @@ export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
     restoreTerminalModes(stdoutForReset)
   })
 
-  // Track which steps are currently mid-flight on the right pane. Flipped
-  // by `buildHost`'s `onLifecycleEvent` on `step:start`/`step:complete`/
-  // `step:failed`. Read by the right-pane-controller's busy gate so Enter
-  // refuses to clobber a live transcript or interactive agent.
-  const inFlight = new Set<StepName>()
+  // Phase 4: track quit-intent + attach exit for awaitForegroundShutdown. We
+  // settle each deferred at most once; the host's awaitForegroundShutdown
+  // races them so the CLI can keep the TUI mounted past workflow completion.
+  const quitDeferred = createDeferred()
+  const attachDeferred = createDeferred()
 
-  // Build the host first; startStepsView spawns its child via the host's
-  // own `runInteractive({ pane: 'left' })` and the host therefore must exist
+  // U5 hoist: create the right-pane controller BEFORE buildHost so the
+  // host's lifecycle handlers can call registerSource / unregisterSource
+  // / emitBanner directly. The controller does not depend on `innerHost`
+  // nor on the steps-view daemon (the daemon consumes the controller's
+  // `onIntent`; the controller emits to lifecycle hooks regardless).
+  // Create whenever a stateStore + basePath are supplied; tests that omit
+  // either get the legacy "no controller" behavior.
+  let rightPaneController: RightPaneController | undefined
+  if (
+    opts.basePath !== undefined &&
+    opts.onStepsIntent === undefined &&
+    opts.stateStore !== undefined
+  ) {
+    const stateDir = toPath(`${opts.basePath}/${opts.runId}`)
+    const cwdPath = toPath(opts.cwd ?? process.cwd())
+    const envForChild = filterDefinedEnv(opts.env ?? process.env)
+    rightPaneController = createRightPaneController({
+      tmux,
+      socket,
+      leftPaneId,
+      rightPaneId,
+      paneQueue: queue,
+      stateStore: opts.stateStore,
+      runId: opts.runId,
+      stateDir,
+      cwd: cwdPath,
+      env: envForChild,
+      stderr: opts.stderr,
+      scratchSession,
+      tuiOverlayPath: toPath(`${stateDir}/tui-overlay.ndjson`),
+      ...(opts.logger !== undefined ? { logger: opts.logger } : {}),
+      ...(opts.resumeRunner !== undefined ? { resumeRunner: opts.resumeRunner } : {}),
+      ...(opts.transcriptRenderer !== undefined
+        ? { transcriptRenderer: opts.transcriptRenderer }
+        : {}),
+    })
+  }
+
+  // Build the host; startStepsView spawns its child via the host's own
+  // `runInteractive({ pane: 'left' })` and the host therefore must exist
   // before the spawn.
   const innerHost = buildHost({
     tmux,
@@ -342,61 +380,28 @@ export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
     cwd: opts.cwd ?? process.cwd(),
     stdout: opts.stdout ?? process.stdout,
     tee: createPerStepTee(opts.logger),
-    inFlight,
     scratchSession,
     ...(opts.logger !== undefined ? { logger: opts.logger } : {}),
     ...(pipePaneCapture !== undefined ? { pipePaneCapture } : {}),
     ...(stdioCapture !== undefined ? { stdioCapture } : {}),
+    ...(rightPaneController !== undefined ? { controller: rightPaneController } : {}),
   })
 
-  // Phase 4: track quit-intent + attach exit for awaitForegroundShutdown. We
-  // settle each deferred at most once; the host's awaitForegroundShutdown
-  // races them so the CLI can keep the TUI mounted past workflow completion.
-  const quitDeferred = createDeferred()
-  const attachDeferred = createDeferred()
   let stepsHandle: StartStepsViewHandle | undefined
-  let rightPaneController: RightPaneController | undefined
   if (opts.disableStepsView !== true && opts.basePath !== undefined) {
     const basePath = opts.basePath
     const stateDir = toPath(`${basePath}/${opts.runId}`)
     const cwdPath = toPath(opts.cwd ?? process.cwd())
     const envForChild = filterDefinedEnv(opts.env ?? process.env)
 
-    // Wire the right-pane-controller when the caller supplied a stateStore
-    // and didn't override `onStepsIntent` themselves. The controller swaps
-    // the right pane in place via `respawn-pane`; the busy gate reads
-    // `inFlight` so Enter never clobbers a live transcript.
-    let onIntent: ((intent: StepsIntent) => void) | undefined = opts.onStepsIntent
-    if (opts.onStepsIntent === undefined && opts.stateStore !== undefined) {
-      rightPaneController = createRightPaneController({
-        tmux,
-        socket,
-        leftPaneId,
-        rightPaneId,
-        paneQueue: queue,
-        stateStore: opts.stateStore,
-        runId: opts.runId,
-        stateDir,
-        cwd: cwdPath,
-        env: envForChild,
-        stderr: opts.stderr,
-        scratchSession,
-        isRightPaneBusy: () => inFlight.size > 0,
-        tuiOverlayPath: toPath(`${stateDir}/tui-overlay.ndjson`),
-        ...(opts.logger !== undefined ? { logger: opts.logger } : {}),
-        ...(opts.resumeRunner !== undefined ? { resumeRunner: opts.resumeRunner } : {}),
-        ...(opts.transcriptRenderer !== undefined
-          ? { transcriptRenderer: opts.transcriptRenderer }
-          : {}),
-      })
-      onIntent = rightPaneController.onIntent
-    }
+    const baseIntent: ((intent: StepsIntent) => void) | undefined =
+      opts.onStepsIntent ?? rightPaneController?.onIntent
 
     // Compose: forward intents to the original handler AND mark the quit
     // deferred so `awaitForegroundShutdown` can resolve. The compose stays
     // tiny — the underlying handler still owns its semantics.
     const composedIntent = (intent: StepsIntent): void => {
-      onIntent?.(intent)
+      baseIntent?.(intent)
       if (intent.type === 'quit') quitDeferred.resolve()
     }
 
@@ -534,15 +539,16 @@ interface BuildHostDeps {
    *  before pane-queue enqueue so the file mirrors per-step ordering even
    *  when two parallel branches interleave on the right pane. */
   readonly tee: PerStepTee
-  /**
-   * Shared mid-flight step set. The host flips entries on `step:start`/
-   * `step:complete`/`step:failed`; the right-pane-controller reads it via
-   * `isRightPaneBusy()` so Enter doesn't clobber a live transcript or an
-   * interactive agent.
-   */
-  readonly inFlight: Set<StepName>
   /** Per-run scratch session that hosts hidden panes for the pane-map. */
   readonly scratchSession: ScratchSessionHandle
+  /**
+   * Right-pane controller for the pane-map. When present, lifecycle hooks
+   * register/unregister `file-tail` sources for autonomous + command live
+   * steps, emit banners on cached / failed events, and emit error banners.
+   * Optional because some test fixtures construct the host without a steps-
+   * view daemon (and therefore without a controller).
+   */
+  readonly controller?: RightPaneController
   /** --debug pipe-pane capture. Stopped on teardown to drop the pipes. */
   readonly pipePaneCapture?: import('./pipe-pane-capture.ts').PipePaneCapture
   /** Captures workflow-body console/stdout writes while tmux owns the TTY. */
@@ -567,78 +573,129 @@ function buildHost(deps: BuildHostDeps): Host {
     deps.stderr.write(`${line}\n`)
   }
 
-  const enqueueOnPane = (paneId: PaneId, payload: string): void => {
-    if (torndown) return
-    void deps.queue
-      .enqueue(paneId, () =>
-        deps.tmux.sendKeys({
-          socket: deps.socket,
-          target: paneId,
-          keys: [payload],
-        }),
-      )
-      .catch(handleSendError)
-  }
-
-  const enqueueRight = (payload: string): void => {
-    enqueueOnPane(deps.rightPaneId, payload)
-  }
-
-  const onCommandLine = ({ stream, line, step, pane }: CommandLine): void => {
+  const onCommandLine = ({ stream, line, step }: CommandLine): void => {
     if (torndown) return
     // Bytes go raw (no `[step] ` prefix) so ANSI passthrough stays
     // byte-for-byte. Per-step formatted_output tee mirrors the bytes for
     // post-mortem grep — same shape as runner transcripts.
+    //
+    // U5: the live `file-tail` source for this step tails the tee file, so
+    // writing to the tee is the only fan-out path. The legacy direct
+    // `sendKeys` onto the right pane is gone — it doubled bytes (kernel pty
+    // echo) and corrupted ANSI when a replay was swapped in.
     const payload = `${line}\r\n`
     deps.tee.write(step, payload)
-    const target = pane === 'left' ? deps.leftPaneId : deps.rightPaneId
-    enqueueOnPane(target, payload)
-    void stream // both streams stream into the same pane in v1
+    void stream // both streams stream into the same tee in v1
   }
+
+  const controller = deps.controller
 
   const onLifecycleEvent = (event: StepLifecycleEvent): void => {
     // The steps-view daemon tails on-disk lifecycle events directly — no
-    // in-process forwarding needed. This handler only manages right-pane
-    // side-effects (per-step tee, failure pane, parallel rollup).
-    // Open/close per-step formatted_output.* sinks alongside the on-pane
-    // bytes. The tee writes happen inside onRunnerEvent (below) before
-    // pane-queue enqueue so the per-step file mirrors per-step ordering.
+    // in-process forwarding needed. This handler manages right-pane side
+    // effects (per-step tee, file-tail source register/unregister, failure
+    // summary, parallel rollup).
     if (event.type === 'step:start' && event.mode === 'autonomous') {
       deps.tee.open(event.stepName)
-    } else if (event.type === 'step:complete' || event.type === 'step:failed') {
+      // U5: wire a live file-tail source. When `logsDir` is null (no file
+      // logging configured) the tee writes are a no-op; surface that to
+      // the user so the empty right pane has a one-time explanation.
+      const teePath = teePathFor(deps.logger, event.stepName)
+      if (teePath !== null) {
+        void controller
+          ?.registerSource(
+            { type: 'live', stepName: event.stepName },
+            { kind: 'file-tail', path: teePath },
+          )
+          .catch(handleSendError)
+      } else if (controller !== undefined) {
+        void controller
+          .emitBanner({
+            kind: 'info',
+            text: `step ${event.stepName} running (no transcript captured — file logging disabled)`,
+            ttlMs: 4000,
+          })
+          .catch(handleSendError)
+      }
+      return
+    }
+    if (event.type === 'step:cached') {
+      // Cached steps never run on the right pane — surface the cache hit as
+      // a transient info banner so the user understands why no transcript
+      // appeared. `viewMode` is unchanged (no pane swap occurred).
+      void controller
+        ?.emitBanner({
+          kind: 'info',
+          text: `step ${event.stepName} — cached (no transcript captured)`,
+          ttlMs: 4000,
+        })
+        .catch(handleSendError)
+      return
+    }
+    if (event.type === 'step:complete') {
+      // Ordering: unregister BEFORE close. The controller's `live → replay`
+      // transform leaves the hidden pane alive tailing the tee; the pane
+      // continues to see bytes until the tee actually closes. Bytes written
+      // between unregister and close (e.g. trailing summary lines) still
+      // surface in the warm-cached replay.
+      const teePath = teePathFor(deps.logger, event.stepName)
+      if (teePath !== null && controller !== undefined) {
+        void controller
+          .unregisterSource({ type: 'live', stepName: event.stepName })
+          .catch(handleSendError)
+      }
       deps.tee.close(event.stepName)
+      return
     }
-    // Mid-flight tracking for the right-pane busy gate. Both autonomous and
-    // interactive starts add; complete/failed remove. Cached steps never
-    // appear here — they don't run on the right pane.
-    if (event.type === 'step:start') {
-      deps.inFlight.add(event.stepName)
-    } else if (event.type === 'step:complete' || event.type === 'step:failed') {
-      deps.inFlight.delete(event.stepName)
-    }
-    if (event.type === 'step:failed' && !torndown) {
-      const summary = summarizeFailure({
-        stepName: event.stepName,
-        runId: deps.runId,
-        error: event.error,
-        failedAt: deps.clock.now(),
-      })
-      enqueueRight(renderFailurePanePayload(summary))
+    if (event.type === 'step:failed') {
+      // tee.write the failure summary FIRST so the bytes land in the file
+      // (and therefore in the hidden pane that's still tailing it) before
+      // the live → replay transform freezes the source for warm replay.
+      if (!torndown) {
+        const summary = summarizeFailure({
+          stepName: event.stepName,
+          runId: deps.runId,
+          error: event.error,
+          failedAt: deps.clock.now(),
+        })
+        deps.tee.write(event.stepName, renderFailurePanePayload(summary))
+      }
+      const teePath = teePathFor(deps.logger, event.stepName)
+      if (teePath !== null && controller !== undefined) {
+        void controller
+          .unregisterSource({ type: 'live', stepName: event.stepName })
+          .catch(handleSendError)
+      }
+      deps.tee.close(event.stepName)
+      // Error banner is the durable, unconditional signal that something
+      // went wrong — even if the user is on a replay or rollup view. The
+      // info `step X complete` banner from `transformLiveToReplay` (when
+      // the user was watching this live source) is overwritten by this
+      // error via last-write-wins.
+      void controller
+        ?.emitBanner({ kind: 'error', text: `step ${event.stepName} failed` })
+        .catch(handleSendError)
       return
     }
     if (event.type === 'step:parallel-branch-update') {
-      // Aggregate first, then render the compact rollup. Rollup renders on
-      // every update so branches that finish mid-rollup flip their glyph in
-      // place. Per-branch transcripts still flow through onRunnerEvent —
-      // they interleave with rollup frames in the right pane for v1. A
-      // dedicated rollup-only pane is a v2 concern.
+      // U5 keeps the legacy rollup-via-enqueueRight path in place. U7 moves
+      // rollup to its own hidden pane + `_rollup` tee.
       const snapshot = rollup.apply({
         stepName: event.stepName,
         branchStatus: event.branchStatus,
         ...(event.elapsedMs !== undefined ? { elapsedMs: event.elapsedMs } : {}),
         ...(event.toolCount !== undefined ? { toolCount: event.toolCount } : {}),
       })
-      enqueueRight(renderRollupPayload(snapshot))
+      const payload = renderRollupPayload(snapshot)
+      void deps.queue
+        .enqueue(deps.rightPaneId, () =>
+          deps.tmux.sendKeys({
+            socket: deps.socket,
+            target: deps.rightPaneId,
+            keys: [payload],
+          }),
+        )
+        .catch(handleSendError)
     }
   }
 
@@ -663,18 +720,11 @@ function buildHost(deps: BuildHostDeps): Host {
     }
     if (out.length === 0) return
     const payload = out.join('')
-    // Tee BEFORE pane-queue enqueue so the per-step file reflects per-step
-    // ordering even when parallel branches interleave on the right pane.
+    // U5: write to the per-step tee only; the hidden `file-tail` pane
+    // registered on `step:start` mirrors the bytes into the visible right
+    // pane via `tail -F`. Direct `sendKeys` is gone (it caused the kernel
+    // pty echo-doubling bug and corrupted swap-in replays).
     deps.tee.write(step, payload)
-    void deps.queue
-      .enqueue(deps.rightPaneId, () =>
-        deps.tmux.sendKeys({
-          socket: deps.socket,
-          target: deps.rightPaneId,
-          keys: [payload],
-        }),
-      )
-      .catch(handleSendError)
   }
 
   const attach = async (pane: PaneRole): Promise<PaneAttachment> => ({

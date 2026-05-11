@@ -291,6 +291,21 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
       liveSources.push(skey)
     }
     logLifecycle({ type: 'pane-spawned', sourceKey: skey, paneId })
+    // U5: auto-swap-or-banner for live sources. If the user is on live mode,
+    // swap the new source in (most-recent-live wins). If the user is on
+    // replay, leave them there but surface a transient info banner so they
+    // know the new live source is available behind `f`.
+    if (key.type === 'live') {
+      if (currentView.mode === 'live') {
+        await showSource(key)
+      } else {
+        await emitBanner({
+          kind: 'info',
+          text: `step ${key.stepName} running — press f to follow`,
+          ttlMs: 4000,
+        })
+      }
+    }
   }
 
   const showSource = async (key: SourceKey): Promise<void> => {
@@ -366,7 +381,20 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
       // Transform: rekey the same hidden pane under the replay key. No kill.
       // The pane continues to tail the (now-frozen) tee; subsequent revisits
       // are O(1).
+      const wasCurrent = currentKey !== undefined && sourceKeyToString(currentKey) === skey
       transformLiveToReplay(key, skey, hidden)
+      // U5: if the user was watching this live source, surface the frozen-
+      // transcript cue — info banner + view-mode flip. The host emits the
+      // unconditional error banner separately on `step:failed`; that
+      // overwrites this info banner via last-write-wins.
+      if (wasCurrent) {
+        await setViewMode({ mode: 'replay', stepName: key.stepName })
+        await emitBanner({
+          kind: 'info',
+          text: `step ${key.stepName} complete`,
+          ttlMs: 4000,
+        })
+      }
       return
     }
     // Interactive / rollup / placeholder / replay: kill the hidden pane and

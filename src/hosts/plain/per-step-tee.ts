@@ -19,7 +19,21 @@
 
 import type { StepName } from '../../core/types.ts'
 import type { RawSink, SessionLogger } from '../../observability/index.ts'
+import { type Path, path as toPath } from '../../services/types.ts'
 import { stripAnsi } from './strip-ansi.ts'
+
+/**
+ * Resolve the absolute path to a step's `formatted_output.ansi` tee file under
+ * the logger's `logsDir`. Returns `null` when the logger is undefined or its
+ * `logsDir` is null (no file logging configured — null adapter or test
+ * fixtures). Callers MUST treat `null` as "skip the file-tail wiring." The
+ * path is computed even if the file does not yet exist; tee `open` creates it
+ * on first write. */
+export function teePathFor(logger: SessionLogger | undefined, step: StepName): Path | null {
+  if (logger === undefined) return null
+  if (logger.logsDir === null) return null
+  return toPath(`${logger.logsDir}/agents/${step}/formatted_output.ansi`)
+}
 
 interface StepSinks {
   readonly ansi: RawSink

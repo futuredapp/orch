@@ -334,7 +334,9 @@ describe('right-pane-controller pane-map: followLive', () => {
 
     await controller.followLive()
 
-    const swap = tmux.recordedCalls.find((c) => c.method === 'swapPane')
+    // registerSource for `live` auto-swaps when viewMode is `live` (U5);
+    // findLast targets the swap from the explicit `followLive()` call.
+    const swap = tmux.recordedCalls.findLast((c) => c.method === 'swapPane')
     if (swap?.method !== 'swapPane') throw new Error('expected swapPane')
     // Rollup hidden pane id is %200 — followLive picks rollup over live.
     expect(swap.opts.src).toBe(paneId('%200'))
@@ -359,7 +361,9 @@ describe('right-pane-controller pane-map: followLive', () => {
 
     await controller.followLive()
 
-    const swap = tmux.recordedCalls.find((c) => c.method === 'swapPane')
+    // registerSource for `live` auto-swaps when viewMode is `live` (U5);
+    // findLast targets the swap from the explicit `followLive()` call.
+    const swap = tmux.recordedCalls.findLast((c) => c.method === 'swapPane')
     if (swap?.method !== 'swapPane') throw new Error('expected swapPane')
     // The latest registered live source's hidden pane wins.
     expect(swap.opts.src).toBe(paneId('%200'))
