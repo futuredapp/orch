@@ -609,6 +609,12 @@ function buildHost(deps: BuildHostDeps): Host {
     // summary, parallel rollup).
     if (event.type === 'step:start' && event.mode === 'autonomous') {
       deps.tee.open(event.stepName)
+      // Force the tee file into existence with a visible marker so the live
+      // `tail -F` source has bytes to render immediately. Runners can take
+      // 5–25 s to emit their first transcript-renderable event; without this,
+      // the right pane stays blank long enough that users navigate away,
+      // never see the step's output, and have no signal the step is running.
+      deps.tee.write(event.stepName, `[${event.stepName}] starting…\r\n`)
       // U5: wire a live file-tail source. When `logsDir` is null (no file
       // logging configured) the tee writes are a no-op; surface that to
       // the user so the empty right pane has a one-time explanation.

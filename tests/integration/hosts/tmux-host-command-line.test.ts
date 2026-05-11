@@ -186,7 +186,10 @@ describe('TmuxHost.onCommandLine', () => {
       path(`${h.basePath}/${RUN_ID}/logs/agents/command:colorful/formatted_output.ansi`),
     )
     expect(tee).toContain(`${ansi}\r\n`)
-    expect(tee).not.toContain('[command:colorful]')
+    // Per-line command output MUST NOT be prefixed with `[step] `. The
+    // step:start starting-marker is a one-shot cue and is allowed to mention
+    // the step name; per-line bytes from `onCommandLine` must stay raw.
+    expect(tee).not.toContain(`[command:colorful] ${ansi}`)
   })
 
   it('drops writes after teardown without throwing', async () => {

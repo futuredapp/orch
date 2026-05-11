@@ -345,8 +345,31 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
     logLifecycle({ type: 'live-to-replay-transform', from: skey, to: replaySkey })
   }
 
+  // Lazily register the always-blank placeholder hidden pane. Used by
+  // killHiddenSource to keep the visible slot alive when the soon-to-be-
+  // killed pane is the current visible source. Tails /dev/null so it
+  // produces no bytes. Idempotent — second call is a no-op.
+  const ensurePlaceholderRegistered = async (): Promise<void> => {
+    const placeholderKey: SourceKey = { type: 'placeholder' }
+    const skey = sourceKeyToString(placeholderKey)
+    if (panes.has(skey)) return
+    if (opts.scratchSession === undefined) return
+    const paneId = await spawnHiddenPane({ kind: 'file-tail', path: toPath('/dev/null') })
+    panes.set(skey, paneId)
+    keyByString.set(skey, placeholderKey)
+    logLifecycle({ type: 'pane-spawned', sourceKey: skey, paneId })
+  }
+
   const killHiddenSource = async (skey: string, hidden: PaneId): Promise<void> => {
     if (currentKey !== undefined && sourceKeyToString(currentKey) === skey) {
+      // The pane we are about to kill is currently in the visible slot
+      // (due to a prior swap). Killing it without first relocating the
+      // visible slot collapses the right pane and orphans visiblePaneId
+      // at a dead pane id — every subsequent swapPane then fails with
+      // `can't find pane: <hidden>`. Ensure a placeholder hidden pane
+      // exists, swap to it, then proceed with the kill (which now lands
+      // on the hidden slot, not the visible one).
+      await ensurePlaceholderRegistered()
       const placeholderKey: SourceKey = { type: 'placeholder' }
       if (panes.has(sourceKeyToString(placeholderKey))) await showSource(placeholderKey)
     }
@@ -399,6 +422,23 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
       await showSource(rollupKey)
       return
     }
+    // Walk newest-first and prefer a truly-live source. dispatchEnter on a
+    // past interactive step re-registers `interactive:<step>` (an interactive
+    // *replay* pane), and registerSource pushes both `live` and `interactive`
+    // keys onto liveSources. Without this preference, `f` after entering a
+    // past interactive step short-circuits — the replay key is both the
+    // visible source and `liveSources.at(-1)`, so showSource returns early.
+    for (let i = liveSources.length - 1; i >= 0; i--) {
+      const skey = liveSources[i]
+      if (skey === undefined) continue
+      const key = keyByString.get(skey)
+      if (key !== undefined && key.type === 'live') {
+        await showSource(key)
+        return
+      }
+    }
+    // No truly-live source. Fall back to most-recent-anything so workflows
+    // with only interactive steps still respond to `f`.
     const lastLive = liveSources.at(-1)
     if (lastLive !== undefined) {
       const key = keyByString.get(lastLive)
