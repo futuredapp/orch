@@ -169,6 +169,23 @@ describe('RealTmuxService.splitPane', () => {
   })
 })
 
+describe('RealTmuxService.swapPane', () => {
+  it('passes -d so that swapping a hidden pane into the visible slot does not move tmux focus to it', async () => {
+    // Regression: without `-d`, tmux's documented swap-pane default moves the
+    // active pane to the source after the swap. In our case `src` is the
+    // hidden scratch pane that gets relocated into the right-pane slot, so
+    // the right pane steals focus from the steps-view left pane every time
+    // a step is opened. `-d` keeps the user's focus on the left pane.
+    const proc = new FakeProcessService()
+    proc
+      .when(['tmux', '-L', 'orch-1', 'swap-pane', '-d', '-s', '%5', '-t', '%9'])
+      .respondWith({ exitCode: 0 })
+    const tmux = new RealTmuxService({ processService: proc })
+
+    await tmux.swapPane({ socket: socketName('orch-1'), src: paneId('%5'), dst: paneId('%9') })
+  })
+})
+
 describe('RealTmuxService.sendKeys', () => {
   it('passes each key verbatim after -l to prevent metacharacter interpretation', async () => {
     const proc = new FakeProcessService()

@@ -173,7 +173,11 @@ export class RealTmuxService implements TmuxService {
   }
 
   async swapPane(opts: SwapPaneOptions): Promise<void> {
-    const argv = ['tmux', '-L', opts.socket, 'swap-pane', '-s', opts.src, '-t', opts.dst]
+    // `-d` is load-bearing: without it, tmux moves the active pane to `src`
+    // after the swap. Our only caller swaps a hidden scratch pane into the
+    // visible right-pane slot, which would steal focus from the steps-view
+    // left pane on every step open / live-source register. Keep focus put.
+    const argv = ['tmux', '-L', opts.socket, 'swap-pane', '-d', '-s', opts.src, '-t', opts.dst]
     const { stderr, exitCode } = await this.#run(argv)
     if (exitCode !== 0) throw fail(exitCode, stderr, 'tmux swap-pane failed')
   }

@@ -292,4 +292,82 @@ describe('right-pane-controller onIntent("enter")', () => {
 
     await controller.stop()
   })
+
+  it('on enter for a running step (live source registered) swaps to live, not replay', async () => {
+    // Reproduces a real failure from run r-2026-05-11-215044-tv:
+    // after the user visited a past step's replay, pressing Enter on the
+    // running step in the step list emitted only replay-lookup-miss and the
+    // right pane stayed on the past replay. A `live:<step>` source is already
+    // registered for the running step; dispatchEnter must reuse it instead of
+    // routing through the replay path.
+    const captured = capturingLogger()
+    const tmux = new FakeTmuxService()
+    const queue = createPaneQueue()
+    const stateDir = `${tempDir}/state`
+    await mkdir(stateDir, { recursive: true })
+    const teePath = `${stateDir}/solve-riddle.tee`
+    await writeFile(teePath, 'live bytes\n', 'utf8')
+
+    const controller = createRightPaneController({
+      tmux,
+      socket: MAIN_SOCKET,
+      leftPaneId: LEFT_PANE,
+      rightPaneId: RIGHT_PANE,
+      paneQueue: queue,
+      stateStore: makeStore({
+        'write-riddle': makeStep({
+          name: 'write-riddle',
+          mode: 'interactive',
+          value: null,
+        }),
+      }),
+      runId: RUN_ID,
+      stateDir: toPath(stateDir),
+      cwd: toPath(tempDir),
+      env: {},
+      stderr: bufferStream(),
+      scratchSession: SCRATCH_SESSION,
+      logger: captured.logger,
+    })
+
+    // Simulate the host's `step:start` having registered a live source for
+    // the running solve-riddle step.
+    tmux.nextPaneId(paneId('%200'))
+    await controller.registerSource(
+      { type: 'live', stepName: stepName('solve-riddle') } satisfies SourceKey,
+      { kind: 'file-tail', path: toPath(teePath) },
+    )
+
+    // User opens the past write-riddle replay first.
+    tmux.nextPaneId(paneId('%201'))
+    controller.onIntent({ type: 'enter', stepName: 'write-riddle' })
+    await flush()
+
+    const swapsBefore = tmux.recordedCalls.filter((c) => c.method === 'swapPane').length
+
+    // User presses Enter on the running solve-riddle row.
+    controller.onIntent({ type: 'enter', stepName: 'solve-riddle' })
+    await flush()
+
+    // Must NOT emit a replay-lookup-miss for solve-riddle.
+    const misses = captured.entries
+      .filter((e) => e.category === 'lifecycle')
+      .map((e) => e.record as { readonly type?: string; readonly stepName?: string })
+      .filter((r) => r.type === 'replay-lookup-miss' && r.stepName === 'solve-riddle')
+    expect(misses).toHaveLength(0)
+
+    // Must perform a swap back to the live solve-riddle pane.
+    const swapsAfter = tmux.recordedCalls.filter((c) => c.method === 'swapPane').length
+    expect(swapsAfter).toBeGreaterThan(swapsBefore)
+
+    // Must record a live-pane-opened lifecycle event for symmetry with
+    // replay-pane-opened on a completed step.
+    const opens = captured.entries
+      .filter((e) => e.category === 'lifecycle')
+      .map((e) => e.record as { readonly type?: string; readonly stepName?: string })
+      .filter((r) => r.type === 'live-pane-opened' && r.stepName === 'solve-riddle')
+    expect(opens).toHaveLength(1)
+
+    await controller.stop()
+  })
 })

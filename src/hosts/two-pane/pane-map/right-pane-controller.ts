@@ -486,6 +486,28 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
   const dispatchEnter = async (stepName: string): Promise<void> => {
     if (stopped) return
 
+    // If the step is currently running, a `live:<step>` or `interactive:<step>`
+    // source is already registered. Tune in to it instead of routing through
+    // the replay path (which `lookupStep` can't satisfy for an in-flight step
+    // with no persisted entry). Without this, Enter on the running row from
+    // the step list silently logs `replay-lookup-miss` and the right pane
+    // stays on the previous replay — the running step becomes unreachable.
+    const liveKey: SourceKey = { type: 'live', stepName: stepName as StepName }
+    const interactiveKey: SourceKey = { type: 'interactive', stepName: stepName as StepName }
+    const liveExists = panes.has(sourceKeyToString(liveKey))
+    const interactiveExists = panes.has(sourceKeyToString(interactiveKey))
+    if (liveExists || interactiveExists) {
+      const key = liveExists ? liveKey : interactiveKey
+      await showSource(key)
+      await setViewMode({ mode: 'live' })
+      logLifecycle({
+        type: 'live-pane-opened',
+        stepName,
+        sourceKey: sourceKeyToString(key),
+      })
+      return
+    }
+
     const step = await lookupStep(stepName)
     if (step === undefined) {
       logLifecycle({ type: 'replay-lookup-miss', stepName })

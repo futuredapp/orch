@@ -128,7 +128,7 @@ export function StepsView({
       }
       return
     }
-    if (input === 'f') {
+    if (input === 'f' || input === 'F') {
       snapToLive()
       onIntent({ type: 'follow-live' })
       return

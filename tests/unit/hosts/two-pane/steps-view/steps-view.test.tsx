@@ -9,6 +9,7 @@ import { describe, expect, it } from 'bun:test'
 import { renderToString } from 'ink'
 import { render } from 'ink-testing-library'
 import type {
+  StepsIntent,
   StepsViewKeyEvent,
   StepsViewState,
 } from '../../../../../src/hosts/two-pane/steps-view/index.ts'
@@ -142,6 +143,26 @@ describe('<StepsView> diagnostic keypress IPC', () => {
     expect(tags).toContain('f')
     expect(tags).toContain('?')
     expect(tags).toContain('q')
+
+    ui.unmount()
+  })
+
+  it('emits the follow-live intent for uppercase F (case-insensitive)', async () => {
+    // Reproduces a real failure captured in run r-2026-05-11-215044-tv:
+    // the user pressed F (caps-lock) six times to switch back to the live
+    // step; tui-keys.ndjson recorded `{"key":"other","input":"F",...}` each
+    // time and tui-intents.ndjson contained zero follow-live entries. The
+    // shortcut is advertised as "f live" in the footer — uppercase must work.
+    const intents: StepsIntent[] = []
+    const ui = render(
+      <StepsView state={liveState} onIntent={(i) => intents.push(i)} now={() => NOW} />,
+    )
+    await tick()
+
+    ui.stdin.write('F')
+    await tick()
+
+    expect(intents).toContainEqual({ type: 'follow-live' })
 
     ui.unmount()
   })
