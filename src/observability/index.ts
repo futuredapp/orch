@@ -24,11 +24,17 @@ export type {
 export { stepSpanId } from './session-logger.ts'
 export type { StatusLoop, StatusLoopOptions } from './status-loop.ts'
 export { applyEvent, startStatusLoop } from './status-loop.ts'
-export type { RenderOptions, StepStatus, StepStatusRecord } from './status-pane.ts'
+export type {
+  RenderOptions,
+  StepGlyphView,
+  StepStatus,
+  StepStatusRecord,
+} from './status-pane.ts'
 export {
   formatElapsed,
   renderStatusPane,
   stepGlyph,
+  stepGlyphView,
   stripAnsi,
   toStatusRecords,
 } from './status-pane.ts'

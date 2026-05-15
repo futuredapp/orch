@@ -1,3 +1,4 @@
+// triage: rewrite — multi-scenario file. argv-shape scenarios are Tier 3 territory (keep). "no sendKeys on visible right pane" scenarios are Tier 1 (autonomous-live-pane-shows-content). Split the file in U6.
 // Contract test for the *live* path that feeds the right pane while a runner
 // is producing events.
 //

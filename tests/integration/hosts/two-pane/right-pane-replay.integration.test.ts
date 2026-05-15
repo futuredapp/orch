@@ -1,3 +1,4 @@
+// triage: rewrite — swap-based replay visible outcome covered at Tier 1 (replay-shows-same-transcript-as-live). Keep controller-level fallback paths (refusal text, missing tee) Tier 1 cannot easily reach.
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { Writable } from 'node:stream'

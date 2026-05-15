@@ -38,3 +38,9 @@ The full phased roadmap lives at [`docs/plans/implementation-phases.md`](docs/pl
 - Three layers: unit, integration (mocked edges), e2e (real CLIs, env-gated).
 - Every runner gets TWO integration tests (mocked + real).
 - `mock.module`, `vi.mock`, `jest.mock` are banned inside tests for `src/core/`, `src/state/`, `src/validators/`, and `src/runners/`.
+
+## How to write a two-pane test
+
+- Read [`docs/testing-strategy.md`](docs/testing-strategy.md) for the four-tier model and the triage rule.
+- Default to Tier 2 (Ink projection) or Tier 1 (real-tmux + FakeRunner). The harness lives at [`tests/helpers/real-tmux/`](tests/helpers/real-tmux/README.md).
+- Triage rule: *"Would this test still pass if the visible pane were empty / wrong / unformatted? If yes, demote or delete."*

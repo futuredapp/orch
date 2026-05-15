@@ -83,6 +83,34 @@ export function stepGlyph(status: StepStatus, tty: boolean): string {
 }
 
 // ---------------------------------------------------------------------------
+// stepGlyphView — Ink view helper. Returns char + optional color/dim flags so
+// the two-pane left view can render glyphs with semantic color without
+// touching the plain-text `stepGlyph` consumers.
+// ---------------------------------------------------------------------------
+
+export interface StepGlyphView {
+  readonly char: string
+  readonly color?: string
+  readonly dim?: boolean
+}
+
+// `running` and `pending` chars intentionally differ from `stepGlyph`'s
+// table: the Ink left pane uses `◐` (yellow) and a dim `·` for visual weight,
+// while the plain-text right-pane renderer keeps `●` / `○`.
+const INK_STEP_VIEW: Record<StepStatus, StepGlyphView> = {
+  pending: { char: '·', dim: true },
+  running: { char: '◐', color: 'yellow' },
+  interactive: { char: '⟳', dim: true },
+  completed: { char: '✓', color: 'green' },
+  failed: { char: '✗', color: 'red' },
+  cached: { char: '↺', dim: true },
+}
+
+export function stepGlyphView(status: StepStatus): StepGlyphView {
+  return INK_STEP_VIEW[status]
+}
+
+// ---------------------------------------------------------------------------
 // Elapsed formatting — same rules as cli/format.ts#formatMs
 // ---------------------------------------------------------------------------
 

@@ -1,3 +1,4 @@
+// triage: rewrite — bug class is R9 Tier 1 (follow-live-returns-to-running-step, currently deferred) + R10 Tier 2 (key-intent-mapping). Rewrite to cover controller-level slice this file uniquely exercises while deterministic Tier 1 is deferred.
 // Regression test: pressing `f` (follow-live) after entering a past
 // interactive step's replay must swap back to the currently-running
 // autonomous live source, not short-circuit on the just-entered interactive

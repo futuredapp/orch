@@ -1,3 +1,4 @@
+// triage: rewrite — rollup visible outcome is Tier 1 territory once the harness gains a "drive a parallel block" helper. Interim Keep; Rewrite once that helper lands.
 // Integration coverage for U7: the parallel rollup lives on its own hidden
 // pane in the scratch session, fed by the `_rollup` meta tee. The host
 // reacts to:

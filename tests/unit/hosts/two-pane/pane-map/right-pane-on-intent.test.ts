@@ -1,3 +1,4 @@
+// triage: rewrite — intent→action mapping is Tier 2 (key-intent-mapping.test.tsx); per-kind visible outcome is Tier 1. Rewrite to assert on resulting view shape, not recorded dispatch.
 // Unit coverage for the U8 swap-based `onIntent('enter')` dispatch on the
 // pane-map controller. The legacy unit-test files
 // (right-pane-controller.test.ts, right-pane-follow-live.test.ts,

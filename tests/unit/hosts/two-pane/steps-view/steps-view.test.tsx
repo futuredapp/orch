@@ -111,6 +111,81 @@ describe('<StepsView> frame snapshots at width 110', () => {
   })
 })
 
+describe('<StepsView> hairlines and banner placement', () => {
+  it('wraps the steps list in upper and lower hairline rules when steps exist', () => {
+    const frame = stripAnsi(
+      renderToString(<StepsView state={liveState} onIntent={NOOP} now={() => NOW} />, {
+        columns: 110,
+      }),
+    )
+    const ruleLines = frame
+      .split('\n')
+      .filter((line) => /^[─\s]+$/.test(line) && line.includes('─'))
+    expect(ruleLines.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('does not render hairlines around the empty state', () => {
+    const empty: StepsViewState = { ...liveState, steps: [] }
+    const frame = stripAnsi(
+      renderToString(<StepsView state={empty} onIntent={NOOP} now={() => NOW} />, {
+        columns: 110,
+      }),
+    )
+    const emptyIdx = frame.indexOf('(no steps yet)')
+    expect(emptyIdx).toBeGreaterThanOrEqual(0)
+    const before = frame.slice(0, emptyIdx)
+    const after = frame.slice(emptyIdx + '(no steps yet)'.length)
+    // No box-drawing horizontal rule line directly adjacent to the empty-state copy.
+    expect(before.split('\n').slice(-2).join('\n')).not.toMatch(/─{3,}/)
+    expect(after.split('\n').slice(0, 2).join('\n')).not.toMatch(/─{3,}/)
+  })
+
+  it('places the banner above the upper hairline when steps exist', () => {
+    const withBanner: StepsViewState = {
+      ...liveState,
+      banner: { kind: 'info', text: 'snapped to live', seq: 1 },
+    }
+    const frame = stripAnsi(
+      renderToString(<StepsView state={withBanner} onIntent={NOOP} now={() => NOW} />, {
+        columns: 110,
+      }),
+    )
+    const bannerIdx = frame.indexOf('snapped to live')
+    const firstRuleIdx = frame.search(/─{3,}/)
+    expect(bannerIdx).toBeGreaterThanOrEqual(0)
+    expect(firstRuleIdx).toBeGreaterThanOrEqual(0)
+    expect(bannerIdx).toBeLessThan(firstRuleIdx)
+  })
+
+  it('keeps hairlines and drops the elapsed column on narrow terminals (<70 cols)', () => {
+    // `useAdaptiveColumns` reads `useStdout().stdout.columns` (a process.stdout
+    // proxy under renderToString), not the renderToString `columns` option.
+    // Override process.stdout.columns for the duration of this render so
+    // pickColumns(60) drops the elapsed column.
+    const originalColumns = process.stdout.columns
+    Object.defineProperty(process.stdout, 'columns', { value: 60, configurable: true })
+    try {
+      const frame = stripAnsi(
+        renderToString(<StepsView state={liveState} onIntent={NOOP} now={() => NOW} />, {
+          columns: 60,
+        }),
+      )
+      const ruleLines = frame
+        .split('\n')
+        .filter((line) => /^[─\s]+$/.test(line) && line.includes('─'))
+      expect(ruleLines.length).toBeGreaterThanOrEqual(2)
+      const workRow = frame.split('\n').find((line) => line.includes('work'))
+      expect(workRow).toBeDefined()
+      expect(workRow).not.toMatch(/\b3s\b/)
+    } finally {
+      Object.defineProperty(process.stdout, 'columns', {
+        value: originalColumns,
+        configurable: true,
+      })
+    }
+  })
+})
+
 describe('<StepsView> diagnostic keypress IPC', () => {
   // Tick budget mirrors `selection.test.tsx`: Ink's reconciler + useInput
   // re-subscribe needs ~30ms to settle on the keypress path.

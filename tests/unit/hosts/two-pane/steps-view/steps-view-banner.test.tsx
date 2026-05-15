@@ -1,3 +1,4 @@
+// triage: rewrite — banner + view-mode footer now covered at Tier 2 (banner-rendering.test.tsx, view-mode-footer.test.tsx). Rewrite this file to focus on banner↔footer interaction slices the new files do not cover.
 // Renderer tests for the U4 banner + view-mode surface on `<StepsView>`.
 //
 // Covers footer-text-by-view-mode, stepName truncation, banner kind/style,

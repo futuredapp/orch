@@ -31,7 +31,10 @@ export function EndOfRunSummary({
   const duration = formatElapsed(summary.durationMs)
   return (
     <Box flexDirection="column">
-      <Text>{`orch · ${run.workflowName} · ${run.runId} · ${label}`}</Text>
+      <Text>
+        {`orch · ${run.workflowName} · ${run.runId} · `}
+        <Text color={statusColor(status)}>{label}</Text>
+      </Text>
       <Text dimColor>
         {`steps ${summary.stepsCompleted}/${summary.stepsTotal} completed`}
         {summary.stepsFailed > 0 ? ` · ${summary.stepsFailed} failed` : ''}
@@ -64,4 +67,8 @@ function statusLabel(status: 'completed' | 'failed' | 'crashed'): string {
   if (status === 'completed') return 'completed'
   if (status === 'failed') return 'failed'
   return 'crashed'
+}
+
+function statusColor(status: 'completed' | 'failed' | 'crashed'): string {
+  return status === 'completed' ? 'green' : 'red'
 }

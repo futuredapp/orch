@@ -1,3 +1,4 @@
+// triage: rewrite — file-existence proxy for "the live pane shows content immediately". Tier 1 (autonomous-live-pane-shows-content) asserts the visible-pane outcome directly. Rewrite to keep only the "starting marker is the first byte" invariant Tier 1 does not pin.
 // Regression test for "autonomous step's live pane stays blank for the entire
 // run" — observed in `r-2026-05-11-163506-44`. The right pane is `tail -F` on
 // `…/agents/<step>/formatted_output.ansi`; that file is lazily created by the

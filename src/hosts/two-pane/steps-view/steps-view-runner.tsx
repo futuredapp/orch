@@ -149,14 +149,26 @@ export async function runStepsViewRunner(opts: ParsedOpts): Promise<void> {
     return React.createElement(StepsView, { state: current, onIntent, onKey: writeKey })
   }
 
+  // Alternate-screen buffer prevents stale frame fragments on tmux pane
+  // resize. Ink 7's built-in resize handler only clears when width DECREASES;
+  // widening leaves the old (narrower-wrapped) frame partially visible above
+  // the new one because the "scroll up N rows and overwrite" math is based on
+  // the old layout. The alt-screen buffer is a dedicated canvas Ink fully
+  // owns, so wrap-miscount fragments have nowhere to leak from. Trade-off:
+  // the pane has no scrollback while the TUI is mounted — acceptable for the
+  // left-pane steps view (scrollback isn't a feature of this surface).
   const instance = render(React.createElement(Container), {
     exitOnCtrlC: false,
     patchConsole: false,
+    alternateScreen: true,
   })
 
-  await Promise.race([exitPromise, instance.waitUntilExit()])
-  instance.unmount()
-  await model.stop()
+  try {
+    await Promise.race([exitPromise, instance.waitUntilExit()])
+  } finally {
+    instance.unmount()
+    await model.stop()
+  }
 }
 
 // ---------------------------------------------------------------------------

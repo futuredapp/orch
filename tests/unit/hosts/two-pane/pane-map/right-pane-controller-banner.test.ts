@@ -1,3 +1,4 @@
+// triage: rewrite — banner+view-mode bug class now covered at Tier 2 (banner-rendering.test.tsx, view-mode-footer.test.tsx). Keep only controller-internal slices (seq ordering, mid-emit state) Tier 2 cannot reach.
 // Controller-side coverage for the U4 banner + view-mode surface.
 //
 // `emitBanner`, `setViewMode`, and `onIntent({type:'dismiss-banner'})` all

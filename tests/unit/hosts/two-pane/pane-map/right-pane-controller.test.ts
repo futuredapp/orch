@@ -1,3 +1,4 @@
+// triage: rewrite — register/show/unregister visible-pane outcomes now covered at Tier 1 (autonomous-live-pane-shows-content, replay-revisit-reuses-pane). Keep idempotency + missing-source paths Tier 1 cannot fail-isolate.
 // Unit coverage for the NEW pane-map public methods on the right-pane
 // controller. The legacy `onIntent` path stays covered by the existing
 // tests in `tests/unit/hosts/two-pane/right-pane-controller.test.ts` and

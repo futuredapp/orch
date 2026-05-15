@@ -23,7 +23,7 @@
 import { Box, Text, useInput } from 'ink'
 import type React from 'react'
 import { memo, useEffect, useState } from 'react'
-import { formatElapsed, stepGlyph, stripAnsi } from '../../../observability/index.ts'
+import { formatElapsed, stepGlyphView, stripAnsi } from '../../../observability/index.ts'
 import type { ColumnSet } from './adaptive-columns.ts'
 import { EndOfRunFooter, EndOfRunSummary } from './end-of-run-summary.tsx'
 import type { Banner, StepRow as StepRowData, StepsViewState, ViewMode } from './step-types.ts'
@@ -172,7 +172,18 @@ export function StepsView({
       {state.steps.length === 0 ? (
         <Text dimColor>(no steps yet)</Text>
       ) : (
-        <Box flexDirection="column">
+        // Ink 7 defaults all four edges to `true` when `borderStyle` is set,
+        // so the side edges must be explicitly disabled to avoid doubling
+        // against the tmux pane border (R1).
+        <Box
+          flexDirection="column"
+          borderStyle="single"
+          borderTop
+          borderBottom
+          borderLeft={false}
+          borderRight={false}
+          borderColor="gray"
+        >
           {state.steps.map((step) => (
             <StepRow
               key={step.name}
@@ -226,12 +237,30 @@ interface StepRowProps {
 const StepRow = memo(
   function StepRowImpl({ step, columns, now, selected }: StepRowProps): React.ReactElement {
     const cursor = selected ? '▌' : ' '
-    const glyph = stepGlyph(step.status, true)
+    const view = stepGlyphView(step.status)
     const name = stripAnsi(step.name)
     const elapsed = formatElapsedFor(step, now)
-    const parts = [`${cursor} ${name}`, glyph]
-    if (columns.elapsed && elapsed.length > 0) parts.push(elapsed)
-    return <Text>{parts.join('  ')}</Text>
+    const showElapsed = columns.elapsed && elapsed.length > 0
+    // Multi-segment <Text>: produces the same byte sequence as the previous
+    // `parts.join('  ')` output (cursor · space · name · two-space · glyph
+    // [· two-space · elapsed]), with style spans around cursor, name, and
+    // glyph. Selection cyan applies only to cursor + name; glyph keeps its
+    // semantic color from `stepGlyphView`.
+    const accent = selected ? 'cyan' : undefined
+    return (
+      <Text>
+        <Text color={accent}>{cursor}</Text>
+        <Text> </Text>
+        <Text bold={selected} color={accent}>
+          {name}
+        </Text>
+        <Text>{'  '}</Text>
+        <Text color={view.color} dimColor={view.dim}>
+          {view.char}
+        </Text>
+        {showElapsed ? <Text>{`  ${elapsed}`}</Text> : null}
+      </Text>
+    )
   },
   (prev, next) => {
     if (prev.selected !== next.selected) return false

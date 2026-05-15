@@ -1,3 +1,4 @@
+// triage: rewrite — kind-details panel visible outcome is Tier 1 territory once the harness gains "enter on a completed non-agent step" sugar. Interim Keep; Rewrite once that helper lands.
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { Writable } from 'node:stream'

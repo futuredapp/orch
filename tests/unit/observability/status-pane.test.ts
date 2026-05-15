@@ -4,6 +4,7 @@ import {
   renderStatusPane,
   type StepStatusRecord,
   stepGlyph,
+  stepGlyphView,
   stripAnsi,
   toStatusRecords,
 } from '../../../src/observability/status-pane.ts'
@@ -42,6 +43,42 @@ describe('stepGlyph', () => {
     expect(stepGlyph('completed', false)).toBe('+')
     expect(stepGlyph('failed', false)).toBe('x')
     expect(stepGlyph('cached', false)).toBe('.')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// stepGlyphView — Ink view helper (char + color/dim)
+// ---------------------------------------------------------------------------
+
+describe('stepGlyphView', () => {
+  it('returns a green check for completed', () => {
+    expect(stepGlyphView('completed')).toEqual({ char: '✓', color: 'green' })
+  })
+
+  it('returns a red cross for failed', () => {
+    expect(stepGlyphView('failed')).toEqual({ char: '✗', color: 'red' })
+  })
+
+  it('returns a yellow half-circle for running', () => {
+    expect(stepGlyphView('running')).toEqual({ char: '◐', color: 'yellow' })
+  })
+
+  it('returns a dim middle dot for pending', () => {
+    expect(stepGlyphView('pending')).toEqual({ char: '·', dim: true })
+  })
+
+  it('returns a dim cycle glyph for interactive', () => {
+    expect(stepGlyphView('interactive')).toEqual({ char: '⟳', dim: true })
+  })
+
+  it('returns a dim cached glyph for cached', () => {
+    expect(stepGlyphView('cached')).toEqual({ char: '↺', dim: true })
+  })
+
+  it('does not affect the plain-text stepGlyph table', () => {
+    // Regression guard: KD1 forbids touching `stepGlyph` consumers.
+    expect(stepGlyph('running', true)).toBe('●')
+    expect(stepGlyph('pending', true)).toBe('○')
   })
 })
 
