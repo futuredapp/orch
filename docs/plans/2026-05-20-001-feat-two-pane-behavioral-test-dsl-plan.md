@@ -59,7 +59,7 @@ Carried from origin §2 (success criteria S1–S4) and §2.1 (concrete reproduct
 | R6 — `runInvariantContract(snapshot, scenario)` returns a list of violations; outcome matchers (`cleanly()`, `balancedEscapes()`, `doesNotExist()`) are projections of this contract | U6 | One source of truth |
 | R7 — Each lifecycle cell lives in its own file at `tests/integration/lifecycle/<input>-during-<state>.real.test.ts`; the cell-per-file layout is intentional so the campaign report is a directory listing | U7, U9, U10, U11 | One cell = one file, predicted outcome inline as a comment |
 | R8 — `bringToState` helper drives the workflow to a named state (`pre-run`, `mid-step`, `between-steps`, `completed`, `failed`, `awaiting-ask`) before the user-action gesture fires | U4, U8 | Required by every cell that isn't `pre-run` |
-| R9 — Tier 5 cells gate on the same `RUN_REAL_TMUX_E2E` env + binary-on-PATH predicate as Tier 4 for the real-CLI variants; fake variants gate only on `tmux` on PATH | U4, U9 | Mirrors `canRunRealTmux()` / `canRunRealTmuxE2E('codex')` from `tests/helpers/real-tmux/` |
+| R9 — Tier 5 cells gate only on `tmux` on PATH via `canRunRealTmux()`; the §2.1 acceptance cells (U9) and U10 signal cells all use `ScriptedFakeRunner`, so no real-CLI gating is required for this plan. Tier 4's `RUN_REAL_TMUX_E2E` env + `canRunRealTmuxE2E('codex')` predicate remains the pattern for any future real-CLI Tier 5 cells (deferred to follow-up). | U4, U9 | Mirrors `canRunRealTmux()` from `tests/helpers/real-tmux/`; `canRunRealTmuxE2E('codex')` is kept available for future cells but unused in this plan |
 | R10 — The invariant contract at §6.5 of origin is the authoritative spec; per-cell `assertAllInvariants(scenarioTag)` runs the full applicable contract and reports the violation list with the snapshot inline | U6 | Editing the contract is the response to a FAIL-EXPECTATION triage |
 
 The **product-shape decision from origin §13** is carried verbatim: the `q` row of the §6.5 invariant contract requires full teardown (orch exits, running agents are killed, tmux session gone, state-status = `cancelled`) — **not** today's "run continues" semantics at `src/hosts/two-pane/steps-view/steps-view.tsx:325`. This is a contract decision only; the actual code change to `q` semantics, and the footer-copy and detach-hint cleanup at `src/cli/commands/execute-with-attach.ts:106`, are out of scope here (next planning round, after the §2.1 snapshot is in hand).
@@ -210,15 +210,14 @@ tests/helpers/behavioral-dsl/                    [NEW — DSL public surface]
     workflow-fixtures.ts                         # paths to tests/fixtures/lifecycle/*
 
 tests/fixtures/lifecycle/                        [NEW — fixture workflows]
-  two-step-linear.ts
+  two-step-linear.ts                             # silent-hold + emit-then-hang shapes via scripted-fake
   three-step-with-ask.ts                         # for awaiting-ask state cells
   step-failing-mid.ts                            # for failed state cells
-  codex-riddle-mid-step.ts                       # real-codex variant for §2.1
 
 tests/integration/lifecycle/                     [NEW — one cell = one file]
   sigint-to-orch-during-mid-step.real.test.ts    # U7 — first end-to-end (PASS predicted)
-  q-during-fake-mid-step.real.test.ts            # U9 — §2.1 fake variant (FAIL-BUG predicted)
-  q-during-codex-mid-step.real.test.ts           # U9 — §2.1 codex variant (FAIL-BUG predicted)
+  q-during-fake-mid-step.real.test.ts            # U9 — §2.1 silent-hold variant (FAIL-BUG predicted)
+  q-during-emitting-fake-mid-step.real.test.ts   # U9 — §2.1 emitting variant (FAIL-BUG predicted)
   ctrl-c-twice-in-attached-during-mid-step.real.test.ts   # U10
   sigterm-to-orch-during-mid-step.real.test.ts            # U10
   sighup-to-orch-during-mid-step.real.test.ts             # U10
@@ -256,7 +255,7 @@ The directory tree is a scope declaration. The implementer may adjust the intern
 
 - **`runInvariantContract(snapshot, scenario)` is the single source of truth; per-cell `assertAllInvariants(scenarioTag)` runs the full applicable contract.** Outcome matchers like `cleanly()`, `balancedEscapes()`, and `doesNotExist()` are projections of the contract, not parallel sources. When the contract is wrong for a cell, the cell triages as `FAIL-EXPECTATION` and the contract gets edited — not the per-test assertion. This is the foundation of the exploratory triage taxonomy (origin §9).
 
-- **The §2.1 acceptance test ships in both fake and real-CLI variants.** Origin §2.1 makes both variants explicit: a `ScriptedFakeRunner`-driven cell (`q-during-fake-mid-step.real.test.ts`) for deterministic CI, and a Codex-driven cell (`q-during-codex-mid-step.real.test.ts`) env-gated like Tier 4 for the original reproduction surface. Both are predicted FAIL-BUG. The fake variant carries S2 in default CI; the codex variant carries the "this matches the user's actual screenshot" evidence for the next planning round.
+- **The §2.1 acceptance test ships in two fake-driven variants.** Origin §2.1 calls for "fake + real-CLI" coverage; planning-time and implementation-time observations (see U9 "Revision (2026-05-20)") established that the real-codex variant was unsuitable — autonomous codex finishes too fast for the mid-step window, and interactive codex hangs on a Ratatui TUI awaiting stdin, which is NOT the §2.1 "during model inference" scenario. The replacement is two `ScriptedFakeRunner`-driven cells that share the §6.5 row but diverge on the right-pane shape: `q-during-fake-mid-step.real.test.ts` (silent hold via `holdUntilReleased()`) and `q-during-emitting-fake-mid-step.real.test.ts` (visibly active step via `emitThenHang(text)`, with a right-pane sanity probe). Both are predicted FAIL-BUG, both run in default CI, no real-CLI gating. The emitting variant carries the "matches the user's actual screenshot" evidence; the silent-hold variant proves the bug is present even without observable output. If the cells ever diverge at run time (one passes the violation check, the other doesn't), the divergence is the bug signal.
 
 - **The campaign is exploratory (orchestrator + parallel sub-agents per cell), not prescriptive.** Origin §8 documents methodology C. The triage column on `docs/findings/2026-05-20-lifecycle-campaign-findings.md` IS the decision input for the downstream bug-fix planning round — we don't pre-commit to which cells "should" pass. When a cell's contract row is wrong, the sub-agent files a contract-revision note (FAIL-EXPECTATION); when a cell can't be expressed in the DSL, the sub-agent files a DSL gap (FAIL-DSL); when the input can't be simulated, the cell is skipped with a `FAIL-HARNESS` pointer. The orchestrator catches uncategorized failures as its own error.
 
@@ -326,14 +325,14 @@ The 11 implementation units below land in **4 work blocks (W1–W4)**. Each bloc
 
 ### W4 — Headline cells + findings (U9 + U10 + U11)
 
-**Stack:** §2.1 acceptance cells (`q-during-fake-mid-step` + `q-during-codex-mid-step`) using `expectInvariantViolation` + Ctrl-C / SIGTERM / SIGHUP / `closeStdin` / double-SIGINT cells + the new `codex-riddle-mid-step` fixture + the findings doc `docs/findings/2026-05-20-lifecycle-campaign-findings.md` + committed snapshot artifacts under `tests/integration/lifecycle/__snapshots__/`.
+**Stack:** §2.1 acceptance cells (`q-during-fake-mid-step` + `q-during-emitting-fake-mid-step`) using `expectInvariantViolation` + Ctrl-C / SIGTERM / SIGHUP / `closeStdin` / double-SIGINT cells + the `emitThenHang(text)` DSL helper + the findings doc `docs/findings/2026-05-20-lifecycle-campaign-findings.md` + committed snapshot artifacts under `tests/integration/lifecycle/__snapshots__/`.
 
 **Story:** The deliverable evidence. After W4 lands, the §2.1 reproduction is encoded as a passing-while-broken test (forces deletion when the bug is fixed), the user's three reported symptom classes are covered (S4), and the findings doc rolls up the actual outcomes (PASS vs FAIL-BUG vs FAIL-EXPECTATION) of every cell authored in W3 + W4.
 
 **Ship criterion:**
 - `bun run check` green.
 - `q-during-fake-mid-step.real.test.ts` PASSES via `expectInvariantViolation` in default CI (where `tmux` is on PATH).
-- `q-during-codex-mid-step.real.test.ts` PASSES via `expectInvariantViolation` under `RUN_REAL_TMUX_E2E=1` with `codex` on PATH.
+- `q-during-emitting-fake-mid-step.real.test.ts` PASSES via `expectInvariantViolation` in default CI (where `tmux` is on PATH) — same gating as the silent-hold variant; no real CLI required.
 - `docs/findings/2026-05-20-lifecycle-campaign-findings.md` exists with executive summary + per-triage-class sections.
 - ≥1 FAIL-BUG snapshot is committed under `tests/integration/lifecycle/__snapshots__/` (S2 evidence).
 - The PR description includes the captured fake-variant snapshot inline.
@@ -382,7 +381,7 @@ W2 cannot start until W1 lands (U4 depends on U2's `rawStreams`). W3 cannot star
 **Approach:**
 - Stubs export typed identifiers (`export const launchOrchWorkflow = (..): Promise<OrchHandle> => { throw new Error('not yet implemented') }`) so downstream units can wire imports incrementally without rewriting tests.
 - `LifecycleSnapshot` interface is fully declared in U1 (no implementation yet) so subsequent units can reference its shape without forward-declaration churn.
-- `docs/testing-strategy.md` Tier 5 row: bug class = "CLI signal handlers, attached-TTY input, external tmux verbs, terminal hangup"; lives at `tests/integration/lifecycle/*.real.test.ts`; boots tmux = yes; boots real CLI = "fake variant: no; codex/claude variant: yes (env-gated)".
+- `docs/testing-strategy.md` Tier 5 row: bug class = "CLI signal handlers, attached-TTY input, external tmux verbs, terminal hangup"; lives at `tests/integration/lifecycle/*.real.test.ts`; boots tmux = yes; boots real CLI = "no for the cells in this plan (`ScriptedFakeRunner` covers every input class); env-gated real-CLI variants (`canRunRealTmuxE2E('<name>')`) are available as the deferred follow-up shape".
 - The 5-line skeleton in the Tier 5 section uses `holdUntilReleased()` + `assertOrchExits(withinMs(...), cleanly())` to communicate the DSL shape.
 
 **Patterns to follow:**
@@ -750,48 +749,50 @@ W2 cannot start until W1 lands (U4 depends on U2's `rawStreams`). W3 cannot star
 
 ---
 
-### U9. Headline §2.1 acceptance test — fake variant + Codex variant (W4)
+### U9. Headline §2.1 acceptance test — silent-hold + emitting variants (W4)
 
-**Goal:** Write the two cells that ARE the S2 evidence: `q-during-fake-mid-step.real.test.ts` (deterministic) and `q-during-codex-mid-step.real.test.ts` (env-gated like Tier 4). Both are predicted FAIL-BUG. The captured snapshots are the explicit, durable artifact this plan delivers — they ARE the bug ticket consumed by the next planning round.
+**Goal:** Write the two cells that ARE the S2 evidence: `q-during-fake-mid-step.real.test.ts` (silent hold) and `q-during-emitting-fake-mid-step.real.test.ts` (visibly active step — adds the §2.1 "right pane producing output" qualifier). Both use the `ScriptedFakeRunner`, both are predicted FAIL-BUG, both run in default CI. The captured snapshots are the explicit, durable artifact this plan delivers — they ARE the bug ticket consumed by the next planning round.
 
 **Requirements:** R1, S2 (the load-bearing success criterion). Enables S4.
 
-**Dependencies:** U3 (`two-step-linear` fixture for fake variant; new `codex-riddle-mid-step` fixture for codex variant), U4 (launcher), U5 (mouse-events for `clickOnPane`), U6 (invariant contract), U8 (pane + workflow matchers + `pressKeyInPane`).
+**Dependencies:** U3 (`two-step-linear` fixture, shared by both cells), U4 (launcher), U5 (mouse-events for `clickOnPane`), U6 (invariant contract), U8 (pane + workflow matchers + `pressKeyInPane`).
 
 **Files:**
-- `tests/fixtures/lifecycle/codex-riddle-mid-step.ts` (new — wires the real `CodexRunner` for the held step, mirroring `examples/codex-riddle-solver/index.ts` shape)
-- `tests/integration/lifecycle/q-during-fake-mid-step.real.test.ts` (new — predicted FAIL-BUG)
-- `tests/integration/lifecycle/q-during-codex-mid-step.real.test.ts` (new — predicted FAIL-BUG, env-gated)
+- `tests/helpers/behavioral-dsl/launch.ts` (modify — add the `emitThenHang(text)` helper that returns a `{ kind: 'emit-then-hang', events: [{ kind: 'info', type: 'thinking', payload: { text } }] }` script. The runner's existing `emit-then-hang` dispatch handles the rest; zero new code in `src/runners/scripted-fake/`.)
+- `tests/helpers/behavioral-dsl/index.ts` (modify — re-export `emitThenHang` + `EmitThenHangScript` from the barrel)
+- `tests/integration/lifecycle/q-during-fake-mid-step.real.test.ts` (new — silent-hold variant, predicted FAIL-BUG)
+- `tests/integration/lifecycle/q-during-emitting-fake-mid-step.real.test.ts` (new — emitting variant, predicted FAIL-BUG, matches the §2.1 screenshot)
 
 **Approach:**
-- **Fake variant.** Uses `'two-step-linear'` with `script: { plan: holdUntilReleased(), execute: instantOk }`, `bringToState: { kind: 'mid-step', name: 'plan' }`. After confirming the pane state and workflow state, the cell:
+- **Silent-hold variant (`q-during-fake-mid-step`).** Uses `'two-step-linear'` with `script: { plan: holdUntilReleased(), execute: instantOk }`, `bringToState: { kind: 'mid-step', name: 'plan' }`. After confirming the pane state and workflow state, the cell:
   1. `userAction(clickOnPane('left'))`
   2. `assertLeftPane(isFocused())`
   3. `userAction(pressKeyInPane('left', 'q'))`
-  4. Use `await expectInvariantViolation('pane-q-during-run', withinMs(5_000))` — this assertion PASSES when the captured snapshot violates the §6.5 contract row for `pane-q-during-run` (orchAlive, tmuxSessionExists, stateStatus='running'), and FAILS if the violation list ever becomes empty (i.e., the bug got fixed, in which case U9 must be deleted, not edited). This is the programmatic R-D defense.
+  4. `await expectInvariantViolation('pane-q-during-run', withinMs(5_000))` — passes when the captured snapshot violates the §6.5 contract row for `pane-q-during-run` (orchAlive, tmuxSessionExists, stateStatus='running'), and fails if the violation list ever becomes empty (i.e., the bug got fixed, in which case U9 must be deleted, not edited). This is the programmatic R-D defense.
   - Skip predicate: `!canRunRealTmux()`. Default CI runs it.
-  - Predicted-outcome comment inline: `// PREDICTED ON FIRST RUN: PASS (because expectInvariantViolation passes WHEN orch is broken). Failing this assertion means orch was fixed — delete this cell.`
-- **Codex variant.** Uses the new `codex-riddle-mid-step` fixture that exposes a single interactive Codex step solving a riddle. `bringToState: { kind: 'mid-step', name: 'solve-riddle' }`. The fixture wires the real `CodexRunner` (no `ScriptedFakeRunner`). The cell:
-  1. Sanity probe: `assertRightPane(containsText(/codex|gpt-5\.5|MCP servers/i))` — proves real Codex is loading.
+- **Emitting variant (`q-during-emitting-fake-mid-step`).** Same fixture; `script: { plan: emitThenHang(OBSERVABLE_TEXT), execute: instantOk }`. The runner emits `OBSERVABLE_TEXT` as an `assistant>` transcript line into the right pane and then blocks until teardown kills it. The cell:
+  1. Sanity probe: `assertRightPane(withinMs(5_000), containsText(OBSERVABLE_TEXT))` — proves the held step actually emitted to the right pane (this is the "visibly active" qualifier from the §2.1 user screenshot).
   2. `userAction(clickOnPane('left'))` → `assertLeftPane(isFocused())` → `userAction(pressKeyInPane('left', 'q'))`.
-  3. Same programmatic `expectInvariantViolation('pane-q-during-run', withinMs(5_000))` assertion as the fake variant.
-  - Skip predicate: `!canRunRealTmuxE2E('codex')` — requires `tmux` on PATH, `codex` on PATH, AND `RUN_REAL_TMUX_E2E=1`.
-  - Predicted-outcome comment inline: `// PREDICTED ON FIRST RUN: PASS (expectInvariantViolation passes WHEN orch is broken). Matches origin §2.1 user screenshot. Failing this assertion means orch was fixed — delete this cell.`
+  3. Same `expectInvariantViolation('pane-q-during-run', withinMs(5_000))` assertion as the silent-hold variant.
+  - Skip predicate: `!canRunRealTmux()`. Default CI runs it — no real CLI dependency.
+- **Why two variants.** §2.1 reproduces a specific user-observed shape: pressing `q` while the right pane was visibly producing output. The silent-hold variant proves the bug exists at the "step is running with no output" branch; the emitting variant covers the actual user-screenshot branch. Both share the §6.5 row; if a future fix breaks one but not the other, the cells diverge and the divergence is the bug signal.
 - **The snapshot at failure is the deliverable.** When `withinMs(5000)` expires, the assertion captures and emits the final `LifecycleSnapshot`. That snapshot — printed in the test output and persisted to a per-cell artifact file at `tests/integration/lifecycle/__snapshots__/<cell>.last.json` (written by the assertion on failure) — is what the next planning round consumes.
+- **Predicted-outcome inline comment on every cell:** `// PREDICTED ON FIRST RUN: PASS (because expectInvariantViolation passes WHEN orch is broken). Failing this assertion means orch was fixed — delete this cell.`
 
 **Patterns to follow:**
-- `examples/codex-riddle-solver/index.ts` for the Codex fixture shape.
-- Tier 4's `skipIf(!canRunRealTmuxE2E('codex'))` predicate from `tests/helpers/real-tmux/index.ts`.
+- The existing `emit-then-hang` runner dispatch (`src/runners/scripted-fake/__entry.ts:runEmitThenHang`) is the load-bearing primitive — `emitThenHang(text)` is a thin DSL helper that constructs the script shape with a single `info`/`thinking` event whose `payload.text` becomes an `assistant>` transcript line via `scriptedFakeRunner.toTranscriptLines`.
 
 **Test scenarios:**
 - Each cell IS the test scenario. There is no nested unit-level scenario list. The cells are unique in this plan in that **first-run failure is the success criterion** — see Verification.
 
 **Verification:**
 - `q-during-fake-mid-step.real.test.ts` **passes via `expectInvariantViolation`** — the captured `LifecycleSnapshot` shows the contract violation (`orchAlive: true`, `tmuxSessionExists: true`, `stateStatus: 'running'` per origin §2.1 expected-result) and the violation list is non-empty.
-- `q-during-codex-mid-step.real.test.ts` (under `RUN_REAL_TMUX_E2E=1` with `codex` on PATH) passes the same way.
+- `q-during-emitting-fake-mid-step.real.test.ts` passes the same way, with the added sanity-probe assertion that the right pane contains `OBSERVABLE_TEXT` before the `q` gesture (so we know the cell is exercising the "visibly active step" branch and not the silent-hold branch).
 - The snapshot artifacts are committed under `tests/integration/lifecycle/__snapshots__/` and are referenced by the U11 findings roll-up.
 - This unit is "complete" when both files exist, run end-to-end, and pass via the inverted assertion. The PR description must include the captured fake-variant snapshot inline so reviewers can see the evidence without running the test.
 - **Failure of either cell** (i.e., violation list becomes empty) means orch was fixed and the cells should be deleted by the contributor who shipped the fix — NOT edited to invert the assertion or marked `it.skip`. The cell's inline comment names this convention.
+
+**Revision (2026-05-20):** The original plan paired the silent-hold fake cell with a real-codex variant (`q-during-codex-mid-step`) that booted the real `CodexRunner` against a riddle prompt. In practice that cell was unsuitable: autonomous codex solved the riddle in ~10s and exited before the cell's `bringToState({ kind: 'mid-step' })` window closed, while interactive codex (Ratatui TUI) hung on stdin waiting for a user submission — a different failure mode than the §2.1 scenario. The replacement is `q-during-emitting-fake-mid-step` using `ScriptedFakeRunner` with the existing `emit-then-hang` script kind, plus a one-line `emitThenHang(text)` DSL helper. Zero new runner code, no real-CLI gating, and the right-pane sanity probe still proves the step is visibly active when `q` is pressed.
 
 ---
 
@@ -849,7 +850,7 @@ W2 cannot start until W1 lands (U4 depends on U2's `rawStreams`). W3 cannot star
 - Run every cell from U7, U8 (smoke), U9, U10. Capture the actual outcome (PASS / FAIL-BUG / FAIL-EXPECTATION / FAIL-HARNESS / FAIL-DSL).
 - Commit the FAIL-BUG snapshot artifacts under `tests/integration/lifecycle/__snapshots__/` (gitignored for ephemeral PASS cells; committed for the §2.1 cells and any other FAIL-BUG).
 - Author the findings doc with:
-  - **Executive summary** — one paragraph naming the headline FAIL-BUG findings (§2.1 fake + codex variants at minimum) and the bug class hypothesis from origin §1 with its falsification status.
+  - **Executive summary** — one paragraph naming the headline FAIL-BUG findings (§2.1 silent-hold + emitting fake variants at minimum) and the bug class hypothesis from origin §1 with its falsification status.
   - **Per-triage-class sections** — `## PASS`, `## FAIL-BUG`, `## FAIL-EXPECTATION`, `## FAIL-HARNESS`, `## FAIL-DSL`. Each section lists every applicable cell with a one-line outcome + a link to the cell file and (for FAIL-BUG) the committed snapshot.
   - **Contract revisions** — if any cell triaged as FAIL-EXPECTATION, propose the §6.5 contract edit (folded back into U6's `invariants.ts` as a follow-up).
   - **DSL gaps** — if any sub-agent in a future campaign run finds a cell that can't be expressed in the DSL, the gap is filed here as future work.
@@ -877,7 +878,7 @@ W2 cannot start until W1 lands (U4 depends on U2's `rawStreams`). W3 cannot star
 
 **R-C. Orphan-process detection on macOS.** `pgrep -P <pid>` only finds direct children per origin §10 R1. **Mitigation:** U6's `orphanChildren` sweep is recursive: it BFS-walks the process tree from `orchPid`, calling `pgrep -P` repeatedly until the frontier is empty. Document the macOS-vs-Linux difference inline in `snapshot.ts`. Add a unit test that simulates a grandchild via a fixture process spawning a long-lived `sleep` and verifies the grandchild is found.
 
-**R-D. The §2.1 acceptance test's "first-run failure is success" semantics are easy to misread.** A future contributor seeing a failing test may "fix" it by making it pass against the broken behavior — defeating the purpose. **Mitigation:** Four lines of defense: (1) explicit predicted-outcome inline comment in U9's test files; (2) the test's failure-output snapshot path printed to stderr; (3) a CONTRIBUTING note in `tests/helpers/behavioral-dsl/README.md` warning that tier-5 cells under `__snapshots__/` are bug evidence, not regression baselines; **(4) a programmatic guard `expectInvariantViolation(scenario)` that PASSES when the snapshot's violation list is non-empty and FAILS when it becomes empty.** The §2.1 cells use `expectInvariantViolation` instead of `assertAllInvariants` so "fixing the bug" forces the contributor to DELETE the assertion (a reviewable change) rather than INVERT it (which can slip through). U9 adds `expectInvariantViolation` to `assertions.ts` and uses it for both fake and codex variants; U10 cells with predicted-FAIL-BUG outcomes optionally adopt it too.
+**R-D. The §2.1 acceptance test's "first-run failure is success" semantics are easy to misread.** A future contributor seeing a failing test may "fix" it by making it pass against the broken behavior — defeating the purpose. **Mitigation:** Four lines of defense: (1) explicit predicted-outcome inline comment in U9's test files; (2) the test's failure-output snapshot path printed to stderr; (3) a CONTRIBUTING note in `tests/helpers/behavioral-dsl/README.md` warning that tier-5 cells under `__snapshots__/` are bug evidence, not regression baselines; **(4) a programmatic guard `expectInvariantViolation(scenario)` that PASSES when the snapshot's violation list is non-empty and FAILS when it becomes empty.** The §2.1 cells use `expectInvariantViolation` instead of `assertAllInvariants` so "fixing the bug" forces the contributor to DELETE the assertion (a reviewable change) rather than INVERT it (which can slip through). U9 adds `expectInvariantViolation` to `assertions.ts` and uses it for both the silent-hold and emitting fake variants; U10 cells with predicted-FAIL-BUG outcomes optionally adopt it too.
 
 **R-E. DSL surface drift — sub-agents (campaign U11) extending the DSL inline.** Per origin §10 R4, the campaign may surface DSL gaps faster than orch bugs. If sub-agents add matchers inline in test files, the seam between DSL and tests collapses. **Mitigation:** The triage taxonomy explicitly carves out `FAIL-DSL`: a missing matcher = file a finding, skip the cell. The orchestrator catches uncategorized failures as its own error. The sub-agent prompt template names this rule.
 
@@ -910,7 +911,6 @@ W2 cannot start until W1 lands (U4 depends on U2's `rawStreams`). W3 cannot star
 ## Dependencies / Prerequisites
 
 - **Tmux ≥3.0 on PATH.** Required for mouse-event injection via `send-keys -M` (origin §10 Q3). Asserted at launcher boot via `meetsMinimumTmuxVersion('3.0')` from `src/cli/detect-tmux.ts`. CI environments without tmux ≥3.0 skip all Tier 5 cells.
-- **`codex` CLI on PATH + `RUN_REAL_TMUX_E2E=1`** for the §2.1 codex variant. Default-CI run skips it (per existing Tier 4 gating convention).
 - **Bun ≥1.0** for `Bun.spawn` with piped stdin (the rawStreams extension).
 - **`pgrep` on PATH** for orphan-children sweep on macOS / Linux. Document the BSD-vs-GNU flag differences in U6's `snapshot.ts` if any surface.
 - No new package dependencies. No new MCP servers. No external services.
@@ -939,7 +939,7 @@ W2 cannot start until W1 lands (U4 depends on U2's `rawStreams`). W3 cannot star
   - `q` semantics change in `src/hosts/two-pane/steps-view/steps-view.tsx:325` and the detach hint at `src/cli/commands/execute-with-attach.ts:106`. The contract carries the new spec; the code change is downstream. Origin §13 explicit out-of-scope.
   - Footer copy and CLI detach messaging cleanup tied to the `q` semantics change.
   - Plain-mode lifecycle suite (`--mode=plain`).
-  - Real-CLI Claude variants (`q-during-claude-mid-step.real.test.ts` etc.) — the codex variant is the headline; Claude variants are Tier-4-equivalent follow-ups.
+  - Real-CLI variants (`q-during-claude-mid-step.real.test.ts`, `q-during-codex-mid-step.real.test.ts`, etc.). The §2.1 acceptance ships as scripted-fake variants in this plan (silent-hold + emitting); real-CLI variants are Tier-4-equivalent follow-ups gated on `canRunRealTmuxE2E('<name>')`. See U9 "Revision (2026-05-20)" for the rationale.
 
 ---
 
@@ -948,7 +948,7 @@ W2 cannot start until W1 lands (U4 depends on U2's `rawStreams`). W3 cannot star
 ### In scope
 
 - The Tier 5 infrastructure (DSL, harness, `ScriptedFakeRunner`, `ProcessService` rawStreams extension, `TmuxService` probe extensions).
-- The U9 §2.1 acceptance test in both fake and codex variants — uses `expectInvariantViolation` so the cells PASS while the bug exists; **the captured snapshot is the durable bug evidence**. A contributor shipping the orch-side fix must DELETE these cells (not edit them to pass), keeping the snapshot artifact under `__snapshots__/` as the historical bug ticket.
+- The U9 §2.1 acceptance test in both silent-hold and emitting fake variants — uses `expectInvariantViolation` so the cells PASS while the bug exists; **the captured snapshot is the durable bug evidence**. A contributor shipping the orch-side fix must DELETE these cells (not edit them to pass), keeping the snapshot artifact under `__snapshots__/` as the historical bug ticket.
 - The U10 signal / Ctrl-C / stdin-EOF cells.
 - The U11 findings roll-up doc + committed FAIL-BUG snapshot artifacts.
 - The `docs/testing-strategy.md` Tier 5 documentation row + section.
@@ -960,7 +960,7 @@ W2 cannot start until W1 lands (U4 depends on U2's `rawStreams`). W3 cannot star
 - **The sub-agent orchestrated campaign sweep** that origin §11 step 9 envisioned. This plan delivers the tooling and the human-authored headline cells; a dedicated campaign run (orchestrator + parallel sub-agents producing additional cells across the full §7 matrix) is a follow-up activity using the tooling delivered here.
 - A dedicated CI job that runs `tests/integration/lifecycle/` on PRs touching the relevant paths (mentioned in Operational Notes; implementation = a separate CI-config PR).
 - An ESLint rule that forbids `tests/integration/lifecycle/*` files from importing `tests/helpers/behavioral-dsl/internal/*` (mentioned in System-Wide Impact; doc-only ban is sufficient for v1).
-- Real-CLI Claude variants of the headline cell.
+- Real-CLI variants of the §2.1 headline cell (Codex, Claude, Aider, etc.). Both attempted shapes for codex were unsuitable (see U9 "Revision (2026-05-20)"); a future revisit either (a) waits for a CLI with a deterministic "long-running inference" mode or (b) adds pty-backed stdin support to `ProcessService` so an interactive TUI can be driven from the harness.
 - Pty-backed `closeTerminal()` that would deliver real SIGHUP. The current plan uses `signalOrch('SIGHUP')` for that input (which IS what a real terminal close delivers) and demotes the prior `closeTerminal()` to a renamed, weaker `closeStdin()`. Adding pty support to `ProcessService` is a separate decision with broader implications.
 
 ### Outside this product's identity
@@ -999,4 +999,4 @@ Code touchpoints (from origin §12 + verification reads):
 - `docs/testing-strategy.md` — U1 extends.
 - `docs/plans/2026-04-27-feat-env-passthrough-plan.md` — env-passthrough policy U4 honors.
 - `docs/plans/2026-05-13-001-feat-history-step-resume-plan.md` — partial-read polling pattern U6's `bringToState` reuses.
-- `examples/codex-riddle-solver/index.ts` — Codex fixture shape U9's variant mirrors.
+- `examples/codex-riddle-solver/index.ts` — Codex fixture shape U9's original (deprecated) real-codex variant mirrored; retained as a reference for the deferred real-CLI follow-up.

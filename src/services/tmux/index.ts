@@ -10,6 +10,8 @@ export type {
   CapturePaneOptions,
   CreateSessionOptions,
   DisplayMessageOptions,
+  HasServerOptions,
+  HasSessionOptions,
   KeyTable,
   KillPaneOptions,
   KillSessionOptions,

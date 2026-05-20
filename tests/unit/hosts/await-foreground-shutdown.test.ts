@@ -1,10 +1,11 @@
 // Phase 4 unit tests: Host.awaitForegroundShutdown.
 //
 // Pins the contract:
-//   1. Plain mode resolves immediately (no foreground UI to wait on).
-//   2. Two-pane resolves when attachForeground exits.
-//   3. Two-pane resolves when a `quit` intent fires through the steps view
-//      (whichever signal happens first wins).
+//   1. Plain mode resolves immediately with `'attach-exited'` (no quit path).
+//   2. Two-pane resolves with `'attach-exited'` when attachForeground exits.
+//   3. Two-pane resolves with `'quit'` when a `quit` intent fires through
+//      the steps view (whichever signal happens first wins; the tagged
+//      deferred latches the first resolution).
 //
 // We drive the tmux host with a FakeTmuxService + FakeProcessService and
 // inject `onStepsIntent` to forward simulated quit intents.
@@ -50,7 +51,7 @@ describe('Host.awaitForegroundShutdown', () => {
 
     // No timer race needed — plain awaits no signal. If this didn't resolve
     // immediately, the test would simply hang.
-    await expect(host.awaitForegroundShutdown()).resolves.toBeUndefined()
+    await expect(host.awaitForegroundShutdown()).resolves.toBe('attach-exited')
     await host.teardown()
   })
 
@@ -83,7 +84,7 @@ describe('Host.awaitForegroundShutdown', () => {
     // 0) drives the deferred to resolve.
     await host.attachForeground()
 
-    await expect(shutdownPromise).resolves.toBeUndefined()
+    await expect(shutdownPromise).resolves.toBe('attach-exited')
     await host.teardown()
   })
 
@@ -126,11 +127,14 @@ describe('Host.awaitForegroundShutdown', () => {
       // tail will pick it up and dispatch through the composed onIntent.
       await fs.appendFile(`${stateDir}/tui-intents.ndjson`, `${JSON.stringify({ type: 'quit' })}\n`)
 
-      // The tail polls every 250ms by default; give it a generous beat.
-      await Promise.race([
+      // The tail polls every 250ms by default; give it a generous beat. The
+      // `'quit'` reason latches the deferred so the CLI race can route to
+      // teardown+exit instead of awaiting the workflow.
+      const reason = await Promise.race([
         shutdownPromise,
-        new Promise<void>((_r, rej) => setTimeout(() => rej(new Error('timeout')), 2_000)),
+        new Promise<never>((_r, rej) => setTimeout(() => rej(new Error('timeout')), 2_000)),
       ])
+      expect(reason).toBe('quit')
 
       await host.teardown()
     } finally {

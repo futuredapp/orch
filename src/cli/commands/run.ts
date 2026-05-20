@@ -183,6 +183,7 @@ export async function runCmd(
       mapError: mapRunError,
       summary: { workflowName: name, runDir: relativeRunDir(deps.cwd, deps.statePath, runId) },
       logger,
+      skipAttach: opts.noAttach,
     })
   } finally {
     await logger.close()

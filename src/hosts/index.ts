@@ -8,6 +8,7 @@
 
 export type {
   CommandLine,
+  ForegroundShutdownReason,
   Host,
   InteractiveResult,
   InteractiveSpawn,

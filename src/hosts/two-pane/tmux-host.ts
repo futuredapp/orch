@@ -39,6 +39,7 @@ import { path as toPath } from '../../services/types.ts'
 import type { StateStore } from '../../state/index.ts'
 import type {
   CommandLine,
+  ForegroundShutdownReason,
   Host,
   InteractiveResult,
   InteractiveSpawn,
@@ -342,11 +343,12 @@ export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
     writeTerminalReset()
   })
 
-  // Phase 4: track quit-intent + attach exit for awaitForegroundShutdown. We
-  // settle each deferred at most once; the host's awaitForegroundShutdown
-  // races them so the CLI can keep the TUI mounted past workflow completion.
-  const quitDeferred = createDeferred()
-  const attachDeferred = createDeferred()
+  // Phase 4 + q/Ctrl-C fix: track which branch settled the foreground
+  // shutdown race so the CLI can discriminate a user-quit (tear orch down,
+  // do NOT wait on the workflow) from a benign attach exit (keep the
+  // workflow running in background). One tagged deferred, settled at most
+  // once — first writer wins.
+  const shutdownDeferred = createTaggedDeferred<ForegroundShutdownReason>()
 
   // U5 hoist: create the right-pane controller BEFORE buildHost so the
   // host's lifecycle handlers can call registerSource / unregisterSource
@@ -421,12 +423,13 @@ export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
     const baseIntent: ((intent: StepsIntent) => void) | undefined =
       opts.onStepsIntent ?? rightPaneController?.onIntent
 
-    // Compose: forward intents to the original handler AND mark the quit
-    // deferred so `awaitForegroundShutdown` can resolve. The compose stays
-    // tiny — the underlying handler still owns its semantics.
+    // Compose: forward intents to the original handler AND tag the shutdown
+    // deferred as `'quit'` so `awaitForegroundShutdown` reports the reason.
+    // The compose stays tiny — the underlying handler still owns its
+    // semantics; only the shutdown signal is enriched.
     const composedIntent = (intent: StepsIntent): void => {
       baseIntent?.(intent)
-      if (intent.type === 'quit') quitDeferred.resolve()
+      if (intent.type === 'quit') shutdownDeferred.resolve('quit')
     }
 
     stepsHandle = await startStepsView({
@@ -447,23 +450,46 @@ export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
     })
   }
 
+  // settleAttach is a NO-OP under `--no-attach` (skipAttach: true): there is
+  // no real foreground attach client to "exit," so firing it at startup
+  // would settle the tagged deferred to 'attach-exited' before the user
+  // ever has a chance to press `q` — and `q` would then be ignored
+  // (single-writer-wins). Under real attach, settleAttach fires when the
+  // tmux client exits (user detached or session died).
+  const skipAttach = opts.skipAttach === true
+  const settleAttach = skipAttach
+    ? () => {
+        /* no real attach to exit — keep the deferred unresolved so a later
+           `q` intent can still win the race. */
+      }
+    : () => shutdownDeferred.resolve('attach-exited')
+
   return wrapHostWithStepsView(innerHost, stepsHandle, rightPaneController, {
-    quitPromise: quitDeferred.promise,
-    attachPromise: attachDeferred.promise,
-    settleAttach: attachDeferred.resolve,
+    shutdownPromise: shutdownDeferred.promise,
+    settleAttach,
   })
 }
 
-interface Deferred {
-  readonly promise: Promise<void>
-  readonly resolve: () => void
+interface TaggedDeferred<T> {
+  readonly promise: Promise<T>
+  readonly resolve: (value: T) => void
 }
 
-function createDeferred(): Deferred {
-  let resolve: () => void = () => {}
-  const promise = new Promise<void>((r) => {
-    resolve = r
+// Resolves at most once. Late `resolve(...)` calls after the first are
+// silently ignored — the foreground-shutdown signal is single-writer; the
+// first branch to settle (`quit` from the steps view OR `attach-exited`
+// from the tmux client teardown) defines the reason the CLI sees.
+function createTaggedDeferred<T>(): TaggedDeferred<T> {
+  let resolved = false
+  let resolveInner: (value: T) => void = () => {}
+  const promise = new Promise<T>((r) => {
+    resolveInner = r
   })
+  const resolve = (value: T): void => {
+    if (resolved) return
+    resolved = true
+    resolveInner(value)
+  }
   return { promise, resolve }
 }
 
@@ -478,8 +504,7 @@ function filterDefinedEnv(
 }
 
 interface ShutdownDeps {
-  readonly quitPromise: Promise<void>
-  readonly attachPromise: Promise<void>
+  readonly shutdownPromise: Promise<ForegroundShutdownReason>
   readonly settleAttach: () => void
 }
 
@@ -500,11 +525,12 @@ function wrapHostWithStepsView(
     }
   }
 
-  // Foreground shutdown signal: whichever of (attach exited | quit pressed)
-  // settles first. Both are resolved-only (never reject), so Promise.race is
-  // safe — no rejection short-circuit can leak through.
-  const awaitForegroundShutdown = async (): Promise<void> => {
-    await Promise.race([shutdown.quitPromise, shutdown.attachPromise])
+  // Foreground shutdown signal: returns the reason the race settled. Single
+  // tagged deferred — first writer wins ('quit' from a steps-view intent or
+  // 'attach-exited' from the attach client lifecycle). Resolved-only (never
+  // rejects), so the CLI can `await` without a try/catch.
+  const awaitForegroundShutdown = async (): Promise<ForegroundShutdownReason> => {
+    return shutdown.shutdownPromise
   }
 
   if (steps === undefined && controller === undefined) {
@@ -960,8 +986,10 @@ function buildHost(deps: BuildHostDeps): Host {
   // implementation that races the quit + attach signals. Kept as a stub so
   // the inner Host satisfies the port type even when constructed in
   // isolation (e.g. exhaustive type-checks on every Host return shape).
-  const awaitForegroundShutdown = async (): Promise<void> => {
-    /* overridden by wrapHostWithStepsView */
+  // Treats a stub call as `attach-exited` — the absence of a quit pathway
+  // is the right default.
+  const awaitForegroundShutdown = async (): Promise<ForegroundShutdownReason> => {
+    return 'attach-exited'
   }
 
   return {

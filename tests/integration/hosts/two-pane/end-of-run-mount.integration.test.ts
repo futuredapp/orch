@@ -162,8 +162,10 @@ describe('end-of-run mount (mocked tmux)', () => {
 
     expect(intents).toContain('quit')
 
-    // A second await on the same promise must resolve cheaply (no replay).
-    await expect(host.awaitForegroundShutdown()).resolves.toBeUndefined()
+    // A second await on the same promise must resolve cheaply (no replay)
+    // and surface the same `'quit'` reason — the tagged deferred latches
+    // its first resolution.
+    await expect(host.awaitForegroundShutdown()).resolves.toBe('quit')
 
     await host.teardown()
   })

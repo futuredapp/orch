@@ -48,9 +48,7 @@ function makeHost({ handler, mode = 'two-pane' }: FakeHostOptions): Host {
     attachForeground: async () => {
       /* no-op */
     },
-    awaitForegroundShutdown: async () => {
-      /* no-op */
-    },
+    awaitForegroundShutdown: async () => 'attach-exited' as const,
     teardown: async () => {
       /* no-op */
     },

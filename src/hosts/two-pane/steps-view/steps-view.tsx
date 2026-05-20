@@ -7,7 +7,8 @@
 //   - `useStepsSelection(steps)`  — sticky-on-stepName selection w/ ↑/↓/f
 //
 // Keymap: `↑/↓` move selection · `⏎` fire intent · `f` snap-to-live ·
-// `Esc` close help / dismiss error banner · `?` help overlay · `q` quit.
+// `Esc` close help / dismiss error banner · `?` help overlay · `q` quit ·
+// `Ctrl-C` quit (same quit-intent as `q`; routed by the CLI to teardown).
 //
 // View-mode footer: when `state.view.mode === 'live'` the footer reads
 // `▶ live · …`; when `'replay'` it reads `⏸ viewing <stepName> · f live · …`.
@@ -69,7 +70,7 @@ export type StepsViewIntent =
 
 export interface StepsViewKeyEvent {
   readonly ts: number
-  readonly key: 'up' | 'down' | 'return' | 'f' | 'q' | '?' | 'esc' | 'other'
+  readonly key: 'up' | 'down' | 'return' | 'f' | 'q' | '?' | 'esc' | 'ctrl-c' | 'other'
   /** Raw input character when `key === 'other'`. Empty string otherwise. */
   readonly input: string
   readonly selectedName: string | undefined
@@ -131,6 +132,14 @@ export function StepsView({
     if (input === 'f' || input === 'F') {
       snapToLive()
       onIntent({ type: 'follow-live' })
+      return
+    }
+    // Ctrl-C inside the Ink pane: orch's stdin is `pipe`, so the kernel never
+    // converts `\x03` to SIGINT (no controlling TTY). Ink surfaces it as
+    // `key.ctrl && input === 'c'`; route to the same quit intent as `q` so
+    // the CLI's foreground-shutdown race tears orch down.
+    if (key.ctrl === true && (input === 'c' || input === 'C')) {
+      onIntent({ type: 'quit' })
       return
     }
     if (input === 'q') {
@@ -363,6 +372,7 @@ interface KeyInfo {
   readonly downArrow?: boolean
   readonly return?: boolean
   readonly escape?: boolean
+  readonly ctrl?: boolean
 }
 
 function classifyKey(input: string, key: KeyInfo): StepsViewKeyEvent['key'] {
@@ -370,6 +380,7 @@ function classifyKey(input: string, key: KeyInfo): StepsViewKeyEvent['key'] {
   if (key.downArrow === true) return 'down'
   if (key.return === true) return 'return'
   if (key.escape === true) return 'esc'
+  if (key.ctrl === true && (input === 'c' || input === 'C')) return 'ctrl-c'
   if (input === 'f') return 'f'
   if (input === 'q') return 'q'
   if (input === '?') return '?'

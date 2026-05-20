@@ -261,6 +261,7 @@ export async function resumeCmd(
         runDir: relativeRunDir(deps.cwd, deps.statePath, targetId),
       },
       logger,
+      skipAttach: opts.noAttach,
     })
   } finally {
     await logger.close()

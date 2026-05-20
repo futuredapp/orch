@@ -128,6 +128,11 @@ export class FakeProcessService implements ProcessService {
         if (observations === undefined) return
         observations.push(toBuffer(data))
       },
+      closeStdin() {
+        // No-op for the fake — observable closure is not part of any
+        // scripted assertion today. Add a `stdinClosed?: boolean` field on
+        // `FakeResponse` if a future test needs to assert on it.
+      },
       stdoutBytes() {
         return stdoutBuf
       },

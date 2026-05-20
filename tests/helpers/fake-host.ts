@@ -116,8 +116,10 @@ export function createFakeHost(opts: FakeHostOptions = {}): FakeHost {
       /* FakeHost never takes the TTY — executor tests race this against the
          workflow promise and get immediate resolution. */
     },
-    async awaitForegroundShutdown(): Promise<void> {
-      /* FakeHost has no foreground UI — workflow completion drives shutdown. */
+    async awaitForegroundShutdown(): Promise<'quit' | 'attach-exited'> {
+      /* FakeHost has no foreground UI — workflow completion drives shutdown.
+         Reports `'attach-exited'` to keep the CLI race on the benign branch. */
+      return 'attach-exited'
     },
     async teardown(): Promise<void> {
       /* no-op */

@@ -8,25 +8,35 @@
 //                                   it spawns `tmux attach-session`; resolves
 //                                   when the user detaches or the session
 //                                   dies. Plain mode resolves immediately.
-//   - `awaitForegroundShutdown()` — Phase 4 signal: resolves on the first of
-//                                   `attachForeground exits | quitIntent`.
-//                                   The TUI stays mounted past workflow
-//                                   completion; this signal is what tells
-//                                   the CLI the user is done with it.
+//   - `awaitForegroundShutdown()` — Phase 4 signal: resolves with a tagged
+//                                   reason — `'quit'` (user pressed q /
+//                                   Ctrl-C in the Ink pane) or
+//                                   `'attach-exited'` (user detached, or
+//                                   the tmux session died). Plain mode
+//                                   always reports `'attach-exited'`.
 //
 // Race shape:
-//   - Workflow finishes first  → in two-pane the TUI stays mounted with the
+//   - Workflow finishes first   → in two-pane the TUI stays mounted with the
 //     end-of-run summary; we wait for `awaitForegroundShutdown` before
 //     teardown so the user can review. Plain mode resolves immediately.
-//   - Foreground shutdown first → user pressed `q` or detached. Print the
-//     detached hint, then wait for the workflow to finish silently before
-//     teardown.
+//   - Foreground shutdown first → branch on the reason:
+//     * `'quit'`          → user asked orch to stop. Tear the host down and
+//                           exit with EXIT.SIGINT. Do NOT await the workflow
+//                           (it may be held mid-step and would block forever).
+//     * `'attach-exited'` → user detached cleanly. Print the re-attach hint,
+//                           then wait for the workflow to finish in the
+//                           background before tearing down.
 
-import type { Host } from '../../hosts/index.ts'
+import type { ForegroundShutdownReason, Host } from '../../hosts/index.ts'
 import { orchLog, type SessionLogger } from '../../observability/index.ts'
 import { EXIT } from '../main.ts'
 
 const FOREGROUND_SETTLED = Symbol('foreground-settled')
+
+interface ForegroundSettledResult {
+  readonly tag: typeof FOREGROUND_SETTLED
+  readonly reason: ForegroundShutdownReason
+}
 
 // Hard cap on teardown during signal-triggered exit. tmux commands can
 // occasionally hang (socket gone mid-command); we don't want a stuck process
@@ -52,6 +62,13 @@ export interface ExecuteWithAttachOpts {
   readonly summary: RunSummaryDescriptor
   /** Optional per-run logger for `--debug` orch.log entries. */
   readonly logger?: SessionLogger
+  /**
+   * `--no-attach`: orch never spawns a foreground `tmux attach-session`.
+   * Tells the post-workflow await to short-circuit instead of hanging on a
+   * foreground-shutdown signal that has no real attach to settle. Defaults
+   * to `false`. Plain mode ignores this flag.
+   */
+  readonly skipAttach?: boolean
 }
 
 export async function executeWithAttach(opts: ExecuteWithAttachOpts): Promise<number> {
@@ -93,33 +110,63 @@ export async function executeWithAttach(opts: ExecuteWithAttachOpts): Promise<nu
        branch (quit intent). */
   })
 
-  // Swallow into the symbol so callers don't have to disambiguate by promise
-  // identity — race-winner check is the symbol vs. void return.
-  const foregroundShutdown = opts.host
+  // Wrap into a tagged result so the race winner check can pattern-match
+  // both on identity (foreground vs workflow) and on reason (quit vs
+  // attach-exited). The reason discriminator is what fixes the §2.1 /
+  // attach-tty-ctrl-c bugs: a `quit` while a step is held must tear orch
+  // down without awaiting the (forever-blocked) workflow.
+  const foregroundShutdown: Promise<ForegroundSettledResult> = opts.host
     .awaitForegroundShutdown()
-    .then(() => FOREGROUND_SETTLED)
-    .catch(() => FOREGROUND_SETTLED)
+    .then((reason) => ({ tag: FOREGROUND_SETTLED, reason }) as const)
+    .catch(() => ({ tag: FOREGROUND_SETTLED, reason: 'attach-exited' }) as const)
 
   try {
     const winner = await Promise.race([trackedWorkflow, foregroundShutdown])
 
-    if (winner === FOREGROUND_SETTLED && !workflowSettled && opts.host.mode === 'two-pane') {
-      opts.stderr.write(
-        `[orch] detached. run continues in background.\n` +
-          `[orch] re-attach with: tmux -L orch-${opts.runId} attach -t orch\n` +
-          `[orch] tail logs with: orch logs ${opts.runId}\n`,
-      )
+    if (
+      typeof winner === 'object' &&
+      winner !== null &&
+      'tag' in winner &&
+      winner.tag === FOREGROUND_SETTLED &&
+      !workflowSettled
+    ) {
+      // User-quit branch: the workflow is still running (potentially held
+      // mid-step). Awaiting it would block forever. Tear orch down and
+      // exit through the same code path as a SIGINT — this is the fix for
+      // the §2.1 (`q`) and `attach-tty-ctrl-c` bugs.
+      if (winner.reason === 'quit') {
+        orchLog(opts.logger, 'foreground-quit', { runId: opts.runId })
+        await opts.host.teardown()
+        return EXIT.SIGINT
+      }
+
+      // Attach-exited branch: user detached cleanly (two-pane only — plain
+      // never takes the TTY). Keep the workflow running in the background;
+      // print the re-attach hint and fall through to the workflow await.
+      if (opts.host.mode === 'two-pane') {
+        opts.stderr.write(
+          `[orch] detached. run continues in background.\n` +
+            `[orch] re-attach with: tmux -L orch-${opts.runId} attach -t orch\n` +
+            `[orch] tail logs with: orch logs ${opts.runId}\n`,
+        )
+      }
     }
 
-    // Always wait on the workflow — even if the foreground signal won, the
-    // workflow continues running in-process and carries the exit code.
+    // Always wait on the workflow — even if the foreground signal won
+    // (attach-exited branch), the workflow continues running in-process and
+    // carries the exit code. The quit branch above returned early and
+    // never reaches this await.
     await trackedWorkflow
 
     // Two-pane only: workflow finished first. Keep the TUI mounted past
     // completion (it's now showing the end-of-run summary) until the user
     // dismisses it (q intent, or detach). Plain mode's
     // awaitForegroundShutdown resolves immediately so this is a no-op.
-    if (winner !== FOREGROUND_SETTLED && opts.host.mode === 'two-pane') {
+    // `--no-attach` mode also skips this await: there is no real TUI for
+    // the user to dismiss, and the foreground signal would never settle
+    // (no attach client to exit, no quit intent forthcoming).
+    const isForegroundResult = typeof winner === 'object' && winner !== null && 'tag' in winner
+    if (!isForegroundResult && opts.host.mode === 'two-pane' && opts.skipAttach !== true) {
       await foregroundShutdown
     }
   } catch (err) {

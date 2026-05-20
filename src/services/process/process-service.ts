@@ -60,6 +60,14 @@ export interface SpawnHandle extends ProcessHandle {
    * (consuming one does not affect the other).
    */
   readonly stdoutBytes?: () => Buffer
+  /**
+   * Present iff the spawn used `rawStreams: true`. Closes the child's stdin
+   * (delivers stdin-EOF). Distinct from a controlling-TTY hangup — a
+   * piped-stdin child receives EOF on the read side, not SIGHUP. Idempotent.
+   * Consumed by `tests/helpers/behavioral-dsl/user-actions.ts`'s
+   * `closeStdin()` action (plan U10).
+   */
+  readonly closeStdin?: () => void
 }
 
 /** Foreground processes inherit stdio — no stream access. */

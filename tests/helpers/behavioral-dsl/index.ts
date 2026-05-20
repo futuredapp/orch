@@ -9,17 +9,17 @@
  * Ws fill the bodies in.
  */
 
-export type { AssertionArg } from './assertions.ts'
+export type { AssertionArg, PaneAssertionArg } from './assertions.ts'
 // ─── Assertions ────────────────────────────────────────────────────────────
 export {
-  assertAllInvariants,
+  assertContractedOutcome,
+  assertContractViolatedThroughout,
   assertLeftPane,
   assertOrchExits,
+  assertPersistedState,
   assertRightPane,
-  assertTerminalState,
+  assertTerminalEscapeStream,
   assertTmuxSession,
-  assertWorkflowState,
-  expectInvariantViolation,
 } from './assertions.ts'
 export type { InvariantViolation, ScenarioTag } from './internal/invariants.ts'
 export type { BringToStateRequest, OrchHandle, RunId, Socket } from './internal/lifecycle-handle.ts'
@@ -32,22 +32,23 @@ export type {
   MouseTrackingCounts,
   OrchExit,
   OrphanChild,
+  PaneMatcherFactory,
   PaneSnapshot,
   PollingBudget,
   StateStatus,
   StepStatus,
 } from './internal/snapshot.ts'
-export type { HoldUntilReleasedScript } from './launch.ts'
+export type { EmitThenHangScript, HoldUntilReleasedScript } from './launch.ts'
 // ─── Launcher / scripts ────────────────────────────────────────────────────
-export { holdUntilReleased, launchOrchWorkflow } from './launch.ts'
+export { emitThenHang, holdUntilReleased, launchOrchWorkflow } from './launch.ts'
 
 // ─── Outcome matchers ──────────────────────────────────────────────────────
 export {
-  balancedEscapes,
-  cleanly,
-  doesNotExist,
-  hasIntactPerStepFiles,
+  exitedNormally,
   noOrphanChildren,
+  stepArtifactsIntact,
+  terminalRestoredCleanly,
+  tmuxIsTornDown,
   withinMs,
 } from './outcome-matchers.ts'
 export type { PaneInkState } from './pane-matchers.ts'
@@ -58,18 +59,18 @@ export {
   hasFooterText,
   hasNoLiveOutput,
   isFocused,
-  isInState,
   isPaneDead,
+  showsInkState,
 } from './pane-matchers.ts'
 export type { UserAction } from './user-actions.ts'
 // ─── User actions ──────────────────────────────────────────────────────────
 export {
   clickOnPane,
-  closeStdin,
+  closeOrchStdin,
   pressKeyInPane,
   release,
   signalOrch,
-  typeInAttachTty,
+  typeIntoOrchStdin,
   userAction,
   wait,
 } from './user-actions.ts'

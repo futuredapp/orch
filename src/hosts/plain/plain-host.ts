@@ -21,6 +21,7 @@ import type { Clock } from '../../services/clock/index.ts'
 import type { ProcessService } from '../../services/process/index.ts'
 import type {
   CommandLine,
+  ForegroundShutdownReason,
   Host,
   InteractiveResult,
   InteractiveSpawn,
@@ -173,8 +174,11 @@ export function createPlainHost(opts: PlainHostOptions): Host {
     /* plain never takes the TTY — the workflow stream IS the foreground. */
   }
 
-  const awaitForegroundShutdown = async (): Promise<void> => {
-    /* plain mode has no foreground UI — workflow completion drives shutdown. */
+  const awaitForegroundShutdown = async (): Promise<ForegroundShutdownReason> => {
+    // Plain mode has no foreground UI and no quit-intent vector. The
+    // workflow promise drives shutdown; this signal resolves immediately
+    // with `'attach-exited'` so the CLI never takes the quit branch.
+    return 'attach-exited'
   }
 
   const teardown = async (): Promise<void> => {

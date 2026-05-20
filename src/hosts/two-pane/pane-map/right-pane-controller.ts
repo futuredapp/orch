@@ -565,7 +565,11 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
       return
     }
     if (intent.type === 'quit') {
-      void followLive()
+      // Quit is owned by the CLI race (executeWithAttach) — the host's
+      // tagged shutdown deferred fires on this intent and the CLI tears
+      // orch down. The controller has nothing to do here; the previous
+      // `followLive()` call was a no-op race against teardown that just
+      // queued tmux commands which the killing session would discard.
       return
     }
     if (intent.type === 'dismiss-banner') {

@@ -58,17 +58,31 @@ export class BunProcessService implements ProcessService {
     // frameLines() would lock out the byte pump.
     const [forFraming, forBuffer] = stdoutStream.tee()
     const chunks = accumulateChunks(forBuffer)
-    // `stdin: 'pipe'` above means Bun returns a FileSink with a synchronous
-    // `write(data)` method. The Bun type signature is broader (`number |
-    // FileSink | undefined`) than this branch's runtime guarantee — narrow
-    // structurally so the call below type-checks.
-    const stdin = proc.stdin as { write: (data: string | Uint8Array) => unknown }
+    // `stdin: 'pipe'` above means Bun returns a FileSink with synchronous
+    // `write(data)` and `end()` methods. The Bun type signature is broader
+    // (`number | FileSink | undefined`) than this branch's runtime guarantee —
+    // narrow structurally so the calls below type-check.
+    const stdin = proc.stdin as {
+      write: (data: string | Uint8Array) => unknown
+      end: () => unknown
+    }
+    let stdinClosed = false
 
     return {
       stdout: frameLines(forFraming),
       stderr: frameLines(stderrStream),
       writeStdin(data: string | Uint8Array) {
         stdin.write(data)
+      },
+      closeStdin() {
+        if (stdinClosed) return
+        stdinClosed = true
+        try {
+          stdin.end()
+        } catch {
+          // FileSink already closed (e.g. child exited and Bun reaped it) —
+          // honor the documented idempotence contract.
+        }
       },
       stdoutBytes() {
         return Buffer.concat(chunks)

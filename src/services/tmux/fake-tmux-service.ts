@@ -4,6 +4,8 @@ import type {
   CapturePaneOptions,
   CreateSessionOptions,
   DisplayMessageOptions,
+  HasServerOptions,
+  HasSessionOptions,
   KillPaneOptions,
   KillSessionOptions,
   KillWindowOptions,
@@ -19,6 +21,7 @@ import type {
   SetHookOptions,
   SetOptionOptions,
   SignalChannelOptions,
+  SocketName,
   SplitPaneOptions,
   SwapPaneOptions,
   TmuxService,
@@ -74,6 +77,7 @@ export class FakeTmuxService implements TmuxService {
   readonly #captureResults: string[] = []
   readonly #listPanesResults: (readonly string[])[] = []
   readonly #newWindowResults: NewWindowResult[] = []
+  readonly #sessionsBySocket: Map<SocketName, Set<string>> = new Map()
   #nextSplitPaneCounter = 1
   #nextWindowCounter = 1
 
@@ -109,6 +113,7 @@ export class FakeTmuxService implements TmuxService {
 
   async createSession(opts: CreateSessionOptions): Promise<void> {
     this.#calls.push({ method: 'createSession', opts })
+    this.#getOrCreateSessionSet(opts.socket).add(opts.session)
   }
 
   async splitPane(opts: SplitPaneOptions): Promise<PaneId> {
@@ -160,6 +165,40 @@ export class FakeTmuxService implements TmuxService {
 
   async killSession(opts: KillSessionOptions): Promise<void> {
     this.#calls.push({ method: 'killSession', opts })
+    this.#sessionsBySocket.get(opts.socket)?.delete(opts.session)
+  }
+
+  async hasSession(opts: HasSessionOptions): Promise<boolean> {
+    const set = this.#sessionsBySocket.get(opts.socket)
+    if (set === undefined) return false
+    return set.has(opts.session)
+  }
+
+  async hasServer(opts: HasServerOptions): Promise<boolean> {
+    const set = this.#sessionsBySocket.get(opts.socket)
+    return set !== undefined && set.size > 0
+  }
+
+  /**
+   * Set the in-memory session table for `socket`. Tests use this to script
+   * `hasSession` / `hasServer` without going through `createSession`. Pass
+   * `undefined` (or omit the call) to mark the server as down.
+   */
+  setSessions(socket: SocketName, sessions: readonly string[] | undefined): void {
+    if (sessions === undefined || sessions.length === 0) {
+      this.#sessionsBySocket.delete(socket)
+      return
+    }
+    this.#sessionsBySocket.set(socket, new Set(sessions))
+  }
+
+  #getOrCreateSessionSet(socket: SocketName): Set<string> {
+    let set = this.#sessionsBySocket.get(socket)
+    if (set === undefined) {
+      set = new Set<string>()
+      this.#sessionsBySocket.set(socket, set)
+    }
+    return set
   }
 
   async attachSession(opts: AttachSessionOptions): Promise<void> {

@@ -25,9 +25,14 @@ function fakeHost(mode: Host['mode'] = 'plain'): FakeHostState {
     host: {
       mode,
       attachForeground: () => attachPromise,
-      // Plain mode resolves immediately; two-pane mirrors attachPromise so
-      // the foreground signal still settles when the attach client exits.
-      awaitForegroundShutdown: () => (mode === 'plain' ? Promise.resolve() : attachPromise),
+      // Plain mode resolves immediately with `'attach-exited'`; two-pane
+      // mirrors attachPromise and reports the same reason — the unit fake
+      // does not exercise the `'quit'` branch (that's covered by the
+      // integration cells under tests/integration/lifecycle/).
+      awaitForegroundShutdown: () =>
+        mode === 'plain'
+          ? Promise.resolve('attach-exited' as const)
+          : attachPromise.then(() => 'attach-exited' as const),
       teardown: async () => {
         state.teardownCalls++
       },

@@ -25,11 +25,11 @@ The DSL surface lands incrementally across plan units U1–U10:
 | **U3** | `ScriptedFakeRunner` + `two-step-linear` fixture | W2 |
 | **U4** | `launchOrchWorkflow` + `bringToState` + `release` / `holdUntilReleased` | W2 |
 | **U5** | `ExternalTmuxProbe` + `TmuxService.hasSession` / `hasServer` + mouse-event builder | W3 |
-| **U6** | `LifecycleSnapshot` capture + outcome matchers + invariant contract + `expectInvariantViolation` | W3 |
+| **U6** | `LifecycleSnapshot` capture + outcome matchers + invariant contract + `assertContractViolatedThroughout` | W3 |
 | **U7** | `signalOrch` action + first SIGINT-to-orch cell | W3 |
 | **U8** | Pane / workflow matchers + click-to-focus / press-key actions + smoke cell | W3 |
 | **U9** | The §2.1 acceptance cells (fake + codex) | W4 |
-| **U10** | Ctrl-C / SIGTERM / SIGHUP / `closeStdin` cells | W4 |
+| **U10** | Ctrl-C / SIGTERM / SIGHUP / `closeOrchStdin` cells | W4 |
 
 Calling any stub before its owning unit lands throws `not yet implemented — lands in U<N>`.
 
@@ -39,14 +39,12 @@ Calling any stub before its owning unit lands throws `not yet implemented — la
 import {
   assertLeftPane,
   assertOrchExits,
-  assertTerminalState,
+  assertPersistedState,
+  assertTerminalEscapeStream,
   assertTmuxSession,
-  assertWorkflowState,
-  balancedEscapes,
-  cleanly,
   clickOnPane,
   containsText,
-  doesNotExist,
+  exitedNormally,
   hasStatus,
   holdUntilReleased,
   isFocused,
@@ -54,6 +52,8 @@ import {
   launchOrchWorkflow,
   noOrphanChildren,
   pressKeyInPane,
+  terminalRestoredCleanly,
+  tmuxIsTornDown,
   userAction,
   withinMs,
 } from '../../helpers/behavioral-dsl/index.ts'
@@ -68,15 +68,15 @@ describe.skipIf(!canRunRealTmux())('lifecycle — q during fake mid-step', () =>
     })
 
     await assertLeftPane(isFocused(), containsText('▶ live'))
-    await assertWorkflowState(isRunningStep('plan'))
+    await assertPersistedState(isRunningStep('plan'))
 
     await userAction(clickOnPane('left'))
     await userAction(pressKeyInPane('left', 'q'))
 
-    await assertOrchExits(withinMs(5_000), cleanly())
-    await assertTmuxSession(doesNotExist())
-    await assertWorkflowState(hasStatus('cancelled'))
-    await assertTerminalState(balancedEscapes(), noOrphanChildren())
+    await assertOrchExits(withinMs(5_000), exitedNormally())
+    await assertTmuxSession(tmuxIsTornDown())
+    await assertPersistedState(hasStatus('cancelled'))
+    await assertTerminalEscapeStream(terminalRestoredCleanly(), noOrphanChildren())
   }, 30_000)
 })
 ```
@@ -95,39 +95,39 @@ All symbols live on the barrel: `import { ... } from 'tests/helpers/behavioral-d
 - `signalOrch('SIGINT' | 'SIGTERM' | 'SIGHUP')`
 - `clickOnPane('left' | 'right')`
 - `pressKeyInPane(pane, key)` — server-side via `send-keys`
-- `typeInAttachTty(bytes)` — via orch's stdin
+- `typeIntoOrchStdin(bytes)` — via orch's piped stdin (no controlling TTY)
 - `wait(ms)` — explicit, bounded
 - `release(stepName)` — touches the gate file for `holdUntilReleased`
-- `closeStdin()` — delivers stdin-EOF (NOT real SIGHUP — see U10)
+- `closeOrchStdin()` — delivers stdin-EOF (NOT real SIGHUP — see U10)
 
 ### Pane matchers — `assertLeftPane(...)` / `assertRightPane(...)`
 - `containsText(needle)` / `doesNotContain(needle)`
 - `isFocused()`
-- `isInState('live' | 'viewing' | 'end-of-run' | 'error-banner')`
+- `showsInkState('live' | 'viewing' | 'end-of-run' | 'error-banner')`
 - `hasFooterText(text)`
 - `hasNoLiveOutput()`
 - `isPaneDead()`
 
-### Workflow matchers — `assertWorkflowState(...)`
+### Workflow matchers — `assertPersistedState(...)`
 - `isRunningStep(name)` / `hasStepStatus(name, status)`
 - `hasStatus(status)`
 - `hasExitCode(code)` / `hasExitedBySignal(signal)`
 
-### Outcome matchers — `assertOrchExits(...)` / `assertTmuxSession(...)` / `assertTerminalState(...)`
+### Outcome matchers — `assertOrchExits(...)` / `assertTmuxSession(...)` / `assertTerminalEscapeStream(...)`
 - `withinMs(ms)` — bounds the polling window
-- `cleanly()`, `doesNotExist()`, `balancedEscapes()`, `noOrphanChildren()`, `hasIntactPerStepFiles()`
+- `exitedNormally()`, `tmuxIsTornDown()`, `terminalRestoredCleanly()`, `noOrphanChildren()`, `stepArtifactsIntact()`
 
 ### Bulk contract assertions
-- `assertAllInvariants(scenarioTag, ...)` — evaluates the full §6.5 row
-- `expectInvariantViolation(scenarioTag, ...)` — **passes when the contract is violated** (used by §2.1 cells; see warning below)
+- `assertContractedOutcome(scenarioTag, ...)` — polls until the §6.5 row is fully satisfied
+- `assertContractViolatedThroughout(scenarioTag, ...)` — **passes when the contract is violated** (used by §2.1 cells; see warning below)
 
-## ⚠️ `expectInvariantViolation` and `__snapshots__/`
+## ⚠️ `assertContractViolatedThroughout` and `__snapshots__/`
 
-Some cells under `tests/integration/lifecycle/` use `expectInvariantViolation(scenarioTag, ...)`. These cells **PASS while orch is broken** and **FAIL when orch is fixed**. The committed `LifecycleSnapshot` artifacts under `tests/integration/lifecycle/__snapshots__/` are **bug evidence**, not regression baselines.
+Some cells under `tests/integration/lifecycle/` use `assertContractViolatedThroughout(scenarioTag, ...)`. These cells **PASS while orch is broken** and **FAIL when orch is fixed**. The committed `LifecycleSnapshot` artifacts under `tests/integration/lifecycle/__snapshots__/` are **bug evidence**, not regression baselines.
 
-If a future contributor sees `expectInvariantViolation` fail:
+If a future contributor sees `assertContractViolatedThroughout` fail:
 
-1. **Do not invert the assertion** (`assertAllInvariants` is NOT a substitute).
+1. **Do not invert the assertion** (`assertContractedOutcome` is NOT a substitute).
 2. **Do not mark the cell `it.skip`**.
 3. **Delete the cell.** The committed snapshot under `__snapshots__/` stays as the historical bug ticket.
 

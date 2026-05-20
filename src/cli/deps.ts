@@ -56,7 +56,16 @@ export interface CreateDepsOptions {
 
 export function createDeps(cwd: string, opts: CreateDepsOptions = {}): CliDeps {
   const cwdPath = path(cwd)
-  const basePath = path(`${cwdPath}/.orch/state`)
+  // `ORCH_STATE_BASE` lets Tier 5 fixtures (and any other harness that needs
+  // per-process state isolation) redirect the state base away from
+  // `<cwd>/.orch/state`. Passthrough env policy: absent → default location;
+  // present → use as the absolute state root. See
+  // `tests/helpers/behavioral-dsl/` (Tier 5).
+  const stateBaseEnv = process.env.ORCH_STATE_BASE
+  const basePath =
+    typeof stateBaseEnv === 'string' && stateBaseEnv.length > 0
+      ? path(stateBaseEnv)
+      : path(`${cwdPath}/.orch/state`)
   const fs = new BunFsService()
   const processService = new BunProcessService()
   const clock = new BunClock()

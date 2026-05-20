@@ -10,7 +10,7 @@ This is the canonical reference for **where a test belongs** and **how to write 
 | **Tier 2** | Ink projection — state→view, key→intent, footer indicators, banner rendering. | `tests/unit/hosts/two-pane/steps-view/*.test.tsx` | No | No |
 | **Tier 3** | `RealTmuxService` argv contract — tmux flags, escape rules, env passthrough. | `tests/unit/services/tmux/*.test.ts` (out of two-pane audit scope) | No (`FakeProcessService`) | No |
 | **Tier 4** | Real-CLI end-to-end on real tmux — exactly Tier 1's body with a real `ClaudeRunner` / `CodexRunner` in the agent slot. | `tests/e2e/tier-4/*.real.e2e.test.ts` | Yes | Yes (env-gated) |
-| **Tier 5** | CLI signal handlers (`SIGINT` / `SIGTERM` / `SIGHUP` to the orch process), attached-TTY input (Ctrl-C / `q` typed inside tmux), external tmux verbs (`kill-pane`, `kill-session`, `kill-server`), stdin-EOF — bug classes Tier 1 cannot reach because the in-process `TmuxHost` mount never goes through `src/cli/main.ts`. | `tests/integration/lifecycle/*.real.test.ts` | Yes | Fake variant: no. Codex / Claude variant: yes (env-gated). |
+| **Tier 5** | CLI signal handlers (`SIGINT` / `SIGTERM` / `SIGHUP` to the orch process), attached-TTY input (Ctrl-C / `q` typed inside tmux), external tmux verbs (`kill-pane`, `kill-session`, `kill-server`), stdin-EOF — bug classes Tier 1 cannot reach because the in-process `TmuxHost` mount never goes through `src/cli/main.ts`. | `tests/integration/lifecycle/*.real.test.ts` | Yes | No (`ScriptedFakeRunner` drives every first-batch cell). Real-CLI Tier 5 variants are deferred follow-up — the `canRunRealTmuxE2E('codex')` predicate is kept available but unused in this plan. |
 
 Each tier has a unique responsibility. The "mocked + real" pair across Tier 1 and Tier 4 is the **only** sanctioned duplication: Tier 1 catches the bug class deterministically with a FakeRunner; Tier 4 proves the same body still works against the real CLI. Tier 5 is additive — Tier 1 stays the in-process default, and Tier 5 is reserved for the bug class Tier 1's harness mechanically cannot reach.
 
@@ -77,25 +77,81 @@ For keypress-driven assertions, use `ink-testing-library`'s `render()` + `stdin.
 
 ```ts
 import {
-  assertOrchExits, cleanly, holdUntilReleased, launchOrchWorkflow,
+  assertOrchExits, exitedNormally, holdUntilReleased, launchOrchWorkflow,
   pressKeyInPane, userAction, withinMs,
 } from '../../helpers/behavioral-dsl/index.ts'
-import { canRunRealTmux } from '../../helpers/real-tmux/index.ts'
+import { canRunRealTmux } from '../../helpers/real-tmux/fixture.ts'
 
 describe.skipIf(!canRunRealTmux())('Tier 5 — <bug class>', () => {
   it('<the lifecycle invariant the test pins>', async () => {
     await launchOrchWorkflow('two-step-linear', {
       script: { plan: holdUntilReleased() },
       bringToState: { kind: 'mid-step', name: 'plan' },
-      mode: 'two-pane',
     })
     await userAction(pressKeyInPane('left', 'q'))
-    await assertOrchExits(withinMs(5_000), cleanly())
+    await assertOrchExits(withinMs(5_000), exitedNormally())
   }, 30_000)
 })
 ```
 
-The DSL barrel (`tests/helpers/behavioral-dsl/index.ts`) is the only file Tier 5 cells import from for harness functionality — `./internal/*` is off-limits to cells by convention. Read [`tests/helpers/behavioral-dsl/README.md`](../tests/helpers/behavioral-dsl/README.md) for the full DSL surface and the `expectInvariantViolation` / `__snapshots__/` convention used by the §2.1 acceptance cells.
+The DSL barrel (`tests/helpers/behavioral-dsl/index.ts`) is the only file Tier 5 cells import from for harness functionality — `./internal/*` is off-limits to cells by convention. Read [`tests/helpers/behavioral-dsl/README.md`](../tests/helpers/behavioral-dsl/README.md) for the full DSL surface.
+
+## DSL surface (post 2026-05-20 rename pass)
+
+The behavioral DSL was renamed for readability after the W4 first-batch landed. Failure messages and snapshot artifacts use the **new** identifiers; older handovers and plan revisions may still reference the old names. Use this table when reading either:
+
+| Old name | New name | Notes |
+| --- | --- | --- |
+| `expectInvariantViolation` | `assertContractViolatedThroughout` | The Risk R-D sentinel — passes WHILE the bug exists, fails the moment it's fixed. |
+| `assertAllInvariants` | `assertContractedOutcome` | Direct contract assertion — fails WHILE the bug exists, passes when fixed. |
+| `cleanly()` | `exitedNormally()` | |
+| `doesNotExist()` | `tmuxIsTornDown()` | |
+| `balancedEscapes()` | `terminalRestoredCleanly()` | |
+| `hasIntactPerStepFiles()` | `stepArtifactsIntact()` | |
+| `isInState(...)` | `showsInkState(...)` | |
+| `assertTerminalState(...)` | `assertTerminalEscapeStream(...)` | |
+| `assertWorkflowState(...)` | `assertPersistedState(...)` | |
+| `typeInAttachTty(...)` | `typeIntoOrchStdin(...)` | |
+| `closeStdin()` (DSL action) | `closeOrchStdin()` | The `SpawnHandle.closeStdin` port keeps the short name. |
+
+The §6.5 contract table at `tests/helpers/behavioral-dsl/internal/invariants.ts` is unchanged — same matchers, new identifiers.
+
+## Choosing the right assertion shape
+
+Tier 5 cells pick **one of two** verbs against the §6.5 contract rows. The choice is load-bearing — it determines the cell's lifecycle on the next fix.
+
+### `assertContractedOutcome(scenario, withinMs(...))` — permanent regression test
+
+Polls until every matcher in the contract row passes; throws `InvariantAssertionFailure` if the budget expires with violations outstanding.
+
+- **Today (bug present):** the cell **FAILS** in CI with the named violations (e.g. `assertContractedOutcome("pane-q-during-run") failed with 3 violation(s): exitedNormally / tmuxIsTornDown / hasStatus("cancelled")`).
+- **When the bug is fixed:** the cell **PASSES**. Keep it as a permanent regression guard.
+- **Use when:** you want the cell to outlive the fix and continue catching regressions.
+
+This is what `q-during-fake-mid-step.real.test.ts` uses today.
+
+### `assertContractViolatedThroughout(scenario, withinMs(...))` — the Risk R-D sentinel
+
+Polls the snapshot stream; throws **immediately** if any snapshot's violation list is empty (orch reached the contracted clean state); returns success if violations persist for the full budget.
+
+- **Today (bug present):** the cell **PASSES** — the snapshot's `violations` list is never empty, so the assertion holds throughout the budget.
+- **When the bug is fixed:** the cell **FAILS** with `assertContractViolatedThroughout("…"): violation list is empty — orch reached the contracted clean state; the bug appears fixed. DELETE this cell, do not invert the assertion.`
+- **Use when:** the cell exists specifically to capture *bug evidence* (the snapshot artifact under `__snapshots__/` is the deliverable). On fix, **delete** the cell + its snapshot — do NOT invert the assertion or mark `it.skip`.
+
+The first-batch cells split: `q-during-emitting-fake-mid-step.real.test.ts` plus the three `ctrl-c-{once,twice,thrice}-in-attached-during-mid-step.real.test.ts` cells use this sentinel and must be deleted on fix; the single `q-during-fake-mid-step.real.test.ts` cell stays via `assertContractedOutcome`.
+
+## `__snapshots__/` convention
+
+`assertContractViolatedThroughout` optionally persists its captured violation snapshot to disk as the durable bug-evidence ticket. The artifact is keyed by `<scenario>.last.json` (e.g. `pane-q-during-run.last.json`, `attach-tty-ctrl-c.last.json`), committed under `tests/integration/lifecycle/__snapshots__/`, and referenced from the U11 findings doc.
+
+Default test runs are **pure** — no on-disk side effects. Set the `LIFECYCLE_SNAPSHOT_DIR` env var to opt in:
+
+```sh
+LIFECYCLE_SNAPSHOT_DIR=tests/integration/lifecycle/__snapshots__ \
+  bun test tests/integration/lifecycle/
+```
+
+Each cell that uses `assertContractViolatedThroughout` and is reached during the run overwrites its scenario's `.last.json` with a freshly captured snapshot. Refresh + commit the diff to update the bug-evidence ticket. On fix (sentinel cells fail and get deleted), delete the matching snapshot file too.
 
 ## Promoting Tier 1 to Tier 4
 
@@ -112,7 +168,7 @@ Everything else — fixture boot, `mountTmuxHost`, `runWorkflow`, `right.waitFor
 
 - **Tier 1** auto-skips when `tmux` is not on PATH (existing `Bun.which('tmux')` convention).
 - **Tier 4** auto-skips unless `tmux` is on PATH **AND** the named CLI binary is on PATH **AND** `RUN_REAL_TMUX_E2E=1`. Developer-opt-in until a future PR adds a scheduled CI job.
-- **Tier 5** fake variants auto-skip on `!canRunRealTmux()` (same as Tier 1). Real-CLI variants additionally require `RUN_REAL_TMUX_E2E=1` and the named CLI on PATH (same as Tier 4). Tier 5 cells are NOT part of `bun run check` — they run via `bun test tests/integration/lifecycle/`.
+- **Tier 5** cells auto-skip on `!canRunRealTmux()` (same as Tier 1) — every first-batch cell is `ScriptedFakeRunner`-driven, so `tmux` on PATH is the only requirement. Real-CLI Tier 5 variants are deferred follow-up; when one lands, it'll additionally require `RUN_REAL_TMUX_E2E=1` and the named CLI on PATH (same as Tier 4), via the `canRunRealTmuxE2E('codex')` / `canRunRealTmuxE2E('claude')` predicate kept available for that purpose. Tier 5 cells live under `tests/integration/lifecycle/` and are run via `bun test tests/integration/lifecycle/`; the plan's intent is to keep them off the pre-commit gate, though the current `bun test tests/unit tests/integration` script still picks them up — see plan Risk R-A for the long-term split.
 
 ## Harness API surface
 

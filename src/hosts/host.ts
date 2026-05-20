@@ -87,6 +87,14 @@ export interface CommandLine {
   readonly pane: PaneRole
 }
 
+/**
+ * Discriminator returned by `Host.awaitForegroundShutdown()`. `'quit'` means
+ * the user asked orch to stop (q / Ctrl-C / future cancel surfaces);
+ * `'attach-exited'` means the foreground attach client went away without an
+ * explicit quit intent (user detached, session died, plain mode no-op).
+ */
+export type ForegroundShutdownReason = 'quit' | 'attach-exited'
+
 export interface Host {
   readonly mode: RunMode
   /** First-run banner; emitted once per invocation by the CLI entry point. */
@@ -139,25 +147,28 @@ export interface Host {
    */
   attachForeground(): Promise<void>
   /**
-   * Wait for the foreground shutdown signal — whichever happens first:
+   * Wait for the foreground shutdown signal and report which branch settled
+   * first:
    *
-   * - The user explicitly quits the foreground UI (two-pane: `q` intent from
-   *   the steps-view daemon; SIGINT in plain mode resolves through the same
-   *   handler chain).
-   * - `attachForeground()` resolves on its own (two-pane: user detached, or
-   *   the tmux session died externally; plain: immediate).
+   * - `'quit'`     — the user explicitly quit the foreground UI (two-pane:
+   *                  `q` intent or Ctrl-C captured by the steps-view daemon).
+   *                  The CLI MUST tear orch down — the workflow does not get
+   *                  a chance to finish.
+   * - `'attach-exited'` — `attachForeground()` resolved on its own (two-pane:
+   *                  user detached, or the tmux session died externally;
+   *                  plain: immediate). The CLI keeps the workflow running
+   *                  and prints the "re-attach with…" hint.
    *
-   * Plain mode resolves immediately — there's no foreground UI to wait on.
-   * Two-pane resolves on the first of `attachForeground exits | quit intent
-   * fires`. The CLI races this against the workflow promise; whichever
-   * settles first drives the shutdown sequence.
+   * Plain mode resolves immediately with `'attach-exited'` — there's no
+   * foreground UI to wait on, and there is no quit-intent vector.
    *
    * Phase 4: replaces the previous "workflow promise drives the race"
    * contract so the steps-view daemon can keep the TUI mounted past
    * workflow completion (showing the end-of-run summary) until the user
-   * presses `q`.
+   * presses `q`. The tagged return discriminates a user-quit from a benign
+   * detach — same signal, very different shutdown semantics in the CLI.
    */
-  awaitForegroundShutdown(): Promise<void>
+  awaitForegroundShutdown(): Promise<ForegroundShutdownReason>
   teardown(): Promise<void>
 }
 

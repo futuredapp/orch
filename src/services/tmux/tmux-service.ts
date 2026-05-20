@@ -224,6 +224,15 @@ export interface KillSessionOptions {
   readonly session: string
 }
 
+export interface HasSessionOptions {
+  readonly socket: SocketName
+  readonly session: string
+}
+
+export interface HasServerOptions {
+  readonly socket: SocketName
+}
+
 export interface AttachSessionOptions {
   readonly socket: SocketName
   readonly session: string
@@ -439,6 +448,22 @@ export interface TmuxService {
    * signal handlers) and must be idempotent.
    */
   killSession(opts: KillSessionOptions): Promise<void>
+
+  /**
+   * `tmux -L <socket> has-session -t <session>` — exit-code probe. Returns
+   * `true` when the named session exists on the named socket, `false` when
+   * tmux reports "no such session" or "no server running" (both flatten to
+   * "the session is not reachable"). Adapters throw `TmuxCommandError` only
+   * on unexpected stderr — read-only liveness probe.
+   */
+  hasSession(opts: HasSessionOptions): Promise<boolean>
+
+  /**
+   * `tmux -L <socket> list-sessions` — exit-code probe. Returns `true` when
+   * the tmux server is reachable on the socket, `false` when tmux reports
+   * "no server running" (or equivalent). Throws on unexpected stderr.
+   */
+  hasServer(opts: HasServerOptions): Promise<boolean>
 
   /**
    * `tmux -L <socket> attach-session -t <session>`. Blocks until the user

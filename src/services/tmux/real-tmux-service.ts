@@ -10,6 +10,8 @@ import type {
   CapturePaneOptions,
   CreateSessionOptions,
   DisplayMessageOptions,
+  HasServerOptions,
+  HasSessionOptions,
   KillPaneOptions,
   KillSessionOptions,
   KillWindowOptions,
@@ -289,6 +291,39 @@ export class RealTmuxService implements TmuxService {
     const argv = ['tmux', '-L', opts.socket, 'kill-pane', '-t', opts.target]
     const { stderr, exitCode } = await this.#run(argv)
     if (exitCode !== 0) throw fail(exitCode, stderr, 'tmux kill-pane failed')
+  }
+
+  async hasSession(opts: HasSessionOptions): Promise<boolean> {
+    // `tmux has-session -t <session>` exits 0 when the session exists, 1 when
+    // it does not, and 1 with "no server running" stderr when the whole
+    // server is down. Both 1-paths flatten to `false` — the caller asked a
+    // reachability question and the answer is "no". Anything else is an
+    // unexpected adapter failure and surfaces as a thrown error.
+    const argv = ['tmux', '-L', opts.socket, 'has-session', '-t', opts.session]
+    const { stderr, exitCode } = await this.#run(argv)
+    if (exitCode === 0) return true
+    if (exitCode === 1 && /no server running|session not found|can't find session/i.test(stderr)) {
+      return false
+    }
+    if (exitCode === 1 && stderr.length === 0) {
+      // tmux exits 1 silently when the named session is missing on a live
+      // server (e.g. `has-session -t nope`). Treat as "no", consistent with
+      // the documented contract above.
+      return false
+    }
+    throw fail(exitCode, stderr, 'tmux has-session failed')
+  }
+
+  async hasServer(opts: HasServerOptions): Promise<boolean> {
+    // `tmux list-sessions` exits 1 with "no server running" stderr when the
+    // server is down. Any other non-zero exit is an unexpected adapter
+    // failure. When the server is up but there are no sessions, tmux exits 0
+    // with an empty list (`list-sessions` is fine with an empty server).
+    const argv = ['tmux', '-L', opts.socket, 'list-sessions']
+    const { stderr, exitCode } = await this.#run(argv)
+    if (exitCode === 0) return true
+    if (exitCode === 1 && /no server running/i.test(stderr)) return false
+    throw fail(exitCode, stderr, 'tmux list-sessions failed')
   }
 
   async killSession(opts: KillSessionOptions): Promise<void> {

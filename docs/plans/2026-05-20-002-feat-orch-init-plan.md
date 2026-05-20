@@ -97,7 +97,9 @@ Carried verbatim from origin:
 - **Both commands bypass mode resolution and the `[orch] mode=...` banner.** `init` and `new` don't run workflows and don't depend on the host registry. Refactor `main()` so commands can opt out of `resolveMode()` + `buildBanner()`. Keeps init output focused on what was scaffolded.
 - **Add a focused `ConfirmService` port; do not reuse `PromptService`.** `PromptService.ask()` is heavyweight — it carries `StepName`, a `Host`, and a `fields[]/buttons[]` model designed for `ask()` workflow steps. A yes/no confirmation has none of that context. A new minimal port `ConfirmService.confirm(question, default)` with `ReadlineConfirmService` (real) and `FakeConfirmService` (test) keeps the seam clean and CLAUDE.md-aligned.
 - **Self-detection guard checks `process.cwd()`, not `import.meta.dir`.** `bun link` symlinks orch into the host project; `import.meta.dir` resolves into the orch source tree, but `process.cwd()` resolves to where the user invoked `orch`. Guard at exactly `cwd` (not a walk): read `<cwd>/package.json`, check `name === "orch"`, AND check `<cwd>/src/cli/main.ts` exists.
-- **Non-interactive resolution reuses the existing `--noninteractive` flag and `ORCH_NONINTERACTIVE=1` env var.** Already parsed into `opts.interactivity` (`src/cli/main.ts:225-237`). R9 refusal triggers when `opts.interactivity === 'noninteractive'` OR `process.stdin.isTTY` is falsy. No new flag.
+- **Non-interactive resolution reuses the existing `--noninteractive` flag and `ORCH_NONINTERACTIVE=1` env var.** Already parsed into `opts.interactivity` (`src/cli/main.ts:225-237`). R9 refusal triggers when `opts.interactivity === 'noninteractive'` OR `deps.isStdinTty === false`. No new flag.
+- **Inject `isStdinTty: boolean` into `CliDeps`, not a thrown `NoTtyError` from inside `ReadlineConfirmService`.** The R9 refusal in F2 must fire *before* any confirmation prompt is offered. A thrown-error design only catches the TTY-missing case after `confirm()` is called, which is too late (the prompt would still appear to write to stderr first) and gives the handler nothing to branch on for the upfront check. Reading `process.stdin.isTTY` directly inside `initCmd` would break testability (CLAUDE.md rule #3). Adding `isStdinTty` to `CliDeps` (populated from `process.stdin.isTTY === true` in `createDeps`, overridable in tests) is the clean seam.
+- **Bring `FakeFsService.remove` to parity with `BunFsService.remove`.** `BunFsService.remove` uses `fs.rm(p, { recursive: true, force: true })` (`src/services/fs/bun-fs-service.ts:79-87`). `FakeFsService.remove` currently only deletes a single key (`src/services/fs/fake-fs-service.ts:121-124`) — so F2's "don't keep" branch (`removeOrchTree(.orch)`) leaves nested workflow files behind in the in-memory map, and AE3 cannot pass against the fake. Extend `FakeFsService.remove(p)` to also delete every entry in `#files` and `#dirs` whose key starts with `${p}/`. This is a fake-only change with no runtime impact and brings the fake's contract into line with the real service.
 - **All filesystem writes go through `deps.fsService` (the existing `FsService` port).** Tests inject `FakeFsService` per CLAUDE.md rule #3. Path construction uses the `path()` smart constructor; no raw strings cross the seam.
 - **Templates are exported string constants in a single file (`init-templates.ts`).** Plain string constants — not template files on disk. Keeps the scaffolder self-contained, easy to test exact contents, and avoids the question of how to bundle template assets through `bun link`.
 - **`orch new` only edits the workflows map in `.orch/orch.config.ts` via simple text insertion.** Reading + parsing + re-serializing an arbitrary user-edited TypeScript file is out of scope; instead, the scaffolded `orch.config.ts` has a stable, predictable shape and `orch new` inserts a new line into the `workflows: { ... }` block via regex + string concat. If the user has edited the file in a way that breaks the regex, `orch new` errors with a clear message asking them to add the entry manually.
@@ -191,12 +193,14 @@ src/
 │       ├── scaffold.ts                            (new: shared write helpers)
 │       └── detect-self.ts                         (new: orch-source-repo guard)
 └── services/
+    ├── fs/
+    │   └── fake-fs-service.ts                     (modify: recursive remove)
     └── prompt/
         ├── confirm-service.ts                     (new: ConfirmService port)
         ├── readline-confirm-service.ts            (new: real impl)
         ├── fake-confirm-service.ts                (new: test impl)
         └── index.ts                               (modify: barrel re-exports)
-src/cli/deps.ts                                    (modify: add confirmService to CliDeps)
+src/cli/deps.ts                                    (modify: add confirmService + isStdinTty to CliDeps)
 
 tests/
 ├── unit/
@@ -206,6 +210,8 @@ tests/
 │   │       ├── init-templates.test.ts             (new: template content sanity)
 │   │       └── scaffold.test.ts                   (new: scaffold helpers)
 │   └── services/
+│       ├── fs/
+│       │   └── fake-fs-service-remove.test.ts     (new: recursion behavior)
 │       └── prompt/
 │           └── confirm-service.test.ts            (new: ReadlineConfirmService TTY + answer parsing)
 └── integration/
@@ -268,11 +274,11 @@ The per-unit `**Files:**` sections below remain authoritative for what each unit
 
 ---
 
-### U2. Add `ConfirmService` port with real and fake implementations
+### U2. Add `ConfirmService` port, `isStdinTty` seam, and `FakeFsService.remove` recursion
 
-**Goal:** Introduce a minimal CLI-yes/no port so `orch init`'s two prompts have a testable seam.
+**Goal:** Introduce the test seams `orch init` needs: a minimal yes/no confirmation port, a TTY-detection flag on `CliDeps`, and a recursive `FakeFsService.remove` that matches `BunFsService` semantics.
 
-**Requirements:** R7 (replace prompt), R8 (keep-workflows prompt).
+**Requirements:** R7 (replace prompt), R8 (keep-workflows prompt), R9 (non-interactive refusal — partially; full handler logic lives in U6).
 
 **Dependencies:** none (orthogonal to U1).
 
@@ -281,8 +287,10 @@ The per-unit `**Files:**` sections below remain authoritative for what each unit
 - `src/services/prompt/readline-confirm-service.ts` (new — wraps `node:readline`)
 - `src/services/prompt/fake-confirm-service.ts` (new — scripted responses + recorded calls)
 - `src/services/prompt/index.ts` (modify — re-export)
-- `src/cli/deps.ts` (modify — add `confirmService: ConfirmService` to `CliDeps`; wire `ReadlineConfirmService` in `createDeps`)
+- `src/services/fs/fake-fs-service.ts` (modify — recursive `remove`)
+- `src/cli/deps.ts` (modify — add `confirmService: ConfirmService` AND `isStdinTty: boolean` to `CliDeps`; wire `ReadlineConfirmService` and `process.stdin.isTTY === true` in `createDeps`)
 - `tests/unit/services/prompt/confirm-service.test.ts` (new)
+- `tests/unit/services/fs/fake-fs-service-remove.test.ts` (new — covers recursion change)
 
 **Approach:**
 - Define the port:
@@ -292,7 +300,10 @@ The per-unit `**Files:**` sections below remain authoritative for what each unit
 - `ReadlineConfirmService` uses `readline.createInterface({ input: process.stdin, output: process.stderr })`, writes the prompt with a `[Y/n]` or `[y/N]` suffix (matching the origin's exact wording), reads one line, parses with a small `parseYesNo(input, defaultAnswer)` helper.
 - Parsing rules: empty input → default. Case-insensitive: `y`/`yes` → true; `n`/`no` → false. Anything else → re-prompt up to 3 times, then return the default with a warning written to stderr.
 - `FakeConfirmService` accepts a scripted answer queue and records the questions asked. Tests assert on both the recorded questions and the answers returned. Mirror the API shape of `FakePromptService` (`src/services/prompt/fake-prompt-service.ts:12-40`) for consistency.
-- Add `confirmService` to `CliDeps` interface and to `createDeps`. Default to a real `ReadlineConfirmService` instance.
+- Add `confirmService` AND `isStdinTty: boolean` to `CliDeps` interface and to `createDeps`. `confirmService` defaults to a real `ReadlineConfirmService` instance; `isStdinTty` is set to `process.stdin.isTTY === true` (note: `process.stdin.isTTY` is `undefined` when stdin is not a TTY, so the explicit `=== true` comparison is required). Tests construct `CliDeps` with `isStdinTty: true` or `false` as the scenario requires — no process-level mocking.
+- Extend `FakeFsService.remove(p)` to delete the target key AND any entry in `#files` / `#dirs` whose key starts with `${p}/`. Matches `BunFsService.remove`'s `recursive: true, force: true` contract. Without this, F2's "don't keep" branch (which calls `fsService.remove(.orch)`) leaves nested workflow files in the in-memory map and AE3 cannot pass against the fake.
+
+**Justification for `CliDeps` placement of `confirmService` (vs. command-local injection):** `confirmService` is wired the same way `promptService` already is (`src/cli/deps.ts:80-86`) — a service-port factory living on the composition root. Command-local injection would confine the cross-cutting test update but create asymmetry with the existing prompt seam and would require any future config-free command needing confirmation to invent its own injection point. The mechanical test-file update is acceptable; the symmetry with `promptService` is preferable.
 
 **Patterns to follow:**
 - `src/services/prompt/readline-prompt-service.ts` for the readline wrapping idiom (TTY handling, cleanup on cancel).
@@ -300,6 +311,8 @@ The per-unit `**Files:**` sections below remain authoritative for what each unit
 - `src/services/types.ts` re-export idiom from the module barrel.
 
 **Test scenarios:**
+
+*ConfirmService:*
 - `parseYesNo('', true)` returns `true`; `parseYesNo('', false)` returns `false`.
 - `parseYesNo('Y', false)` returns `true`; `parseYesNo('N', true)` returns `false`.
 - `parseYesNo('yes', false)` returns `true`; `parseYesNo('no', true)` returns `false`.
@@ -308,7 +321,13 @@ The per-unit `**Files:**` sections below remain authoritative for what each unit
 - `FakeConfirmService.confirm` returns scripted answers in FIFO order and records each call's question.
 - `FakeConfirmService` throws a clear error if the script is exhausted (no scripted answer for the next call).
 
-**Verification:** Port compiles, real impl works in a TTY harness, fake works in unit tests.
+*FakeFsService.remove (recursion change):*
+- `remove('/a/b')` on a fake containing `/a/b`, `/a/b/c.txt`, `/a/b/d/e.txt`, and `/a/other.txt` leaves only `/a/other.txt`. (`/a/b`, `/a/b/c.txt`, `/a/b/d`, and `/a/b/d/e.txt` are all gone.)
+- `remove('/a/b')` on a fake containing only `/a/b` (no children) leaves the fake empty.
+- `remove('/a/b')` on a fake where `/a/b` does not exist is a no-op (does not throw — `BunFsService.remove` uses `force: true`).
+- `remove('/a')` does not delete `/aaa/x.txt` (prefix-match must include the trailing `/`).
+
+**Verification:** Port compiles, real impl works in a TTY harness, fake works in unit tests. `FakeFsService.remove` test scenarios above pass.
 
 ---
 
@@ -515,7 +534,7 @@ export default workflow('<name>', async (_run) => {
 **Approach:**
 - Branch entered from U5's existence check when `<cwd>/.orch` exists.
 - Step 1 — non-interactive refusal (R9):
-  - If `opts.interactivity === 'noninteractive'` OR `process.stdin.isTTY !== true`, write a clear error to stderr explaining that `.orch/` already exists and the user must either run interactively or remove `.orch/` manually. Exit 2. No prompts, no destructive default.
+  - If `opts.interactivity === 'noninteractive'` OR `deps.isStdinTty === false`, write a clear error to stderr explaining that `.orch/` already exists and the user must either run interactively or remove `.orch/` manually. Exit 2. No prompts, no destructive default.
 - Step 2 — first prompt (R7):
   - `confirmService.confirm("\`.orch/\` already exists. Replace it?", false)`.
   - On `false`: write a brief "no changes made" message to stdout, exit 0.
@@ -537,18 +556,12 @@ export default workflow('<name>', async (_run) => {
 - **AE1 (R7):** `.orch/` exists with `workflows/hello.ts`, `workflows/my-real-workflow.ts`, `state/r-2026-05-15-abc/`. ConfirmService scripted to answer `false` to the first prompt. After `initCmd`: exits 0, on-disk state is byte-identical (verified via `FakeFsService` snapshot comparison), second prompt is *not* asked (recorded calls show only one).
 - **AE2 (R7, R8):** Same starting state as AE1. ConfirmService scripted `true, true`. After `initCmd`: exit 0; `.orch/state/r-2026-05-15-abc/` and `.orch/workflows/my-real-workflow.ts` are unchanged; `.orch/workflows/hello.ts` and `.orch/steps.ts` match the freshly-scaffolded templates; `.orch/orch.config.ts` contains entries for both `hello` and `my-real-workflow`.
 - **AE3 (R8):** Same starting state as AE1. ConfirmService scripted `true, false`. After `initCmd`: exit 0; `.orch/` is entirely re-scaffolded as a fresh init; `my-real-workflow.ts` and `r-2026-05-15-abc/` are gone; only `hello.ts`, `steps.ts`, `orch.config.ts`, and empty `state/` remain.
-- **AE4 (R9):** `.orch/` exists. `opts.interactivity === 'noninteractive'`. After `initCmd`: exits 2, no prompts asked (ConfirmService recorded calls is empty), no files mutated, stderr contains a remediation message naming the path.
-- **R9 via piped stdin:** `.orch/` exists, `opts.interactivity === 'interactive'`, `process.stdin.isTTY` is falsy (simulated by passing a `streamsLikeFake` to the handler or by gating on a injected flag — see implementation note below). Same outcome as AE4.
+- **AE4 (R9):** `.orch/` exists. `opts.interactivity === 'noninteractive'`, `deps.isStdinTty === true`. After `initCmd`: exits 2, no prompts asked (ConfirmService recorded calls is empty), no files mutated, stderr contains a remediation message naming the path.
+- **R9 via piped stdin:** `.orch/` exists, `opts.interactivity === 'interactive'`, `deps.isStdinTty === false`. Same outcome as AE4. (The seam is the injected `isStdinTty` flag on `CliDeps` — set in U2.)
 - **R2 guard still fires in re-init context:** In the orch source repo with `.orch/` present, the guard fires before any prompt. Exit 2, no prompts asked.
 - **Decline keeps `.gitignore` untouched:** Pre-existing `.gitignore` is not modified when the user declines (or replies "no") on the first prompt.
 
-**Implementation note for TTY testability:** `process.stdin.isTTY` is hard to fake without process-level mocking, which CLAUDE.md rule #3 bans. Two options:
-- (a) Read TTY-ness inside `ReadlineConfirmService.confirm` and have it throw a typed `NoTtyError` that `initCmd` catches and converts to the R9 exit path.
-- (b) Inject the TTY flag into `CliDeps` (e.g., `deps.isStdinTty: boolean`) so tests can flip it.
-
-Option (a) keeps the seam clean and the test setup simpler — the fake `ConfirmService` throws `NoTtyError` to simulate the piped-stdin case. Prefer (a) unless implementation reveals a reason to switch.
-
-**Verification:** Integration tests pass against the fakes.
+**Verification:** Integration tests pass against the fakes. R9 testability rides on the `isStdinTty` flag introduced in U2, not on a thrown error from `ReadlineConfirmService` — this is the upfront refusal that must fire *before* any prompt rendering.
 
 ---
 
@@ -615,15 +628,13 @@ Option (a) keeps the seam clean and the test setup simpler — the fake `Confirm
 - Reuse the `Bun.spawn(['bun', 'run', ENTRY, ...argv], { cwd: tmpDir, env: ... })` recipe from `tests/integration/cli/unknown-flag.test.ts:10-33`.
 - Test 1: `orch init` in a fresh tmpdir. Assert exit 0, `.orch/workflows/hello.ts` exists on disk, `.orch/orch.config.ts` exists on disk, `.gitignore` contains `.orch/state/`.
 - Test 2: After test-1's `init`, run `orch new my-feature`. Assert exit 0, `.orch/workflows/my-feature.ts` exists. Read the manifest and confirm it now lists both `hello` and `my-feature`.
-- Optionally test 3: After test-1's `init`, run `orch dry-run hello`. Assert that `dry-run` finds and resolves the `hello` workflow without error. This is the strongest evidence we can collect in CI for AE5 without spawning Claude.
-- Do **not** test `orch run hello` in this file — it would require a real Claude CLI in CI, which is env-gated everywhere else.
+- Do **not** test `orch dry-run hello` or `orch run hello` in this file. The scaffolded files import from `'orch'`, and the tmpdir has no `node_modules/orch` symlink — `loadConfig` → `await import(configPath)` would fail with module-not-found. Setting up a real `bun link` inside the test would slow this suite to seconds-per-test and complicate isolation. AE5 ("`orch run hello` produces `hello.txt`") is verified by the manual smoke pass listed under Verification, not by CI. The "scaffolded files parse as valid TS" sanity (a weaker but CI-friendly proxy) is covered at the unit-test level in U4.
 - Each test uses its own tmpdir and cleans up in `finally`.
 
 **Test scenarios:**
 
 - `orch init` in a fresh tmpdir exits 0; `.orch/workflows/hello.ts`, `.orch/steps.ts`, `.orch/orch.config.ts` all exist on disk; `.gitignore` exists and contains `.orch/state/`. Covers F1 end-to-end.
 - After `init`, `orch new my-feature` exits 0; `.orch/workflows/my-feature.ts` exists; `.orch/orch.config.ts` lists both `hello` and `my-feature`. Covers F3 end-to-end.
-- (Optional) After `init`, `orch dry-run hello --mode=plain` exits 0 and resolves the `hello` workflow. Covers AE5 to the limit possible in CI.
 - `orch init` invoked under the orch source repo (cwd = repo root) exits 2 with the R2 refusal message in stderr. Belt-and-suspenders for U3.
 
 **Verification:** Tests run with `bun test` (no env gate); `.orch/` is created in a tmpdir, not the host project.
@@ -667,7 +678,17 @@ Test expectation: none -- documentation-only changes. Reviewer-validated.
 ## System-Wide Impact
 
 - **`src/cli/main.ts`** gains a small branch in `main()` to skip mode resolution for `init` and `new`. Risk: existing commands' banner output changes (regression). U1 covers this with explicit "still prints banner for `run`" test.
-- **`src/cli/deps.ts`** gains a new field (`confirmService`). Existing `createDeps` call sites in tests construct `CliDeps` manually — those tests (e.g., `tests/integration/cli/commands/runs.test.ts:25-41`) need to be updated to include the new field. Best done by giving `FakeConfirmService` a sensible default (e.g., always answers `false`) and updating each affected test file. This is the largest cross-cutting impact in the plan.
+- **`src/cli/deps.ts`** gains two new fields: `confirmService: ConfirmService` and `isStdinTty: boolean`. The composition root populates them from `new ReadlineConfirmService()` and `process.stdin.isTTY === true`. Eight existing test files construct `CliDeps` manually and need both fields added to their helpers (sensible defaults: `new FakeConfirmService()` and `true`):
+  - `tests/unit/cli/logs-command.test.ts:46`
+  - `tests/integration/cli/two-pane-auto-attach.test.ts:86`
+  - `tests/integration/cli/commands/runs.test.ts:25`
+  - `tests/integration/cli/commands/logs-old-and-new-runs.test.ts:49`
+  - `tests/integration/cli/run-resume-cycle.test.ts:40`
+  - `tests/integration/cli/commands/status.test.ts:39`
+  - `tests/integration/cli/run-resume-registry-forwarding.test.ts:77`
+  - `tests/integration/cli/commands/resume.test.ts:38`
+  This is the largest cross-cutting impact in the plan. Mechanical; each site is a single-line update. If a future cross-cutting field is added, consider introducing a `makeFakeCliDeps(overrides)` helper to centralize default construction.
+- **`src/services/fs/fake-fs-service.ts`** `remove(p)` becomes recursive (deletes any entry whose key starts with `${p}/`). Brings the fake into parity with `BunFsService.remove`. No runtime impact; existing fake tests should remain green because `remove` calls in those tests either target leaf paths or rely on the contract change (`tests/unit/services/fs/fake-fs-service-remove.test.ts` covers the behavior explicitly).
 - **`src/services/prompt/index.ts`** gains three new exports. Low risk — additive.
 - **`README.md`** and **`docs/getting-started.md`** updates affect anyone onboarding to orch. Worth a careful review pass.
 - **No runtime impact on existing workflows.** `orch run`, `orch resume`, `orch logs`, etc. are untouched. The host registry, runners, validators, and state store see no changes.
