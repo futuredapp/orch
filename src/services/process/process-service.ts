@@ -12,6 +12,24 @@ export interface SpawnOptions {
    * `spawns.ndjson`. Ignored by the real process service.
    */
   readonly tag?: string
+  /**
+   * Opt-in raw-stream mode for the Tier 5 behavioral harness. When `true`:
+   *
+   *  - `stdin` is piped (writable). The returned `SpawnHandle` exposes
+   *    `writeStdin(data)` for fire-and-forget bytes.
+   *  - `stdout` is tee'd into two consumers: the existing line-framed
+   *    iterable (`stdout: AsyncIterable<string>`) AND a cumulative raw-byte
+   *    accumulator (`stdoutBytes(): Buffer`). The two views are independent —
+   *    consuming one does not drain the other.
+   *
+   * Ignored by callers that don't care. Runners and command/commit steps MUST
+   * leave this unset — they only need the line-framed view, and adding the
+   * raw consumer has a per-spawn cost (a `tee()` plus background buffering).
+   *
+   * See `tests/helpers/behavioral-dsl/` and `docs/plans/2026-05-20-001-…-plan.md`
+   * (U2) for the consumer.
+   */
+  readonly rawStreams?: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -29,6 +47,19 @@ export interface SpawnHandle extends ProcessHandle {
   readonly stdout: AsyncIterable<string>
   /** Line-framed stderr. Drained concurrently from spawn time (see Watch-outs S1). */
   readonly stderr: AsyncIterable<string>
+  /**
+   * Present iff the spawn used `rawStreams: true`. Fire-and-forget write to
+   * the child's stdin. Errors after write surface via the next `wait()`
+   * resolution.
+   */
+  readonly writeStdin?: (data: string | Uint8Array) => void
+  /**
+   * Present iff the spawn used `rawStreams: true`. Returns a cumulative
+   * `Buffer` of every byte received on stdout since spawn — monotonically
+   * growing, never reset. Independent of the line-framed `stdout` iterable
+   * (consuming one does not affect the other).
+   */
+  readonly stdoutBytes?: () => Buffer
 }
 
 /** Foreground processes inherit stdio — no stream access. */

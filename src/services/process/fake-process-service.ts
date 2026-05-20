@@ -9,6 +9,20 @@ export interface FakeResponse {
   readonly stdout?: readonly string[]
   readonly stderr?: readonly string[]
   readonly exitCode: number
+  /**
+   * Raw-bytes shape — used when the consumer spawns with `rawStreams: true`.
+   * When set, the fake's `stdoutBytes()` returns this buffer and the
+   * line-framed `stdout` iterable yields logical lines parsed from these
+   * bytes (overrides the line-based `stdout` field if both are set).
+   */
+  readonly stdoutBytes?: Buffer
+  /**
+   * Mutable out-buffer for inspecting what `writeStdin` was called with.
+   * The fake APPENDS one entry per `writeStdin` call (preserving call
+   * boundaries) when `rawStreams: true`. Tests inspect this array after the
+   * spawn finishes.
+   */
+  readonly stdinObservations?: Buffer[]
 }
 
 export interface FakeForegroundResponse {
@@ -62,35 +76,19 @@ export class FakeProcessService implements ProcessService {
       throw new Error(`FakeProcessService: no scripted response for argv ${key}`)
     }
 
+    const wantsRaw = opts.rawStreams === true
+    const stdoutLines = deriveStdoutLines(response)
+    const stderrLines = response.stderr ?? []
+
     let killed = false
     let iterationDone: () => void
     const iterationPromise = new Promise<void>((resolve) => {
       iterationDone = resolve
     })
 
-    const makeIterator = (lines: readonly string[]): AsyncIterable<string> => ({
-      [Symbol.asyncIterator]: () => {
-        let index = 0
-        return {
-          async next() {
-            if (killed) {
-              throw new DOMException('Aborted', 'AbortError')
-            }
-            if (index < lines.length) {
-              return { value: lines[index++] as string, done: false }
-            }
-            return { value: undefined, done: true }
-          },
-        }
-      },
-    })
-
-    const stdoutLines = response.stdout ?? []
-    const stderrLines = response.stderr ?? []
-
     const stdoutIterable: AsyncIterable<string> = {
       [Symbol.asyncIterator]: () => {
-        const inner = makeIterator(stdoutLines)[Symbol.asyncIterator]()
+        const inner = makeIterator(stdoutLines, () => killed)[Symbol.asyncIterator]()
         return {
           async next() {
             const result = await inner.next()
@@ -103,9 +101,9 @@ export class FakeProcessService implements ProcessService {
       },
     }
 
-    return {
+    const baseHandle = {
       stdout: stdoutIterable,
-      stderr: makeIterator(stderrLines),
+      stderr: makeIterator(stderrLines, () => killed),
       async wait() {
         await iterationPromise
         return { exitCode: killed ? -1 : response.exitCode }
@@ -115,6 +113,23 @@ export class FakeProcessService implements ProcessService {
           killed = true
           iterationDone()
         }
+      },
+    }
+
+    if (!wantsRaw) {
+      return baseHandle
+    }
+
+    const observations = response.stdinObservations
+    const stdoutBuf = response.stdoutBytes ?? Buffer.alloc(0)
+    return {
+      ...baseHandle,
+      writeStdin(data: string | Uint8Array) {
+        if (observations === undefined) return
+        observations.push(toBuffer(data))
+      },
+      stdoutBytes() {
+        return stdoutBuf
       },
     }
   }
@@ -140,4 +155,48 @@ export class FakeProcessService implements ProcessService {
       },
     }
   }
+}
+
+function makeIterator(lines: readonly string[], isKilled: () => boolean): AsyncIterable<string> {
+  return {
+    [Symbol.asyncIterator]: () => {
+      let index = 0
+      return {
+        async next() {
+          if (isKilled()) {
+            throw new DOMException('Aborted', 'AbortError')
+          }
+          if (index < lines.length) {
+            return { value: lines[index++] as string, done: false }
+          }
+          return { value: undefined, done: true }
+        },
+      }
+    },
+  }
+}
+
+/**
+ * Derives the logical lines the fake's `stdout` iterable yields. When the
+ * response carries raw bytes, parse them; otherwise fall back to the
+ * line-based `stdout` field.
+ */
+function deriveStdoutLines(response: FakeResponse): readonly string[] {
+  if (response.stdoutBytes !== undefined) {
+    return splitLines(response.stdoutBytes.toString('utf-8'))
+  }
+  return response.stdout ?? []
+}
+
+function splitLines(s: string): readonly string[] {
+  if (s.length === 0) return []
+  const trimmed = s.endsWith('\n') ? s.slice(0, -1) : s
+  return trimmed.split('\n').map((line) => (line.endsWith('\r') ? line.slice(0, -1) : line))
+}
+
+function toBuffer(data: string | Uint8Array): Buffer {
+  if (typeof data === 'string') {
+    return Buffer.from(data, 'utf-8')
+  }
+  return Buffer.from(data.buffer, data.byteOffset, data.byteLength)
 }
