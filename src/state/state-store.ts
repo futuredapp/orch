@@ -46,6 +46,27 @@ export interface StepEntry {
    * undefined and round-trip without injecting a `null` key.
    */
   readonly sessionId?: string
+  /**
+   * Diagnostic label for refusal messages — the `Runner.name` of the runner
+   * that executed this step. Persisted on interactive agent steps only;
+   * absent on autonomous steps and on pre-feature state files. Lookup of the
+   * live runner instance still goes through `ResumeRegistry.getRunnerForStep`,
+   * not this field — but the name lets the right pane distinguish "legacy step"
+   * (no `runnerName`) from "step from this feature, registry not yet populated".
+   */
+  readonly runnerName?: string
+  /**
+   * Captured failure mode when a runner's `captureSessionId` did not yield a
+   * usable id. Three discrete values:
+   *   - `'ambiguous'` — multiple candidate sessions matched the cwd inside the
+   *     capture window; orch refuses rather than guessing.
+   *   - `'empty'` — no candidate session appeared within the timeout.
+   *   - `'error'` — orch hit an internal/programming error during capture
+   *     (e.g. `os.homedir()` empty, filesystem threw unexpectedly).
+   * Persisted on interactive agent steps only and only when capture actually
+   * ran; absent on autonomous steps and runners without `captureSessionId`.
+   */
+  readonly sessionIdCaptureError?: 'ambiguous' | 'empty' | 'error'
 }
 
 /** Mirrors `WorkflowArgs` from `src/core/workflow.ts`. Kept structural here
@@ -134,6 +155,10 @@ export const StepEntrySchema = z.object({
   // load with sessionId === undefined; new state writes the key only when
   // captured (spread-when-defined in rebuildSteps).
   sessionId: z.string().min(1).optional(),
+  // History-resume — additive, no schemaVersion bump. Both fields are written
+  // on interactive agent steps only. Old state files load with both undefined.
+  runnerName: z.string().min(1).optional(),
+  sessionIdCaptureError: z.enum(['ambiguous', 'empty', 'error']).optional(),
 })
 
 const PersistedWorkflowArgsSchema = z.object({
@@ -177,6 +202,10 @@ function rebuildSteps(
       transcriptEventCount: s.transcriptEventCount,
       transcriptTruncated: s.transcriptTruncated,
       ...(s.sessionId !== undefined ? { sessionId: s.sessionId } : {}),
+      ...(s.runnerName !== undefined ? { runnerName: s.runnerName } : {}),
+      ...(s.sessionIdCaptureError !== undefined
+        ? { sessionIdCaptureError: s.sessionIdCaptureError }
+        : {}),
     }
   }
   return steps

@@ -444,4 +444,63 @@ describe('TmuxHost.teardown', () => {
     const killCalls = tmux.recordedCalls.filter((c) => c.method === 'killSession')
     expect(killCalls).toHaveLength(2)
   })
+
+  // Regression: real-world symptom on macOS — after `bunx orch run …`
+  // exits, the user's terminal is left with the shell prompt redrawn in
+  // the middle of the screen, the rest blank below, and the success
+  // summary `Workflow … completed.` missing entirely.
+  //
+  // Behavioral contract this test pins: once `teardown()` has returned,
+  // the host has handed the outer TTY back to the CLI. The CLI then
+  // writes the success/failure summary and exits. The host must not
+  // touch the TTY again on this graceful path — its hard-exit backstop
+  // is a safety net for the crash path where teardown never ran, NOT a
+  // second emission stapled onto a clean shutdown. (Why this matters in
+  // practice: Apple Terminal and iTerm2 treat the alt-screen-exit byte
+  // as a screen-buffer toggle, so any redundant emission after a clean
+  // teardown switches INTO the alt-screen and buries whatever the CLI
+  // wrote in between — hence the missing summary in the screenshot.)
+  it('does not touch the outer TTY again after teardown returns on the graceful exit path', async () => {
+    const tmux = new FakeTmuxService()
+    tmux.setListPanesResult(['%0'])
+    tmux.nextPaneId(paneId('%1'))
+
+    const writes: string[] = []
+    const stdout = new Writable({
+      write(chunk, _enc, cb) {
+        writes.push(String(chunk))
+        cb()
+      },
+    }) as unknown as NodeJS.WritableStream
+    ;(stdout as unknown as { isTTY?: boolean }).isTTY = true
+
+    let registeredHandler: (() => void) | undefined
+    const host = await createTmuxHost({
+      tmux,
+      processService: new FakeProcessService() as ProcessService,
+      clock: new FakeClock(0),
+      runId: 'r-2026-05-18-altreset' as RunId,
+      workflowName: 'compound',
+      stderr: makeStderr().stream,
+      skipVersionCheck: true,
+      stdout,
+      disableStepsView: true,
+      installExitHandler: (h) => {
+        registeredHandler = h
+      },
+    })
+
+    await host.teardown()
+    const bytesAfterTeardown = writes.join('').length
+
+    // Simulate `process.exit(...)` following a graceful teardown. The
+    // contract is "no further writes" — not "fewer of byte X" — so the
+    // assertion compares total bytes written, not the count of any
+    // specific escape sequence.
+    expect(registeredHandler).toBeDefined()
+    registeredHandler?.()
+
+    const bytesAfterExit = writes.join('').length
+    expect(bytesAfterExit).toBe(bytesAfterTeardown)
+  })
 })

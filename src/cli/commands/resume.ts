@@ -1,4 +1,5 @@
 import {
+  createResumeRegistry,
   ParallelError,
   ResumeError,
   RunNotFoundError,
@@ -197,6 +198,12 @@ export async function resumeCmd(
       clock: deps.clock,
     })
 
+    // On resume, the workflow callback re-invokes `run(step)` for every step;
+    // `runStepOnce` re-registers each interactive runner in the registry,
+    // including cache hits. The host therefore sees the runner the moment
+    // the executor reaches that step.
+    const resumeRegistry = createResumeRegistry()
+
     let host: Awaited<ReturnType<HostFactory>>
     try {
       host = await hostFactory({
@@ -209,6 +216,7 @@ export async function resumeCmd(
         processService: instrumentedProcess,
         fs: deps.fsService,
         stateStore: deps.stateStore,
+        resumeRegistry,
       })
     } catch (err) {
       if (err instanceof HostCreationError) {
@@ -239,6 +247,7 @@ export async function resumeCmd(
       logger,
       promptService: deps.promptServiceFor(host.mode),
       interactivity: opts.interactivity,
+      resumeRegistry,
     }
 
     return await executeWithAttach({

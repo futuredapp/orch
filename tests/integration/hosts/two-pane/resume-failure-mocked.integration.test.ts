@@ -8,6 +8,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { Writable } from 'node:stream'
+import { createResumeRegistry } from '../../../../src/core/resume-registry.ts'
+import { stepName as toStepName } from '../../../../src/core/types.ts'
 import { createRightPaneController } from '../../../../src/hosts/two-pane/pane-map/index.ts'
 import { createPaneQueue } from '../../../../src/hosts/two-pane/pane-queue.ts'
 import {
@@ -127,6 +129,9 @@ describe('resume launcher — failure path (U8 swap-based, mocked tmux)', () => 
     const stateDir = `${tempDir}/state`
     await mkdir(stateDir, { recursive: true })
 
+    const resumeRegistry = createResumeRegistry()
+    resumeRegistry.register(toStepName('x'), failingRunner())
+
     const controller = createRightPaneController({
       tmux,
       socket: socketName('orch-resume-fail'),
@@ -141,7 +146,7 @@ describe('resume launcher — failure path (U8 swap-based, mocked tmux)', () => 
       cwd: toPath(tempDir),
       env: {},
       stderr: stream,
-      resumeRunner: failingRunner(),
+      resumeRegistry,
       scratchSession: SCRATCH_SESSION,
     })
 

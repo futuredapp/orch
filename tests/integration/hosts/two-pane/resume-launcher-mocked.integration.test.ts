@@ -6,6 +6,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { Writable } from 'node:stream'
+import { createResumeRegistry } from '../../../../src/core/resume-registry.ts'
+import { stepName as toStepName } from '../../../../src/core/types.ts'
 import { createRightPaneController } from '../../../../src/hosts/two-pane/pane-map/index.ts'
 import { createPaneQueue } from '../../../../src/hosts/two-pane/pane-queue.ts'
 import {
@@ -124,6 +126,9 @@ describe('resume launcher (U8 swap-based, mocked tmux + scripted runner)', () =>
     const stateDir = `${tempDir}/state`
     await mkdir(stateDir, { recursive: true })
 
+    const resumeRegistry = createResumeRegistry()
+    resumeRegistry.register(toStepName('work-auth'), makeResumableRunner())
+
     const controller = createRightPaneController({
       tmux,
       socket: socketName('orch-resume-int'),
@@ -142,7 +147,7 @@ describe('resume launcher (U8 swap-based, mocked tmux + scripted runner)', () =>
       cwd: toPath(tempDir),
       env: { HOME: '/home/orch' },
       stderr: bufferStream(),
-      resumeRunner: makeResumableRunner(),
+      resumeRegistry,
       scratchSession: SCRATCH_SESSION,
     })
 

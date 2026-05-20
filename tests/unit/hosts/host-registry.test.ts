@@ -4,6 +4,7 @@
 // silently dropped (a real bug we hit on 2026-05-06).
 
 import { describe, expect, it } from 'bun:test'
+import { createResumeRegistry } from '../../../src/core/resume-registry.ts'
 import type { HostFactoryInputs, RegisterBuiltinHostsDeps } from '../../../src/hosts/index.ts'
 import { createNullSessionLogger } from '../../../src/observability/index.ts'
 import { toClaudeTranscriptLines } from '../../../src/runners/index.ts'
@@ -78,5 +79,29 @@ describe('RegisterBuiltinHostsDeps.tmuxOverrides contract', () => {
     }
 
     expect(deps.tmuxOverrides?.transcriptRenderer).toBe(toClaudeTranscriptLines)
+  })
+})
+
+describe('HostFactoryInputs.resumeRegistry contract', () => {
+  it('accepts a `resumeRegistry` field — same live reference the workflow executor receives', () => {
+    const rid = toRunId('r-2026-05-13-200000-a2')
+    const resumeRegistry = createResumeRegistry()
+
+    // Compile-time guarantee: the assignment fails to type-check if
+    // `resumeRegistry` is not part of `HostFactoryInputs`. Mirrors the
+    // `stateStore` regression — the right-pane controller has no way to
+    // resolve a runner on Enter without this field reaching the host.
+    const inputs: HostFactoryInputs = {
+      runId: rid,
+      workflowName: 'demo',
+      stdout: process.stdout,
+      stderr: process.stderr,
+      clock: new FakeClock(0),
+      logger: createNullSessionLogger({ runId: rid }),
+      stateStore: makeNoopStateStore(rid),
+      resumeRegistry,
+    }
+
+    expect(inputs.resumeRegistry).toBe(resumeRegistry)
   })
 })

@@ -329,6 +329,12 @@ function pickHostFactory(
   // call): persisted NDJSON doesn't carry a runner tag yet, so we default the
   // ⏎-to-inspect renderer to Claude's. Phase E swaps this for a runner-
   // registry dispatch keyed off `state.json`.
+  //
+  // The interactive-resume `resumeRegistry` is per-workflow correct already —
+  // run.ts / resume.ts each construct a live `ResumeRegistry` per invocation
+  // and pass the same reference into both `hostFactory({...})` and `wfDeps`,
+  // so the host reads what the executor writes in this process only. No
+  // global state, no module singleton.
   const tmuxOverrides = {
     basePath,
     transcriptRenderer: toClaudeTranscriptLines,

@@ -79,13 +79,17 @@ export interface RightPaneControllerOptions {
    */
   readonly transcriptRenderer?: Runner['toTranscriptLines']
   /**
-   * Resume launcher. When provided, agent-interactive Enter calls
-   * `resumeRunner.resumeCommand(...)` and spawns the resulting argv as a
-   * `pty` source in the scratch session. Without it (or when the step has
-   * no `sessionId`, or the runner has no `resumeCommand`), Enter falls back
-   * to a `file-tail` over a refusal-text file.
+   * Live runner registry held by reference. The controller calls
+   * `resumeRegistry.getRunnerForStep(step.name)` on every Enter press;
+   * resolution is step-keyed (not runner-name-keyed) so two distinct
+   * `claude({...})` instances with different model configs each resolve to
+   * their own runner. Populated by the workflow executor's `runStepOnce`
+   * during normal runs and progressively during `orch resume` replay.
+   *
+   * When omitted, Enter on any past interactive step falls back to a
+   * `file-tail` over a "no runner wired into this host" refusal-text file.
    */
-  readonly resumeRunner?: Runner
+  readonly resumeRegistry?: import('../../../core/resume-registry.ts').ResumeRegistry
   /**
    * Absolute path to the parent → child IPC channel for banner + view-mode
    * snapshots. The controller appends one JSON line per `emitBanner` /
@@ -680,13 +684,21 @@ async function resolveInteractiveReplaySpec(
   opts: RightPaneControllerOptions,
   step: StepRow & { kind: 'agent'; mode: 'interactive' },
 ): Promise<PaneSpec> {
-  const refusal = describeResumeRefusal(opts.resumeRunner, step.sessionId)
-  if (refusal !== undefined) {
+  const registryProvided = opts.resumeRegistry !== undefined
+  const runner = opts.resumeRegistry?.getRunnerForStep(step.name as StepName)
+  const refusal = describeResumeRefusal({
+    registryProvided,
+    runner,
+    runnerName: step.runnerName,
+    sessionId: step.sessionId,
+    sessionIdCaptureError: step.sessionIdCaptureError,
+  })
+  if (refusal !== undefined || runner === undefined) {
     const filePath = replayFilePath(opts, step.name)
-    await writeReplayFile(opts, filePath, `── ${step.name} ──\r\n${refusal}\r\n`)
+    const text = refusal ?? 'resume unavailable — no runner wired into this host'
+    await writeReplayFile(opts, filePath, `── ${step.name} ──\r\n${text}\r\n`)
     return { kind: 'file-tail', path: filePath }
   }
-  const runner = opts.resumeRunner as Runner
   const resumeFn = runner.resumeCommand as NonNullable<Runner['resumeCommand']>
   const sessionId = step.sessionId as string
   try {
@@ -736,18 +748,81 @@ async function writeReplayFile(
   await writeFile(filePath, text, 'utf8')
 }
 
-function describeResumeRefusal(
-  runner: Runner | undefined,
-  sessionId: string | undefined,
-): string | undefined {
-  if (runner === undefined) {
+/**
+ * Inputs the right-pane controller hands to the refusal-message dispatcher.
+ *
+ *  - `registryProvided` distinguishes "the CLI never wired a registry into
+ *    this host" (R10) from "the registry is wired but doesn't yet contain
+ *    this step" (R11 race surface).
+ *  - `runner` is the live `Runner` instance resolved from the registry, or
+ *    undefined when the registry has no entry for this step.
+ *  - `runnerName` is the diagnostic label persisted on `StepEntry.runnerName`
+ *    when the executor processed this step in any past run. Its absence is
+ *    the R8 legacy signal (pre-feature steps lack the field entirely).
+ *  - `sessionId` is the captured session/thread identifier the runner will
+ *    consume on resume; absent when capture failed or didn't run.
+ *  - `sessionIdCaptureError` is the typed three-value enum that surfaces a
+ *    Codex capture failure (ambiguous / empty / error). Each value drives a
+ *    distinct refusal message at the call site.
+ */
+interface ResumeRefusalContext {
+  readonly registryProvided: boolean
+  readonly runner: Runner | undefined
+  readonly runnerName: string | undefined
+  readonly sessionId: string | undefined
+  readonly sessionIdCaptureError: 'ambiguous' | 'empty' | 'error' | undefined
+}
+
+function describeResumeRefusal(ctx: ResumeRefusalContext): string | undefined {
+  // R10 — the CLI never wired a registry into this host. Tests that omit the
+  // registry deliberately exercise this path to keep the legacy "no runner"
+  // contract intact.
+  if (!ctx.registryProvided) {
     return 'resume unavailable — no runner wired into this host'
   }
-  if (typeof runner.resumeCommand !== 'function') {
-    return `resume unavailable — runner "${runner.name}" does not support resume`
+  if (ctx.runner === undefined) {
+    // R8 vs R11 disambiguation. Pre-feature interactive steps have no
+    // `runnerName` field at all — those are legacy. Steps written by this
+    // feature always carry `runnerName`; their absence in the live registry
+    // means the executor hasn't replayed them yet on `orch resume`.
+    if (ctx.runnerName === undefined) {
+      return (
+        'resume unavailable — this step pre-dates the resume feature; ' +
+        'only newer steps are resumable'
+      )
+    }
+    return (
+      'resume not ready yet — orch has not replayed this step in the current run; ' +
+      'try again in a moment'
+    )
   }
-  if (sessionId === undefined) {
-    return 'resume unavailable — this step has no captured sessionId'
+  if (typeof ctx.runner.resumeCommand !== 'function') {
+    return `resume unavailable — runner "${ctx.runner.name}" does not support resume`
+  }
+  // R9 — typed Codex capture failure. Each variant gets a distinct refusal so
+  // the user can act: ambiguous (concurrent Codex sessions can't be told
+  // apart), empty (no rollout file ever appeared), error (orch's own bug).
+  if (ctx.sessionIdCaptureError !== undefined) {
+    switch (ctx.sessionIdCaptureError) {
+      case 'ambiguous':
+        return (
+          'resume unavailable — Codex thread_id was not captured for this step ' +
+          '(multiple Codex sessions started in the capture window; orch cannot tell which is yours)'
+        )
+      case 'empty':
+        return (
+          'resume unavailable — Codex thread_id was not captured for this step ' +
+          '(no rollout file appeared within the capture window; Codex may have failed to start)'
+        )
+      case 'error':
+        return (
+          'resume unavailable — orch hit an internal error capturing the Codex thread_id; ' +
+          'check the run logs'
+        )
+    }
+  }
+  if (ctx.sessionId === undefined) {
+    return 'resume unavailable — no captured sessionId'
   }
   return undefined
 }

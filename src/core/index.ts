@@ -34,6 +34,8 @@ export type { FailureSummary, SummarizeFailureInputs } from './failure-summary.t
 export { summarizeFailure } from './failure-summary.ts'
 export type { AwaitedTuple, SettledEntry } from './parallel.ts'
 export { ParallelError, parallel } from './parallel.ts'
+export type { ResumeRegistry } from './resume-registry.ts'
+export { createResumeRegistry } from './resume-registry.ts'
 export type { RunMode, RunModeInputs, RunModeResolution, RunModeSource } from './run-mode.ts'
 export {
   detectCi,

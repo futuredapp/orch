@@ -43,13 +43,18 @@ export function projectStepsView(args: ProjectArgs): StepsViewState {
     if (entry === undefined) continue
     const live = args.overlay.get(name)
     steps.push(
-      buildRow(name, entry.value, entry.mode, entry.transcriptPath, entry.sessionId, live, entry),
+      buildRow(name, entry.value, entry.mode, entry.transcriptPath, entry.sessionId, live, entry, {
+        runnerName: entry.runnerName,
+        sessionIdCaptureError: entry.sessionIdCaptureError,
+      }),
     )
   }
   for (const [name, live] of args.overlay) {
     if (stepNames.has(name)) continue
     stepNames.add(name)
-    steps.push(buildRow(name, undefined, live.mode, undefined, undefined, live, undefined))
+    steps.push(
+      buildRow(name, undefined, live.mode, undefined, undefined, live, undefined, undefined),
+    )
   }
 
   const header: RunHeader = {
@@ -87,6 +92,12 @@ function buildRow(
   sessionId: string | undefined,
   live: LiveOverlay | undefined,
   persisted: PersistedHints | undefined,
+  resumeHints:
+    | {
+        readonly runnerName?: string
+        readonly sessionIdCaptureError?: 'ambiguous' | 'empty' | 'error'
+      }
+    | undefined,
 ): StepRow {
   const status: StepStatus = live?.status ?? 'completed'
   const startedAt = live?.startedAt ?? persisted?.startedAt
@@ -108,6 +119,10 @@ function buildRow(
       mode: 'interactive',
       ...base,
       ...(sessionId !== undefined ? { sessionId } : {}),
+      ...(resumeHints?.runnerName !== undefined ? { runnerName: resumeHints.runnerName } : {}),
+      ...(resumeHints?.sessionIdCaptureError !== undefined
+        ? { sessionIdCaptureError: resumeHints.sessionIdCaptureError }
+        : {}),
     }
   }
   return {

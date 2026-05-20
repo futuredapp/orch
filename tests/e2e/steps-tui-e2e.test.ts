@@ -15,6 +15,8 @@ import { afterEach, describe, expect, it } from 'bun:test'
 import * as fs from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { createResumeRegistry } from '../../src/core/resume-registry.ts'
+import { stepName as toStepName } from '../../src/core/types.ts'
 import { createTmuxHost } from '../../src/hosts/index.ts'
 import { claude } from '../../src/runners/index.ts'
 import {
@@ -83,6 +85,12 @@ describe.skipIf(!canRun)('steps-tui e2e (real Claude + real tmux)', () => {
     const stateStore = new FileStateStore({ fs: bunFs, basePath: toPath(stateBase) })
     void new BunGitService({ processService })
 
+    const claudeRunner = claude({ bare: false })
+    const resumeRegistry = createResumeRegistry()
+    // Seed the registry the same way the workflow executor would for any
+    // interactive step the e2e flow drives through this host.
+    resumeRegistry.register(toStepName('plan'), claudeRunner)
+
     const host = await createTmuxHost({
       processService,
       clock: new BunClock(),
@@ -95,7 +103,7 @@ describe.skipIf(!canRun)('steps-tui e2e (real Claude + real tmux)', () => {
       fs: bunFs,
       basePath: toPath(stateBase),
       stateStore,
-      resumeRunner: claude({ bare: false }),
+      resumeRegistry,
     })
 
     // Give the steps-view daemon time to mount and project the seeded state.

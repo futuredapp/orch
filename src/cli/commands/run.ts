@@ -1,4 +1,5 @@
 import {
+  createResumeRegistry,
   ParallelError,
   SchemaValidationError,
   StepError,
@@ -122,6 +123,12 @@ export async function runCmd(
       clock: deps.clock,
     })
 
+    // Step-keyed runner registry — one live reference shared with the host
+    // (read on Enter in the right pane) and the workflow executor (written by
+    // `runStepOnce` at the start of each interactive agent step). Constructed
+    // here so writer and reader see the same Map.
+    const resumeRegistry = createResumeRegistry()
+
     let host: Awaited<ReturnType<HostFactory>>
     try {
       host = await hostFactory({
@@ -134,6 +141,7 @@ export async function runCmd(
         processService: instrumentedProcess,
         fs: deps.fsService,
         stateStore: deps.stateStore,
+        resumeRegistry,
       })
     } catch (err) {
       if (err instanceof HostCreationError) {
@@ -164,6 +172,7 @@ export async function runCmd(
       logger,
       promptService: deps.promptServiceFor(host.mode),
       interactivity: opts.interactivity,
+      resumeRegistry,
     }
 
     return await executeWithAttach({

@@ -178,12 +178,13 @@ export interface TmuxHostOptions {
    */
   readonly stateStore?: StateStore
   /**
-   * Phase 3 resume launcher. When provided, agent-interactive Enter calls
-   * `resumeRunner.resumeCommand(...)` and spawns the resume CLI in window 1.
-   * The CLI usually forwards the workflow's primary runner; tests omit to
-   * exercise the refusal path.
+   * Live runner registry held by reference. The right-pane controller calls
+   * `resumeRegistry.getRunnerForStep(step.name)` on every Enter press and
+   * spawns the runner's `resumeCommand(...)` in window 1. The CLI creates
+   * one instance and shares it with the workflow executor (which populates
+   * it during `runStepOnce`); tests omit it to exercise the refusal path.
    */
-  readonly resumeRunner?: import('../../runners/types.ts').Runner
+  readonly resumeRegistry?: import('../../core/resume-registry.ts').ResumeRegistry
   /**
    * Renderer used by the right-pane-controller to format autonomous-agent
    * transcripts on Enter-to-inspect. The CLI defaults this to Claude's
@@ -319,16 +320,26 @@ export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
   const stdoutForReset = opts.stdout ?? process.stdout
   const stdioCapture = maybeInstallStdioCapture(opts, stdoutForReset)
 
-  // Hard-exit backstop. Graceful exits route through `teardown()`, which
-  // also calls `restoreTerminalModes`; this catches the cases where a hard
-  // `process.exit()` (unhandled error, signal handler timeout) skips
-  // teardown entirely. Idempotent — if both fire, the second write is a
-  // no-op on a clean terminal. Registered only after the tmux session
-  // actually exists, so no other code path leaks the resets to stdout.
+  // Latched terminal-reset: on the graceful path `teardown()` hands the
+  // TTY back to the CLI; the CLI then writes the success/failure summary
+  // and exits. The host must not touch the TTY again on that path. The
+  // `process.on('exit', ...)` backstop is the crash-path fallback for
+  // hard exits where teardown never ran. Sharing a single latched closure
+  // between both call sites keeps the contract "host writes the reset at
+  // most once per instance" — which matters on Apple Terminal / iTerm2
+  // where `\x1b[?1049l` is a screen-buffer toggle, so a redundant write
+  // would switch INTO the alt-screen and bury the CLI's summary.
+  let terminalReset = false
+  const writeTerminalReset = (): void => {
+    if (terminalReset) return
+    terminalReset = true
+    restoreTerminalModes(stdoutForReset)
+  }
+
   const installExitHandler =
     opts.installExitHandler ?? ((handler: () => void) => process.on('exit', handler))
   installExitHandler(() => {
-    restoreTerminalModes(stdoutForReset)
+    writeTerminalReset()
   })
 
   // Phase 4: track quit-intent + attach exit for awaitForegroundShutdown. We
@@ -368,7 +379,7 @@ export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
       scratchSession,
       tuiOverlayPath: toPath(`${stateDir}/tui-overlay.ndjson`),
       ...(opts.logger !== undefined ? { logger: opts.logger } : {}),
-      ...(opts.resumeRunner !== undefined ? { resumeRunner: opts.resumeRunner } : {}),
+      ...(opts.resumeRegistry !== undefined ? { resumeRegistry: opts.resumeRegistry } : {}),
       ...(opts.transcriptRenderer !== undefined
         ? { transcriptRenderer: opts.transcriptRenderer }
         : {}),
@@ -391,6 +402,7 @@ export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
     skipAttach: opts.skipAttach === true,
     cwd: opts.cwd ?? process.cwd(),
     stdout: opts.stdout ?? process.stdout,
+    writeTerminalReset,
     tee: createPerStepTee(opts.logger),
     scratchSession,
     ...(opts.logger !== undefined ? { logger: opts.logger } : {}),
@@ -546,6 +558,14 @@ interface BuildHostDeps {
   readonly skipAttach: boolean
   readonly cwd: string
   readonly stdout: NodeJS.WritableStream
+  /**
+   * Latched terminal-reset closure shared with the hard-exit backstop in
+   * `createTmuxHost`. Called from `teardown()`; the latch guarantees the
+   * DEC private-mode resets are emitted at most once per host so the
+   * process-exit backstop can't re-touch the TTY after the CLI has
+   * written its summary.
+   */
+  readonly writeTerminalReset: () => void
   readonly logger?: SessionLogger
   /** Per-step formatted_output.* tee. Open/close on step lifecycle, write
    *  before pane-queue enqueue so the file mirrors per-step ordering even
@@ -928,8 +948,10 @@ function buildHost(deps: BuildHostDeps): Host {
     }
     // Restore DEC private modes the attach client may have left on the outer
     // TTY (mouse tracking, alt-screen, bracketed paste). Safe no-op when
-    // `stdout.isTTY` is false (pipes, tests).
-    restoreTerminalModes(deps.stdout)
+    // `stdout.isTTY` is false (pipes, tests). The latched closure ensures
+    // the process-exit backstop in `createTmuxHost` cannot re-emit and
+    // toggle Apple Terminal / iTerm2 back into the alt-screen.
+    deps.writeTerminalReset()
     void deps.logger?.append('lifecycle', { type: 'host-torndown', mode }).catch(() => {})
     orchLog(deps.logger, 'host-teardown', { mode })
   }

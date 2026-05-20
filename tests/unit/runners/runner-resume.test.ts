@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'bun:test'
 import { claude } from '../../../src/runners/claude/index.ts'
+import { createCaptureLock } from '../../../src/runners/codex/capture-lock.ts'
 import { codex } from '../../../src/runners/codex/index.ts'
 import { FakeRunner } from '../../../src/runners/fake/index.ts'
-import type { Runner, RunnerContext } from '../../../src/runners/types.ts'
+import type { CaptureSessionIdContext, Runner, RunnerContext } from '../../../src/runners/types.ts'
+import { FakeClock } from '../../../src/services/clock/fake-clock.ts'
 import { FakeFsService } from '../../../src/services/fs/fake-fs-service.ts'
 import { FakeProcessService } from '../../../src/services/process/fake-process-service.ts'
 import { path } from '../../../src/services/types.ts'
@@ -97,5 +99,50 @@ describe('FakeRunner.resumeCommand', () => {
 
     expect(cmd.argv[0]).toBe(':fake-resume:')
     expect(cmd.argv[cmd.argv.length - 1]).toBe('sid-1')
+  })
+})
+
+function captureCtxFor(): CaptureSessionIdContext {
+  return {
+    cwd: path('/tmp/work'),
+    fs: new FakeFsService(),
+    clock: new FakeClock(0),
+    lock: createCaptureLock(),
+  }
+}
+
+describe('FakeRunner.captureSessionId', () => {
+  it('is undefined until withCaptureSessionId is called (mirrors a runner with no capture primitive)', () => {
+    const runner = new FakeRunner(new FakeProcessService())
+
+    expect(runner.captureSessionId).toBeUndefined()
+  })
+
+  it('resolves snapshotReady and result with a synthetic sessionId after withCaptureSessionId() default', async () => {
+    const runner = new FakeRunner(new FakeProcessService()).withCaptureSessionId()
+    const captureFn = runner.captureSessionId
+    if (typeof captureFn !== 'function') {
+      throw new Error('captureSessionId did not become callable after withCaptureSessionId()')
+    }
+
+    const handle = captureFn(captureCtxFor())
+    await handle.snapshotReady
+    const outcome = await handle.result
+
+    expect(outcome).toMatchObject({ sessionId: expect.stringMatching(/^fake-session-/) })
+  })
+
+  it('uses a caller-supplied implementation when provided', async () => {
+    const runner = new FakeRunner(new FakeProcessService()).withCaptureSessionId(() => ({
+      snapshotReady: Promise.resolve(),
+      result: Promise.resolve({ error: 'ambiguous' as const }),
+    }))
+    const captureFn = runner.captureSessionId
+    if (typeof captureFn !== 'function') {
+      throw new Error('captureSessionId did not become callable after withCaptureSessionId(impl)')
+    }
+
+    const handle = captureFn(captureCtxFor())
+    expect(await handle.result).toEqual({ error: 'ambiguous' })
   })
 })

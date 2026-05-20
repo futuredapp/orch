@@ -56,6 +56,14 @@ export interface HostFactoryInputs {
    * window. The CLI threads in `deps.stateStore` for `run` / `resume`.
    */
   readonly stateStore?: import('../state/index.ts').StateStore
+  /**
+   * Live runner registry shared with the workflow executor. The CLI creates
+   * one instance and threads the same reference here AND into `WorkflowDeps`,
+   * so the right-pane controller can resolve a runner by step name on Enter
+   * while the executor populates the registry from `runStepOnce`. Optional —
+   * tests that exercise the "no runner wired" refusal path omit it.
+   */
+  readonly resumeRegistry?: import('../core/resume-registry.ts').ResumeRegistry
 }
 
 export type HostFactory = (inputs: HostFactoryInputs) => Promise<Host>
@@ -131,6 +139,7 @@ export function registerBuiltinHosts(registry: HostRegistry, deps: RegisterBuilt
       ...(args.logger !== undefined ? { logger: args.logger } : {}),
       ...(args.fs !== undefined ? { fs: args.fs } : {}),
       ...(args.stateStore !== undefined ? { stateStore: args.stateStore } : {}),
+      ...(args.resumeRegistry !== undefined ? { resumeRegistry: args.resumeRegistry } : {}),
     }),
   )
 }

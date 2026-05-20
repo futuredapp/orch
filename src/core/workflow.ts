@@ -2,7 +2,14 @@ import { randomUUID } from 'node:crypto'
 import type { Host } from '../hosts/index.ts'
 import type { JsonObject, SessionLogger, StepSpan } from '../observability/index.ts'
 import { envKeys as envKeyList, orchLog, redactReproduceCommand } from '../observability/index.ts'
+// Capture lock is a workflow-execution primitive (not a runner adapter), used by
+// `runInteractiveStep` to serialize concurrent `captureSessionId` calls that
+// share the same backing filesystem. Imported from the Codex folder for now
+// since Codex is the only consumer; promote to `src/services/` if a second
+// runner ever needs it.
+import { createCaptureLock } from '../runners/codex/capture-lock.ts'
 import { runRunner } from '../runners/index.ts'
+import type { CaptureError, CaptureLock } from '../runners/types.ts'
 import type { Clock, FsService, GitService, ProcessService } from '../services/index.ts'
 import { GitCommandError } from '../services/index.ts'
 import type { PromptService } from '../services/prompt/index.ts'
@@ -24,6 +31,7 @@ import {
   StepError,
 } from './errors.ts'
 import { currentCwd, currentParallelDepth, executionContext } from './execution-context.ts'
+import type { ResumeRegistry } from './resume-registry.ts'
 import { resolveView } from './view-registry.ts'
 
 // Re-export so existing imports from './workflow.ts' remain valid.
@@ -198,6 +206,15 @@ export interface WorkflowDeps {
    * RunState — resume reads whatever the resumer passes.
    */
   readonly interactivity: 'interactive' | 'noninteractive'
+  /**
+   * Live, step-keyed runner registry shared with the host stack. Populated by
+   * `runStepOnce` at the start of every interactive agent step (including
+   * cache-hit replays on `orch resume`). The right-pane controller derefs it
+   * on every Enter press to drive `runner.resumeCommand`. Optional —
+   * intentionally omitted in tests that exercise the legacy "no runner wired"
+   * refusal path.
+   */
+  readonly resumeRegistry?: ResumeRegistry
 }
 
 // ---------------------------------------------------------------------------
@@ -354,6 +371,7 @@ function shellQuote(s: string): string {
 
 async function runInteractiveStep(
   deps: WorkflowDeps,
+  captureLock: CaptureLock,
   config: AgentStepConfig,
   key: StepName,
   overrides: RunOverrides | undefined,
@@ -383,7 +401,7 @@ async function runInteractiveStep(
     })
   }
 
-  const sessionId = deps.generateSessionId?.() ?? randomUUID()
+  const orchSessionId = deps.generateSessionId?.() ?? randomUUID()
   const prompt = assemblePrompt(config.prompt, overrides)
   const startedAtStep = deps.clock.now()
   const cwd = currentCwd(deps.cwd)
@@ -404,16 +422,23 @@ async function runInteractiveStep(
 
   // If an onInteractive handler is provided, delegate to it (agent-native).
   // Otherwise, require a TTY and do foreground spawn.
+  // Runners that mint their own session id post-spawn (Codex's thread_id)
+  // declare `captureSessionId`; we kick capture off BEFORE spawning so the
+  // snapshot of `~/.codex/sessions/` is taken before Codex writes its rollout
+  // file. Runners that pre-set the id (Claude via --session-id) skip this
+  // branch and keep the orch-generated UUID end-to-end.
   let exitCode: number
   let durationMs: number
   let argv: readonly string[] = []
   let cmdEnv: Readonly<Record<string, string>> = {}
+  let persistedSessionId: string = orchSessionId
+  let sessionIdCaptureError: CaptureError | undefined
 
   if (deps.onInteractive) {
     const result = await deps.onInteractive({
       stepName: key,
       prompt,
-      sessionId,
+      sessionId: orchSessionId,
       runner: config.agent,
     })
     exitCode = result.exitCode
@@ -430,24 +455,56 @@ async function runInteractiveStep(
       throw new Error(`Interactive step "${key}" requires a TTY or an onInteractive handler`)
     }
 
+    const captureFn = config.agent.captureSessionId
+    // Start the capture window before spawning so the helper's initial
+    // snapshot of the sessions directory excludes the rollout file Codex is
+    // about to write. The ordering invariant lives in `await snapshotReady`.
+    const captureHandle =
+      typeof captureFn === 'function'
+        ? captureFn({
+            cwd,
+            fs: deps.fsService,
+            clock: deps.clock,
+            lock: captureLock,
+          })
+        : undefined
+
+    if (captureHandle !== undefined) {
+      await captureHandle.snapshotReady
+    }
+
     const cmd = await config.agent.buildCommand({
       cwd,
       env: {},
       prompt,
       extraArgs: [],
       mode: 'interactive',
-      sessionId,
+      sessionId: orchSessionId,
     })
     argv = cmd.argv
     cmdEnv = cmd.env
-    const result = await deps.host.runInteractive({
+    const interactivePromise = deps.host.runInteractive({
       argv: cmd.argv,
       env: cmd.env,
       cwd,
       stepName: key,
     })
+
+    const result = await interactivePromise
     exitCode = result.exitCode
     durationMs = result.durationMs
+
+    if (captureHandle !== undefined) {
+      // Capture either resolved earlier (rollout file landed within the poll
+      // window) or is now bounded by the helper's `timeoutMs`. Awaiting here
+      // never extends the user-visible interactive session.
+      const captureResult = await captureHandle.result
+      if ('sessionId' in captureResult) {
+        persistedSessionId = captureResult.sessionId
+      } else {
+        sessionIdCaptureError = captureResult.error
+      }
+    }
   }
 
   logInteractiveSpawn(stepSpan, {
@@ -455,7 +512,7 @@ async function runInteractiveStep(
     argv,
     cmdEnv,
     cwd,
-    sessionId,
+    sessionId: persistedSessionId,
     exitCode,
     durationMs,
   })
@@ -465,9 +522,16 @@ async function runInteractiveStep(
     throw new StepError(key, exitCode, `interactive session exited ${exitCode}`)
   }
 
-  const value: InteractiveResult = { exitCode, durationMs, sessionId }
+  // InteractiveResult.sessionId must always be a string (Zod requires UUID
+  // shape). On capture failure we surface the orch-generated UUID to keep the
+  // value schema honest — the top-level `entry.sessionId` is what drives
+  // resume and IS omitted via the conditional below.
+  const value: InteractiveResult = { exitCode, durationMs, sessionId: persistedSessionId }
 
   emitStepSuccess(deps.host, stepSpan, key, inParallel, durationMs)
+
+  const hasResumeSupport = typeof config.agent.resumeCommand === 'function'
+  const persistsSessionId = hasResumeSupport && sessionIdCaptureError === undefined
 
   const entry: StepEntry = {
     name: key,
@@ -479,12 +543,16 @@ async function runInteractiveStep(
     mode: 'interactive',
     transcriptEventCount: 0,
     transcriptTruncated: false,
-    // Phase 3: top-level sessionId so the right-pane controller doesn't have
-    // to grovel inside `value: InteractiveResult` to drive resume. Only set
-    // when the runner declares a resume primitive — runners without resume
-    // get no sessionId persisted (the right-pane controller's capability
-    // check at the call site is the single source of truth for "resumable").
-    ...(typeof config.agent.resumeCommand === 'function' ? { sessionId } : {}),
+    // Top-level sessionId for the right-pane controller's resume dispatch.
+    // Omitted when the runner has no resume primitive OR when post-spawn
+    // capture failed for a runner that mints its own id — the right-pane
+    // refusal text (U9) names the cause via `sessionIdCaptureError`.
+    ...(persistsSessionId ? { sessionId: persistedSessionId } : {}),
+    // History-resume: diagnostic label so a past step's refusal can name the
+    // runner (R8 vs R11 disambiguation in the right-pane controller). Lookup
+    // of the live runner still goes through `ResumeRegistry`, not this name.
+    runnerName: config.agent.name,
+    ...(sessionIdCaptureError !== undefined ? { sessionIdCaptureError } : {}),
   }
 
   await writeInteractiveSession(deps.logger, stepSpan, {
@@ -494,7 +562,7 @@ async function runInteractiveStep(
     argv,
     cmdEnv,
     cwd,
-    sessionId,
+    sessionId: persistedSessionId,
     exitCode,
     durationMs,
   })
@@ -991,10 +1059,20 @@ async function runCommitStep(
 
 async function runStepOnce(
   deps: WorkflowDeps,
+  captureLock: CaptureLock,
   s: Step,
   overrides: RunOverrides | undefined,
 ): Promise<unknown> {
   const key = stepName(overrides?.as ?? s.name)
+
+  // Register the runner for resume lookup before any short-circuit. Cache hits
+  // on `orch resume` populate the registry progressively so the right pane
+  // can resolve a past interactive step the moment the executor reaches it.
+  // Restricted to the interactive branch — autonomous steps are out of scope
+  // for the history-resume feature (origin F8).
+  if (s.config.kind === 'agent' && resolveMode(s.config, overrides) === 'interactive') {
+    deps.resumeRegistry?.register(key, s.config.agent)
+  }
 
   const state = await deps.stateStore.loadRun(deps.runId)
   const cached = state?.steps[key]
@@ -1029,7 +1107,7 @@ async function runStepOnce(
     case 'agent': {
       const mode = resolveMode(config, overrides)
       if (mode === 'interactive') {
-        result = await runInteractiveStep(deps, config, key, overrides, stepSpan)
+        result = await runInteractiveStep(deps, captureLock, config, key, overrides, stepSpan)
       } else {
         result = await runAgentStep(deps, config, key, overrides, stepSpan)
       }
@@ -1118,8 +1196,14 @@ async function runStepOnce(
 // ---------------------------------------------------------------------------
 
 async function executeWorkflowFn(fn: WorkflowFn, deps: WorkflowDeps): Promise<void> {
+  // One capture lock per workflow execution. Two concurrent Codex captures in
+  // the same workflow (parallel interactive steps in the same execution)
+  // serialize their capture windows through this lock; different executions
+  // — and different test fixtures — each get their own factory instance.
+  const captureLock = createCaptureLock()
+
   const run: RunFn = <T>(s: Step<T>, overrides?: RunOverrides): Promise<T> =>
-    runStepOnce(deps, s, overrides) as Promise<T>
+    runStepOnce(deps, captureLock, s, overrides) as Promise<T>
 
   const startedAt = deps.clock.now()
   try {

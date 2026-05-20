@@ -25,6 +25,19 @@ export type StepRow =
       readonly startedAt?: number
       readonly endedAt?: number
       readonly sessionId?: string
+      /**
+       * Diagnostic name of the runner that executed this step. Persisted on
+       * `StepEntry.runnerName` (interactive-only). Absent on pre-feature
+       * state files; the right-pane controller uses absence as the R8
+       * legacy-refusal signal.
+       */
+      readonly runnerName?: string
+      /**
+       * Captured failure mode when the runner's `captureSessionId` did not
+       * yield a usable id (Codex-only today). Right-pane controller uses
+       * the value to choose between R9's three refusal messages.
+       */
+      readonly sessionIdCaptureError?: 'ambiguous' | 'empty' | 'error'
     }
   | {
       readonly kind: 'command'

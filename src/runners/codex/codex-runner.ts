@@ -1,10 +1,20 @@
+import { homedir } from 'node:os'
 import { z } from 'zod'
 import type { FsService } from '../../services/fs/fs-service.ts'
 import { mergeEnv } from '../../services/index.ts'
 import type { ProcessService } from '../../services/process/process-service.ts'
 import { path } from '../../services/types.ts'
-import type { RunnerCommand, RunnerContext, RunnerEvent, TerminalEvent } from '../types.ts'
+import type {
+  CaptureHandle,
+  CaptureResult,
+  CaptureSessionIdContext,
+  RunnerCommand,
+  RunnerContext,
+  RunnerEvent,
+  TerminalEvent,
+} from '../types.ts'
 import { defineRunner } from '../types.ts'
+import { captureCodexThreadId, resolveCodexSessionsRoot } from './capture-thread-id.ts'
 import { toCodexTranscriptLines } from './format-event.ts'
 
 // Section order: schemas, types, denylist, parser, version preflight, factory.
@@ -353,5 +363,61 @@ export function codex(
       const argv = ['codex', 'resume', sessionId, ...(flags ?? []), ...ctx.extraArgs]
       return { argv, env: mergeEnv(process.env, { FORCE_COLOR: '3' }, ctx.env) }
     },
+
+    // Codex mints its own `thread_id` only after writing the first line of a
+    // rollout — there's no pre-set flag. We acquire the per-workflow capture
+    // lock first (so two concurrent Codex captures serialize), then snapshot
+    // `~/.codex/sessions/YYYY/MM/DD/` and poll for the new file. The lock
+    // releases as soon as the capture window completes (success, error, or
+    // timeout) so the interactive session itself is never blocked behind it.
+    captureSessionId(ctx: CaptureSessionIdContext): CaptureHandle {
+      return runCaptureSessionId(ctx)
+    },
   })
+}
+
+function runCaptureSessionId(ctx: CaptureSessionIdContext): CaptureHandle {
+  let resolveSnap: () => void = () => {}
+  let resolveResult: (value: CaptureResult) => void = () => {}
+  const snapshotReady = new Promise<void>((res) => {
+    resolveSnap = res
+  })
+  const result = new Promise<CaptureResult>((res) => {
+    resolveResult = res
+  })
+
+  void (async (): Promise<void> => {
+    let release: () => void = () => {}
+    try {
+      release = await ctx.lock.acquire()
+      const sessionsRoot = resolveCodexSessionsRoot({
+        envOverride: process.env.ORCH_CODEX_SESSIONS_ROOT,
+        homedir: homedir(),
+      })
+      const handle = captureCodexThreadId({
+        fs: ctx.fs,
+        clock: ctx.clock,
+        cwd: ctx.cwd,
+        sessionsRoot,
+        ...(ctx.signal !== undefined ? { signal: ctx.signal } : {}),
+        ...(ctx.timeoutMs !== undefined ? { timeoutMs: ctx.timeoutMs } : {}),
+      })
+      // Forward snapshotReady regardless of how the inner result settles so
+      // the workflow's `await snapshotReady` can never hang on a runner-side
+      // failure mode that resolves the result without resolving snapshot.
+      handle.snapshotReady.then(resolveSnap, resolveSnap)
+      const outcome = await handle.result
+      resolveResult(outcome)
+    } catch {
+      // Defensive: the helper is supposed to fold all errors into
+      // { error: 'error' }, but if the lock acquire or resolution path
+      // itself throws we still need to settle both promises.
+      resolveSnap()
+      resolveResult({ error: 'error' })
+    } finally {
+      release()
+    }
+  })()
+
+  return { snapshotReady, result }
 }

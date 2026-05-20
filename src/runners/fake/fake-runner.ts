@@ -1,6 +1,8 @@
 import type { ViewDefault } from '../../core/view.ts'
 import type { FakeProcessService } from '../../services/process/fake-process-service.ts'
 import type {
+  CaptureHandle,
+  CaptureSessionIdContext,
   InfoEvent,
   Runner,
   RunnerCommand,
@@ -33,6 +35,7 @@ export class FakeRunner implements Runner {
   #scriptsEnqueued = 0
   #invocations = 0
   #resumeArgvBuilder?: (sessionId: string) => readonly string[]
+  #captureImpl?: (ctx: CaptureSessionIdContext) => CaptureHandle
 
   constructor(processService: FakeProcessService) {
     this.#fps = processService
@@ -138,5 +141,33 @@ export class FakeRunner implements Runner {
       argv: builder(sessionId),
       env: ctx.env,
     })
+  }
+
+  /**
+   * Configure the implementation `captureSessionId` will return. Calling this
+   * enables the `captureSessionId` method (the slot is `undefined` until set,
+   * mirroring runners that lack a capture primitive — Claude today). Default
+   * implementation resolves `snapshotReady` and `result` immediately with
+   * `{ sessionId: 'fake-session-<nonce>' }` so cooperative `await snapshotReady
+   * → spawn → await result` flows don't hang in tests that don't care about
+   * timing.
+   */
+  withCaptureSessionId(impl?: (ctx: CaptureSessionIdContext) => CaptureHandle): this {
+    if (impl !== undefined) {
+      this.#captureImpl = impl
+      return this
+    }
+    const sessionId = `fake-session-${this.#nonce}`
+    this.#captureImpl = () => ({
+      snapshotReady: Promise.resolve(),
+      result: Promise.resolve({ sessionId }),
+    })
+    return this
+  }
+
+  get captureSessionId(): Runner['captureSessionId'] {
+    if (this.#captureImpl === undefined) return undefined
+    const impl = this.#captureImpl
+    return (ctx: CaptureSessionIdContext): CaptureHandle => impl(ctx)
   }
 }

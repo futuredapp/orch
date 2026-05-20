@@ -1,5 +1,7 @@
 import { z } from 'zod'
 import type { ViewDefault } from '../core/view.ts'
+import type { Clock } from '../services/clock/index.ts'
+import type { FsService } from '../services/fs/index.ts'
 import type { Path } from '../services/types.ts'
 
 // ---------------------------------------------------------------------------
@@ -127,6 +129,53 @@ export interface Runner {
    * truth.
    */
   resumeCommand?(ctx: RunnerContext, sessionId: string): RunnerCommand | Promise<RunnerCommand>
+  /**
+   * Capture the underlying CLI's own session identifier for use with `resumeCommand`.
+   * Optional — runners whose CLI accepts a pre-set session id (e.g. Claude's
+   * `--session-id`) leave this `undefined` and rely on the workflow-generated
+   * UUID. Runners that mint their own id post-spawn (Codex's `thread_id`) implement
+   * this method.
+   *
+   * Two-phase return: `snapshotReady` resolves once the helper has taken its
+   * initial baseline of the relevant filesystem state. Callers MUST await
+   * `snapshotReady` before spawning the CLI so the new rollout file lands
+   * outside the baseline. `result` resolves with either the captured
+   * `sessionId` or a typed error.
+   *
+   * Capability check: `typeof runner.captureSessionId === 'function'`.
+   */
+  captureSessionId?(ctx: CaptureSessionIdContext): CaptureHandle
+}
+
+// ---------------------------------------------------------------------------
+// captureSessionId — post-spawn session-id capture (Codex's thread_id today)
+// ---------------------------------------------------------------------------
+
+/** Result discriminant for capture failure. Mirrored verbatim in the
+ *  `StepEntry.sessionIdCaptureError` Zod enum. */
+export type CaptureError = 'ambiguous' | 'empty' | 'error'
+
+export type CaptureResult = { readonly sessionId: string } | { readonly error: CaptureError }
+
+/** Per-workflow mutex used to serialize concurrent capture windows that share
+ *  the same backing filesystem. See `src/runners/codex/capture-lock.ts`. */
+export interface CaptureLock {
+  acquire(): Promise<() => void>
+}
+
+export interface CaptureSessionIdContext {
+  readonly cwd: Path
+  readonly fs: FsService
+  readonly clock: Clock
+  readonly lock: CaptureLock
+  readonly signal?: AbortSignal
+  /** Total capture window. Adapter chooses a sensible default when omitted. */
+  readonly timeoutMs?: number
+}
+
+export interface CaptureHandle {
+  readonly snapshotReady: Promise<void>
+  readonly result: Promise<CaptureResult>
 }
 
 // ---------------------------------------------------------------------------
@@ -169,6 +218,16 @@ const RunnerAdapterSchema = z.object({
   // any runner that declares resumeCommand at validation time.
   resumeCommand: z
     .custom<NonNullable<Runner['resumeCommand']>>((v) => typeof v === 'function', {
+      message: 'expected function',
+    })
+    .optional(),
+  // Optional capture primitive. Parallels `resumeCommand`: runners that mint
+  // their session id post-spawn declare it; runners that pre-set the id leave
+  // it `undefined`. The workflow executor's capability check at the call site
+  // (`typeof config.agent.captureSessionId === 'function'`) is the single
+  // source of truth.
+  captureSessionId: z
+    .custom<NonNullable<Runner['captureSessionId']>>((v) => typeof v === 'function', {
       message: 'expected function',
     })
     .optional(),
