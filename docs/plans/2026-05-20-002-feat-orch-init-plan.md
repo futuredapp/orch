@@ -1,6 +1,6 @@
 ---
 date: 2026-05-20
-status: active
+status: completed
 type: feat
 topic: orch-init
 origin: docs/brainstorms/2026-05-20-feat-orch-init-requirements.md

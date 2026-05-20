@@ -119,8 +119,18 @@ export class FakeFsService implements FsService {
   }
 
   async remove(p: Path): Promise<void> {
+    // Match BunFsService.remove's `recursive: true, force: true` contract:
+    // remove the target plus every descendant. The trailing slash in the
+    // prefix prevents `/a` from matching `/aaa/x.txt`.
     this.#files.delete(p)
     this.#dirs.delete(p)
+    const prefix = `${p}/`
+    for (const filePath of this.#files.keys()) {
+      if (filePath.startsWith(prefix)) this.#files.delete(filePath)
+    }
+    for (const dirPath of this.#dirs) {
+      if (dirPath.startsWith(prefix)) this.#dirs.delete(dirPath)
+    }
   }
 
   async tempDir(prefix: string): Promise<Path> {

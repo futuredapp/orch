@@ -45,24 +45,27 @@ Everything else — parallel, commit, custom steps, escalation, dry-run — is b
 
 ## 3. Project layout
 
-A typical workflow project looks like this:
+`orch init` scaffolds everything orch-related under a single `.orch/`
+directory:
 
 ```
 my-project/
-├── orchestration.ts      # your workflow function
-├── steps.ts              # reusable step definitions
-├── runners/              # (optional) custom agent wrappers
-│   └── aider.ts
-└── .orchestrator/        # created by orch; git-ignore this
-    └── runs/
+├── .gitignore            # `.orch/state/` appended by `orch init`
+└── .orch/
+    ├── orch.config.ts    # workflow manifest (name → file)
+    ├── steps.ts          # reusable step definitions
+    ├── workflows/
+    │   └── hello.ts      # the hello-world workflow scaffolded by `orch init`
+    └── state/            # per-run state — gitignored
         └── <run-id>/
-            ├── state.json      # memoized results, keyed by step name
-            ├── steps/
-            │   └── <step>.jsonl    # per-step event log
-            └── transcripts/
+            ├── state.json
+            └── logs/
+                └── agents/<step>/events.ndjson
 ```
 
-You run workflows with the `orch` CLI from the project root.
+`orch.config.ts`, `steps.ts`, and everything under `workflows/` are
+committed to your repo. `.orch/state/` is gitignored. You run workflows
+with the `orch` CLI from the project root (where `.orch/` lives).
 
 ---
 
@@ -771,14 +774,20 @@ In v1, there's no npm-package registry for runners. You drop them in `./runners/
 ## 15. CLI cheat sheet
 
 ```bash
-orch run <file.ts>             # start a new run
+orch init                      # scaffold .orch/ into the current project
+orch new <name>                # add a new workflow file under .orch/workflows/
+orch run <name>                # start a new run of a workflow registered in orch.config.ts
 orch resume <run-id>           # resume the named run from where it crashed
 orch runs                      # list all runs with status
 orch status <run-id>           # show the current/final state of a run
-orch dry-run <file.ts>         # print the linear skeleton without executing
+orch dry-run <name>            # preflight check + first-step peek (no execution)
+orch logs <runId>              # stream the per-step transcript for a run
 ```
 
-There's no `orch init` — you just create `orchestration.ts` and `steps.ts` by hand. There's no `orch login` — each runner uses its own auth (`claude auth`, `codex login`).
+`orch init` is the bootstrap: it scaffolds `.orch/` with a hello-world
+workflow, drops `.orch/state/` into `.gitignore`, and is safe to re-run
+(it prompts before touching an existing `.orch/`). There's no `orch
+login` — each runner uses its own auth (`claude auth`, `codex login`).
 
 ---
 

@@ -20,7 +20,9 @@ import {
 import { toClaudeTranscriptLines } from '../runners/index.ts'
 import type { ProcessService } from '../services/process/index.ts'
 import { dryRunCmd } from './commands/dry-run.ts'
+import { initCmd } from './commands/init.ts'
 import { logsCmd } from './commands/logs.ts'
+import { newCmd } from './commands/new.ts'
 import { resumeCmd } from './commands/resume.ts'
 import { runCmd } from './commands/run.ts'
 import { runsCmd } from './commands/runs.ts'
@@ -110,6 +112,8 @@ export type { HostFactory, HostFactoryInputs as HostFactoryArgs }
 const HELP = `Usage: orch <command> [options]
 
 Commands:
+  init                     Scaffold a fresh .orch/ in this project
+  new <name>               Create a new workflow file under .orch/workflows/
   run <name> [prompt]      Run a workflow (optional inline prompt)
   resume [id] [prompt]     Resume a run; optional prompt overrides persisted args
   runs                     List recent runs
@@ -368,7 +372,15 @@ const COMMANDS: Record<
   status: commandWithoutHost(statusCmd),
   logs: commandWithoutHost(logsCmd),
   'dry-run': commandWithoutHost(dryRunCmd),
+  init: commandWithoutHost(initCmd),
+  new: commandWithoutHost(newCmd),
 }
+
+// Commands that do not read `orch.config.ts`, do not pick a run mode, and
+// must not print the `[orch] mode=...` banner. `init` is the bootstrap step
+// (no config yet); `new` only mutates files under `.orch/` and does not
+// dispatch any workflow.
+const CONFIG_FREE_COMMANDS: ReadonlySet<string> = new Set(['init', 'new'])
 
 type NoHostCmd = (
   deps: ReturnType<typeof createDeps>,
@@ -420,6 +432,31 @@ async function main(): Promise<never> {
   }
 
   const deps = createDeps(process.cwd(), { debug: parsed.debug })
+
+  // Config-free commands (`init`, `new`) bootstrap or mutate `.orch/`
+  // contents and must not depend on `orch.config.ts`, run-mode resolution,
+  // or the `[orch] mode=...` banner. They are dispatched with a minimal
+  // `CliOpts` and a placeholder `HostFactory` that throws if a future bug
+  // makes them reach for it.
+  if (CONFIG_FREE_COMMANDS.has(parsed.command)) {
+    const opts: CliOpts = {
+      mode: undefined,
+      format: parsed.format,
+      noAttach: false,
+      debug: parsed.debug,
+      interactivity: parsed.interactivity,
+      latest: false,
+      step: undefined,
+      follow: false,
+    }
+    const forbiddenHostFactory: HostFactory = async () => {
+      throw new Error(
+        `Internal error: ${parsed.command} must not use HostFactory (config-free command).`,
+      )
+    }
+    const code = await handler(deps, parsed.positional, parsed.args, opts, forbiddenHostFactory)
+    process.exit(code)
+  }
 
   let resolution: RunModeResolution
   try {

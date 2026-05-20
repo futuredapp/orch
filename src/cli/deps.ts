@@ -8,8 +8,12 @@ import {
   BunProcessService,
   path,
 } from '../services/index.ts'
-import type { PromptService } from '../services/prompt/index.ts'
-import { InkPromptService, ReadlinePromptService } from '../services/prompt/index.ts'
+import type { ConfirmService, PromptService } from '../services/prompt/index.ts'
+import {
+  InkPromptService,
+  ReadlineConfirmService,
+  ReadlinePromptService,
+} from '../services/prompt/index.ts'
 import type { Path } from '../services/types.ts'
 import type { RunId, RunRegistry, StateStore } from '../state/index.ts'
 import { FileRunRegistry, FileStateStore } from '../state/index.ts'
@@ -43,6 +47,21 @@ export interface CliDeps {
    * (spawn-Ink-child via `host.runInteractive`); single-pane stays deferred.
    */
   readonly promptServiceFor: (mode: RunMode) => PromptService
+  /**
+   * Yes/no confirmation port for config-free commands (`orch init`,
+   * `orch new`). Separate from `promptService` because the workflow-step
+   * prompt machinery (StepName, Host, fields/buttons) is overkill for a
+   * binary opt-in. See `src/services/prompt/confirm-service.ts`.
+   */
+  readonly confirmService: ConfirmService
+  /**
+   * Whether stdin is attached to a TTY (`process.stdin.isTTY === true`).
+   * Exposed on `CliDeps` so the F2 re-init guard (R9) can refuse to prompt
+   * upfront — before `ReadlineConfirmService` would write anything to
+   * stderr — and so tests can drive both branches without process-level
+   * mocking.
+   */
+  readonly isStdinTty: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -83,6 +102,10 @@ export function createDeps(cwd: string, opts: CreateDepsOptions = {}): CliDeps {
     sessionLoggerFor: (runId: RunId) =>
       createFileSessionLogger({ fs, clock, runId, basePath, debug }),
     promptServiceFor: makePromptServiceFactory(fs),
+    confirmService: new ReadlineConfirmService(),
+    // `process.stdin.isTTY` is `undefined` when stdin is piped or detached,
+    // so the explicit `=== true` is required.
+    isStdinTty: process.stdin.isTTY === true,
   }
 }
 

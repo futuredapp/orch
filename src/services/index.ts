@@ -21,15 +21,25 @@ export {
   ProcessSpawnError,
 } from './process/index.ts'
 export type {
+  ConfirmService,
   InkPromptServiceDeps,
   PromptCtx,
   PromptField,
   PromptResult,
   PromptService,
   PromptSpec,
+  ReadlineConfirmServiceDeps,
   ReadlinePromptServiceDeps,
 } from './prompt/index.ts'
-export { FakePromptService, InkPromptService, ReadlinePromptService } from './prompt/index.ts'
+export {
+  confirmSuffix,
+  FakeConfirmService,
+  FakePromptService,
+  InkPromptService,
+  parseYesNo,
+  ReadlineConfirmService,
+  ReadlinePromptService,
+} from './prompt/index.ts'
 export type {
   AttachSessionOptions,
   CapturePaneOptions,

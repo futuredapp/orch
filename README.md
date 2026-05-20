@@ -21,6 +21,30 @@ bun install
 bun run check     # lint + typecheck + tests
 ```
 
+### Install in another project
+
+`orch` is consumed in host projects via `bun link`:
+
+```bash
+# One-time, from this repo:
+cd claude-orchestration
+bun link
+
+# Then in any host project:
+cd ~/your-project
+bun link orch
+orch init                 # scaffolds .orch/ with a hello-world workflow
+orch run hello            # runs the scaffolded workflow
+
+# Add more workflows on demand:
+orch new my-feature
+```
+
+`orch init` writes `.orch/orch.config.ts`, `.orch/steps.ts`,
+`.orch/workflows/hello.ts`, and an empty `.orch/state/` directory, and
+appends `.orch/state/` to `.gitignore`. Re-running `orch init` over an
+existing `.orch/` prompts before touching anything.
+
 Individual gates:
 
 ```bash
