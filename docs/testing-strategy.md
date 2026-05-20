@@ -2,7 +2,7 @@
 
 This is the canonical reference for **where a test belongs** and **how to write it** for the two-pane host (`src/hosts/two-pane/**`). Outside this surface, follow the three-layer model in [CLAUDE.md](../CLAUDE.md#how-to-write-tests) plus the [`testing-strategy` skill](../.claude/skills/testing-strategy/SKILL.md).
 
-## The four tiers
+## The five tiers
 
 | Tier | Bug class it catches | Where the test lives | Boots tmux? | Boots real CLI? |
 | --- | --- | --- | --- | --- |
@@ -10,8 +10,9 @@ This is the canonical reference for **where a test belongs** and **how to write 
 | **Tier 2** | Ink projection — state→view, key→intent, footer indicators, banner rendering. | `tests/unit/hosts/two-pane/steps-view/*.test.tsx` | No | No |
 | **Tier 3** | `RealTmuxService` argv contract — tmux flags, escape rules, env passthrough. | `tests/unit/services/tmux/*.test.ts` (out of two-pane audit scope) | No (`FakeProcessService`) | No |
 | **Tier 4** | Real-CLI end-to-end on real tmux — exactly Tier 1's body with a real `ClaudeRunner` / `CodexRunner` in the agent slot. | `tests/e2e/tier-4/*.real.e2e.test.ts` | Yes | Yes (env-gated) |
+| **Tier 5** | CLI signal handlers (`SIGINT` / `SIGTERM` / `SIGHUP` to the orch process), attached-TTY input (Ctrl-C / `q` typed inside tmux), external tmux verbs (`kill-pane`, `kill-session`, `kill-server`), stdin-EOF — bug classes Tier 1 cannot reach because the in-process `TmuxHost` mount never goes through `src/cli/main.ts`. | `tests/integration/lifecycle/*.real.test.ts` | Yes | Fake variant: no. Codex / Claude variant: yes (env-gated). |
 
-Each tier has a unique responsibility. The "mocked + real" pair across Tier 1 and Tier 4 is the **only** sanctioned duplication: Tier 1 catches the bug class deterministically with a FakeRunner; Tier 4 proves the same body still works against the real CLI.
+Each tier has a unique responsibility. The "mocked + real" pair across Tier 1 and Tier 4 is the **only** sanctioned duplication: Tier 1 catches the bug class deterministically with a FakeRunner; Tier 4 proves the same body still works against the real CLI. Tier 5 is additive — Tier 1 stays the in-process default, and Tier 5 is reserved for the bug class Tier 1's harness mechanically cannot reach.
 
 ## The triage rule
 
@@ -25,6 +26,7 @@ This is the question to ask before writing a new test, and the question the audi
 - **Add a new keymap entry or change the footer copy** → Tier 2.
 - **Add new flags to a tmux argv** → Tier 3.
 - **Validate a new Claude/Codex CLI scenario end-to-end** → Tier 4.
+- **Reproduce a lifecycle bug that requires real CLI signal handlers, attached-TTY input, or external `tmux kill-*` verbs** → Tier 5.
 - **Refactor a Service port** → unit test on the port itself; no host tier change.
 
 ## Writing a Tier 1 test — 5-line skeleton
@@ -71,6 +73,30 @@ it('renders <visible thing> for state <X>', () => {
 
 For keypress-driven assertions, use `ink-testing-library`'s `render()` + `stdin.write(...)` (see `tests/unit/hosts/two-pane/steps-view/key-intent-mapping.test.tsx`).
 
+## Writing a Tier 5 test — 5-line skeleton
+
+```ts
+import {
+  assertOrchExits, cleanly, holdUntilReleased, launchOrchWorkflow,
+  pressKeyInPane, userAction, withinMs,
+} from '../../helpers/behavioral-dsl/index.ts'
+import { canRunRealTmux } from '../../helpers/real-tmux/index.ts'
+
+describe.skipIf(!canRunRealTmux())('Tier 5 — <bug class>', () => {
+  it('<the lifecycle invariant the test pins>', async () => {
+    await launchOrchWorkflow('two-step-linear', {
+      script: { plan: holdUntilReleased() },
+      bringToState: { kind: 'mid-step', name: 'plan' },
+      mode: 'two-pane',
+    })
+    await userAction(pressKeyInPane('left', 'q'))
+    await assertOrchExits(withinMs(5_000), cleanly())
+  }, 30_000)
+})
+```
+
+The DSL barrel (`tests/helpers/behavioral-dsl/index.ts`) is the only file Tier 5 cells import from for harness functionality — `./internal/*` is off-limits to cells by convention. Read [`tests/helpers/behavioral-dsl/README.md`](../tests/helpers/behavioral-dsl/README.md) for the full DSL surface and the `expectInvariantViolation` / `__snapshots__/` convention used by the §2.1 acceptance cells.
+
 ## Promoting Tier 1 to Tier 4
 
 ```diff
@@ -86,6 +112,7 @@ Everything else — fixture boot, `mountTmuxHost`, `runWorkflow`, `right.waitFor
 
 - **Tier 1** auto-skips when `tmux` is not on PATH (existing `Bun.which('tmux')` convention).
 - **Tier 4** auto-skips unless `tmux` is on PATH **AND** the named CLI binary is on PATH **AND** `RUN_REAL_TMUX_E2E=1`. Developer-opt-in until a future PR adds a scheduled CI job.
+- **Tier 5** fake variants auto-skip on `!canRunRealTmux()` (same as Tier 1). Real-CLI variants additionally require `RUN_REAL_TMUX_E2E=1` and the named CLI on PATH (same as Tier 4). Tier 5 cells are NOT part of `bun run check` — they run via `bun test tests/integration/lifecycle/`.
 
 ## Harness API surface
 
@@ -100,5 +127,6 @@ See [`tests/helpers/real-tmux/README.md`](../tests/helpers/real-tmux/README.md) 
 ## Where the boundary is
 
 - Anything Tier 1 cannot prove with a FakeRunner (real interactive PTY, real network, real argv on disk) belongs in Tier 4.
+- Anything Tier 1's in-process `TmuxHost` mount cannot exercise (CLI signal handlers in `execute-with-attach.ts:64-78`, attached-TTY keypresses, external `tmux kill-*` verbs, terminal hangup) belongs in Tier 5.
 - Anything Tier 2 cannot prove with `<StepsView>` alone (controller-side state, swap ordering) belongs in Tier 1.
-- Anything Tier 3 covers (argv flags, env passthrough, escape rules) **never** belongs in Tier 1 or 4 — the tmux contract is its own surface.
+- Anything Tier 3 covers (argv flags, env passthrough, escape rules) **never** belongs in Tier 1, 4, or 5 — the tmux contract is its own surface.
