@@ -1,7 +1,4 @@
 {
-  "enabledPlugins": {
-    "compound-engineering@every-marketplace": true
-  },
   "hooks": {
     "PostToolUse": [
       {
@@ -25,5 +22,9 @@
         ]
       }
     ]
+  },
+  "enabledPlugins": {
+    "compound-engineering@every-marketplace": true,
+    "skill-creator@claude-plugins-official": true
   }
 }
