@@ -26,14 +26,20 @@ import { summarizeFailure } from '../../core/failure-summary.ts'
 import type { RunMode } from '../../core/run-mode.ts'
 import { metaStepName, type RunId, type StepName } from '../../core/types.ts'
 import type { StepLifecycleEvent } from '../../core/workflow.ts'
-import { orchLog, type SessionLogger } from '../../observability/index.ts'
+import { type JsonObject, orchLog, type SessionLogger } from '../../observability/index.ts'
 import type { RunnerEvent, TranscriptLine } from '../../runners/index.ts'
 import type { Clock } from '../../services/clock/index.ts'
 import type { FsService } from '../../services/fs/index.ts'
 import { BunFsService } from '../../services/fs/index.ts'
 import type { ProcessService } from '../../services/process/index.ts'
 import type { PaneId, SocketName, TmuxService } from '../../services/tmux/index.ts'
-import { initOrchSession, paneId, RealTmuxService, socketName } from '../../services/tmux/index.ts'
+import {
+  initOrchSession,
+  paneId,
+  RealTmuxService,
+  socketName,
+  TmuxCommandError,
+} from '../../services/tmux/index.ts'
 import type { Path } from '../../services/types.ts'
 import { path as toPath } from '../../services/types.ts'
 import type { StateStore } from '../../state/index.ts'
@@ -46,6 +52,7 @@ import type {
   PaneAttachment,
   PaneRole,
 } from '../host.ts'
+import { HostUnavailableError } from '../host.ts'
 import { createPerStepTee, type PerStepTee, teePathFor } from '../plain/per-step-tee.ts'
 import { renderTranscriptLine } from '../plain/render-line.ts'
 import { assertNoNestedTmux, createAttachForeground } from './attach-foreground.ts'
@@ -96,6 +103,37 @@ const ROLLUP_STEP_NAME = metaStepName('_rollup')
 //      for that "stuck cancel" bug.
 const buildPaneDiedCommand = (socket: SocketName): string =>
   `run-shell "tmux -L ${socket} wait-for -S pane-exit-#{hook_pane}"`
+
+// tmux's `(No such file or directory)` / `no server running` / `session not
+// found` / `can't find session` stderr patterns all share one meaning: the
+// tmux session (or the whole server) the host was talking to is gone, and
+// any subsequent pane-allocating command will fail the same way. The user's
+// real-world repro hit this after detaching: the attach client exited, the
+// run kept going in the background, the next interactive step issued
+// `tmux split-window` against a deleted socket, and the unwrapped
+// `TmuxCommandError` crashed Bun with a stack trace. Recognising the pattern
+// lets the host translate it into a typed `HostUnavailableError` the CLI
+// can render as a clean failure summary.
+const TMUX_SESSION_LOST_PATTERN =
+  /no server running|session not found|can't find session|no such file or directory/i
+
+const isSessionLostError = (err: unknown): err is TmuxCommandError =>
+  err instanceof TmuxCommandError && TMUX_SESSION_LOST_PATTERN.test(err.stderr)
+
+const errorLifecycleFields = (err: unknown): JsonObject => {
+  const base: Record<string, unknown> = {
+    error: String(err),
+  }
+  if (err instanceof Error) {
+    base.errorName = err.name
+    base.errorMessage = err.message
+  }
+  if (err instanceof TmuxCommandError) {
+    base.tmuxExitCode = err.exitCode
+    base.tmuxStderr = err.stderr
+  }
+  return base
+}
 
 export interface TmuxHostOptions {
   readonly tmux?: TmuxService
@@ -622,6 +660,39 @@ function buildHost(deps: BuildHostDeps): Host {
   let teardownStarted = false
   const rollup: RollupAggregator = createRollupAggregator()
 
+  const appendLifecycle = async (record: JsonObject): Promise<void> => {
+    await deps.logger?.append('lifecycle', record).catch(() => {})
+  }
+
+  const appendLifecycleSoon = (record: JsonObject): void => {
+    void appendLifecycle(record)
+  }
+
+  const tmuxReachability = async (): Promise<JsonObject> => {
+    try {
+      const serverReachable = await deps.tmux.hasServer({ socket: deps.socket })
+      const sessionReachable = serverReachable
+        ? await deps.tmux.hasSession({ socket: deps.socket, session: SESSION })
+        : false
+      const scratchSessionReachable = serverReachable
+        ? await deps.tmux.hasSession({
+            socket: deps.socket,
+            session: deps.scratchSession.session,
+          })
+        : false
+      return {
+        tmuxServerReachable: serverReachable,
+        tmuxSessionReachable: sessionReachable,
+        tmuxScratchSessionReachable: scratchSessionReachable,
+      }
+    } catch (err) {
+      return {
+        tmuxReachabilityProbeFailed: true,
+        ...errorLifecycleFields(err),
+      }
+    }
+  }
+
   const handleSendError = (err: unknown): void => {
     if (torndown) return
     deps.stderr.write(`[orch tmux] ${String(err)}\n`)
@@ -823,6 +894,15 @@ function buildHost(deps: BuildHostDeps): Host {
   const runInteractive = async (spawn: InteractiveSpawn): Promise<InteractiveResult> => {
     const startedAt = deps.clock.now()
     const paneRole = spawn.pane ?? 'right'
+    appendLifecycleSoon({
+      type: 'interactive-start',
+      stepName: spawn.stepName,
+      pane: paneRole,
+      socket: deps.socket,
+      argv0: spawn.argv[0] ?? null,
+      argc: spawn.argv.length,
+      cwd: spawn.cwd,
+    })
 
     // Left-pane spawns (the steps-view daemon) stay on the legacy respawnPane
     // path: the left pane is owned by the steps-view child, never by the
@@ -832,6 +912,11 @@ function buildHost(deps: BuildHostDeps): Host {
     // the hidden pane on unregister, which is wrong for the daemon path.
     if (paneRole === 'left') {
       const targetPane = deps.leftPaneId
+      appendLifecycleSoon({
+        type: 'interactive-left-respawn-start',
+        stepName: spawn.stepName,
+        paneId: targetPane,
+      })
       await deps.queue.enqueue(targetPane, () =>
         deps.tmux.respawnPane({
           socket: deps.socket,
@@ -842,14 +927,46 @@ function buildHost(deps: BuildHostDeps): Host {
           cwd: spawn.cwd,
         }),
       )
+      appendLifecycleSoon({
+        type: 'interactive-left-respawn-complete',
+        stepName: spawn.stepName,
+        paneId: targetPane,
+      })
+      appendLifecycleSoon({
+        type: 'interactive-wait-start',
+        stepName: spawn.stepName,
+        pane: paneRole,
+        paneId: targetPane,
+        channel: `pane-exit-${targetPane}`,
+      })
       try {
         await deps.tmux.waitFor({
           socket: deps.socket,
           channel: `pane-exit-${targetPane}`,
         })
-      } catch {
+        appendLifecycleSoon({
+          type: 'interactive-wait-complete',
+          stepName: spawn.stepName,
+          pane: paneRole,
+          paneId: targetPane,
+          channel: `pane-exit-${targetPane}`,
+          durationMs: deps.clock.now() - startedAt,
+          exitCodeKnown: false,
+        })
+      } catch (err) {
         /* left-pane wait failure is non-fatal — the daemon caller handles
            pane takeover on its own. */
+        await appendLifecycle({
+          type: 'interactive-wait-failed',
+          stepName: spawn.stepName,
+          pane: paneRole,
+          paneId: targetPane,
+          channel: `pane-exit-${targetPane}`,
+          durationMs: deps.clock.now() - startedAt,
+          isSessionLost: isSessionLostError(err),
+          ...errorLifecycleFields(err),
+          ...(isSessionLostError(err) ? await tmuxReachability() : {}),
+        })
       }
       return { exitCode: 0, durationMs: deps.clock.now() - startedAt }
     }
@@ -870,14 +987,53 @@ function buildHost(deps: BuildHostDeps): Host {
       )
     }
     const sourceKey: SourceKey = { type: 'interactive', stepName: spawn.stepName }
-    // registerSource spawns a hidden pane in the scratch session with the
-    // runner argv + env + cwd; the pane is a real PTY (isTTY === true) so
-    // arrow keys / Ctrl-C / resize reflow / color all work natively.
-    await controller.registerSource(sourceKey, {
-      kind: 'pty',
-      argv: spawn.argv,
-      env: spawn.env,
-      cwd: spawn.cwd,
+    const sourceKeyString = `interactive:${spawn.stepName}`
+    try {
+      appendLifecycleSoon({
+        type: 'interactive-register-start',
+        stepName: spawn.stepName,
+        sourceKey: sourceKeyString,
+        argv0: spawn.argv[0] ?? null,
+        argc: spawn.argv.length,
+        cwd: spawn.cwd,
+      })
+      // registerSource spawns a hidden pane in the scratch session with the
+      // runner argv + env + cwd; the pane is a real PTY (isTTY === true) so
+      // arrow keys / Ctrl-C / resize reflow / color all work natively.
+      await controller.registerSource(sourceKey, {
+        kind: 'pty',
+        argv: spawn.argv,
+        env: spawn.env,
+        cwd: spawn.cwd,
+      })
+    } catch (err) {
+      await appendLifecycle({
+        type: 'interactive-register-failed',
+        stepName: spawn.stepName,
+        sourceKey: sourceKeyString,
+        isSessionLost: isSessionLostError(err),
+        ...errorLifecycleFields(err),
+        ...(isSessionLostError(err) ? await tmuxReachability() : {}),
+      })
+      // The user-reported "[server exited]" crash hits here when the tmux
+      // session died externally between steps: `splitPane` against the dead
+      // socket throws `TmuxCommandError`, which would otherwise escape
+      // `runInteractive` un-wrapped, propagate through the workflow as a
+      // `crashed` failure, and crash Bun because `mapRunError` does not
+      // recognise the error type. Translate it into the typed
+      // `HostUnavailableError` so the CLI renders a clean failure summary.
+      if (isSessionLostError(err)) {
+        throw new HostUnavailableError(
+          `tmux session is no longer reachable — cannot start interactive step ${spawn.stepName}`,
+          err,
+        )
+      }
+      throw err
+    }
+    appendLifecycleSoon({
+      type: 'interactive-register-complete',
+      stepName: spawn.stepName,
+      sourceKey: sourceKeyString,
     })
     const hiddenPaneId = controller.getPaneId(sourceKey)
     if (hiddenPaneId === undefined) {
@@ -887,9 +1043,34 @@ function buildHost(deps: BuildHostDeps): Host {
         `tmux-host.runInteractive: controller.getPaneId returned undefined immediately after registerSource for ${spawn.stepName}`,
       )
     }
-    // Swap visible ↔ hidden so the interactive pane is what the user sees.
-    await controller.showSource(sourceKey)
+    appendLifecycleSoon({
+      type: 'interactive-hidden-pane-ready',
+      stepName: spawn.stepName,
+      sourceKey: sourceKeyString,
+      paneId: hiddenPaneId,
+    })
     try {
+      // Swap visible ↔ hidden so the interactive pane is what the user sees.
+      appendLifecycleSoon({
+        type: 'interactive-show-start',
+        stepName: spawn.stepName,
+        sourceKey: sourceKeyString,
+        paneId: hiddenPaneId,
+      })
+      await controller.showSource(sourceKey)
+      appendLifecycleSoon({
+        type: 'interactive-show-complete',
+        stepName: spawn.stepName,
+        sourceKey: sourceKeyString,
+        paneId: hiddenPaneId,
+      })
+      appendLifecycleSoon({
+        type: 'interactive-wait-start',
+        stepName: spawn.stepName,
+        pane: paneRole,
+        paneId: hiddenPaneId,
+        channel: `pane-exit-${hiddenPaneId}`,
+      })
       // Wait on the HIDDEN pane id's pane-died hook. The global hook
       // installed by `initOrchSession` fires for any pane death on the
       // server (cross-session OK), so `pane-exit-<hiddenPaneId>` resolves
@@ -899,13 +1080,71 @@ function buildHost(deps: BuildHostDeps): Host {
         socket: deps.socket,
         channel: `pane-exit-${hiddenPaneId}`,
       })
+      appendLifecycleSoon({
+        type: 'interactive-wait-complete',
+        stepName: spawn.stepName,
+        pane: paneRole,
+        paneId: hiddenPaneId,
+        channel: `pane-exit-${hiddenPaneId}`,
+        durationMs: deps.clock.now() - startedAt,
+        exitCodeKnown: false,
+      })
+    } catch (err) {
+      await appendLifecycle({
+        type: 'interactive-wait-failed',
+        stepName: spawn.stepName,
+        pane: paneRole,
+        paneId: hiddenPaneId,
+        channel: `pane-exit-${hiddenPaneId}`,
+        durationMs: deps.clock.now() - startedAt,
+        isSessionLost: isSessionLostError(err),
+        ...errorLifecycleFields(err),
+        ...(isSessionLostError(err) ? await tmuxReachability() : {}),
+      })
+      if (isSessionLostError(err)) {
+        // Best-effort cleanup before surfacing the typed error — the
+        // hidden pane is already dead with the server, but `unregisterSource`
+        // also drops the in-memory bookkeeping. Failure here is expected
+        // (still talking to the dead socket) and silently dropped.
+        await controller.unregisterSource(sourceKey).catch(() => {})
+        throw new HostUnavailableError(
+          `tmux session is no longer reachable — interactive step ${spawn.stepName} cannot continue`,
+          err,
+        )
+      }
+      throw err
     } finally {
       // unregisterSource for `interactive` kills the hidden pane and (if
       // the interactive source was current) swaps the placeholder back to
       // the visible slot. The old post-exit `respawnPane(['cat'])` restore
       // is gone — the visible right pane never ran the runner argv
       // directly, so there's nothing on it to clean up.
-      await controller.unregisterSource(sourceKey).catch(handleSendError)
+      appendLifecycleSoon({
+        type: 'interactive-unregister-start',
+        stepName: spawn.stepName,
+        sourceKey: sourceKeyString,
+        paneId: hiddenPaneId,
+      })
+      await controller
+        .unregisterSource(sourceKey)
+        .then(() =>
+          appendLifecycle({
+            type: 'interactive-unregister-complete',
+            stepName: spawn.stepName,
+            sourceKey: sourceKeyString,
+            paneId: hiddenPaneId,
+          }),
+        )
+        .catch((err) => {
+          appendLifecycleSoon({
+            type: 'interactive-unregister-failed',
+            stepName: spawn.stepName,
+            sourceKey: sourceKeyString,
+            paneId: hiddenPaneId,
+            ...errorLifecycleFields(err),
+          })
+          handleSendError(err)
+        })
     }
 
     // tmux's `pane-died` hook doesn't give us the child's exit code through
@@ -926,11 +1165,29 @@ function buildHost(deps: BuildHostDeps): Host {
   // Wrap so the logger observes the attach lifetime without every internal
   // path of `createAttachForeground` needing to know about it.
   const attachForeground = async (): Promise<void> => {
-    void deps.logger?.append('lifecycle', { type: 'attach-foreground-started' }).catch(() => {})
+    appendLifecycleSoon({ type: 'attach-foreground-started' })
+    let attachResult:
+      | {
+          readonly skipped: boolean
+          readonly exitCode: number | null
+          readonly teardownStarted: boolean
+        }
+      | undefined
+    let attachError: unknown
     try {
-      await rawAttachForeground()
+      attachResult = await rawAttachForeground()
+    } catch (err) {
+      attachError = err
+      throw err
     } finally {
-      void deps.logger?.append('lifecycle', { type: 'attach-foreground-exited' }).catch(() => {})
+      await appendLifecycle({
+        type: 'attach-foreground-exited',
+        skipped: attachResult?.skipped ?? false,
+        exitCode: attachResult?.exitCode ?? null,
+        teardownStarted: attachResult?.teardownStarted ?? teardownStarted,
+        ...(attachError === undefined ? {} : errorLifecycleFields(attachError)),
+        ...(await tmuxReachability()),
+      })
     }
   }
 
@@ -958,18 +1215,40 @@ function buildHost(deps: BuildHostDeps): Host {
     // panes that host file-tail / pty sources can't outlive their swap
     // target. `teardownScratchSession` is idempotent and tolerates "session
     // not found" (matches the main killSession's contract).
+    appendLifecycleSoon({
+      type: 'scratch-session-teardown-start',
+      socket: deps.scratchSession.socket,
+      session: deps.scratchSession.session,
+    })
     try {
       await teardownScratchSession(deps.tmux, deps.scratchSession)
     } catch (err) {
+      appendLifecycleSoon({
+        type: 'scratch-session-teardown-failed',
+        socket: deps.scratchSession.socket,
+        session: deps.scratchSession.session,
+        ...errorLifecycleFields(err),
+      })
       deps.stderr.write(`[orch tmux] scratch kill-session failed: ${String(err)}\n`)
     }
-    void deps.logger?.append('lifecycle', { type: 'scratch-session-torndown' }).catch(() => {})
+    appendLifecycleSoon({ type: 'scratch-session-torndown' })
     // Kill the session last so all pending writes have already drained.
     // `killSession` tolerates "session not found" — a racing teardown or an
     // already-gone server is the outcome we want.
+    appendLifecycleSoon({
+      type: 'tmux-session-teardown-start',
+      socket: deps.socket,
+      session: SESSION,
+    })
     try {
       await deps.tmux.killSession({ socket: deps.socket, session: SESSION })
     } catch (err) {
+      appendLifecycleSoon({
+        type: 'tmux-session-teardown-failed',
+        socket: deps.socket,
+        session: SESSION,
+        ...errorLifecycleFields(err),
+      })
       deps.stderr.write(`[orch tmux] kill-session failed: ${String(err)}\n`)
     }
     // Restore DEC private modes the attach client may have left on the outer

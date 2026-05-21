@@ -221,17 +221,17 @@ describe('<StepsView> banner auto-dismiss', () => {
   it('restarts the auto-dismiss timer when seq bumps even with identical text', async () => {
     const intents: StepsViewIntent[] = []
     const initial = makeLive({
-      banner: { kind: 'info', text: 'running', ttlMs: 80, seq: 1 },
+      banner: { kind: 'info', text: 'running', ttlMs: 150, seq: 1 },
     })
     const bumped = makeLive({
-      banner: { kind: 'info', text: 'running', ttlMs: 80, seq: 2 },
+      banner: { kind: 'info', text: 'running', ttlMs: 150, seq: 2 },
     })
 
     function Harness(): React.ReactElement {
       const [s, setS] = React.useState<StepsViewState>(initial)
       React.useEffect(() => {
-        // Halfway through the first banner's ttl, swap to the bumped one.
-        const handle = setTimeout(() => setS(bumped), 40)
+        // Halfway-ish through the first banner's ttl, swap to the bumped one.
+        const handle = setTimeout(() => setS(bumped), 60)
         return () => clearTimeout(handle)
       }, [])
       return <StepsView state={s} onIntent={(i) => intents.push(i)} now={() => NOW} />
@@ -240,15 +240,17 @@ describe('<StepsView> banner auto-dismiss', () => {
     const ui = render(<Harness />)
 
     // Wait long enough that, without the seq-keyed restart, the *first*
-    // banner's timer would have fired by now (it started at t=0 with ttl=80).
-    // The bumped emit at t=40 should reset the timer so dismiss only fires
-    // around t = 40 + 80 = 120ms. At t=100ms, no dismiss should have fired.
-    await tick(100)
+    // banner's timer would have fired by now (it started at t=0 with ttl=150).
+    // The bumped emit at t=60 should reset the timer so dismiss only fires
+    // around t = 60 + 150 = 210ms. At t=180ms, no dismiss should have fired.
+    // The widened budget (was 80ms ttl / 40ms swap / 100ms check) survives
+    // React-scheduler latency on loaded test machines.
+    await tick(180)
 
     expect(intents.some((i) => i.type === 'dismiss-banner')).toBe(false)
 
     // Now wait past the second banner's ttl to confirm the timer is in flight.
-    await tick(80)
+    await tick(150)
 
     expect(intents.some((i) => i.type === 'dismiss-banner')).toBe(true)
 

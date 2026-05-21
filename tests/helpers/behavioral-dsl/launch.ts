@@ -28,6 +28,32 @@ export const launchOrchWorkflow = async (
 }
 
 /**
+ * Resume a prior run against its existing state base via `orch resume <id>`.
+ *
+ * The original handle's state base + repo (if `initGitRepo: true` on the
+ * original launch) is reused; cached steps replay from `state.json` and the
+ * supplied `script` map drives any steps that re-execute. The returned handle
+ * becomes the new "current" handle for `userAction` / assertions.
+ *
+ * The original handle is NOT torn down — both handles must be torn down
+ * explicitly. The resumed handle's teardown intentionally skips the state-
+ * base rm so the original handle remains the owner.
+ */
+export const resumeOrchWorkflow = async (
+  fromHandle: OrchHandle,
+  fixtureName: string,
+  opts: Omit<SpawnOrchOptions, 'workflowFixture' | 'resumeFrom'> = {},
+): Promise<OrchHandle> => {
+  const handle = await spawnOrch({
+    workflowFixture: fixtureName,
+    ...opts,
+    resumeFrom: fromHandle,
+  })
+  setCurrentOrchHandle(handle)
+  return handle
+}
+
+/**
  * Returns a `StepScript` of shape `{ kind: 'wait-for-file', gatePath: ... }`.
  *
  * The gate file path is derived once per call; pair with `release(stepName)`
@@ -87,4 +113,31 @@ export const emitThenHang = (text: string): EmitThenHangScript => {
     kind: 'emit-then-hang',
     events: [{ kind: 'info', type: 'thinking', payload: { text } }],
   }
+}
+
+/**
+ * Returns a `StepScript` of shape `{ kind: 'puppet', controlPath: <derived> }`.
+ *
+ * Pair with `handle.agent(stepName).emit(...) / writeFile(...) / complete()`
+ * to drive the step incrementally from the test. The control file is a tail-
+ * read NDJSON channel under `<stateBase>/test-control/<stepName>.ndjson`. The
+ * launcher writes the relative path into the script; the actual absolute path
+ * is resolved by `subprocess.ts` once the stateBase exists.
+ *
+ * Unlike `holdUntilReleased`, a puppet step does NOT auto-complete on a gate
+ * signal. The test must send `complete()` or `fail()` to terminate the step,
+ * otherwise the runner blocks until orch is torn down.
+ */
+export interface PuppetScript {
+  readonly kind: 'puppet'
+  /**
+   * Sentinel marker — the launcher recognises this and substitutes the real
+   * absolute path before serializing to disk. Tests should not read or set
+   * this directly.
+   */
+  readonly controlPath: '<placeholder>'
+}
+
+export const puppet = (): PuppetScript => {
+  return { kind: 'puppet', controlPath: '<placeholder>' }
 }

@@ -53,6 +53,8 @@ const RunnerEventSchema: z.ZodType<RunnerEvent> = z.union([
 //   instant-fail     — emit a terminal/error event, exit 1
 //   wait-for-file    — poll for the named file, then emit + exit 0
 //   emit-then-hang   — emit scripted events then sleep until killed
+//   puppet           — watch a control NDJSON file and dispatch commands
+//                      (test-time interactive control; behavioral cells)
 // ---------------------------------------------------------------------------
 
 export const InstantOkScriptSchema = z
@@ -87,18 +89,99 @@ export const EmitThenHangScriptSchema = z
   })
   .strict()
 
+// `puppet`: the runner subprocess opens controlPath, tails it line-by-line,
+// and dispatches each NDJSON command. Commands are sent by the test via
+// `handle.agent(name).*`. The runner exits on the first `complete` or `fail`.
+// Pre-existing kinds (instant-ok / instant-fail / wait-for-file / emit-then-
+// hang) are unchanged — puppet is strictly additive.
+export const PuppetScriptSchema = z
+  .object({
+    kind: z.literal('puppet'),
+    /**
+     * Absolute path to the per-step control NDJSON file. The test launcher
+     * derives this from <stateBase>/test-control/<stepName>.ndjson and writes
+     * it into the script before spawn. The runner opens the file in
+     * append-mode-read and tails forever.
+     */
+    controlPath: z.string().min(1),
+    /** Poll interval for `fs.stat` size changes. Defaults to 30ms. */
+    pollIntervalMs: z.number().int().positive().optional(),
+  })
+  .strict()
+
 export const StepScriptSchema = z.discriminatedUnion('kind', [
   InstantOkScriptSchema,
   InstantFailScriptSchema,
   WaitForFileScriptSchema,
   EmitThenHangScriptSchema,
+  PuppetScriptSchema,
 ])
 
 export type InstantOkScript = z.infer<typeof InstantOkScriptSchema>
 export type InstantFailScript = z.infer<typeof InstantFailScriptSchema>
 export type WaitForFileScript = z.infer<typeof WaitForFileScriptSchema>
 export type EmitThenHangScript = z.infer<typeof EmitThenHangScriptSchema>
+export type PuppetScript = z.infer<typeof PuppetScriptSchema>
 export type StepScript = z.infer<typeof StepScriptSchema>
+
+// ---------------------------------------------------------------------------
+// PuppetCommand — the NDJSON command set the test writes to the control file.
+// ---------------------------------------------------------------------------
+
+const EmitCommandSchema = z
+  .object({
+    cmd: z.literal('emit'),
+    event: RunnerEventSchema,
+  })
+  .strict()
+
+const WriteFileCommandSchema = z
+  .object({
+    cmd: z.literal('write-file'),
+    path: z.string().min(1),
+    content: z.string(),
+  })
+  .strict()
+
+const RunShellCommandSchema = z
+  .object({
+    cmd: z.literal('run-shell'),
+    command: z.string().min(1),
+  })
+  .strict()
+
+const CompleteCommandSchema = z
+  .object({
+    cmd: z.literal('complete'),
+    structuredOutput: z.unknown().optional(),
+  })
+  .strict()
+
+const FailCommandSchema = z
+  .object({
+    cmd: z.literal('fail'),
+    message: z.string().min(1),
+    exitCode: z.number().int().positive().optional(),
+  })
+  .strict()
+
+const WaitCommandSchema = z
+  .object({
+    cmd: z.literal('wait'),
+    ms: z.number().int().nonnegative(),
+  })
+  .strict()
+
+export const PuppetCommandSchema = z.discriminatedUnion('cmd', [
+  EmitCommandSchema,
+  WriteFileCommandSchema,
+  RunShellCommandSchema,
+  CompleteCommandSchema,
+  FailCommandSchema,
+  WaitCommandSchema,
+])
+
+export type PuppetCommand = z.infer<typeof PuppetCommandSchema>
 
 // ---------------------------------------------------------------------------
 // ScriptedFakeScriptFile — the JSON the harness writes to disk.

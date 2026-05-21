@@ -84,11 +84,11 @@ describe('resume (integration)', () => {
       expect(err).toBeInstanceOf(StepError)
     }
 
-    // Verify crashed state
+    // Verify failed state
     const raw1 = await fs.readFile(`${tmpDir}/${sharedRunId}/state.json`, 'utf-8')
-    const crashedState = JSON.parse(raw1)
-    expect(crashedState.status).toBe('crashed')
-    expect(Object.keys(crashedState.steps)).toHaveLength(2)
+    const failedState = JSON.parse(raw1)
+    expect(failedState.status).toBe('failed')
+    expect(Object.keys(failedState.steps)).toHaveLength(2)
 
     // Resume: A+B cached, C+D run fresh
     const fps2 = new FakeProcessService()
@@ -197,7 +197,7 @@ describe('resume (integration)', () => {
       // expected
     }
 
-    // First resume: C succeeds, D crashes
+    // First resume: C succeeds, D fails
     const fps2 = new FakeProcessService()
     const deps2 = makeDeps({ processService: fps2, runId: sharedRunId })
     const fr2a = new FakeRunner(fps2)
@@ -220,7 +220,7 @@ describe('resume (integration)', () => {
     expect(fr2c.invocationCount).toBe(1)
 
     const afterFirstResume = await deps2.stateStore.loadRun(sharedRunId)
-    expect(afterFirstResume?.status).toBe('crashed')
+    expect(afterFirstResume?.status).toBe('failed')
     expect(Object.keys(afterFirstResume?.steps ?? {})).toHaveLength(3)
 
     // Second resume: D succeeds

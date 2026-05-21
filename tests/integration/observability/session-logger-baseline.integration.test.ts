@@ -324,7 +324,7 @@ describe('session-logger baseline hook-ins (integration)', () => {
     expect(loaded).toContain('## Grep recipes')
   })
 
-  it('a crashed workflow writes a run-ended lifecycle record with status=crashed', async () => {
+  it('a failed workflow writes a run-ended lifecycle record with status=failed', async () => {
     const bunFs = new BunFsService()
     const clock = new FakeClock(1_000)
     const processService = new FakeProcessService()
@@ -372,7 +372,7 @@ describe('session-logger baseline hook-ins (integration)', () => {
     const lines = await readLines('lifecycle.ndjson')
     const last = lines.at(-1) as { type: string; status: string } | undefined
     expect(last?.type).toBe('run-ended')
-    expect(last?.status).toBe('crashed')
+    expect(last?.status).toBe('failed')
   })
 
   it('resume appends run:resumed to lifecycle and bumps run.meta.json.resumedAt', async () => {

@@ -118,11 +118,11 @@ describe('workflow (integration)', () => {
       expect(err).toBeInstanceOf(StepError)
     }
 
-    // Verify state after crash
-    const crashedRaw = await fs.readFile(`${tmpDir}/${sharedRunId}/state.json`, 'utf-8')
-    const crashedState = JSON.parse(crashedRaw)
-    expect(crashedState.status).toBe('crashed')
-    expect(Object.keys(crashedState.steps)).toHaveLength(2)
+    // Verify state after step failure
+    const failedRaw = await fs.readFile(`${tmpDir}/${sharedRunId}/state.json`, 'utf-8')
+    const failedState = JSON.parse(failedRaw)
+    expect(failedState.status).toBe('failed')
+    expect(Object.keys(failedState.steps)).toHaveLength(2)
 
     // Second run: resume with same runId — steps a,b cached; c,d run fresh
     const fps2 = new FakeProcessService()
@@ -170,7 +170,7 @@ describe('workflow (integration)', () => {
     const RunStateSchema = z.object({
       schemaVersion: z.literal(5),
       id: z.string().regex(/^r-\d{4}-\d{2}-\d{2}-\d{6}-[a-z0-9]{2}$/),
-      status: z.enum(['running', 'completed', 'crashed']),
+      status: z.enum(['running', 'completed', 'failed', 'crashed']),
       workflowName: z.string().optional(),
       startedAt: z.number(),
       endedAt: z.number().optional(),

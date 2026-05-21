@@ -6,7 +6,7 @@ import {
   ViewResolutionError,
 } from '../../core/index.ts'
 import type { WorkflowArgs, WorkflowDeps } from '../../core/workflow.ts'
-import { HostCreationError } from '../../hosts/index.ts'
+import { HostCreationError, HostUnavailableError } from '../../hosts/index.ts'
 import {
   buildRunMeta,
   instrumentProcessService,
@@ -38,6 +38,13 @@ function mapRunError(err: unknown): { code: number; reason: string } | undefined
     err instanceof SchemaValidationError ||
     err instanceof ParallelError
   ) {
+    return { code: EXIT.STEP_FAILURE, reason: err.message }
+  }
+  // Host went away mid-run (e.g. tmux server died after the user detached
+  // and the next interactive step found a dead socket). Render a clean
+  // failure summary instead of letting the underlying `TmuxCommandError`
+  // escape `executeWithAttach` as an unhandled rejection.
+  if (err instanceof HostUnavailableError) {
     return { code: EXIT.STEP_FAILURE, reason: err.message }
   }
   return undefined

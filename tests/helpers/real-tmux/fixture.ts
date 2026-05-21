@@ -34,6 +34,37 @@ import { assertNoNestedTmux } from './socket.ts'
 const DEFAULT_WIDTH = 200
 const DEFAULT_HEIGHT = 50
 
+// Module-level registry of live sockets. The Ctrl-C / SIGTERM handler walks
+// this set so a test runner interrupted mid-suite cleans up its tmux servers
+// before exiting. Without this, every interrupted run leaks a server per
+// in-flight fixture and the leftovers eventually breach per-uid limits.
+const LIVE_SOCKETS = new Set<SocketName>()
+let signalHandlersRegistered = false
+
+function registerSignalHandlersOnce(): void {
+  if (signalHandlersRegistered) return
+  signalHandlersRegistered = true
+  for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+    process.on(signal, () => {
+      killAllLiveSocketsSync()
+    })
+  }
+}
+
+function killAllLiveSocketsSync(): void {
+  for (const socket of LIVE_SOCKETS) {
+    // Synchronous on purpose: a signal handler cannot await, and the parent
+    // process may exit before any deferred work resolves. Errors are
+    // intentionally swallowed — best-effort cleanup before the test runner
+    // tears itself down.
+    Bun.spawnSync(['tmux', '-L', socket, 'kill-server'], {
+      stdout: 'ignore',
+      stderr: 'ignore',
+    })
+  }
+  LIVE_SOCKETS.clear()
+}
+
 export interface CreateRealTmuxFixtureOptions {
   /**
    * Run identifier. Determines the tmux socket name (`orch-${runId}`), so
@@ -135,10 +166,14 @@ export async function createRealTmuxFixture(
   const width = opts.width ?? DEFAULT_WIDTH
   const height = opts.height ?? DEFAULT_HEIGHT
 
+  registerSignalHandlersOnce()
+  LIVE_SOCKETS.add(socket)
+
   let disposed = false
   const dispose = async (): Promise<void> => {
     if (disposed) return
     disposed = true
+    LIVE_SOCKETS.delete(socket)
     await killServerQuietly(socket)
     if (ownsStateBase) await rm(stateBase, { recursive: true, force: true }).catch(() => {})
   }

@@ -9,7 +9,7 @@ import {
   type WorkflowArgs,
 } from '../../core/index.ts'
 import type { WorkflowDeps } from '../../core/workflow.ts'
-import { HostCreationError } from '../../hosts/index.ts'
+import { HostCreationError, HostUnavailableError } from '../../hosts/index.ts'
 import {
   buildRunMeta,
   instrumentProcessService,
@@ -74,6 +74,9 @@ function mapResumeError(err: unknown): { code: number; reason: string } | undefi
     err instanceof SchemaValidationError ||
     err instanceof ParallelError
   ) {
+    return { code: EXIT.STEP_FAILURE, reason: err.message }
+  }
+  if (err instanceof HostUnavailableError) {
     return { code: EXIT.STEP_FAILURE, reason: err.message }
   }
   return undefined

@@ -10,6 +10,7 @@
  * failure).
  */
 
+import type { FilesystemMatcher } from './filesystem-matchers.ts'
 import { getCurrentOrchHandle, getCurrentProbe } from './internal/current-handle.ts'
 import {
   type InvariantViolation,
@@ -120,6 +121,58 @@ export const assertRightPane = async (...args: readonly PaneAssertionArg[]): Pro
   const { factories, budget } = splitPaneArgs(args)
   const matchers = factories.map((f) => f('right'))
   await pollUntil(matchers, budget, 'assertRightPane')
+}
+
+export type FilesystemAssertionArg = FilesystemMatcher | PollingBudget
+
+function splitFsArgs(args: readonly FilesystemAssertionArg[]): {
+  readonly matchers: readonly FilesystemMatcher[]
+  readonly budget: PollingBudget | undefined
+} {
+  const matchers: FilesystemMatcher[] = []
+  let budget: PollingBudget | undefined
+  for (const a of args) {
+    if (typeof a === 'function') matchers.push(a)
+    else if (a !== undefined && typeof a === 'object' && 'timeoutMs' in a) budget = a
+  }
+  return { matchers, budget }
+}
+
+async function pollFs(
+  matchers: readonly FilesystemMatcher[],
+  budget: PollingBudget | undefined,
+  label: string,
+): Promise<void> {
+  const handle = getCurrentOrchHandle()
+  const deadline = budget !== undefined ? Date.now() + budget.timeoutMs : 0
+  let lastFails: readonly { matcher: string; message: string }[] = []
+  for (;;) {
+    const fails: { matcher: string; message: string }[] = []
+    for (const m of matchers) {
+      const r = await m(handle)
+      if (!r.matched) fails.push({ matcher: extractMatcherName(r.message), message: r.message })
+    }
+    if (fails.length === 0) return
+    lastFails = fails
+    if (budget === undefined || Date.now() >= deadline) break
+    await new Promise((r) => setTimeout(r, DEFAULT_POLL_INTERVAL_MS))
+  }
+  throw new AssertionFailure(label, lastFails, undefined)
+}
+
+export const assertFilesystem = async (
+  ...args: readonly FilesystemAssertionArg[]
+): Promise<void> => {
+  const { matchers, budget } = splitFsArgs(args)
+  await pollFs(matchers, budget, 'assertFilesystem')
+}
+
+export const assertGit = async (...args: readonly FilesystemAssertionArg[]): Promise<void> => {
+  // `assertGit` is an alias of `assertFilesystem` — they share the matcher
+  // type (`FilesystemMatcher`). The two verbs exist so cells can read more
+  // naturally; the engine is the same.
+  const { matchers, budget } = splitFsArgs(args)
+  await pollFs(matchers, budget, 'assertGit')
 }
 
 /**

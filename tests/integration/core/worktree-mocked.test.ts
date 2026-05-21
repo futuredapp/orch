@@ -238,15 +238,15 @@ describe('createWorktree — mocked integration', () => {
     try {
       await wf1.execute(deps1)
     } catch {
-      // expected — branch b crashed
+      // expected — branch b failed
     }
 
-    const crashed = await deps1.stateStore.loadRun(sharedRunId)
-    expect(crashed?.status).toBe('crashed')
-    expect(crashed?.steps['worktree:feat-a']).toBeDefined()
-    expect(crashed?.steps['worktree:feat-b']).toBeDefined()
-    expect(crashed?.steps['work-a']?.value).toBe('done-a')
-    expect(crashed?.steps['work-b']).toBeUndefined()
+    const failed = await deps1.stateStore.loadRun(sharedRunId)
+    expect(failed?.status).toBe('failed')
+    expect(failed?.steps['worktree:feat-a']).toBeDefined()
+    expect(failed?.steps['worktree:feat-b']).toBeDefined()
+    expect(failed?.steps['work-a']?.value).toBe('done-a')
+    expect(failed?.steps['work-b']).toBeUndefined()
     expect(git1.addWorktreeCalls.length).toBe(2)
 
     // -------------------------------- Resume run -------------------------------

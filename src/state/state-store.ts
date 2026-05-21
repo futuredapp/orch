@@ -78,7 +78,7 @@ export interface PersistedWorkflowArgs {
 export interface RunState {
   readonly schemaVersion: 5
   readonly id: RunId
-  readonly status: 'running' | 'completed' | 'crashed'
+  readonly status: 'running' | 'completed' | 'failed' | 'crashed'
   readonly workflowName?: string
   readonly startedAt: number
   readonly endedAt?: number
@@ -168,7 +168,7 @@ const PersistedWorkflowArgsSchema = z.object({
 const RunStateV5Schema = z.object({
   schemaVersion: z.literal(5),
   id: z.string().regex(RUN_ID_PATTERN),
-  status: z.enum(['running', 'completed', 'crashed']),
+  status: z.enum(['running', 'completed', 'failed', 'crashed']),
   workflowName: z.string().optional(),
   startedAt: z.number(),
   endedAt: z.number().optional(),

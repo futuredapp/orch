@@ -24,6 +24,42 @@ const REGISTRY: Readonly<Record<string, FixtureLocation>> = {
     cwd: toPath(FIXTURES_DIR),
     workflowName: 'tier5-two-step-linear',
   },
+  'single-agent-step': {
+    cwd: toPath(FIXTURES_DIR),
+    workflowName: 'behavioral-single-agent-step',
+  },
+  'three-step-linear': {
+    cwd: toPath(FIXTURES_DIR),
+    workflowName: 'behavioral-three-step-linear',
+  },
+  'worktree-then-agent': {
+    cwd: toPath(FIXTURES_DIR),
+    workflowName: 'behavioral-worktree-then-agent',
+  },
+  'worktree-with-post-create': {
+    cwd: toPath(FIXTURES_DIR),
+    workflowName: 'behavioral-worktree-with-post-create',
+  },
+  'agent-then-commit': {
+    cwd: toPath(FIXTURES_DIR),
+    workflowName: 'behavioral-agent-then-commit',
+  },
+  'command-step-only': {
+    cwd: toPath(FIXTURES_DIR),
+    workflowName: 'behavioral-command-step-only',
+  },
+  'ask-with-default': {
+    cwd: toPath(FIXTURES_DIR),
+    workflowName: 'behavioral-ask-with-default',
+  },
+  'puppet-can-fail': {
+    cwd: toPath(FIXTURES_DIR),
+    workflowName: 'behavioral-puppet-can-fail',
+  },
+  'resumable-crash': {
+    cwd: toPath(FIXTURES_DIR),
+    workflowName: 'behavioral-resumable-crash',
+  },
 }
 
 export const resolveFixture = (fixtureName: string): FixtureLocation => {

@@ -15,7 +15,7 @@ export type {
   PaneAttachment,
   PaneRole,
 } from './host.ts'
-export { HostCreationError } from './host.ts'
+export { HostCreationError, HostUnavailableError } from './host.ts'
 export type {
   HostFactory,
   HostFactoryInputs,

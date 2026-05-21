@@ -277,6 +277,110 @@ describe('initCmd — F2 re-init flow', () => {
   })
 })
 
+// ---------------------------------------------------------------------------
+// Zod-import warning (C from the A+C plan): the cleanest workflow imports
+// `z` from 'orch'. If a user-authored file in .orch/ imports from 'zod'
+// directly, init should warn so the host project isn't silently broken when
+// the workflow runs.
+// ---------------------------------------------------------------------------
+
+interface CapturedIO {
+  readonly stderr: () => string
+  readonly restore: () => void
+}
+
+function captureStderr(): CapturedIO {
+  const chunks: string[] = []
+  const orig = process.stderr.write.bind(process.stderr)
+  // biome-ignore lint/suspicious/noExplicitAny: monkey-patching for test capture
+  ;(process.stderr as any).write = (chunk: any): boolean => {
+    chunks.push(typeof chunk === 'string' ? chunk : chunk.toString())
+    return true
+  }
+  return {
+    stderr: () => chunks.join(''),
+    restore: () => {
+      // biome-ignore lint/suspicious/noExplicitAny: restore original
+      ;(process.stderr as any).write = orig
+    },
+  }
+}
+
+describe('initCmd — zod-import warning', () => {
+  it('clean F1 init prints no zod warning (scaffold files use orch)', async () => {
+    const fs = new FakeFsService()
+    await fs.mkdir(path('/proj'), { recursive: true })
+    const deps = makeDeps({ fs })
+
+    const io = captureStderr()
+    try {
+      await initCmd(deps, '', {}, DEFAULT_OPTS)
+    } finally {
+      io.restore()
+    }
+
+    expect(io.stderr()).not.toContain("import directly from 'zod'")
+  })
+
+  it('reinit keep-mode warns when a preserved user workflow imports from "zod"', async () => {
+    const fs = new FakeFsService()
+    await fs.mkdir(path('/proj/.orch/workflows'), { recursive: true })
+    await fs.writeFile(path('/proj/.orch/workflows/hello.ts'), 'old hello')
+    await fs.writeFile(
+      path('/proj/.orch/workflows/feature.ts'),
+      "import { z } from 'zod'\nimport { workflow } from 'orch'\nexport default workflow('feature', async () => {})\n",
+    )
+    await fs.writeFile(path('/proj/.orch/steps.ts'), 'old steps')
+    await fs.writeFile(
+      path('/proj/.orch/orch.config.ts'),
+      "export const config = { workflows: { hello: 'workflows/hello.ts' } }",
+    )
+    const confirm = new FakeConfirmService([true, true])
+    const deps = makeDeps({ fs, confirm })
+
+    const io = captureStderr()
+    let code: number
+    try {
+      code = await initCmd(deps, '', {}, DEFAULT_OPTS)
+    } finally {
+      io.restore()
+    }
+
+    expect(code).toBe(EXIT.OK)
+    const err = io.stderr()
+    expect(err).toContain("import directly from 'zod'")
+    expect(err).toContain('/proj/.orch/workflows/feature.ts')
+    expect(err).toContain("import { z } from 'orch'")
+    expect(err).toContain('bun add zod')
+  })
+
+  it('reinit keep-mode prints no zod warning when preserved workflows use orch', async () => {
+    const fs = new FakeFsService()
+    await fs.mkdir(path('/proj/.orch/workflows'), { recursive: true })
+    await fs.writeFile(path('/proj/.orch/workflows/hello.ts'), 'old hello')
+    await fs.writeFile(
+      path('/proj/.orch/workflows/feature.ts'),
+      "import { z, workflow } from 'orch'\nexport default workflow('feature', async () => {})\n",
+    )
+    await fs.writeFile(path('/proj/.orch/steps.ts'), 'old steps')
+    await fs.writeFile(
+      path('/proj/.orch/orch.config.ts'),
+      "export const config = { workflows: { hello: 'workflows/hello.ts' } }",
+    )
+    const confirm = new FakeConfirmService([true, true])
+    const deps = makeDeps({ fs, confirm })
+
+    const io = captureStderr()
+    try {
+      await initCmd(deps, '', {}, DEFAULT_OPTS)
+    } finally {
+      io.restore()
+    }
+
+    expect(io.stderr()).not.toContain("import directly from 'zod'")
+  })
+})
+
 describe('initCmd — R2 self-detection guard', () => {
   it('refuses to run when cwd looks like the orch source repo', async () => {
     const fs = new FakeFsService()

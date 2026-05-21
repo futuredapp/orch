@@ -12,6 +12,8 @@ export const config = defineConfig({
 `
 
 export const STEPS_TEMPLATE = `import { claude, step } from 'orch'
+// For typed structured output via \`returns:\`, also import \`schema\` and \`z\` from 'orch'
+// — no need to add zod to this project's package.json.
 
 // Add more reusable step definitions below.
 export const HELLO = step.define('write-hello', {

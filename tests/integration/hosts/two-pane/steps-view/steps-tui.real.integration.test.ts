@@ -123,10 +123,17 @@ describe.skipIf(!canRun)('steps-view-runner against a real tmux server', () => {
       cwd: toPath(baseTmp),
     })
 
-    // Give the bun child time to mount Ink and render the first frame.
-    await wait(1500)
-
-    const captured = await tmux.capturePane({ socket, target: leftPaneId })
+    // Poll the captured pane until both expected markers appear, or fail
+    // with the last-captured frame on timeout. A static `wait(1500)` was
+    // brittle here: bun child startup + Ink mount + first frame can stack
+    // past 1.5s on a loaded macOS machine.
+    const deadline = Date.now() + 8000
+    let captured = ''
+    while (Date.now() < deadline) {
+      captured = await tmux.capturePane({ socket, target: leftPaneId })
+      if (captured.includes('real-tmux-smoke') && captured.includes('plan')) break
+      await wait(100)
+    }
     // The header line is `orch · <workflowName> · <runId>` and the step row
     // contains the step name. Both must appear in the captured pane content.
     expect(captured).toContain('real-tmux-smoke')

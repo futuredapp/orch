@@ -80,6 +80,56 @@ export async function preservingReinitFiles(
 }
 
 /**
+ * Scan user-authored files under `<orchDir>/` for direct `from 'zod'` (or
+ * `"zod"`) imports. Returns the paths that contain such an import so the
+ * caller can warn the user — workflows authored against orch's public API
+ * should `import { z } from 'orch'` instead, which works without adding zod
+ * to the host project's package.json.
+ *
+ * We check `<orchDir>/steps.ts` and every `.ts` file directly under
+ * `<orchDir>/workflows/`. We ignore single-line `//` comments to avoid
+ * false positives on commented-out imports. We do NOT try to parse the
+ * TypeScript — `from 'zod'` / `from "zod"` substring after comment-strip
+ * is enough.
+ */
+export async function findDirectZodImports(fs: FsService, orchDir: Path): Promise<readonly Path[]> {
+  const candidates: Path[] = []
+  const stepsPath = path(`${orchDir}/steps.ts`)
+  if (await fs.exists(stepsPath)) candidates.push(stepsPath)
+  const workflowsDir = path(`${orchDir}/workflows`)
+  if (await fs.exists(workflowsDir)) {
+    const entries = await fs.readDir(workflowsDir)
+    for (const entry of entries) {
+      if (!entry.endsWith('.ts')) continue
+      candidates.push(path(`${workflowsDir}/${entry}`))
+    }
+  }
+
+  const hits: Path[] = []
+  for (const file of candidates) {
+    const source = await fs.readFile(file)
+    if (sourceImportsZodDirectly(source)) hits.push(file)
+  }
+  return hits
+}
+
+/**
+ * Exported for unit-testing. True when `source` contains a line that imports
+ * (or re-exports) from the bare `'zod'` specifier, ignoring `//` line
+ * comments.
+ */
+export function sourceImportsZodDirectly(source: string): boolean {
+  for (const rawLine of source.split('\n')) {
+    const commentIdx = rawLine.indexOf('//')
+    const line = commentIdx === -1 ? rawLine : rawLine.slice(0, commentIdx)
+    if (/from\s+['"]zod['"]/.test(line)) return true
+    // Side-effect import: `import 'zod'` — rare, but covered for completeness.
+    if (/^\s*import\s+['"]zod['"]\s*;?\s*$/.test(line)) return true
+  }
+  return false
+}
+
+/**
  * Insert a new workflow entry into the scaffolded `orch.config.ts`'s
  * `workflows: { ... }` block. The insertion is a focused regex+string-concat
  * over the well-known scaffolded shape — we do NOT parse arbitrary

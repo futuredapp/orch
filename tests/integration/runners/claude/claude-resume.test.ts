@@ -94,10 +94,10 @@ describe('ClaudeRunner crash+resume (mocked)', () => {
       // expected — step 2 error
     }
 
-    const crashed = await deps1.stateStore.loadRun(sharedRunId)
-    expect(crashed?.status).toBe('crashed')
-    expect(crashed?.steps['step-1']?.value).toBe('OK')
-    expect(crashed?.steps['step-2']).toBeUndefined()
+    const failed = await deps1.stateStore.loadRun(sharedRunId)
+    expect(failed?.status).toBe('failed')
+    expect(failed?.steps['step-1']?.value).toBe('OK')
+    expect(failed?.steps['step-2']).toBeUndefined()
 
     // Resume: step 1 cached (FakeProcessService not re-invoked), step 2 succeeds
     const fps2 = new FakeProcessService()

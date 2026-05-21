@@ -57,8 +57,10 @@ describe.skipIf(!tmuxAvailable)(
       expect(run.completed).toBe(true)
 
       // The daemon polls the state file; give it a generous window so a
-      // slow filesystem watcher doesn't flake the assertion.
-      await harness.left.waitForText('run completed', { timeoutMs: 5000 })
+      // slow filesystem watcher doesn't flake the assertion. Widened from
+      // 5s after CI flakes where state-watch poll + Ink frame emit + tmux
+      // render stacked past the original budget.
+      await harness.left.waitForText('run completed', { timeoutMs: 10_000 })
       const frame = await harness.left.capture()
       expect(frame).toContain('run completed')
       expect(frame).toContain('steps 1/1 completed')

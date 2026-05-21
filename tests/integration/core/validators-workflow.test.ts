@@ -75,7 +75,7 @@ describe('workflow + validators (full pipeline integration)', () => {
     expect(ve.failures[0]?.name).toBe('fileProduced(out/*.txt)')
 
     const state = await deps.stateStore.loadRun(deps.runId)
-    expect(state?.status).toBe('crashed')
+    expect(state?.status).toBe('failed')
     expect(state?.steps.plan).toBeUndefined()
 
     await fs.rm(cwd, { recursive: true, force: true })

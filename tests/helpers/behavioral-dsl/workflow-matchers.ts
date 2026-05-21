@@ -78,3 +78,30 @@ export const hasExitedBySignal = (signal: NodeJS.Signals): Matcher => {
     }
   }
 }
+
+// ---------------------------------------------------------------------------
+// Behavioral aliases / sugar — clearer reading for behavioral cells.
+// ---------------------------------------------------------------------------
+
+export const hasStepCompleted = (stepName: string): Matcher => {
+  // The current snapshot only resolves step entries to 'completed' or 'unknown'
+  // (see internal/snapshot.ts readStateJson). 'unknown' covers both not-yet-
+  // started and mid-flight. So this matcher is equivalent to
+  // `hasStepStatus(name, 'completed')` until the snapshot tracks failure.
+  return hasStepStatus(stepName, 'completed')
+}
+
+/**
+ * Sugar matcher for `hasStepStatus(name, 'failed')`. The snapshot resolves
+ * failure by scanning `logs/lifecycle.ndjson` for a `step:failed` entry,
+ * since `saveStep` is skipped when a step throws (workflow.ts:1235-1252).
+ */
+export const hasStepFailed = (stepName: string): Matcher => {
+  return hasStepStatus(stepName, 'failed')
+}
+
+export const hasRunStatus = (status: StateStatus): Matcher => {
+  // Clearer alias of `hasStatus(status)` for behavioral cells that want the
+  // word "run" in the assertion narrative.
+  return hasStatus(status)
+}

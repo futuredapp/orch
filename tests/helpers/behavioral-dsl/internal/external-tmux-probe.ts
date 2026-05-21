@@ -24,6 +24,28 @@ import { buildSgrMouse } from './mouse-events.ts'
 /** Session name the two-pane host pins (see `src/hosts/two-pane/tmux-host.ts`). */
 const SESSION_NAME = 'orch'
 
+/**
+ * tmux send-keys named-key tokens. When the caller supplies one of these,
+ * the probe MUST omit `-l` so tmux interprets the token as a keystroke
+ * instead of literal text. (Mirrors `tests/helpers/real-tmux/keys.ts`.)
+ */
+const NAMED_TMUX_KEYS: ReadonlySet<string> = new Set<string>([
+  'Enter',
+  'Up',
+  'Down',
+  'Left',
+  'Right',
+  'Escape',
+  'Tab',
+  'BTab',
+  'BSpace',
+  'Space',
+  'PageUp',
+  'PageDown',
+  'Home',
+  'End',
+])
+
 export type MouseButton = 'left' | 'middle' | 'right'
 
 export interface SendMouseEventOptions {
@@ -262,7 +284,15 @@ export const createExternalTmuxProbe = (
     pressKeyInPane: async (req) => {
       const panes = await resolvePanes()
       const target = req.pane === 'left' ? panes.left : panes.right
-      const argv = ['tmux', '-L', socket, 'send-keys', '-t', target, '-l', req.key]
+      // Named tmux keys (Enter, Up, Down, Escape, PageUp, …) must be sent
+      // WITHOUT `-l` so tmux interprets them as keystrokes. Literal text
+      // (single chars like `q`, `?`, `f`) gets `-l`. Mirrors the
+      // tests/helpers/real-tmux/keys.ts production-vs-test split — the
+      // production `RealTmuxService` always uses `-l`, but Tier 5 cells need
+      // both modes to drive the steps-view's keymap.
+      const argv = NAMED_TMUX_KEYS.has(req.key)
+        ? ['tmux', '-L', socket, 'send-keys', '-t', target, req.key]
+        : ['tmux', '-L', socket, 'send-keys', '-t', target, '-l', req.key]
       const { exitCode, stderr } = await runTmux(argv)
       if (exitCode !== 0) {
         throw new Error(

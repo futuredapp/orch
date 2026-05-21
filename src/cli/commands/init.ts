@@ -1,4 +1,5 @@
 import type { WorkflowArgs } from '../../core/index.ts'
+import type { FsService } from '../../services/fs/index.ts'
 import type { Path } from '../../services/types.ts'
 import { path } from '../../services/types.ts'
 import type { CliDeps } from '../deps.ts'
@@ -7,6 +8,7 @@ import { isInsideOrchSourceRepo } from './detect-self.ts'
 import {
   appendWorkflowToManifest,
   ensureGitignoreLine,
+  findDirectZodImports,
   preservingReinitFiles,
   removeOrchTree,
   writeOrchTree,
@@ -38,8 +40,27 @@ export async function initCmd(
 
   await writeOrchTree(deps.fsService, orchDir)
   await ensureGitignoreLine(deps.fsService, path(`${deps.cwd}/.gitignore`), '.orch/state/')
+  await warnOnDirectZodImports(deps.fsService, orchDir)
   process.stdout.write(HINT)
   return EXIT.OK
+}
+
+/**
+ * If any user-authored file under `.orch/` imports directly `from 'zod'`,
+ * print a one-shot warning. Workflows authored against orch's public API
+ * should `import { z } from 'orch'` — that avoids requiring zod in the host
+ * project's `package.json` (a common foot-gun: the symlinked `orch` package
+ * has zod, but Bun resolves bare specifiers from the importer's location).
+ */
+async function warnOnDirectZodImports(fs: FsService, orchDir: Path): Promise<void> {
+  const hits = await findDirectZodImports(fs, orchDir)
+  if (hits.length === 0) return
+  const list = hits.map((p) => `  - ${p}`).join('\n')
+  process.stderr.write(
+    `Warning: the following file(s) import directly from 'zod':\n${list}\n` +
+      `Prefer \`import { z } from 'orch'\` (no host install required), ` +
+      `or run \`bun add zod\` here to keep the direct import.\n`,
+  )
 }
 
 /**
@@ -84,6 +105,7 @@ async function reinitFlow(deps: CliDeps, opts: CliOpts, orchDir: Path): Promise<
   }
 
   await ensureGitignoreLine(deps.fsService, path(`${deps.cwd}/.gitignore`), '.orch/state/')
+  await warnOnDirectZodImports(deps.fsService, orchDir)
   process.stdout.write(HINT)
   return EXIT.OK
 }

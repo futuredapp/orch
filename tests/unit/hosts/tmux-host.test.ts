@@ -5,6 +5,11 @@ import { describe, expect, it } from 'bun:test'
 import { Writable } from 'node:stream'
 import { stepName } from '../../../src/core/types.ts'
 import { createTmuxHost } from '../../../src/hosts/index.ts'
+import {
+  createNullSessionLogger,
+  type JsonObject,
+  type SessionLogger,
+} from '../../../src/observability/index.ts'
 import type { RunnerEvent } from '../../../src/runners/index.ts'
 import { FakeFsService } from '../../../src/services/fs/index.ts'
 import {
@@ -13,7 +18,12 @@ import {
   type ProcessService,
   path,
 } from '../../../src/services/index.ts'
-import { FakeTmuxService, paneId } from '../../../src/services/tmux/index.ts'
+import {
+  FakeTmuxService,
+  paneId,
+  TmuxCommandError,
+  type WaitForOptions,
+} from '../../../src/services/tmux/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
 
 function makeStderr(): { stream: NodeJS.WritableStream; text: () => string } {
@@ -47,7 +57,7 @@ async function buildHost(tmux: FakeTmuxService) {
 // a hidden PTY in the scratch session, and `swapPane` is the only way to
 // surface it. Tests that exercise `runInteractive` on the right pane go
 // through this fixture.
-async function buildHostWithController(tmux: FakeTmuxService) {
+async function buildHostWithController(tmux: FakeTmuxService, logger?: SessionLogger) {
   const stderr = makeStderr()
   const fs = new FakeFsService()
   const basePath = path('/state')
@@ -64,8 +74,37 @@ async function buildHostWithController(tmux: FakeTmuxService) {
     disableStepsView: true,
     basePath,
     stateStore,
+    ...(logger !== undefined ? { logger } : {}),
   })
   return { host, stderr }
+}
+
+function makeCaptureLogger(runId: RunId): {
+  readonly logger: SessionLogger
+  readonly records: Array<{ readonly category: string; readonly record: JsonObject }>
+} {
+  const base = createNullSessionLogger({ runId })
+  const records: Array<{ readonly category: string; readonly record: JsonObject }> = []
+  return {
+    records,
+    logger: {
+      ...base,
+      append: async (category, record): Promise<void> => {
+        records.push({ category, record })
+      },
+    },
+  }
+}
+
+class WaitForSessionLostTmuxService extends FakeTmuxService {
+  override async waitFor(opts: WaitForOptions): Promise<void> {
+    await super.waitFor(opts)
+    throw new TmuxCommandError(
+      1,
+      `error connecting to /private/tmp/tmux-501/${opts.socket} (No such file or directory)`,
+      `tmux wait-for failed (exit 1): error connecting to /private/tmp/tmux-501/${opts.socket} (No such file or directory)`,
+    )
+  }
 }
 
 describe('createTmuxHost setup', () => {
@@ -295,6 +334,76 @@ describe('TmuxHost.onLifecycleEvent — step:parallel-branch-update', () => {
 })
 
 describe('TmuxHost.runInteractive', () => {
+  it('logs right-pane interactive pane lifecycle diagnostics', async () => {
+    const tmux = new FakeTmuxService()
+    tmux.setListPanesResult(['%0'])
+    tmux.nextPaneId(paneId('%42'))
+    const capture = makeCaptureLogger('r-2026-04-23-phased1' as RunId)
+
+    const { host } = await buildHostWithController(tmux, capture.logger)
+
+    await host.runInteractive({
+      argv: ['claude', '--resume', 'abc'],
+      env: {},
+      cwd: path('/tmp'),
+      stepName: stepName('review'),
+    })
+
+    const lifecycleTypes = capture.records
+      .filter((r) => r.category === 'lifecycle')
+      .map((r) => r.record.type)
+
+    expect(lifecycleTypes).toContain('interactive-start')
+    expect(lifecycleTypes).toContain('interactive-register-start')
+    expect(lifecycleTypes).toContain('pane-spawn-start')
+    expect(lifecycleTypes).toContain('interactive-hidden-pane-ready')
+    expect(lifecycleTypes).toContain('right-pane-swap-start')
+    expect(lifecycleTypes).toContain('interactive-wait-start')
+    expect(lifecycleTypes).toContain('interactive-wait-complete')
+    expect(lifecycleTypes).toContain('interactive-unregister-complete')
+
+    await host.teardown()
+  })
+
+  it('logs left-pane wait failures so fake clean TUI exits are diagnosable', async () => {
+    const tmux = new WaitForSessionLostTmuxService()
+    tmux.setListPanesResult(['%0'])
+    tmux.nextPaneId(paneId('%42'))
+    const capture = makeCaptureLogger('r-2026-04-23-phased1' as RunId)
+    const stderr = makeStderr()
+
+    const host = await createTmuxHost({
+      tmux,
+      processService: new FakeProcessService() as ProcessService,
+      clock: new FakeClock(0),
+      runId: 'r-2026-04-23-phased1' as RunId,
+      workflowName: 'compound',
+      stderr: stderr.stream,
+      skipVersionCheck: true,
+      disableStepsView: true,
+      logger: capture.logger,
+    })
+
+    const result = await host.runInteractive({
+      argv: ['bun', 'steps-view-runner.tsx'],
+      env: {},
+      cwd: path('/tmp'),
+      stepName: stepName('tui-steps-view'),
+      pane: 'left',
+    })
+
+    expect(result.exitCode).toBe(0)
+    const failed = capture.records.find(
+      (r) => r.category === 'lifecycle' && r.record.type === 'interactive-wait-failed',
+    )
+    expect(failed?.record.stepName).toBe('tui-steps-view')
+    expect(failed?.record.pane).toBe('left')
+    expect(failed?.record.isSessionLost).toBe(true)
+    expect(failed?.record.tmuxStderr).toContain('No such file or directory')
+
+    await host.teardown()
+  })
+
   it('splits a scratch-session pane with runner argv + env + cwd, swaps it visible, and kills it on exit (U6)', async () => {
     const tmux = new FakeTmuxService()
     tmux.setListPanesResult(['%0'])

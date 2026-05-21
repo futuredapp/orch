@@ -104,6 +104,62 @@ describe('schema()', () => {
 })
 
 // ---------------------------------------------------------------------------
+// Regression: silent `{}` output when the Zod schema came from a major
+// version that orch's `zod-to-json-schema` (v3.x) doesn't recognise — most
+// commonly Zod v4 in the host project while orch is on Zod v3. The converter
+// silently returns just `{"$schema": "..."}`; after stripping `$schema` we
+// would have produced `{}` and passed `--json-schema "{}"` to the Claude CLI,
+// which the Anthropic API rejects with a 400 about a missing input_schema.type.
+//
+// We simulate a v4-shaped schema with a v3-shaped `_def` whose `typeName`
+// the v3 converter doesn't know — that reproduces the exact `{}` failure
+// without requiring zod@4 as a dev-dependency.
+// ---------------------------------------------------------------------------
+
+describe('schema() — fails loudly when JSON Schema conversion produces nothing', () => {
+  it('throws when the converter returns no usable shape (simulating a Zod v4 schema)', () => {
+    const fakeV4Schema = {
+      _def: { typeName: 'ZodSomethingV4Only' },
+      // biome-ignore lint/suspicious/noExplicitAny: deliberately mis-typed input
+    } as any
+
+    expect(() => schema(fakeV4Schema)).toThrow()
+  })
+
+  it('error message names the failure mode and points at the fix', () => {
+    const fakeV4Schema = {
+      _def: { typeName: 'ZodSomethingV4Only' },
+      // biome-ignore lint/suspicious/noExplicitAny: deliberately mis-typed input
+    } as any
+
+    let caught: unknown
+    try {
+      schema(fakeV4Schema)
+    } catch (err) {
+      caught = err
+    }
+
+    expect(caught).toBeInstanceOf(Error)
+    const msg = (caught as Error).message
+    expect(msg).toContain('empty JSON Schema')
+    expect(msg).toContain("import { z } from 'orch'")
+    expect(msg).toContain('Zod v4')
+  })
+
+  it('does NOT throw for any normal v3 zod schema', () => {
+    // Sanity guard: the validation must not produce false positives on the
+    // common kinds of schemas the existing tests above already exercise.
+    expect(() => schema(z.object({ a: z.string() }))).not.toThrow()
+    expect(() => schema(z.string())).not.toThrow()
+    expect(() => schema(z.number())).not.toThrow()
+    expect(() => schema(z.array(z.string()))).not.toThrow()
+    expect(() => schema(z.enum(['a', 'b']))).not.toThrow()
+    expect(() => schema(z.string().nullable())).not.toThrow()
+    expect(() => schema(z.union([z.string(), z.number()]))).not.toThrow()
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Compile-time type assertions — Step<T> inference
 // ---------------------------------------------------------------------------
 

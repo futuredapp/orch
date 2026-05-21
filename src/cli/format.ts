@@ -6,8 +6,8 @@ import type { RunState } from '../state/index.ts'
 
 export function glyphs(tty: boolean): Record<RunState['status'], string> {
   return tty
-    ? { completed: '✓', crashed: '✗', running: '●' }
-    : { completed: '+', crashed: 'x', running: '*' }
+    ? { completed: '✓', failed: '✗', crashed: '✗', running: '●' }
+    : { completed: '+', failed: 'x', crashed: 'x', running: '*' }
 }
 
 // ---------------------------------------------------------------------------

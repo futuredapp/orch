@@ -148,7 +148,7 @@ describe('workflow validator wiring', () => {
 
     const state = await deps.stateStore.loadRun(deps.runId)
     expect(state?.steps.plan).toBeUndefined()
-    expect(state?.status).toBe('crashed')
+    expect(state?.status).toBe('failed')
   })
 
   it('runs every validator (no fail-fast) and aggregates all failures in order', async () => {

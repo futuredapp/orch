@@ -25,7 +25,12 @@ import { appendFile, mkdir, stat, writeFile } from 'node:fs/promises'
 import type { StepName } from '../../../core/types.ts'
 import { orchLog, type SessionLogger } from '../../../observability/index.ts'
 import type { Runner } from '../../../runners/index.ts'
-import type { PaneId, SocketName, TmuxService } from '../../../services/tmux/index.ts'
+import {
+  type PaneId,
+  type SocketName,
+  TmuxCommandError,
+  type TmuxService,
+} from '../../../services/tmux/index.ts'
 import { type Path, path as toPath } from '../../../services/types.ts'
 import type { RunId, StateStore, StepEntry } from '../../../state/index.ts'
 import { renderKindDetails } from '../kind-details.tsx'
@@ -103,6 +108,21 @@ export interface RightPaneControllerOptions {
   readonly tuiOverlayPath?: Path
 }
 
+const errorLifecycleFields = (err: unknown): Readonly<Record<string, unknown>> => {
+  const base: Record<string, unknown> = {
+    error: String(err),
+  }
+  if (err instanceof Error) {
+    base.errorName = err.name
+    base.errorMessage = err.message
+  }
+  if (err instanceof TmuxCommandError) {
+    base.tmuxExitCode = err.exitCode
+    base.tmuxStderr = err.stderr
+  }
+  return base
+}
+
 export interface RightPaneController {
   /** Wire this into `startStepsView`'s `onIntent`. */
   onIntent(intent: StepsIntent): void
@@ -178,6 +198,19 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
   /** Map back from string key to its original SourceKey, for replay-key
    *  reconstruction during the `live → replay` transform. */
   const keyByString = new Map<string, SourceKey>()
+  /**
+   * In-flight `registerSource` promises keyed by `sourceKeyToString(key)`.
+   * Lifecycle handlers wire `registerSource` / `unregisterSource` as
+   * fire-and-forget (`void controller.X(...)`), so an `unregister` for a
+   * source whose `register` is still awaiting `splitPane` would read
+   * `panes.get(skey) === undefined` and bail out — leaving
+   * `transformLiveToReplay` (and the `setViewMode({mode:'replay'})` that
+   * follows) un-run. The next `step:start` then sees `currentView.mode ===
+   * 'live'` and auto-swaps the new live source in, even though the user is
+   * actually on a frozen replay. Tracking pending registrations and awaiting
+   * them at the head of `unregisterSource` / `dispatchEnter` closes the race.
+   */
+  const pendingRegistrations = new Map<string, Promise<void>>()
 
   // ---------------------------------------------------------------------------
   // TUI overlay state: persistent view-mode + transient banner.
@@ -275,30 +308,74 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
   const registerSource = async (key: SourceKey, spec: PaneSpec): Promise<void> => {
     if (stopped) return
     const skey = sourceKeyToString(key)
-    if (panes.has(skey)) return
-    const paneId = await spawnHiddenPane(spec)
-    panes.set(skey, paneId)
-    keyByString.set(skey, key)
-    if (key.type === 'live' || key.type === 'interactive') {
-      liveSources.push(skey)
+    const inFlight = pendingRegistrations.get(skey)
+    if (inFlight !== undefined) {
+      logLifecycle({ type: 'pane-spawn-pending', sourceKey: skey })
+      await inFlight
+      return
     }
-    logLifecycle({ type: 'pane-spawned', sourceKey: skey, paneId })
-    // U5/U7: auto-swap-or-banner for live + rollup sources. If the user is
-    // on live mode, swap the new source in (most-recent-live wins; rollup
-    // takes the visible slot on registration just like a fresh live source).
-    // If the user is on replay, leave them there but surface a transient
-    // info banner so they know the new source is available behind `f`.
-    if (key.type === 'live' || key.type === 'rollup') {
-      if (currentView.mode === 'live') {
-        await showSource(key)
-      } else {
-        const text =
-          key.type === 'live'
-            ? `step ${key.stepName} running — press f to follow`
-            : `parallel branches running — press f to follow`
-        await emitBanner({ kind: 'info', text, ttlMs: 4000 })
+    if (panes.has(skey)) {
+      logLifecycle({ type: 'pane-spawn-skip-existing', sourceKey: skey })
+      return
+    }
+    const work = (async (): Promise<void> => {
+      const scratch = requireScratchSession()
+      logLifecycle({
+        type: 'pane-spawn-start',
+        sourceKey: skey,
+        specKind: spec.kind,
+        socket: scratch.socket,
+        session: scratch.session,
+      })
+      let paneId: PaneId
+      try {
+        paneId = await spawnHiddenPane(spec)
+      } catch (err) {
+        logLifecycle({
+          type: 'pane-spawn-failed',
+          sourceKey: skey,
+          specKind: spec.kind,
+          socket: scratch.socket,
+          session: scratch.session,
+          ...errorLifecycleFields(err),
+        })
+        throw err
       }
-    }
+      panes.set(skey, paneId)
+      keyByString.set(skey, key)
+      if (key.type === 'live' || key.type === 'interactive') {
+        liveSources.push(skey)
+      }
+      logLifecycle({ type: 'pane-spawned', sourceKey: skey, paneId })
+      // U5/U7: auto-swap-or-banner for live + rollup sources. If the user is
+      // on live mode, swap the new source in (most-recent-live wins; rollup
+      // takes the visible slot on registration just like a fresh live source).
+      // If the user is on replay, leave them there but surface a transient
+      // info banner so they know the new source is available behind `f`.
+      if (key.type === 'live' || key.type === 'rollup') {
+        if (currentView.mode === 'live') {
+          await showSource(key)
+        } else {
+          const text =
+            key.type === 'live'
+              ? `step ${key.stepName} running — press f to follow`
+              : `parallel branches running — press f to follow`
+          await emitBanner({ kind: 'info', text, ttlMs: 4000 })
+        }
+      }
+    })()
+    // The stored promise is used by `unregisterSource`/`dispatchEnter` to
+    // drain in-flight registrations. Swallow rejections on the stored chain
+    // (callers attach their own `.catch`) so a failed `registerSource` does
+    // not surface as an unhandled rejection on the `.finally` continuation —
+    // the original rejection is still observed via `await work` below.
+    const recorded = work
+      .finally(() => {
+        pendingRegistrations.delete(skey)
+      })
+      .catch(() => {})
+    pendingRegistrations.set(skey, recorded)
+    await work
   }
 
   const showSource = async (key: SourceKey): Promise<void> => {
@@ -314,10 +391,27 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
     // then hidden-pane carries the swap. Both calls share the global pane
     // queue so any pending writes to either pane finish before the swap.
     const dst = visiblePaneId
-    await opts.paneQueue.enqueue(dst, () => Promise.resolve())
-    await opts.paneQueue.enqueue(hidden, () =>
-      opts.tmux.swapPane({ socket: opts.socket, src: hidden, dst }),
-    )
+    logLifecycle({
+      type: 'right-pane-swap-start',
+      to: skey,
+      srcPaneId: hidden,
+      dstPaneId: dst,
+    })
+    try {
+      await opts.paneQueue.enqueue(dst, () => Promise.resolve())
+      await opts.paneQueue.enqueue(hidden, () =>
+        opts.tmux.swapPane({ socket: opts.socket, src: hidden, dst }),
+      )
+    } catch (err) {
+      logLifecycle({
+        type: 'right-pane-swap-failed',
+        to: skey,
+        srcPaneId: hidden,
+        dstPaneId: dst,
+        ...errorLifecycleFields(err),
+      })
+      throw err
+    }
     // After the swap: the hidden pane id now occupies the visible slot, and
     // the previously-visible pane id has moved to the hidden slot. We track
     // which pane id is visible so subsequent swaps target it.
@@ -373,27 +467,52 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
       // `can't find pane: <hidden>`. Ensure a placeholder hidden pane
       // exists, swap to it, then proceed with the kill (which now lands
       // on the hidden slot, not the visible one).
+      logLifecycle({ type: 'visible-pane-relocation-start', from: skey, paneId: hidden })
       await ensurePlaceholderRegistered()
       const placeholderKey: SourceKey = { type: 'placeholder' }
       if (panes.has(sourceKeyToString(placeholderKey))) await showSource(placeholderKey)
+      logLifecycle({ type: 'visible-pane-relocation-complete', from: skey, paneId: hidden })
     }
     panes.delete(skey)
     keyByString.delete(skey)
     removeFromLiveSources(skey)
+    logLifecycle({ type: 'pane-kill-start', sourceKey: skey, paneId: hidden })
+    let killed = false
     try {
       await opts.tmux.killPane({ socket: requireScratchSession().socket, target: hidden })
+      killed = true
     } catch (err) {
+      logLifecycle({
+        type: 'pane-kill-failed',
+        sourceKey: skey,
+        paneId: hidden,
+        ...errorLifecycleFields(err),
+      })
       opts.stderr.write(`[orch tui] killPane failed for ${skey}: ${String(err)}\n`)
     }
-    logLifecycle({ type: 'pane-killed', sourceKey: skey, paneId: hidden })
+    logLifecycle({ type: 'pane-killed', sourceKey: skey, paneId: hidden, killed })
   }
 
   const unregisterSource = async (key: SourceKey): Promise<void> => {
     if (stopped) return
     const skey = sourceKeyToString(key)
+    logLifecycle({ type: 'source-unregister-start', sourceKey: skey })
+    // Drain any in-flight registration for this key first. Without this,
+    // a fire-and-forget `unregister` queued behind a still-pending `register`
+    // (its `splitPane` hasn't resolved) sees `panes.get(skey) === undefined`
+    // and bails out — leaving the live→replay transform un-run and
+    // `currentView` stuck on `live` for the next registration to swap into.
+    const inFlight = pendingRegistrations.get(skey)
+    if (inFlight !== undefined) {
+      await inFlight.catch(() => {})
+    }
     const hidden = panes.get(skey)
-    if (hidden === undefined) return
+    if (hidden === undefined) {
+      logLifecycle({ type: 'source-unregister-miss', sourceKey: skey })
+      return
+    }
     if (key.type === 'live') {
+      logLifecycle({ type: 'source-unregister-live-to-replay', sourceKey: skey, paneId: hidden })
       // Transform: rekey the same hidden pane under the replay key. No kill.
       // The pane continues to tail the (now-frozen) tee; subsequent revisits
       // are O(1).
@@ -416,6 +535,7 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
     // Interactive / rollup / placeholder / replay: kill the hidden pane and
     // drop the entry. If the current key is this one, swap to placeholder
     // FIRST so the visible slot doesn't reference a dead pane.
+    logLifecycle({ type: 'source-unregister-kill', sourceKey: skey, paneId: hidden })
     await killHiddenSource(skey, hidden)
   }
 
@@ -531,7 +651,17 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
 
     const replayKey = replayKeyFor(step)
     try {
-      if (!panes.has(sourceKeyToString(replayKey))) {
+      const replaySkey = sourceKeyToString(replayKey)
+      // If a registration for this replay key is mid-flight (the user pressed
+      // Enter twice in quick succession), wait for it to finish before
+      // deciding whether to spawn another pane. Without this drain, the
+      // second call sees `panes.has(skey) === false` and `registerSource`
+      // would split a duplicate pane (warm-cache invariant violation).
+      const pending = pendingRegistrations.get(replaySkey)
+      if (pending !== undefined) {
+        await pending.catch(() => {})
+      }
+      if (!panes.has(replaySkey)) {
         const spec = await resolveReplaySpec(opts, step)
         await registerSource(replayKey, spec)
       }

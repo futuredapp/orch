@@ -53,14 +53,43 @@ export interface OrchHandle {
   readonly stateBase: Path
   /** `<stateBase>/state/<runId>`. */
   readonly stateDir: Path
+  /** Where the workflow body runs. Equals `repoRoot` unless a worktree step entered. */
+  readonly workflowCwd: Path
+  /** Set when `initGitRepo: true`; the temp repo root. Otherwise the fixture cwd. */
+  readonly repoRoot: Path
   /** Env that was passed to the orch subprocess (after `mergeEnv`). */
   readonly env: Readonly<Record<string, string>>
   /** Orch subprocess handle. `rawStreams: true` — writeStdin + stdoutBytes present. */
   readonly subprocess: SpawnHandle
+  /**
+   * Send a puppet command to the named step's control file. The step must
+   * have been configured with `puppet()` in the launcher's `script` map.
+   * Each method appends an NDJSON line and waits for the runner's matching
+   * ack file, so the call returns only once the command has been observed.
+   */
+  agent(stepName: string): AgentControl
   /**
    * Idempotent. Kills orch (graceful then forced after 1s), tears down the
    * tmux socket if still alive, removes the state base. Registered as
    * `afterEach` per cell.
    */
   teardown(): Promise<void>
+}
+
+/**
+ * The runner-side puppet command surface, scoped to one step. Returned by
+ * `handle.agent(stepName)`. Each method appends an NDJSON line to the
+ * step's control file and waits for the runner-side ack.
+ */
+export interface AgentControl {
+  emit(event: {
+    readonly kind: string
+    readonly type?: string
+    readonly [k: string]: unknown
+  }): Promise<void>
+  writeFile(relPath: string, content: string): Promise<void>
+  runShell(command: string): Promise<void>
+  complete(opts?: { readonly structuredOutput?: unknown }): Promise<void>
+  fail(opts: { readonly message: string; readonly exitCode?: number }): Promise<void>
+  wait(ms: number): Promise<void>
 }

@@ -273,21 +273,61 @@ async function readStateJson(handle: OrchHandle): Promise<StateJsonView> {
     if (raw.length === 0) return { stateStatus: 'unknown', stepStatuses: {} }
     const parsed = JSON.parse(raw) as {
       status?: string
-      steps?: Record<string, { value?: unknown }>
+      steps?: Record<string, { endedAt?: number; value?: unknown }>
     }
     const stepStatuses: Record<string, StepStatus> = {}
     if (parsed.steps !== undefined) {
       for (const [name, entry] of Object.entries(parsed.steps)) {
-        if (entry !== undefined && entry.value !== undefined) {
+        // `state-store.saveStep` writes the entry once the step terminates
+        // successfully (see `src/core/workflow.ts:1189`). Presence of the
+        // entry IS the completion signal — `value` can legitimately be
+        // `undefined` for agent steps with no structured output. The earlier
+        // heuristic `value !== undefined` mis-reported puppet completes as
+        // `unknown`.
+        if (entry !== undefined && entry.endedAt !== undefined) {
           stepStatuses[name] = 'completed'
         } else {
           stepStatuses[name] = 'unknown'
         }
       }
     }
+    // Failed steps do NOT appear in state.steps — `saveStep` is skipped when
+    // the step throws (src/core/workflow.ts:1235-1252). Augment the per-step
+    // map from `logs/lifecycle.ndjson`. Note: state.json is authoritative; a
+    // step with a successful entry stays `completed` even if a stale
+    // `step:failed` line from a prior (resumed) run is present.
+    const failed = await readFailedSteps(handle)
+    for (const name of failed) {
+      if (stepStatuses[name] !== 'completed') {
+        stepStatuses[name] = 'failed'
+      }
+    }
     return { stateStatus: mapStateStatus(parsed.status), stepStatuses }
   } catch {
     return { stateStatus: 'unknown', stepStatuses: {} }
+  }
+}
+
+async function readFailedSteps(handle: OrchHandle): Promise<Set<string>> {
+  const lifecycleFile = nodePath.join(handle.stateDir, 'logs', 'lifecycle.ndjson')
+  try {
+    const raw = await Bun.file(lifecycleFile).text()
+    if (raw.length === 0) return new Set()
+    const out = new Set<string>()
+    for (const line of raw.split('\n')) {
+      if (line.length === 0) continue
+      try {
+        const parsed = JSON.parse(line) as { type?: string; stepName?: string }
+        if (parsed.type === 'step:failed' && typeof parsed.stepName === 'string') {
+          out.add(parsed.stepName)
+        }
+      } catch {
+        /* tolerate trailing partial / malformed line */
+      }
+    }
+    return out
+  } catch {
+    return new Set()
   }
 }
 

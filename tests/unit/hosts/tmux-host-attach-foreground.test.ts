@@ -5,6 +5,11 @@
 import { describe, expect, it } from 'bun:test'
 import { Writable } from 'node:stream'
 import { createTmuxHost, HostCreationError } from '../../../src/hosts/index.ts'
+import {
+  createNullSessionLogger,
+  type JsonObject,
+  type SessionLogger,
+} from '../../../src/observability/index.ts'
 import { FakeClock, FakeProcessService, type ProcessService } from '../../../src/services/index.ts'
 import { FakeTmuxService, paneId } from '../../../src/services/tmux/index.ts'
 import type { RunId } from '../../../src/state/index.ts'
@@ -25,6 +30,7 @@ const RUN_ID = 'r-2026-04-23-700304-kl' as RunId
 async function buildHostWithAttach(opts?: {
   skipAttach?: boolean
   env?: Record<string, string | undefined>
+  logger?: SessionLogger
 }) {
   const tmux = new FakeTmuxService()
   tmux.setListPanesResult(['%0'])
@@ -42,8 +48,26 @@ async function buildHostWithAttach(opts?: {
     env: opts?.env ?? {},
     cwd: '/tmp',
     ...(opts?.skipAttach !== undefined ? { skipAttach: opts.skipAttach } : {}),
+    ...(opts?.logger !== undefined ? { logger: opts.logger } : {}),
   })
   return { host, tmux, processService, stderr }
+}
+
+function makeCaptureLogger(): {
+  readonly logger: SessionLogger
+  readonly records: Array<{ readonly category: string; readonly record: JsonObject }>
+} {
+  const base = createNullSessionLogger({ runId: RUN_ID })
+  const records: Array<{ readonly category: string; readonly record: JsonObject }> = []
+  return {
+    records,
+    logger: {
+      ...base,
+      append: async (category, record): Promise<void> => {
+        records.push({ category, record })
+      },
+    },
+  }
 }
 
 describe('TmuxHost.attachForeground', () => {
@@ -90,6 +114,27 @@ describe('TmuxHost.attachForeground', () => {
     await host.attachForeground()
 
     expect(stderr.text()).toContain('[orch tmux] attach exited with code 5')
+    await host.teardown()
+  })
+
+  it('logs attach exit code, teardown state, and tmux reachability', async () => {
+    const capture = makeCaptureLogger()
+    const { host, processService } = await buildHostWithAttach({ logger: capture.logger })
+    processService
+      .whenForeground(['tmux', '-L', `orch-${RUN_ID}`, 'attach-session', '-t', 'orch'])
+      .respondWith({ exitCode: 1 })
+
+    await host.attachForeground()
+
+    const exited = capture.records.find(
+      (r) => r.category === 'lifecycle' && r.record.type === 'attach-foreground-exited',
+    )
+    expect(exited?.record.exitCode).toBe(1)
+    expect(exited?.record.teardownStarted).toBe(false)
+    expect(exited?.record.tmuxServerReachable).toBe(true)
+    expect(exited?.record.tmuxSessionReachable).toBe(true)
+    expect(exited?.record.tmuxScratchSessionReachable).toBe(true)
+
     await host.teardown()
   })
 

@@ -16,5 +16,14 @@ import { defineConfig } from '../../../src/config/index.ts'
 export const config = defineConfig({
   workflows: {
     'tier5-two-step-linear': 'two-step-linear.ts',
+    'behavioral-single-agent-step': 'single-agent-step.ts',
+    'behavioral-three-step-linear': 'three-step-linear.ts',
+    'behavioral-worktree-then-agent': 'worktree-then-agent.ts',
+    'behavioral-worktree-with-post-create': 'worktree-with-post-create.ts',
+    'behavioral-agent-then-commit': 'agent-then-commit.ts',
+    'behavioral-command-step-only': 'command-step-only.ts',
+    'behavioral-ask-with-default': 'ask-with-default.ts',
+    'behavioral-puppet-can-fail': 'puppet-can-fail.ts',
+    'behavioral-resumable-crash': 'resumable-crash.ts',
   },
 })

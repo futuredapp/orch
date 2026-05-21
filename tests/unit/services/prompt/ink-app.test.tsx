@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'bun:test'
-import { render } from 'ink-testing-library'
+import { afterEach, describe, expect, it } from 'bun:test'
+import { cleanup, render } from 'ink-testing-library'
 import { AskApp } from '../../../../src/services/prompt/ink-app.tsx'
 import type { PromptResult, PromptSpec } from '../../../../src/services/prompt/prompt-service.ts'
 
@@ -37,18 +37,78 @@ function makeResolver(): Resolver {
   }
 }
 
-// Ink batches state changes through React's reconciler before re-rendering,
-// and `useFocus`'s focus-id update lands on the same tick path. 5 ms is too
-// short for a multi-step state machine (focus → re-render → re-subscribe
-// useInput) to settle; 30 ms is empirically the floor below which `Tab` /
-// `Enter` sequences race the reconciler. Use real `setTimeout`, not fake
-// timers — Ink relies on the real event loop for `setRawMode` and stdin
-// readable callbacks.
+// Ink dispatches stdin to keypress handlers, which call setState (focus +
+// values). The next render is async: it lands one or more microtasks later
+// on React's scheduler, and the new `useInput`/`useFocus` registrations
+// commit in a subsequent effect pass. A single `setTimeout(N)` is racy
+// because no fixed delay can guarantee all four stages (stdin handler →
+// state update → render → effect re-subscription) settle on a loaded
+// machine. `tick` widens the floor; `pressKey` adds frame-presence polling
+// + microtask drains for sequences that race the reconciler.
+// Use real `setTimeout` — Ink relies on the real event loop for
+// `setRawMode` + stdin readable callbacks.
 function tick(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 30))
+  return new Promise((resolve) => setTimeout(resolve, 60))
+}
+
+// Press a key and wait for the resulting render + effect pass to settle.
+// Polls `ui.frames.length` for a new frame produced after the write, then
+// drains microtasks so dependent effects (e.g. useInput re-subscribing on
+// the newly-focused element) finish before the next key.
+async function pressKey(
+  ui: { readonly stdin: { write: (s: string) => void }; readonly frames: string[] },
+  key: string,
+): Promise<void> {
+  const before = ui.frames.length
+  ui.stdin.write(key)
+  const deadline = Date.now() + 250
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 5))
+    if (ui.frames.length > before) break
+  }
+  for (let i = 0; i < 4; i++) await Promise.resolve()
+  await new Promise((r) => setTimeout(r, 10))
+}
+
+// Wait for a render frame matching `predicate(frame)`. Used to synchronize
+// on focus-claim before dispatching keystrokes — `pressKey` immediately
+// after `render()` raced the `useFocus({autoFocus:true})` effect, dropping
+// the first stdin write when the TextInput wasn't yet focus-gated true.
+async function waitForFrame(
+  ui: { readonly lastFrame: () => string | undefined },
+  predicate: (frame: string) => boolean,
+  timeoutMs = 500,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const f = ui.lastFrame() ?? ''
+    if (predicate(f)) {
+      // The matched frame proves the render committed, but the dependent
+      // child effects (TextInput's useInput re-subscribing on focus prop)
+      // run on a follow-up effect pass. Drain microtasks + a small timer
+      // before returning so the next keystroke isn't dropped on a still-
+      // gated useInput.
+      for (let i = 0; i < 8; i++) await Promise.resolve()
+      await new Promise((r) => setTimeout(r, 20))
+      return
+    }
+    await new Promise((r) => setTimeout(r, 10))
+  }
+  throw new Error(
+    `waitForFrame: predicate did not match within ${timeoutMs}ms. Last frame: ${ui.lastFrame() ?? '(none)'}`,
+  )
 }
 
 describe('AskApp', () => {
+  // ink-testing-library's `cleanup()` unmounts any orphan instance and
+  // resets module-level state. Each test calls `ui.unmount()` explicitly,
+  // but a defensive `cleanup` between tests prevents one test's stdin
+  // listener / focus state from leaking into the next on Bun's shared
+  // process.stdin space.
+  afterEach(() => {
+    cleanup()
+  })
+
   it('renders the question, all field labels, and all button labels', async () => {
     const r = makeResolver()
     const ui = render(<AskApp spec={SPEC_TWO_FIELDS_TWO_BUTTONS} onResolve={r.onResolve} />)
@@ -68,11 +128,13 @@ describe('AskApp', () => {
     const r = makeResolver()
     const ui = render(<AskApp spec={SPEC_TWO_FIELDS_TWO_BUTTONS} onResolve={r.onResolve} />)
     await tick()
+    // Wait for `useFocus({autoFocus:true})` to claim — the focus indicator
+    // `›` next to `notes:` is the durable proof that the TextInput's
+    // `focus` prop is true and will route subsequent keystrokes.
+    await waitForFrame(ui, (f) => f.includes('› notes:'))
 
-    ui.stdin.write('hi')
-    await tick()
-    ui.stdin.write(ESC)
-    await tick()
+    await pressKey(ui, 'hi')
+    await pressKey(ui, ESC)
 
     expect(r.take()).toEqual({
       cancelled: true,
@@ -86,9 +148,12 @@ describe('AskApp', () => {
     const r = makeResolver()
     const ui = render(<AskApp spec={SPEC_TWO_FIELDS_TWO_BUTTONS} onResolve={r.onResolve} />)
     await tick()
+    // Wait for `useFocus({autoFocus:true})` to claim — the focus indicator
+    // `›` next to `notes:` is the durable proof that the TextInput's
+    // `focus` prop is true and will route subsequent keystrokes.
+    await waitForFrame(ui, (f) => f.includes('› notes:'))
 
-    ui.stdin.write(CTRL_C)
-    await tick()
+    await pressKey(ui, CTRL_C)
 
     expect(r.take()).toEqual({
       cancelled: true,
@@ -102,17 +167,20 @@ describe('AskApp', () => {
     const r = makeResolver()
     const ui = render(<AskApp spec={SPEC_TWO_FIELDS_TWO_BUTTONS} onResolve={r.onResolve} />)
     await tick()
+    // Wait for `useFocus({autoFocus:true})` to claim — the focus indicator
+    // `›` next to `notes:` is the durable proof that the TextInput's
+    // `focus` prop is true and will route subsequent keystrokes.
+    await waitForFrame(ui, (f) => f.includes('› notes:'))
 
-    // First field auto-focuses; type into it.
-    ui.stdin.write('hello')
-    await tick()
+    // First field auto-focuses; type into it. Per-char presses give the
+    // TextInput's `onChange` enough time to commit each character before
+    // the next arrives, vs. a single 'hello' write that races the first
+    // char against a still-warming useInput subscription.
+    for (const c of 'hello') await pressKey(ui, c)
     // Tab over the second field, then to the first button.
-    ui.stdin.write(TAB)
-    await tick()
-    ui.stdin.write(TAB)
-    await tick()
-    ui.stdin.write(ENTER)
-    await tick()
+    await pressKey(ui, TAB)
+    await pressKey(ui, TAB)
+    await pressKey(ui, ENTER)
 
     expect(r.take()).toEqual({
       cancelled: false,
@@ -129,14 +197,10 @@ describe('AskApp', () => {
     await tick()
 
     // Three Tab presses bring focus from field 0 → field 1 → button 0 → button 1.
-    ui.stdin.write(TAB)
-    await tick()
-    ui.stdin.write(TAB)
-    await tick()
-    ui.stdin.write(TAB)
-    await tick()
-    ui.stdin.write(ENTER)
-    await tick()
+    await pressKey(ui, TAB)
+    await pressKey(ui, TAB)
+    await pressKey(ui, TAB)
+    await pressKey(ui, ENTER)
 
     expect(r.take()).toEqual({
       cancelled: false,
@@ -153,20 +217,13 @@ describe('AskApp', () => {
     await tick()
 
     // Forward to field 1, back to field 0, forward 3× to button 1.
-    ui.stdin.write(TAB)
-    await tick()
-    ui.stdin.write(SHIFT_TAB)
-    await tick()
-    ui.stdin.write('x')
-    await tick()
-    ui.stdin.write(TAB)
-    await tick()
-    ui.stdin.write(TAB)
-    await tick()
-    ui.stdin.write(TAB)
-    await tick()
-    ui.stdin.write(ENTER)
-    await tick()
+    await pressKey(ui, TAB)
+    await pressKey(ui, SHIFT_TAB)
+    await pressKey(ui, 'x')
+    await pressKey(ui, TAB)
+    await pressKey(ui, TAB)
+    await pressKey(ui, TAB)
+    await pressKey(ui, ENTER)
 
     expect(r.take()).toEqual({
       cancelled: false,
@@ -181,9 +238,13 @@ describe('AskApp', () => {
     const r = makeResolver()
     const ui = render(<AskApp spec={SPEC_NO_FIELDS_TWO_BUTTONS} onResolve={r.onResolve} />)
     await tick()
-
-    ui.stdin.write(ENTER)
+    // No fields → first button is `autoFocus`. Wait for the question to
+    // render (proves mount completed); the focus claim follows on the next
+    // effect pass which `pressKey` will wait for via frame polling.
+    await waitForFrame(ui, (f) => f.includes('continue?'))
     await tick()
+
+    await pressKey(ui, ENTER)
 
     expect(r.take()).toEqual({
       cancelled: false,
@@ -208,12 +269,9 @@ describe('AskApp', () => {
     )
     await tick()
 
-    ui.stdin.write(ENTER)
-    await tick()
-    ui.stdin.write(ENTER)
-    await tick()
-    ui.stdin.write(ENTER)
-    await tick()
+    await pressKey(ui, ENTER)
+    await pressKey(ui, ENTER)
+    await pressKey(ui, ENTER)
 
     expect(calls).toBe(1)
     expect(r.take()?.cancelled).toBe(false)

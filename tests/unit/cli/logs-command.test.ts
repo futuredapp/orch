@@ -102,7 +102,7 @@ async function seedRun(
   deps: CliDeps,
   rid: RunId,
   stepName: string,
-  status: 'running' | 'completed' | 'crashed',
+  status: 'running' | 'completed' | 'failed' | 'crashed',
 ): Promise<void> {
   await deps.stateStore.initRun(rid, { workflowName: 'demo', startedAt: 1000 })
   const transcriptPath = `logs/agents/${stepName}/events.ndjson`

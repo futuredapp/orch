@@ -157,3 +157,97 @@ export const closeOrchStdin = (): UserAction => {
     close()
   }
 }
+
+// ---------------------------------------------------------------------------
+// Navigation sugar — composite gestures over `pressKeyInPane`. Each is
+// intentionally a single observable change in the cell narrative.
+// ---------------------------------------------------------------------------
+
+const KEY_INTERVAL_MS = 60
+
+export const snapToLive = (): UserAction => {
+  return async (_handle, probe) => probe.pressKeyInPane({ pane: 'left', key: 'f' })
+}
+
+export const openHelp = (): UserAction => {
+  return async (_handle, probe) => probe.pressKeyInPane({ pane: 'left', key: '?' })
+}
+
+export const closeHelp = (): UserAction => {
+  return async (_handle, probe) => probe.pressKeyInPane({ pane: 'left', key: 'Escape' })
+}
+
+export const pressEnterOnSelected = (): UserAction => {
+  return async (_handle, probe) => probe.pressKeyInPane({ pane: 'left', key: 'Enter' })
+}
+
+export const scrollRightPane = (direction: 'up' | 'down', amount = 1): UserAction => {
+  const key = direction === 'up' ? 'PageUp' : 'PageDown'
+  return async (_handle, probe) => {
+    for (let i = 0; i < amount; i += 1) {
+      await probe.pressKeyInPane({ pane: 'right', key })
+      if (i + 1 < amount) await new Promise((r) => setTimeout(r, KEY_INTERVAL_MS))
+    }
+  }
+}
+
+/**
+ * Press ↑ or ↓ until the left pane's selection lands on `stepName`. Reads the
+ * left pane capture between keystrokes to detect highlight position. Bounded
+ * by `maxAttempts` to avoid runaway loops when the row is not present.
+ */
+export const selectStep = (stepName: string, maxAttempts = 20): UserAction => {
+  return async (_handle, probe) => {
+    for (let i = 0; i < maxAttempts; i += 1) {
+      const text = await probe.capturePaneText('left')
+      const lineIdx = findStepLineIndex(text, stepName)
+      if (lineIdx === undefined) {
+        // step not visible yet — wait a tick and retry
+        await new Promise((r) => setTimeout(r, KEY_INTERVAL_MS))
+        continue
+      }
+      const selectedIdx = findSelectedLineIndex(text)
+      if (selectedIdx === lineIdx) return
+      const direction = selectedIdx === undefined || lineIdx > selectedIdx ? 'Down' : 'Up'
+      await probe.pressKeyInPane({ pane: 'left', key: direction })
+      await new Promise((r) => setTimeout(r, KEY_INTERVAL_MS))
+    }
+    throw new Error(
+      `selectStep("${stepName}"): could not land selection within ${maxAttempts} attempts`,
+    )
+  }
+}
+
+export const viewStep = (stepName: string): UserAction => {
+  // Composite: select the named step, then press Enter.
+  const select = selectStep(stepName)
+  const enter = pressEnterOnSelected()
+  return async (handle, probe) => {
+    await select(handle, probe)
+    await enter(handle, probe)
+  }
+}
+
+function findStepLineIndex(paneText: string, stepName: string): number | undefined {
+  const escaped = stepName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const re = new RegExp(`(^|\\s)${escaped}(\\s|$)`)
+  const lines = paneText.split('\n')
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i] ?? ''
+    if (re.test(line)) return i
+  }
+  return undefined
+}
+
+function findSelectedLineIndex(paneText: string): number | undefined {
+  // The Ink steps view renders selection as `▌` on the row, but only when
+  // `isUserDriven` is true. On initial render no cursor is visible — we kick
+  // selection into user-driven mode by pressing Down then Up before testing.
+  const HIGHLIGHT_MARKERS = ['▌']
+  const lines = paneText.split('\n')
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i] ?? ''
+    if (HIGHLIGHT_MARKERS.some((m) => line.includes(m))) return i
+  }
+  return undefined
+}

@@ -87,8 +87,13 @@ function fakeHandle(opts: FakeHandleOptions): OrchHandle {
     socket: 'orch-test' as Socket,
     stateBase: toPath(opts.stateBase),
     stateDir: toPath(opts.stateBase),
+    workflowCwd: toPath(opts.stateBase),
+    repoRoot: toPath(opts.stateBase),
     env: {},
     subprocess,
+    agent: () => {
+      throw new Error('snapshot unit test does not use agent()')
+    },
     teardown: async () => {},
   }
 }

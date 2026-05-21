@@ -184,3 +184,26 @@ export class HostCreationError extends Error {
     this.name = 'HostCreationError'
   }
 }
+
+/**
+ * Thrown from `Host.runInteractive` when the host can no longer satisfy the
+ * spawn request because its backing surface has gone away mid-run — e.g. the
+ * tmux server died externally (`[server exited]`) after the user detached,
+ * and the next interactive step cannot allocate a pane on the dead socket.
+ *
+ * Distinct from `HostCreationError` (which fires at construction) and from
+ * `StepError` (which means the step ran and returned a bad exit code).
+ * `mapRunError` translates this into a clean failure summary instead of
+ * letting a raw `TmuxCommandError` escape `executeWithAttach` as an
+ * unhandled rejection.
+ */
+export class HostUnavailableError extends Error {
+  readonly code = 'HOST_UNAVAILABLE' as const
+  override readonly cause: unknown
+  constructor(message: string, cause: unknown) {
+    super(message)
+    this.name = 'HostUnavailableError'
+    this.cause = cause
+    Object.setPrototypeOf(this, new.target.prototype)
+  }
+}

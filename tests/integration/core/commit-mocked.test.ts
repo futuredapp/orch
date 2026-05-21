@@ -109,7 +109,7 @@ describe('commit step integration (mocked)', () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-commit-test-')
     const runId = 'r-2026-04-13-398232-yj' as RunId
 
-    // First execution: commit succeeds, agent step crashes
+    // First execution: commit succeeds, agent step fails
     const fps1 = new FakeProcessService()
     const git1 = new FakeGitService()
     git1.setIsClean(path('/workspace'), false)
@@ -127,13 +127,13 @@ describe('commit step integration (mocked)', () => {
     try {
       await wf1.execute(deps1)
     } catch {
-      // expected crash
+      // expected failure
     }
 
     // Verify commit was persisted
-    const stateAfterCrash = await deps1.stateStore.loadRun(runId)
-    expect(stateAfterCrash?.steps['commit:checkpoint']).toBeDefined()
-    expect(stateAfterCrash?.status).toBe('crashed')
+    const stateAfterFailure = await deps1.stateStore.loadRun(runId)
+    expect(stateAfterFailure?.steps['commit:checkpoint']).toBeDefined()
+    expect(stateAfterFailure?.status).toBe('failed')
 
     // Second execution: commit cached, agent step succeeds
     const fps2 = new FakeProcessService()

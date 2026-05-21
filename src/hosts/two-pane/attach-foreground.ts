@@ -63,24 +63,36 @@ export interface AttachForegroundDeps {
   readonly isTeardownStarted: () => boolean
 }
 
+export interface AttachForegroundResult {
+  readonly skipped: boolean
+  readonly exitCode: number | null
+  readonly teardownStarted: boolean
+}
+
 /**
  * Builds the `attachForeground()` closure for `TmuxHost`. Spawns
  * `tmux -L <socket> attach-session -t <session>` with inherited stdio and
  * resolves when the client exits. Never throws — a failed attach just logs
  * a diagnostic to stderr so the CLI's race-or-wait flow stays intact.
  */
-export function createAttachForeground(deps: AttachForegroundDeps): () => Promise<void> {
+export function createAttachForeground(
+  deps: AttachForegroundDeps,
+): () => Promise<AttachForegroundResult> {
   return async () => {
-    if (deps.skipAttach) return
+    if (deps.skipAttach) {
+      return { skipped: true, exitCode: null, teardownStarted: deps.isTeardownStarted() }
+    }
     const handle = deps.processService.spawnForeground({
       argv: ['tmux', '-L', deps.socket, 'attach-session', '-t', SESSION],
       env: filterEnv(process.env),
       cwd: path(deps.cwd),
     })
     const { exitCode } = await handle.wait()
-    if (exitCode !== 0 && !deps.isTeardownStarted()) {
+    const teardownStarted = deps.isTeardownStarted()
+    if (exitCode !== 0 && !teardownStarted) {
       deps.stderr.write(`[orch tmux] attach exited with code ${exitCode}\n`)
     }
+    return { skipped: false, exitCode, teardownStarted }
   }
 }
 

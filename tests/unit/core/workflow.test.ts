@@ -191,7 +191,7 @@ describe('workflow run()', () => {
     expect(state?.status).toBe('completed')
   })
 
-  it('sets status to crashed on step failure', async () => {
+  it('sets status to failed on step failure', async () => {
     const deps = makeDeps()
     const fr = new FakeRunner(deps.processService)
     fr.script({ failWith: { message: 'boom' } })
@@ -208,7 +208,7 @@ describe('workflow run()', () => {
     }
 
     const state = await deps.stateStore.loadRun(deps.runId)
-    expect(state?.status).toBe('crashed')
+    expect(state?.status).toBe('failed')
   })
 
   it('resume skips completed steps and re-runs the failed step', async () => {

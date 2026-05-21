@@ -3,17 +3,15 @@
  * `tests/integration/lifecycle/*.real.test.ts` MUST import from this file
  * only — never from `./internal/*` (the harness engine is private by
  * convention; see `README.md`).
- *
- * Surface as of W1 (U1 + U2): all identifiers exist as typed stubs. Calling
- * any of them throws with the U-ID that owns the implementation. Subsequent
- * Ws fill the bodies in.
  */
 
-export type { AssertionArg, PaneAssertionArg } from './assertions.ts'
+export type { AssertionArg, FilesystemAssertionArg, PaneAssertionArg } from './assertions.ts'
 // ─── Assertions ────────────────────────────────────────────────────────────
 export {
   assertContractedOutcome,
   assertContractViolatedThroughout,
+  assertFilesystem,
+  assertGit,
   assertLeftPane,
   assertOrchExits,
   assertPersistedState,
@@ -21,8 +19,26 @@ export {
   assertTerminalEscapeStream,
   assertTmuxSession,
 } from './assertions.ts'
+// ─── Awaits (polling helpers, NOT user actions) ────────────────────────────
+export { awaitRunStatus, awaitStepStatus, awaitVisibleStep } from './awaits.ts'
+export type { FilesystemMatcher } from './filesystem-matchers.ts'
+// ─── Filesystem / git matchers ─────────────────────────────────────────────
+export {
+  branchExists,
+  commitExists,
+  fileContains,
+  fileExistsAt,
+  runArtifactExists,
+  worktreeExists,
+} from './filesystem-matchers.ts'
 export type { InvariantViolation, ScenarioTag } from './internal/invariants.ts'
-export type { BringToStateRequest, OrchHandle, RunId, Socket } from './internal/lifecycle-handle.ts'
+export type {
+  AgentControl,
+  BringToStateRequest,
+  OrchHandle,
+  RunId,
+  Socket,
+} from './internal/lifecycle-handle.ts'
 // ─── Shared types tests may need at type-position ──────────────────────────
 export type {
   EscapeCounts,
@@ -38,9 +54,15 @@ export type {
   StateStatus,
   StepStatus,
 } from './internal/snapshot.ts'
-export type { EmitThenHangScript, HoldUntilReleasedScript } from './launch.ts'
+export type { EmitThenHangScript, HoldUntilReleasedScript, PuppetScript } from './launch.ts'
 // ─── Launcher / scripts ────────────────────────────────────────────────────
-export { emitThenHang, holdUntilReleased, launchOrchWorkflow } from './launch.ts'
+export {
+  emitThenHang,
+  holdUntilReleased,
+  launchOrchWorkflow,
+  puppet,
+  resumeOrchWorkflow,
+} from './launch.ts'
 
 // ─── Outcome matchers ──────────────────────────────────────────────────────
 export {
@@ -51,7 +73,7 @@ export {
   tmuxIsTornDown,
   withinMs,
 } from './outcome-matchers.ts'
-export type { PaneInkState } from './pane-matchers.ts'
+export type { PaneInkState, StepRowGlyph } from './pane-matchers.ts'
 // ─── Pane matchers ─────────────────────────────────────────────────────────
 export {
   containsText,
@@ -60,25 +82,46 @@ export {
   hasNoLiveOutput,
   isFocused,
   isPaneDead,
+  showsEndOfRunSummary,
+  showsErrorBanner,
+  showsFailureSummary,
+  showsHelpOverlay,
+  showsInfoBanner,
   showsInkState,
+  showsInteractiveBadge,
+  showsRunCount,
+  showsStep,
+  showsWorkflowHeader,
+  stepHasGlyph,
+  stepIsHighlighted,
 } from './pane-matchers.ts'
 export type { UserAction } from './user-actions.ts'
 // ─── User actions ──────────────────────────────────────────────────────────
 export {
   clickOnPane,
+  closeHelp,
   closeOrchStdin,
+  openHelp,
+  pressEnterOnSelected,
   pressKeyInPane,
   release,
+  scrollRightPane,
+  selectStep,
   signalOrch,
+  snapToLive,
   typeIntoOrchStdin,
   userAction,
+  viewStep,
   wait,
 } from './user-actions.ts'
 // ─── Workflow matchers ─────────────────────────────────────────────────────
 export {
   hasExitCode,
   hasExitedBySignal,
+  hasRunStatus,
   hasStatus,
+  hasStepCompleted,
+  hasStepFailed,
   hasStepStatus,
   isRunningStep,
 } from './workflow-matchers.ts'

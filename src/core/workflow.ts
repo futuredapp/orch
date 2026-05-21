@@ -37,6 +37,7 @@ import { resolveView } from './view-registry.ts'
 // Re-export so existing imports from './workflow.ts' remain valid.
 export { InteractiveParallelError, ResumeError, RunNotFoundError, RunnerCapabilityError, StepError }
 
+import { ParallelError } from './parallel.ts'
 import { SchemaValidationError } from './schema.ts'
 import { type AgentStepConfig, type CommitStepConfig, onCacheHit, type Step } from './step.ts'
 import {
@@ -1233,8 +1234,22 @@ async function executeWorkflowFn(fn: WorkflowFn, deps: WorkflowDeps): Promise<vo
       })
       .catch(() => {})
   } catch (err) {
+    // Step-level failures mean the step ran to completion and produced an
+    // unacceptable result — runner exited non-zero (StepError), a validator
+    // rejected its output (ValidationError), structured output didn't match
+    // the declared schema (SchemaValidationError), or one or more parallel
+    // branches failed (ParallelError, which only wraps user-code throws from
+    // parallel branches). The orchestrator itself did not crash. Anything
+    // else (workflow-author bug, host failure, I/O error) earns the `crashed`
+    // bucket so resume / dashboards can treat the two categories differently.
+    const isStepLevelFailure =
+      err instanceof StepError ||
+      err instanceof ValidationError ||
+      err instanceof SchemaValidationError ||
+      err instanceof ParallelError
+    const terminalStatus: 'failed' | 'crashed' = isStepLevelFailure ? 'failed' : 'crashed'
     try {
-      await deps.stateStore.setStatus(deps.runId, 'crashed', deps.clock.now())
+      await deps.stateStore.setStatus(deps.runId, terminalStatus, deps.clock.now())
     } catch {
       // Swallow setStatus failure — if initRun failed (disk full) or the state
       // file was deleted mid-run, the catch tries setStatus which throws.
@@ -1245,7 +1260,7 @@ async function executeWorkflowFn(fn: WorkflowFn, deps: WorkflowDeps): Promise<vo
     void deps.logger
       ?.append('lifecycle', {
         type: 'run-ended',
-        status: 'crashed',
+        status: terminalStatus,
         totalDurationMs: deps.clock.now() - startedAt,
       })
       .catch(() => {})

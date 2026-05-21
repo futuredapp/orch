@@ -72,12 +72,12 @@ describe.skipIf(!canRun)('resume with real Claude (e2e)', () => {
       // expected — step 2 crashes
     }
 
-    // Verify step 1 is cached and status is 'crashed'
-    const crashedState = await deps1.stateStore.loadRun(runIdVal)
-    expect(crashedState?.status).toBe('crashed')
-    expect(crashedState?.steps['real-claude']).toBeDefined()
-    expect(crashedState?.steps['real-claude']?.value).toBeDefined()
-    expect(crashedState?.steps['fake-step']).toBeUndefined()
+    // Verify step 1 is cached and status is 'failed'
+    const failedState = await deps1.stateStore.loadRun(runIdVal)
+    expect(failedState?.status).toBe('failed')
+    expect(failedState?.steps['real-claude']).toBeDefined()
+    expect(failedState?.steps['real-claude']?.value).toBeDefined()
+    expect(failedState?.steps['fake-step']).toBeUndefined()
 
     // Resume: step 1 cached (real Claude NOT re-invoked), step 2 succeeds
     const fakePs2 = new FakeProcessService()
