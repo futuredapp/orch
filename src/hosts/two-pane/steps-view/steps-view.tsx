@@ -21,17 +21,17 @@
 // `<StepRow>` is `React.memo`'d with threshold-bucketed prop equality so a
 // flood of viewmodel changes (10/sec on a hot step) doesn't redraw every row.
 
-import { Box, Text, useInput } from 'ink'
+import { Box, Text, useInput, useStdout } from 'ink'
 import type React from 'react'
 import { memo, useEffect, useState } from 'react'
 import { formatElapsed, stepGlyphView, stripAnsi } from '../../../observability/index.ts'
 import type { ColumnSet } from './adaptive-columns.ts'
 import { EndOfRunFooter, EndOfRunSummary } from './end-of-run-summary.tsx'
 import type { Banner, StepRow as StepRowData, StepsViewState, ViewMode } from './step-types.ts'
-import { useAdaptiveColumns, useStepsSelection } from './steps-view-hooks.ts'
+import { useAdaptiveColumns, useStepsScroll, useStepsSelection } from './steps-view-hooks.ts'
 
-export type { StepsSelection } from './steps-view-hooks.ts'
-export { useAdaptiveColumns, useStepsSelection } from './steps-view-hooks.ts'
+export type { StepsScroll, StepsSelection } from './steps-view-hooks.ts'
+export { useAdaptiveColumns, useStepsScroll, useStepsSelection } from './steps-view-hooks.ts'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -70,7 +70,22 @@ export type StepsViewIntent =
 
 export interface StepsViewKeyEvent {
   readonly ts: number
-  readonly key: 'up' | 'down' | 'return' | 'f' | 'q' | '?' | 'esc' | 'ctrl-c' | 'other'
+  readonly key:
+    | 'up'
+    | 'down'
+    | 'return'
+    | 'f'
+    | 'q'
+    | '?'
+    | 'esc'
+    | 'ctrl-c'
+    | 'j'
+    | 'k'
+    | 'pageUp'
+    | 'pageDown'
+    | 'home'
+    | 'end'
+    | 'other'
   /** Raw input character when `key === 'other'`. Empty string otherwise. */
   readonly input: string
   readonly selectedName: string | undefined
@@ -85,10 +100,22 @@ export function StepsView({
   onKey,
 }: StepsViewProps): React.ReactElement {
   const columns = useAdaptiveColumns()
+  const { stdout } = useStdout()
   const { selectedName, moveUp, moveDown, snapToLive, isUserDriven } = useStepsSelection(
     state.steps,
   )
   const [helpOpen, setHelpOpen] = useState(false)
+
+  // Visible-row budget for the steps body. Subtracts a rough chrome envelope
+  // (header line, two single-pixel borders, footer + margin, optional banner).
+  // The exact number is forgiving — scrollOffset is clamped at read time, so
+  // an over- or under-estimate of one row just shifts where the "top" lands.
+  const chromeRows = 5 + (state.banner !== undefined ? 1 : 0)
+  const visibleCount = Math.max(1, (stdout?.rows ?? 24) - chromeRows)
+
+  const scroll = useStepsScroll(state.steps.length, visibleCount, () => {
+    onIntent({ type: 'follow-live' })
+  })
 
   useInput((input, key) => {
     const tag = classifyKey(input, key)
@@ -113,6 +140,33 @@ export function StepsView({
       if (state.banner !== undefined && state.banner.kind === 'error') {
         onIntent({ type: 'dismiss-banner' })
       }
+      return
+    }
+    // Scroll keys before selection keys so j/k/PgUp/PgDn/Home/End cannot be
+    // shadowed by arrow-key selection movement on terminals that report the
+    // arrow keys with the same legacy escape sequence.
+    if (input === 'k') {
+      scroll.scrollUp()
+      return
+    }
+    if (input === 'j') {
+      scroll.scrollDown()
+      return
+    }
+    if (key.pageUp === true) {
+      scroll.pageUp()
+      return
+    }
+    if (key.pageDown === true) {
+      scroll.pageDown()
+      return
+    }
+    if (key.home === true || input === 'g') {
+      scroll.jumpTop()
+      return
+    }
+    if (key.end === true || input === 'G') {
+      scroll.jumpBottom()
       return
     }
     if (key.upArrow) {
@@ -193,7 +247,7 @@ export function StepsView({
           borderRight={false}
           borderColor="gray"
         >
-          {state.steps.map((step) => (
+          {visibleSlice(state.steps, scroll.scrollOffset, visibleCount).map((step) => (
             <StepRow
               key={step.name}
               step={step}
@@ -205,10 +259,23 @@ export function StepsView({
         </Box>
       )}
       {isTerminal ? <EndOfRunFooter status={state.status} /> : null}
-      {!helpOpen && !isTerminal ? <ViewModeFooter view={state.view} /> : null}
+      {!helpOpen && !isTerminal ? (
+        <ViewModeFooter view={state.view} scrollOffset={scroll.scrollOffset} />
+      ) : null}
       {helpOpen ? <HelpOverlay /> : null}
     </Box>
   )
+}
+
+function visibleSlice(
+  steps: readonly StepRowData[],
+  scrollOffset: number,
+  visibleCount: number,
+): readonly StepRowData[] {
+  if (steps.length <= visibleCount) return steps
+  const end = steps.length - scrollOffset
+  const start = Math.max(0, end - visibleCount)
+  return steps.slice(start, end)
 }
 
 // ---------------------------------------------------------------------------
@@ -327,34 +394,45 @@ export function HelpOverlay(): React.ReactElement {
     <Box flexDirection="column" borderStyle="round" paddingX={1} marginTop={1}>
       <Text bold>Keymap</Text>
       <Text>↑/↓ move selection</Text>
+      <Text>j/k scroll one row · PgUp/PgDn scroll a page</Text>
+      <Text>Home (or g) jump to top · End (or G) jump to live tail</Text>
       <Text>⏎ view selected step</Text>
       <Text>f follow live (or rollup) — returns to the most recent live source</Text>
       <Text>Esc close this help · dismiss error banner</Text>
       <Text>? toggle this help</Text>
       <Text>q quit (run continues)</Text>
       <Text> </Text>
-      <Text dimColor>Footer indicator: ▶ live · ⏸ viewing &lt;step&gt;</Text>
+      <Text dimColor>
+        Footer indicator: ▶ live · ⏸ viewing &lt;step&gt; · ↑ scrolled · End live
+      </Text>
       <Text dimColor>Banner: info auto-clears (~4s) · error persists until Esc or next emit</Text>
     </Box>
   )
 }
 
-function ViewModeFooter({ view }: { readonly view: ViewMode }): React.ReactElement {
+function ViewModeFooter({
+  view,
+  scrollOffset,
+}: {
+  readonly view: ViewMode
+  readonly scrollOffset: number
+}): React.ReactElement {
   return (
     <Box marginTop={1}>
-      <Text dimColor>{renderViewModeFooter(view)}</Text>
+      <Text dimColor>{renderViewModeFooter(view, scrollOffset)}</Text>
     </Box>
   )
 }
 
-function renderViewModeFooter(view: ViewMode): string {
+function renderViewModeFooter(view: ViewMode, scrollOffset: number): string {
   // `f` is hidden in live mode — it's a no-op when already on the most-recent
   // live source. Re-introduced when the parallel-switcher UX ships and `f`
   // carries cycle-between-branches semantics.
-  if (view.mode === 'live') {
-    return '▶ live · ⏎ view step · q quit · ? help'
-  }
-  return `⏸ viewing ${truncate(view.stepName, STEP_NAME_MAX)} · f live · ⏎ view another · q quit · ? help`
+  const base =
+    view.mode === 'live'
+      ? '▶ live · ⏎ view step · q quit · ? help'
+      : `⏸ viewing ${truncate(view.stepName, STEP_NAME_MAX)} · f live · ⏎ view another · q quit · ? help`
+  return scrollOffset > 0 ? `${base} · ↑ scrolled · End live` : base
 }
 
 function truncate(text: string, max: number): string {
@@ -373,14 +451,24 @@ interface KeyInfo {
   readonly return?: boolean
   readonly escape?: boolean
   readonly ctrl?: boolean
+  readonly pageUp?: boolean
+  readonly pageDown?: boolean
+  readonly home?: boolean
+  readonly end?: boolean
 }
 
 function classifyKey(input: string, key: KeyInfo): StepsViewKeyEvent['key'] {
+  if (key.pageUp === true) return 'pageUp'
+  if (key.pageDown === true) return 'pageDown'
+  if (key.home === true || input === 'g') return 'home'
+  if (key.end === true || input === 'G') return 'end'
   if (key.upArrow === true) return 'up'
   if (key.downArrow === true) return 'down'
   if (key.return === true) return 'return'
   if (key.escape === true) return 'esc'
   if (key.ctrl === true && (input === 'c' || input === 'C')) return 'ctrl-c'
+  if (input === 'j') return 'j'
+  if (input === 'k') return 'k'
   if (input === 'f') return 'f'
   if (input === 'q') return 'q'
   if (input === '?') return '?'

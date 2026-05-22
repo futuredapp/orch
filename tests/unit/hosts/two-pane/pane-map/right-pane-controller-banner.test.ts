@@ -23,9 +23,7 @@ import {
 const RUN_ID: RunId = toRunId('r-2026-05-11-200000-pm')
 const RIGHT_PANE = paneId('%7')
 const LEFT_PANE = paneId('%0')
-const SCRATCH_SOCKET = socketName('orch-scratch-test')
-const MAIN_SOCKET = socketName('orch-main-test')
-const SCRATCH_SESSION = { socket: SCRATCH_SOCKET, session: 'orch-scratch' }
+const SOCKET = socketName('orch-main-test')
 
 function bufferStream(): NodeJS.WritableStream {
   return new Writable({
@@ -72,7 +70,7 @@ async function makeController(): Promise<{
   const overlayPath = `${tempDir}/tui-overlay.ndjson`
   const controller = createRightPaneController({
     tmux,
-    socket: MAIN_SOCKET,
+    socket: SOCKET,
     leftPaneId: LEFT_PANE,
     rightPaneId: RIGHT_PANE,
     paneQueue: queue,
@@ -82,7 +80,8 @@ async function makeController(): Promise<{
     cwd: toPath(tempDir),
     env: {},
     stderr: bufferStream(),
-    scratchSession: SCRATCH_SESSION,
+    width: 200,
+    height: 50,
     tuiOverlayPath: toPath(overlayPath),
   })
   return { controller, tempDir, overlayPath }
@@ -142,7 +141,7 @@ describe('right-pane-controller emitBanner', () => {
     try {
       const controller = createRightPaneController({
         tmux,
-        socket: MAIN_SOCKET,
+        socket: SOCKET,
         leftPaneId: LEFT_PANE,
         rightPaneId: RIGHT_PANE,
         paneQueue: queue,
@@ -152,7 +151,8 @@ describe('right-pane-controller emitBanner', () => {
         cwd: toPath(tempDir),
         env: {},
         stderr: bufferStream(),
-        scratchSession: SCRATCH_SESSION,
+        width: 200,
+        height: 50,
       })
 
       // Should not throw, even without a configured overlay path.

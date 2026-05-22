@@ -133,7 +133,10 @@ describe('TmuxHost.attachForeground', () => {
     expect(exited?.record.teardownStarted).toBe(false)
     expect(exited?.record.tmuxServerReachable).toBe(true)
     expect(exited?.record.tmuxSessionReachable).toBe(true)
-    expect(exited?.record.tmuxScratchSessionReachable).toBe(true)
+    // U4: the legacy `tmuxScratchSessionReachable` probe is gone — per-source
+    // sessions are dynamic and have no single substrate to probe. Liveness
+    // of the visible `orch` session is the canonical reachability signal.
+    expect(exited?.record).not.toHaveProperty('tmuxScratchSessionReachable')
 
     await host.teardown()
   })

@@ -1,10 +1,11 @@
 // triage: rewrite — register/show/unregister visible-pane outcomes now covered at Tier 1 (autonomous-live-pane-shows-content, replay-revisit-reuses-pane). Keep idempotency + missing-source paths Tier 1 cannot fail-isolate.
-// Unit coverage for the NEW pane-map public methods on the right-pane
+// Unit coverage for the pane-map public methods on the right-pane
 // controller. The legacy `onIntent` path stays covered by the existing
 // tests in `tests/unit/hosts/two-pane/right-pane-controller.test.ts` and
 // the integration tests under `tests/integration/hosts/two-pane/`; this
 // file focuses on `registerSource`, `showSource`, `unregisterSource`,
-// `followLive`, and the scratch-session contract.
+// `followLive`, and the per-source-session substrate that replaced the
+// historical `orch-scratch` session.
 
 import { describe, expect, it } from 'bun:test'
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -13,6 +14,7 @@ import type { StepName } from '../../../../../src/core/types.ts'
 import {
   createRightPaneController,
   type SourceKey,
+  sanitizeSessionName,
 } from '../../../../../src/hosts/two-pane/pane-map/index.ts'
 import { createPaneQueue } from '../../../../../src/hosts/two-pane/pane-queue.ts'
 import { FakeTmuxService, paneId, socketName } from '../../../../../src/services/tmux/index.ts'
@@ -27,9 +29,7 @@ import {
 const RUN_ID: RunId = toRunId('r-2026-05-11-100000-pm')
 const RIGHT_PANE = paneId('%7')
 const LEFT_PANE = paneId('%0')
-const SCRATCH_SOCKET = socketName('orch-scratch-test')
-const MAIN_SOCKET = socketName('orch-main-test')
-const SCRATCH_SESSION = { socket: SCRATCH_SOCKET, session: 'orch-scratch' }
+const SOCKET = socketName('orch-main-test')
 
 const stepName = (s: string): StepName => s as StepName
 
@@ -77,7 +77,7 @@ async function makeController(): Promise<{
   const tempDir = await mkdtemp('/tmp/orch-pane-map-')
   const controller = createRightPaneController({
     tmux,
-    socket: MAIN_SOCKET,
+    socket: SOCKET,
     leftPaneId: LEFT_PANE,
     rightPaneId: RIGHT_PANE,
     paneQueue: queue,
@@ -87,7 +87,8 @@ async function makeController(): Promise<{
     cwd: toPath(tempDir),
     env: {},
     stderr: bufferStream(),
-    scratchSession: SCRATCH_SESSION,
+    width: 200,
+    height: 50,
   })
   return { tmux, controller, tempDir }
 }
@@ -97,38 +98,41 @@ async function cleanup(tempDir: string): Promise<void> {
 }
 
 describe('right-pane-controller pane-map: registerSource', () => {
-  it('spawns a file-tail hidden pane on the scratch session with the expected argv', async () => {
+  it('creates a per-source tmux session whose initial pane runs the file-tail argv', async () => {
     const { tmux, controller, tempDir } = await makeController()
 
-    tmux.nextPaneId(paneId('%100'))
+    tmux.nextCreateSessionPaneId(paneId('%100'))
     const liveKey: SourceKey = { type: 'live', stepName: stepName('plan') }
     await controller.registerSource(liveKey, {
       kind: 'file-tail',
       path: toPath(`${tempDir}/agents/plan/formatted_output.ansi`),
     })
 
-    const splitCalls = tmux.recordedCalls.filter((c) => c.method === 'splitPane')
-    expect(splitCalls).toHaveLength(1)
-    const call = splitCalls[0]
-    if (call?.method !== 'splitPane') throw new Error('expected splitPane')
-    expect(call.opts.session).toBe('orch-scratch')
-    expect(call.opts.socket).toBe(SCRATCH_SOCKET)
-    expect(call.opts.argv).toEqual([
+    const createCalls = tmux.recordedCalls.filter((c) => c.method === 'createSession')
+    expect(createCalls).toHaveLength(1)
+    const call = createCalls[0]
+    if (call?.method !== 'createSession') throw new Error('expected createSession')
+    expect(call.opts.session).toBe(sanitizeSessionName('live:plan'))
+    expect(call.opts.socket).toBe(SOCKET)
+    expect(call.opts.command).toEqual([
       'tail',
       '-n',
       '5000',
       '-F',
       `${tempDir}/agents/plan/formatted_output.ansi`,
     ])
+    // Regression: no splitPane in the spawn path — that was the historical
+    // "no space for new pane" trigger.
+    expect(tmux.recordedCalls.filter((c) => c.method === 'splitPane')).toHaveLength(0)
 
     await controller.stop()
     await cleanup(tempDir)
   })
 
-  it('spawns a pty hidden pane with argv, env, and cwd forwarded verbatim', async () => {
+  it('creates a per-source tmux session with argv, env, and cwd forwarded verbatim for a pty spec', async () => {
     const { tmux, controller, tempDir } = await makeController()
 
-    tmux.nextPaneId(paneId('%200'))
+    tmux.nextCreateSessionPaneId(paneId('%200'))
     const interactiveKey: SourceKey = {
       type: 'interactive',
       stepName: stepName('agent'),
@@ -140,14 +144,40 @@ describe('right-pane-controller pane-map: registerSource', () => {
       cwd: toPath(tempDir),
     })
 
-    const splitCalls = tmux.recordedCalls.filter((c) => c.method === 'splitPane')
-    expect(splitCalls).toHaveLength(1)
-    const call = splitCalls[0]
-    if (call?.method !== 'splitPane') throw new Error('expected splitPane')
-    expect(call.opts.session).toBe('orch-scratch')
-    expect(call.opts.argv).toEqual(['claude', '--prompt', 'help'])
+    const createCalls = tmux.recordedCalls.filter((c) => c.method === 'createSession')
+    expect(createCalls).toHaveLength(1)
+    const call = createCalls[0]
+    if (call?.method !== 'createSession') throw new Error('expected createSession')
+    expect(call.opts.session).toBe(sanitizeSessionName('interactive:agent'))
+    expect(call.opts.command).toEqual(['claude', '--prompt', 'help'])
     expect(call.opts.env).toEqual({ FORCE_COLOR: '3' })
     expect(call.opts.cwd).toBe(toPath(tempDir))
+
+    await controller.stop()
+    await cleanup(tempDir)
+  })
+
+  it('two distinct sources produce two distinct createSession calls — no shared substrate', async () => {
+    const { tmux, controller, tempDir } = await makeController()
+
+    tmux.nextCreateSessionPaneId(paneId('%100'))
+    await controller.registerSource(
+      { type: 'live', stepName: stepName('step1') },
+      { kind: 'file-tail', path: toPath(`${tempDir}/step1.ansi`) },
+    )
+    tmux.nextCreateSessionPaneId(paneId('%101'))
+    await controller.registerSource(
+      { type: 'live', stepName: stepName('step2') },
+      { kind: 'file-tail', path: toPath(`${tempDir}/step2.ansi`) },
+    )
+
+    const sessions = tmux.recordedCalls
+      .filter((c) => c.method === 'createSession')
+      .map((c) => (c.method === 'createSession' ? c.opts.session : ''))
+    expect(sessions).toHaveLength(2)
+    expect(new Set(sessions).size).toBe(2)
+    // Regression assertion for the per-source design: zero splitPane calls.
+    expect(tmux.recordedCalls.filter((c) => c.method === 'splitPane')).toHaveLength(0)
 
     await controller.stop()
     await cleanup(tempDir)
@@ -156,7 +186,7 @@ describe('right-pane-controller pane-map: registerSource', () => {
   it('is idempotent when called twice with the same key', async () => {
     const { tmux, controller, tempDir } = await makeController()
 
-    tmux.nextPaneId(paneId('%100'))
+    tmux.nextCreateSessionPaneId(paneId('%100'))
     const liveKey: SourceKey = { type: 'live', stepName: stepName('plan') }
     const spec = {
       kind: 'file-tail' as const,
@@ -165,8 +195,38 @@ describe('right-pane-controller pane-map: registerSource', () => {
     await controller.registerSource(liveKey, spec)
     await controller.registerSource(liveKey, spec)
 
-    const splitCalls = tmux.recordedCalls.filter((c) => c.method === 'splitPane')
-    expect(splitCalls).toHaveLength(1)
+    const createCalls = tmux.recordedCalls.filter((c) => c.method === 'createSession')
+    expect(createCalls).toHaveLength(1)
+
+    await controller.stop()
+    await cleanup(tempDir)
+  })
+
+  it('failure isolation: source B succeeds even when source A fails to create its session', async () => {
+    const { tmux, controller, tempDir } = await makeController()
+
+    const { TmuxCommandError } = await import('../../../../../src/services/tmux/index.ts')
+    tmux.nextCreateSessionError(
+      new TmuxCommandError(1, 'failed to create session', 'tmux new-session failed'),
+    )
+    const keyA: SourceKey = { type: 'live', stepName: stepName('a') }
+    await expect(
+      controller.registerSource(keyA, { kind: 'file-tail', path: toPath(`${tempDir}/a.ansi`) }),
+    ).rejects.toBeInstanceOf(TmuxCommandError)
+
+    // Source B succeeds — there is no shared substrate for source A's failure
+    // to corrupt.
+    tmux.nextCreateSessionPaneId(paneId('%201'))
+    const keyB: SourceKey = { type: 'live', stepName: stepName('b') }
+    await controller.registerSource(keyB, {
+      kind: 'file-tail',
+      path: toPath(`${tempDir}/b.ansi`),
+    })
+
+    // No retry, no rotation: exactly two createSession calls, no newWindow.
+    expect(tmux.recordedCalls.filter((c) => c.method === 'createSession')).toHaveLength(2)
+    expect(tmux.recordedCalls.filter((c) => c.method === 'newWindow')).toHaveLength(0)
+    expect(controller.getPaneId(keyB)).toBe(paneId('%201'))
 
     await controller.stop()
     await cleanup(tempDir)
@@ -174,10 +234,10 @@ describe('right-pane-controller pane-map: registerSource', () => {
 })
 
 describe('right-pane-controller pane-map: showSource', () => {
-  it('issues swapPane(src=hidden, dst=visible) and updates the visible pane id', async () => {
+  it('issues swapPane(src=entry.paneId, dst=visible) and updates the visible pane id', async () => {
     const { tmux, controller, tempDir } = await makeController()
 
-    tmux.nextPaneId(paneId('%100'))
+    tmux.nextCreateSessionPaneId(paneId('%100'))
     const liveKey: SourceKey = { type: 'live', stepName: stepName('plan') }
     await controller.registerSource(liveKey, {
       kind: 'file-tail',
@@ -195,7 +255,7 @@ describe('right-pane-controller pane-map: showSource', () => {
     // After the swap, the controller tracks the hidden pane id as the new
     // visible target. A second showSource of a different source should swap
     // from %100 (now visible) to that other source's hidden id.
-    tmux.nextPaneId(paneId('%200'))
+    tmux.nextCreateSessionPaneId(paneId('%200'))
     const rollupKey: SourceKey = { type: 'rollup' }
     await controller.registerSource(rollupKey, {
       kind: 'file-tail',
@@ -214,10 +274,33 @@ describe('right-pane-controller pane-map: showSource', () => {
     await cleanup(tempDir)
   })
 
+  it('preserves the pane-id-sticky invariant: getPaneId(key) is unchanged after a swap', async () => {
+    // swap-pane exchanges contents but pane ids stay attached to processes,
+    // so the controller's entry for source A still resolves to A's original
+    // pane id after the swap. This is the load-bearing property the
+    // controller relies on for all subsequent operations.
+    const { tmux, controller, tempDir } = await makeController()
+
+    tmux.nextCreateSessionPaneId(paneId('%100'))
+    const key: SourceKey = { type: 'live', stepName: stepName('plan') }
+    await controller.registerSource(key, {
+      kind: 'file-tail',
+      path: toPath(`${tempDir}/plan.ansi`),
+    })
+    expect(controller.getPaneId(key)).toBe(paneId('%100'))
+
+    await controller.showSource(key)
+
+    expect(controller.getPaneId(key)).toBe(paneId('%100'))
+
+    await controller.stop()
+    await cleanup(tempDir)
+  })
+
   it('is a no-op when currentKey already equals the target key', async () => {
     const { tmux, controller, tempDir } = await makeController()
 
-    tmux.nextPaneId(paneId('%100'))
+    tmux.nextCreateSessionPaneId(paneId('%100'))
     const liveKey: SourceKey = { type: 'live', stepName: stepName('plan') }
     await controller.registerSource(liveKey, {
       kind: 'file-tail',
@@ -248,10 +331,10 @@ describe('right-pane-controller pane-map: showSource', () => {
 })
 
 describe('right-pane-controller pane-map: unregisterSource', () => {
-  it('transforms a live key into a replay key without killing the hidden pane', async () => {
+  it('transforms a live key into a replay key without killing the per-source session', async () => {
     const { tmux, controller, tempDir } = await makeController()
 
-    tmux.nextPaneId(paneId('%100'))
+    tmux.nextCreateSessionPaneId(paneId('%100'))
     const liveKey: SourceKey = { type: 'live', stepName: stepName('plan') }
     await controller.registerSource(liveKey, {
       kind: 'file-tail',
@@ -260,8 +343,9 @@ describe('right-pane-controller pane-map: unregisterSource', () => {
 
     await controller.unregisterSource(liveKey)
 
-    const kills = tmux.recordedCalls.filter((c) => c.method === 'killPane')
-    expect(kills).toHaveLength(0)
+    // No session kill on the live → replay transform.
+    expect(tmux.recordedCalls.filter((c) => c.method === 'killSession')).toHaveLength(0)
+    expect(tmux.recordedCalls.filter((c) => c.method === 'killPane')).toHaveLength(0)
 
     // Subsequent showSource on the matching replay key should swap to the
     // SAME hidden pane id — the live → replay rekey kept the pane alive.
@@ -275,10 +359,10 @@ describe('right-pane-controller pane-map: unregisterSource', () => {
     await cleanup(tempDir)
   })
 
-  it('kills the hidden pane for an interactive key (no warm cache)', async () => {
+  it('kills the per-source session for an interactive key (no warm cache)', async () => {
     const { tmux, controller, tempDir } = await makeController()
 
-    tmux.nextPaneId(paneId('%200'))
+    tmux.nextCreateSessionPaneId(paneId('%200'))
     const key: SourceKey = { type: 'interactive', stepName: stepName('agent') }
     await controller.registerSource(key, {
       kind: 'pty',
@@ -287,21 +371,23 @@ describe('right-pane-controller pane-map: unregisterSource', () => {
 
     await controller.unregisterSource(key)
 
-    const kills = tmux.recordedCalls.filter((c) => c.method === 'killPane')
+    const kills = tmux.recordedCalls.filter((c) => c.method === 'killSession')
     expect(kills).toHaveLength(1)
     const kill = kills[0]
-    if (kill?.method !== 'killPane') throw new Error('expected killPane')
-    expect(kill.opts.target).toBe(paneId('%200'))
-    expect(kill.opts.socket).toBe(SCRATCH_SOCKET)
+    if (kill?.method !== 'killSession') throw new Error('expected killSession')
+    expect(kill.opts.session).toBe(sanitizeSessionName('interactive:agent'))
+    expect(kill.opts.socket).toBe(SOCKET)
+    // The map entry is gone; getPaneId reports undefined.
+    expect(controller.getPaneId(key)).toBeUndefined()
 
     await controller.stop()
     await cleanup(tempDir)
   })
 
-  it('kills the hidden pane for a rollup key', async () => {
+  it('kills the per-source session for a rollup key', async () => {
     const { tmux, controller, tempDir } = await makeController()
 
-    tmux.nextPaneId(paneId('%300'))
+    tmux.nextCreateSessionPaneId(paneId('%300'))
     const key: SourceKey = { type: 'rollup' }
     await controller.registerSource(key, {
       kind: 'file-tail',
@@ -310,8 +396,74 @@ describe('right-pane-controller pane-map: unregisterSource', () => {
 
     await controller.unregisterSource(key)
 
-    const kills = tmux.recordedCalls.filter((c) => c.method === 'killPane')
+    const kills = tmux.recordedCalls.filter((c) => c.method === 'killSession')
     expect(kills).toHaveLength(1)
+    const kill = kills[0]
+    if (kill?.method !== 'killSession') throw new Error('expected killSession')
+    expect(kill.opts.session).toBe(sanitizeSessionName('rollup'))
+
+    await controller.stop()
+    await cleanup(tempDir)
+  })
+})
+
+describe('right-pane-controller pane-map: teardownSessions', () => {
+  it('issues one killSession per registered source and clears the map', async () => {
+    const { tmux, controller, tempDir } = await makeController()
+
+    tmux.nextCreateSessionPaneId(paneId('%100'))
+    await controller.registerSource(
+      { type: 'live', stepName: stepName('a') },
+      { kind: 'file-tail', path: toPath(`${tempDir}/a.ansi`) },
+    )
+    tmux.nextCreateSessionPaneId(paneId('%101'))
+    await controller.registerSource(
+      { type: 'interactive', stepName: stepName('b') },
+      { kind: 'pty', argv: ['claude'] },
+    )
+    tmux.nextCreateSessionPaneId(paneId('%102'))
+    await controller.registerSource(
+      { type: 'rollup' },
+      { kind: 'file-tail', path: toPath(`${tempDir}/rollup.ansi`) },
+    )
+
+    await controller.teardownSessions()
+
+    const kills = tmux.recordedCalls.filter((c) => c.method === 'killSession')
+    expect(kills).toHaveLength(3)
+    // After teardown, all entries are gone.
+    expect(controller.getPaneId({ type: 'live', stepName: stepName('a') })).toBeUndefined()
+    expect(controller.getPaneId({ type: 'rollup' })).toBeUndefined()
+
+    await controller.stop()
+    await cleanup(tempDir)
+  })
+
+  it('tolerates one entry throwing — the rest still tear down', async () => {
+    // FakeTmuxService.killSession does not throw on its own; this test
+    // documents the contract that the orchestrator should iterate without
+    // an unhandled failure even if one underlying call rejects in real
+    // tmux. The adapter's idempotent shape (see
+    // tests/unit/services/tmux/tmux-service.test.ts and the real-tmux test
+    // pane-map-source-session.real.integration) covers the genuine
+    // "session not found" path.
+    const { tmux, controller, tempDir } = await makeController()
+
+    tmux.nextCreateSessionPaneId(paneId('%100'))
+    await controller.registerSource(
+      { type: 'live', stepName: stepName('a') },
+      { kind: 'file-tail', path: toPath(`${tempDir}/a.ansi`) },
+    )
+    tmux.nextCreateSessionPaneId(paneId('%101'))
+    await controller.registerSource(
+      { type: 'live', stepName: stepName('b') },
+      { kind: 'file-tail', path: toPath(`${tempDir}/b.ansi`) },
+    )
+
+    await controller.teardownSessions()
+
+    const kills = tmux.recordedCalls.filter((c) => c.method === 'killSession')
+    expect(kills).toHaveLength(2)
 
     await controller.stop()
     await cleanup(tempDir)
@@ -322,12 +474,12 @@ describe('right-pane-controller pane-map: followLive', () => {
   it('prefers rollup over live sources when both are registered', async () => {
     const { tmux, controller, tempDir } = await makeController()
 
-    tmux.nextPaneId(paneId('%100'))
+    tmux.nextCreateSessionPaneId(paneId('%100'))
     await controller.registerSource(
       { type: 'live', stepName: stepName('plan') },
       { kind: 'file-tail', path: toPath(`${tempDir}/plan.ansi`) },
     )
-    tmux.nextPaneId(paneId('%200'))
+    tmux.nextCreateSessionPaneId(paneId('%200'))
     await controller.registerSource(
       { type: 'rollup' },
       { kind: 'file-tail', path: toPath(`${tempDir}/_rollup.ansi`) },
@@ -349,12 +501,12 @@ describe('right-pane-controller pane-map: followLive', () => {
   it('picks the most-recently-registered live source when rollup is absent', async () => {
     const { tmux, controller, tempDir } = await makeController()
 
-    tmux.nextPaneId(paneId('%100'))
+    tmux.nextCreateSessionPaneId(paneId('%100'))
     await controller.registerSource(
       { type: 'live', stepName: stepName('plan') },
       { kind: 'file-tail', path: toPath(`${tempDir}/plan.ansi`) },
     )
-    tmux.nextPaneId(paneId('%200'))
+    tmux.nextCreateSessionPaneId(paneId('%200'))
     await controller.registerSource(
       { type: 'live', stepName: stepName('apply') },
       { kind: 'file-tail', path: toPath(`${tempDir}/apply.ansi`) },
@@ -380,39 +532,6 @@ describe('right-pane-controller pane-map: followLive', () => {
 
     const swaps = tmux.recordedCalls.filter((c) => c.method === 'swapPane')
     expect(swaps).toHaveLength(0)
-
-    await controller.stop()
-    await cleanup(tempDir)
-  })
-})
-
-describe('right-pane-controller pane-map: scratchSession guard', () => {
-  it('throws a clear error if a pane-map method is called without scratchSession configured', async () => {
-    const tmux = new FakeTmuxService()
-    const queue = createPaneQueue()
-    const tempDir = await mkdtemp('/tmp/orch-pane-map-guard-')
-    const controller = createRightPaneController({
-      tmux,
-      socket: MAIN_SOCKET,
-      leftPaneId: LEFT_PANE,
-      rightPaneId: RIGHT_PANE,
-      paneQueue: queue,
-      stateStore: makeStore(),
-      runId: RUN_ID,
-      stateDir: toPath(tempDir),
-      cwd: toPath(tempDir),
-      env: {},
-      stderr: bufferStream(),
-      // scratchSession deliberately omitted.
-    })
-
-    const key: SourceKey = { type: 'live', stepName: stepName('plan') }
-    await expect(
-      controller.registerSource(key, {
-        kind: 'file-tail',
-        path: toPath(`${tempDir}/plan.ansi`),
-      }),
-    ).rejects.toThrow(/scratchSession not configured/)
 
     await controller.stop()
     await cleanup(tempDir)

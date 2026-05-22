@@ -3,6 +3,7 @@ import type {
   BindKeyOptions,
   CapturePaneOptions,
   CreateSessionOptions,
+  CreateSessionResult,
   DisplayMessageOptions,
   HasServerOptions,
   HasSessionOptions,
@@ -75,12 +76,27 @@ export type RecordedCall =
 export class FakeTmuxService implements TmuxService {
   readonly #calls: RecordedCall[] = []
   readonly #paneIds: PaneId[] = []
+  readonly #createSessionPaneIds: PaneId[] = []
   readonly #splitPaneErrors: Error[] = []
+  readonly #createSessionErrors: Error[] = []
   readonly #displayResults: string[] = []
   readonly #captureResults: string[] = []
   readonly #listPanesResults: (readonly string[])[] = []
   readonly #newWindowResults: NewWindowResult[] = []
   readonly #sessionsBySocket: Map<SocketName, Set<string>> = new Map()
+  /**
+   * Per-session pane-ownership table. `createSession` appends the (scripted
+   * or synthesized) initial pane id; `killSession` clears the entry;
+   * `killServer` clears every session on that socket. The pane-map refactor
+   * relies on this so tests can assert "after killSession(orch-src-X), pane
+   * %N is no longer owned by a session" without those assertions becoming
+   * wishful thinking — the seam-bug class that hid the rotation problem
+   * (FakeTmuxService had no pane-to-session mapping) needs an actual model.
+   * Keyed by `${socket}/${session}` so two sockets with same-named sessions
+   * stay distinct.
+   */
+  readonly #panesBySession: Map<string, PaneId[]> = new Map()
+  #nextCreateSessionCounter = 1
   #nextSplitPaneCounter = 1
   #nextWindowCounter = 1
   /** When set, every subsequent tmux call (other than the read-only
@@ -99,6 +115,16 @@ export class FakeTmuxService implements TmuxService {
   }
 
   /**
+   * Script the next `createSession` initial-pane id. Queue, consumed FIFO.
+   * Falls back to `%N` auto-synth when the queue is empty. Mirrors
+   * `nextPaneId` for `splitPane` — used by tests that assert on a specific
+   * pane id for the per-source session's initial (holder or source) pane.
+   */
+  nextCreateSessionPaneId(id: PaneId): void {
+    this.#createSessionPaneIds.push(id)
+  }
+
+  /**
    * Script the next `splitPane` call to throw instead of returning. Queue,
    * consumed FIFO. The call is still recorded in `recordedCalls` before the
    * throw, so assertions over the argv shape still work. Useful for testing
@@ -107,6 +133,26 @@ export class FakeTmuxService implements TmuxService {
    */
   nextSplitPaneError(err: Error): void {
     this.#splitPaneErrors.push(err)
+  }
+
+  /**
+   * Script the next `createSession` call to throw instead of returning.
+   * Queue, consumed FIFO. The call is still recorded in `recordedCalls`
+   * before the throw. Used by per-source session tests to model a single
+   * source's session-create failure — the controller's failure-isolation
+   * contract says sibling sources are unaffected.
+   */
+  nextCreateSessionError(err: Error): void {
+    this.#createSessionErrors.push(err)
+  }
+
+  /**
+   * Read-only view of the pane ids owned by `socket`/`session`. Returns an
+   * empty array for unknown sessions. Used by tests that assert
+   * `killSession` cleared the table.
+   */
+  paneIdsForSession(socket: SocketName, session: string): readonly PaneId[] {
+    return this.#panesBySession.get(`${socket}/${session}`) ?? []
   }
 
   /** Script the next `displayMessage` return value. Queue, consumed FIFO. */
@@ -155,10 +201,22 @@ export class FakeTmuxService implements TmuxService {
     throw new TmuxCommandError(1, stderr, `tmux ${method} failed (exit 1): ${stderr}`)
   }
 
-  async createSession(opts: CreateSessionOptions): Promise<void> {
+  async createSession(opts: CreateSessionOptions): Promise<CreateSessionResult> {
     this.#calls.push({ method: 'createSession', opts })
     this.#failIfSocketLost('new-session')
+    const scriptedError = this.#createSessionErrors.shift()
+    if (scriptedError !== undefined) throw scriptedError
     this.#getOrCreateSessionSet(opts.socket).add(opts.session)
+    const scripted = this.#createSessionPaneIds.shift()
+    const id = scripted ?? paneId(`%${this.#nextCreateSessionCounter++}`)
+    const key = `${opts.socket}/${opts.session}`
+    const existing = this.#panesBySession.get(key)
+    if (existing !== undefined) {
+      existing.push(id)
+    } else {
+      this.#panesBySession.set(key, [id])
+    }
+    return { paneId: id }
   }
 
   async splitPane(opts: SplitPaneOptions): Promise<PaneId> {
@@ -223,6 +281,7 @@ export class FakeTmuxService implements TmuxService {
     this.#calls.push({ method: 'killSession', opts })
     this.#failIfSocketLost('kill-session')
     this.#sessionsBySocket.get(opts.socket)?.delete(opts.session)
+    this.#panesBySession.delete(`${opts.socket}/${opts.session}`)
   }
 
   async killServer(opts: KillServerOptions): Promise<void> {
@@ -233,6 +292,12 @@ export class FakeTmuxService implements TmuxService {
     // socket is gone; we mirror that by clearing the per-socket session
     // table and (idempotently) leaving the lost-socket sentinel as-is.
     this.#sessionsBySocket.delete(opts.socket)
+    // Drop every pane-ownership entry on this socket. The map keys are
+    // `${socket}/${session}` so a prefix scan is the cleanest path.
+    const prefix = `${opts.socket}/`
+    for (const key of this.#panesBySession.keys()) {
+      if (key.startsWith(prefix)) this.#panesBySession.delete(key)
+    }
   }
 
   async hasSession(opts: HasSessionOptions): Promise<boolean> {

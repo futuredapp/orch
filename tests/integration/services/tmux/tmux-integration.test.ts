@@ -13,7 +13,7 @@ import {
 import { path } from '../../../../src/services/types.ts'
 
 describe('RealTmuxService.createSession', () => {
-  it('sends new-session with detached flag, socket, window geometry, and /dev/null config', async () => {
+  it('sends new-session with detached flag, socket, window geometry, /dev/null config, and -P -F #{pane_id} (U2)', async () => {
     const proc = new FakeProcessService()
     const expectedArgv = [
       'tmux',
@@ -29,16 +29,20 @@ describe('RealTmuxService.createSession', () => {
       '200',
       '-y',
       '50',
+      '-P',
+      '-F',
+      '#{pane_id}',
     ]
-    proc.when(expectedArgv).respondWith({ exitCode: 0 })
+    proc.when(expectedArgv).respondWith({ exitCode: 0, stdout: ['%1'] })
     const tmux = new RealTmuxService({ processService: proc })
 
-    await tmux.createSession({
+    const result = await tmux.createSession({
       socket: socketName('orch-abc'),
       session: 'main',
       width: 200,
       height: 50,
     })
+    expect(result.paneId).toBe(paneId('%1'))
   })
 
   it('passes configPath as the -f flag when provided', async () => {
@@ -60,17 +64,21 @@ describe('RealTmuxService.createSession', () => {
       '200',
       '-y',
       '50',
+      '-P',
+      '-F',
+      '#{pane_id}',
     ]
-    proc.when(expectedArgv).respondWith({ exitCode: 0 })
+    proc.when(expectedArgv).respondWith({ exitCode: 0, stdout: ['%2'] })
     const tmux = new RealTmuxService({ processService: proc })
 
-    await tmux.createSession({
+    const result = await tmux.createSession({
       socket: socketName('orch-1'),
       session: 'main',
       width: 200,
       height: 50,
       configPath: path('/tmp/orch-init/init.tmux.conf'),
     })
+    expect(result.paneId).toBe(paneId('%2'))
   })
 
   it('throws TmuxCommandError with the captured stderr when new-session fails', async () => {
@@ -90,6 +98,9 @@ describe('RealTmuxService.createSession', () => {
         '80',
         '-y',
         '24',
+        '-P',
+        '-F',
+        '#{pane_id}',
       ])
       .respondWith({ exitCode: 1, stderr: ['duplicate session'] })
     const tmux = new RealTmuxService({ processService: proc })

@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'bun:test'
+import { FakeProcessService } from '../../../../src/services/process/fake-process-service.ts'
 import {
   FakeTmuxService,
   paneId,
+  RealTmuxService,
   socketName,
   TmuxCommandError,
 } from '../../../../src/services/tmux/index.ts'
@@ -131,6 +133,104 @@ describe('FakeTmuxService.splitPane', () => {
     const result = await tmux.splitPane({ socket, session: 'main', orientation: 'h', percent: 30 })
 
     expect(result).toMatch(/^%\d+$/)
+  })
+})
+
+describe('FakeTmuxService.createSession (initial pane id contract)', () => {
+  it('returns the next scripted createSession pane id when one is queued', async () => {
+    const tmux = new FakeTmuxService()
+    const socket = socketName('orch-1')
+    tmux.nextCreateSessionPaneId(paneId('%42'))
+
+    const result = await tmux.createSession({ socket, session: 'orch', width: 80, height: 24 })
+
+    expect(result.paneId).toBe(paneId('%42'))
+  })
+
+  it('falls back to an auto-synthesized pane id when no createSession id is scripted', async () => {
+    const tmux = new FakeTmuxService()
+    const socket = socketName('orch-1')
+
+    const first = await tmux.createSession({ socket, session: 'a', width: 80, height: 24 })
+    const second = await tmux.createSession({ socket, session: 'b', width: 80, height: 24 })
+
+    expect(first.paneId).toMatch(/^%\d+$/)
+    expect(second.paneId).toMatch(/^%\d+$/)
+    expect(first.paneId).not.toBe(second.paneId)
+  })
+
+  it('does not consume the splitPane pane-id queue when createSession runs', async () => {
+    // Distinct queues — scripting nextPaneId('%7') for splitPane must not be
+    // siphoned off by a createSession call that doesn't get its own
+    // nextCreateSessionPaneId. This is what keeps the existing controller
+    // unit tests (which scripted nextPaneId for splitPane) working through
+    // the refactor.
+    const tmux = new FakeTmuxService()
+    const socket = socketName('orch-1')
+    tmux.nextPaneId(paneId('%7'))
+
+    await tmux.createSession({ socket, session: 'orch', width: 80, height: 24 })
+    const split = await tmux.splitPane({ socket, session: 'orch', orientation: 'h', percent: 50 })
+
+    expect(split).toBe(paneId('%7'))
+  })
+
+  it('throws the next scripted createSession error and still records the call', async () => {
+    const tmux = new FakeTmuxService()
+    const socket = socketName('orch-1')
+    tmux.nextCreateSessionError(
+      new TmuxCommandError(1, 'session already exists', 'tmux new-session failed'),
+    )
+
+    await expect(
+      tmux.createSession({ socket, session: 'orch', width: 80, height: 24 }),
+    ).rejects.toBeInstanceOf(TmuxCommandError)
+
+    const last = tmux.recordedCalls.at(-1)
+    expect(last?.method).toBe('createSession')
+  })
+
+  it('records the new pane id in paneIdsForSession after createSession resolves', async () => {
+    const tmux = new FakeTmuxService()
+    const socket = socketName('orch-1')
+    tmux.nextCreateSessionPaneId(paneId('%51'))
+
+    await tmux.createSession({ socket, session: 'orch-src-live-step1', width: 80, height: 24 })
+
+    expect(tmux.paneIdsForSession(socket, 'orch-src-live-step1')).toEqual([paneId('%51')])
+  })
+
+  it('returns an empty array from paneIdsForSession for unknown sessions', async () => {
+    const tmux = new FakeTmuxService()
+    const socket = socketName('orch-1')
+
+    expect(tmux.paneIdsForSession(socket, 'never-created')).toEqual([])
+  })
+
+  it('clears paneIdsForSession when killSession fires for that session', async () => {
+    const tmux = new FakeTmuxService()
+    const socket = socketName('orch-1')
+    tmux.nextCreateSessionPaneId(paneId('%60'))
+    await tmux.createSession({ socket, session: 'orch-src-x', width: 80, height: 24 })
+    expect(tmux.paneIdsForSession(socket, 'orch-src-x')).toEqual([paneId('%60')])
+
+    await tmux.killSession({ socket, session: 'orch-src-x' })
+
+    expect(tmux.paneIdsForSession(socket, 'orch-src-x')).toEqual([])
+  })
+
+  it('clears every paneIdsForSession entry on the socket when killServer fires', async () => {
+    const tmux = new FakeTmuxService()
+    const socket = socketName('orch-1')
+    tmux.nextCreateSessionPaneId(paneId('%70'))
+    await tmux.createSession({ socket, session: 'orch-src-a', width: 80, height: 24 })
+    tmux.nextCreateSessionPaneId(paneId('%71'))
+    await tmux.createSession({ socket, session: 'orch-src-b', width: 80, height: 24 })
+
+    await tmux.killServer({ socket })
+
+    expect(tmux.paneIdsForSession(socket, 'orch-src-a')).toEqual([])
+    expect(tmux.paneIdsForSession(socket, 'orch-src-b')).toEqual([])
   })
 })
 
@@ -340,7 +440,7 @@ describe('FakeTmuxService.splitPane argv variant', () => {
 
     await tmux.splitPane({
       socket,
-      session: 'orch-scratch',
+      session: 'orch-src-live-plan',
       orientation: 'h',
       percent: 30,
       argv: ['tail', '-n', '5000', '-F', '/tmp/foo.log'],
@@ -359,7 +459,7 @@ describe('FakeTmuxService.splitPane argv variant', () => {
 
     await tmux.splitPane({
       socket: socketName('orch-1'),
-      session: 'orch-scratch',
+      session: 'orch-src-live-plan',
       orientation: 'v',
       percent: 50,
       argv: ['tail', '-F', '/tmp/$(rm -rf ~).log'],
@@ -398,5 +498,114 @@ describe('FakeTmuxService.waitFor', () => {
     const call = tmux.recordedCalls.at(-1)
     if (call?.method !== 'waitFor') throw new Error('expected waitFor call')
     expect(call.opts.timeoutMs).toBe(5000)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// RealTmuxService.createSession argv shape (U2 — per-source tmux sessions)
+// ---------------------------------------------------------------------------
+
+describe('RealTmuxService.createSession (argv shape + pane-id parsing)', () => {
+  const SOCKET = socketName('orch-cs')
+
+  it('includes -P -F #{pane_id} after the new-session geometry flags so tmux prints the initial pane id', async () => {
+    const procs = new FakeProcessService()
+    procs
+      .when([
+        'tmux',
+        '-L',
+        SOCKET,
+        '-f',
+        '/dev/null',
+        'new-session',
+        '-d',
+        '-s',
+        'orch',
+        '-x',
+        '200',
+        '-y',
+        '50',
+        '-P',
+        '-F',
+        '#{pane_id}',
+      ])
+      .respondWith({ exitCode: 0, stdout: ['%17'] })
+    const tmux = new RealTmuxService({ processService: procs })
+
+    const result = await tmux.createSession({
+      socket: SOCKET,
+      session: 'orch',
+      width: 200,
+      height: 50,
+    })
+
+    expect(result.paneId).toBe(paneId('%17'))
+  })
+
+  it('returns the pane id parsed from stdout when a holder argv is appended after -P -F', async () => {
+    // The command argv must come AFTER the -P -F flags so tmux interprets
+    // them as flags, not as the new pane's shell command.
+    const procs = new FakeProcessService()
+    procs
+      .when([
+        'tmux',
+        '-L',
+        SOCKET,
+        '-f',
+        '/dev/null',
+        'new-session',
+        '-d',
+        '-s',
+        'orch-src-x',
+        '-x',
+        '120',
+        '-y',
+        '30',
+        '-P',
+        '-F',
+        '#{pane_id}',
+        'cat',
+      ])
+      .respondWith({ exitCode: 0, stdout: ['%42'] })
+    const tmux = new RealTmuxService({ processService: procs })
+
+    const result = await tmux.createSession({
+      socket: SOCKET,
+      session: 'orch-src-x',
+      width: 120,
+      height: 30,
+      command: ['cat'],
+    })
+
+    expect(result.paneId).toBe(paneId('%42'))
+  })
+
+  it('throws TmuxCommandError when stdout has no parseable pane id (e.g. empty)', async () => {
+    const procs = new FakeProcessService()
+    procs
+      .when([
+        'tmux',
+        '-L',
+        SOCKET,
+        '-f',
+        '/dev/null',
+        'new-session',
+        '-d',
+        '-s',
+        'orch',
+        '-x',
+        '200',
+        '-y',
+        '50',
+        '-P',
+        '-F',
+        '#{pane_id}',
+      ])
+      .respondWith({ exitCode: 0, stdout: [''] })
+    const tmux = new RealTmuxService({ processService: procs })
+
+    await expect(
+      tmux.createSession({ socket: SOCKET, session: 'orch', width: 200, height: 50 }),
+    ).rejects.toBeInstanceOf(TmuxCommandError)
   })
 })

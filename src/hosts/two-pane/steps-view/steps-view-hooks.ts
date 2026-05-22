@@ -97,3 +97,66 @@ function findLive(steps: readonly StepRow[]): string | undefined {
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max)
 }
+
+// ---------------------------------------------------------------------------
+// useStepsScroll — keyboard-driven scroll for the steps-view viewport.
+// ---------------------------------------------------------------------------
+//
+// Position is stored as an absolute `topIndex` (or `null` when pinned to the
+// live tail) — NOT as offset-from-bottom — so a new step:start event that
+// extends the buffer doesn't shift the user's view. The exposed
+// `scrollOffset` is derived (rows from the bottom of the buffer) and is what
+// the footer renders on. End emits `follow-live` so the right pane re-pins
+// to the live source, mirroring the `f`-key precedent.
+
+export interface StepsScroll {
+  /** Rows from the bottom of the buffer. 0 ↔ live tail. */
+  readonly scrollOffset: number
+  readonly atLiveTail: boolean
+  scrollUp(): void
+  scrollDown(): void
+  pageUp(): void
+  pageDown(): void
+  jumpTop(): void
+  jumpBottom(): void
+}
+
+export function useStepsScroll(
+  totalSteps: number,
+  visibleCount: number,
+  onFollowLive?: () => void,
+): StepsScroll {
+  // `null` means pinned to the live tail; otherwise the value is an absolute
+  // top index. Storing the anchor absolutely makes "new step arrives" safe —
+  // the top of the window does not move under the user.
+  const [topIndex, setTopIndex] = useState<number | null>(null)
+  const maxTop = Math.max(0, totalSteps - visibleCount)
+  const effectiveTop = topIndex === null ? maxTop : clamp(topIndex, 0, maxTop)
+  const scrollOffset = maxTop - effectiveTop
+  const page = Math.max(1, visibleCount)
+
+  const setTop = (next: number): void => {
+    const clamped = clamp(next, 0, maxTop)
+    if (clamped >= maxTop) {
+      setTopIndex(null)
+    } else {
+      setTopIndex(clamped)
+    }
+  }
+
+  return {
+    scrollOffset,
+    atLiveTail: scrollOffset === 0,
+    // Visually, scrollUp moves the window toward step 0 — that's a smaller
+    // `topIndex`, which projects to a larger `scrollOffset`.
+    scrollUp: () => setTop(effectiveTop - 1),
+    scrollDown: () => setTop(effectiveTop + 1),
+    pageUp: () => setTop(effectiveTop - page),
+    pageDown: () => setTop(effectiveTop + page),
+    jumpTop: () => setTop(0),
+    jumpBottom: () => {
+      setTopIndex(null)
+      onFollowLive?.()
+    },
+  }
+}

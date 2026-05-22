@@ -33,9 +33,7 @@ import {
 const RUN_ID: RunId = toRunId('r-2026-05-11-200000-oi')
 const RIGHT_PANE = paneId('%1')
 const LEFT_PANE = paneId('%0')
-const SCRATCH_SOCKET = socketName('orch-scratch-on-intent')
-const MAIN_SOCKET = socketName('orch-main-on-intent')
-const SCRATCH_SESSION = { socket: SCRATCH_SOCKET, session: 'orch-scratch' }
+const SOCKET = socketName('orch-main-on-intent')
 
 const stepName = (s: string): StepName => s as StepName
 
@@ -126,7 +124,7 @@ async function makeController(opts: {
   await mkdir(stateDir, { recursive: true })
   const controller = createRightPaneController({
     tmux,
-    socket: MAIN_SOCKET,
+    socket: SOCKET,
     leftPaneId: LEFT_PANE,
     rightPaneId: RIGHT_PANE,
     paneQueue: queue,
@@ -136,7 +134,8 @@ async function makeController(opts: {
     cwd: toPath(opts.tempDir),
     env: {},
     stderr: bufferStream(),
-    scratchSession: SCRATCH_SESSION,
+    width: 200,
+    height: 50,
     ...(opts.logger !== undefined ? { logger: opts.logger } : {}),
   })
   return { tmux, stateDir, controller }
@@ -153,7 +152,7 @@ afterEach(async () => {
 })
 
 describe('right-pane-controller onIntent("enter")', () => {
-  it('warm-caches the replay pane: re-enter on the same step does not splitPane twice', async () => {
+  it('warm-caches the replay pane: re-enter on the same step does not create a second per-source session', async () => {
     const { tmux, controller, stateDir } = await makeController({
       tempDir,
       steps: {
@@ -162,14 +161,14 @@ describe('right-pane-controller onIntent("enter")', () => {
     })
     void stateDir
 
-    tmux.nextPaneId(paneId('%50'))
+    tmux.nextCreateSessionPaneId(paneId('%50'))
     controller.onIntent({ type: 'enter', stepName: 'commit:c1' })
     await flush()
     controller.onIntent({ type: 'enter', stepName: 'commit:c1' })
     await flush()
 
-    const splits = tmux.recordedCalls.filter((c) => c.method === 'splitPane')
-    expect(splits).toHaveLength(1)
+    const creates = tmux.recordedCalls.filter((c) => c.method === 'createSession')
+    expect(creates).toHaveLength(1)
     // showSource on the same currentKey is a no-op — only one swap total.
     const swaps = tmux.recordedCalls.filter((c) => c.method === 'swapPane')
     expect(swaps).toHaveLength(1)
@@ -213,7 +212,7 @@ describe('right-pane-controller onIntent("enter")', () => {
     controller.onIntent({ type: 'enter', stepName: 'ghost' })
     await flush()
 
-    expect(tmux.recordedCalls.filter((c) => c.method === 'splitPane')).toHaveLength(0)
+    expect(tmux.recordedCalls.filter((c) => c.method === 'createSession')).toHaveLength(0)
     expect(tmux.recordedCalls.filter((c) => c.method === 'swapPane')).toHaveLength(0)
     const miss = captured.entries
       .filter((e) => e.category === 'lifecycle')
@@ -237,7 +236,7 @@ describe('right-pane-controller onIntent("enter")', () => {
 
     const controller = createRightPaneController({
       tmux,
-      socket: MAIN_SOCKET,
+      socket: SOCKET,
       leftPaneId: LEFT_PANE,
       rightPaneId: RIGHT_PANE,
       paneQueue: queue,
@@ -249,21 +248,23 @@ describe('right-pane-controller onIntent("enter")', () => {
       cwd: toPath(tempDir),
       env: {},
       stderr: bufferStream(),
-      scratchSession: SCRATCH_SESSION,
+      width: 200,
+      height: 50,
       logger,
     })
 
-    tmux.nextPaneId(paneId('%70'))
+    tmux.nextCreateSessionPaneId(paneId('%70'))
     controller.onIntent({ type: 'enter', stepName: 'plan' })
     await flush()
 
-    const splits = tmux.recordedCalls.filter((c) => c.method === 'splitPane')
-    expect(splits).toHaveLength(1)
-    const split = splits[0]
-    if (split?.method !== 'splitPane') throw new Error('expected splitPane')
-    const argv = split.opts.argv
-    if (argv === undefined) throw new Error('expected argv on splitPane')
-    expect(argv[4]).toBe(teePath)
+    const creates = tmux.recordedCalls.filter((c) => c.method === 'createSession')
+    expect(creates).toHaveLength(1)
+    const create = creates[0]
+    if (create?.method !== 'createSession') throw new Error('expected createSession')
+    const command = create.opts.command
+    if (command === undefined) throw new Error('expected command on createSession')
+    // command shape: ['tail', '-n', '5000', '-F', teePath]
+    expect(command[4]).toBe(teePath)
 
     await controller.stop()
   })
@@ -274,12 +275,12 @@ describe('right-pane-controller onIntent("enter")', () => {
       steps: { 'commit:a': makeStep({ name: 'commit:a', value: { sha: 'a' } }) },
     })
 
-    tmux.nextPaneId(paneId('%99'))
+    tmux.nextCreateSessionPaneId(paneId('%99'))
     await controller.registerSource({ type: 'placeholder' } satisfies SourceKey, {
       kind: 'file-tail',
       path: toPath('/dev/null'),
     })
-    tmux.nextPaneId(paneId('%100'))
+    tmux.nextCreateSessionPaneId(paneId('%100'))
     controller.onIntent({ type: 'enter', stepName: 'commit:a' })
     await flush()
     controller.onIntent({ type: 'follow-live' })
@@ -311,7 +312,7 @@ describe('right-pane-controller onIntent("enter")', () => {
 
     const controller = createRightPaneController({
       tmux,
-      socket: MAIN_SOCKET,
+      socket: SOCKET,
       leftPaneId: LEFT_PANE,
       rightPaneId: RIGHT_PANE,
       paneQueue: queue,
@@ -327,20 +328,21 @@ describe('right-pane-controller onIntent("enter")', () => {
       cwd: toPath(tempDir),
       env: {},
       stderr: bufferStream(),
-      scratchSession: SCRATCH_SESSION,
+      width: 200,
+      height: 50,
       logger: captured.logger,
     })
 
     // Simulate the host's `step:start` having registered a live source for
     // the running solve-riddle step.
-    tmux.nextPaneId(paneId('%200'))
+    tmux.nextCreateSessionPaneId(paneId('%200'))
     await controller.registerSource(
       { type: 'live', stepName: stepName('solve-riddle') } satisfies SourceKey,
       { kind: 'file-tail', path: toPath(teePath) },
     )
 
     // User opens the past write-riddle replay first.
-    tmux.nextPaneId(paneId('%201'))
+    tmux.nextCreateSessionPaneId(paneId('%201'))
     controller.onIntent({ type: 'enter', stepName: 'write-riddle' })
     await flush()
 

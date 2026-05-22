@@ -285,14 +285,24 @@ describe('checkCodexVersion (via buildCommand)', () => {
 })
 
 describe('buildCommand interactive mode', () => {
-  it('builds the default interactive argv with --full-auto, the -- separator, and the prompt', async () => {
+  it('builds the default interactive argv with --full-auto, --no-alt-screen, the -- separator, and the prompt', async () => {
     const deps = makeDeps()
     const runner = codex({}, deps)
     const cmd = await runner.buildCommand(ctxFor('hello world', { mode: 'interactive' }))
 
     // No `exec`, no `--json`, no `--skip-git-repo-check`, no `--ephemeral` —
     // those are exec-only and would error against the interactive subcommand.
-    expect(cmd.argv).toEqual(['codex', '--full-auto', '--', 'hello world'])
+    // `--no-alt-screen` is the default for interactive mode (composes with
+    // the right pane's smart-wheel binding for in-pane scrollback).
+    expect(cmd.argv).toEqual(['codex', '--full-auto', '--no-alt-screen', '--', 'hello world'])
+  })
+
+  it('keeps --no-alt-screen out of the autonomous (exec) argv', async () => {
+    const deps = makeDeps()
+    const runner = codex({}, deps)
+    const cmd = await runner.buildCommand(ctxFor('hello', { mode: 'autonomous' }))
+
+    expect(cmd.argv).not.toContain('--no-alt-screen')
   })
 
   it('replaces --full-auto with --sandbox <mode> when the user picks a non-default sandbox', async () => {
@@ -305,24 +315,35 @@ describe('buildCommand interactive mode', () => {
     expect(cmd.argv).toContain('read-only')
   })
 
-  it('places model, user flags, and extraArgs after the sandbox flag and before the -- separator', async () => {
+  it('places the --no-alt-screen default before user flags, then extraArgs, then the -- separator', async () => {
     const deps = makeDeps()
     const runner = codex({ model: 'o4-mini', flags: ['--ask-for-approval', 'on-request'] }, deps)
-    const cmd = await runner.buildCommand(
-      ctxFor('p', { mode: 'interactive', extraArgs: ['--no-alt-screen'] }),
-    )
+    const cmd = await runner.buildCommand(ctxFor('p', { mode: 'interactive', extraArgs: ['-q'] }))
 
     expect(cmd.argv).toEqual([
       'codex',
       '--full-auto',
       '-m',
       'o4-mini',
+      '--no-alt-screen',
       '--ask-for-approval',
       'on-request',
-      '--no-alt-screen',
+      '-q',
       '--',
       'p',
     ])
+  })
+
+  it('treats a user-supplied --no-alt-screen as idempotent: it appears alongside the default without raising', async () => {
+    // Codex accepts repeated --no-alt-screen on the CLI (verified empirically
+    // in the parity-plan flag matrix). The argv builder doesn't dedupe so
+    // workflows that explicitly pass the flag aren't silently dropped.
+    const deps = makeDeps()
+    const runner = codex({ flags: ['--no-alt-screen'] }, deps)
+    const cmd = await runner.buildCommand(ctxFor('p', { mode: 'interactive' }))
+
+    const occurrences = cmd.argv.filter((a) => a === '--no-alt-screen').length
+    expect(occurrences).toBe(2)
   })
 
   it('throws synchronously when ctx.schema is set and ctx.mode is interactive', async () => {

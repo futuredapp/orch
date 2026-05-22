@@ -105,7 +105,7 @@ function resolveConfigDefault(mode: RunMode, inputs: RunModeInputs): RunModeReso
       )
     }
     if (!inputs.tmuxVersionOk) {
-      throw new RunModeError('orch.config.ts defaultMode=two-pane requires tmux >= 3.2')
+      throw new RunModeError('orch.config.ts defaultMode=two-pane requires tmux >= 3.3')
     }
     return { mode: 'two-pane', source: 'env', reason: 'orch.config.ts defaultMode' }
   }
@@ -124,7 +124,7 @@ function resolveExplicitFlag(inputs: RunModeInputs): RunModeResolution {
       throw new RunModeError('--mode=two-pane requires tmux in PATH, but none was found')
     }
     if (!inputs.tmuxVersionOk) {
-      throw new RunModeError('--mode=two-pane requires tmux >= 3.2')
+      throw new RunModeError('--mode=two-pane requires tmux >= 3.3')
     }
     if (!inputs.tty && inputs.allowHeadlessTwoPane !== true) {
       throw new RunModeError(

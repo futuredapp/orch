@@ -1,24 +1,23 @@
-// Regression coverage for the two bugs observed in run
-// r-2026-05-21-141104-5n: an "Enter" on a never-replayed step in a scratch
-// session whose current window has filled with hidden panes triggered
-//
-//   tmux split-window failed (exit 1): no space for new pane
-//
-// which surfaced two distinct user-visible defects:
+// Regression coverage for two bugs observed in run r-2026-05-21-141104-5n
+// and r-2026-05-22-135756-tc:
 //
 //   Bug B (rendering): the failure string was written to opts.stderr (the
 //     orch parent's fd-2) AND to the overlay banner. fd-2 leaks into the
 //     attached tmux client's terminal grid and visibly bleeds across both
 //     panes. The overlay banner is the legitimate surface.
 //
-//   Bug A (capacity): the controller's spawnHiddenPane never retried after
-//     "no space for new pane", so the step's replay pane was permanently
-//     unreachable until the user dismissed and re-entered.
+//   Bug C (banner ordering): on `step:failed`, the host's error banner was
+//     being overwritten by the "step X complete" info banner that the
+//     live→replay transform emits when the user was watching this source.
+//     `suppressCompletionBanner` lets the host say "don't emit the
+//     completion toast — I have a durable error banner instead."
 //
-// Fix B: every catch site in right-pane-controller routes failures through
-//   logLifecycle + emitBanner only; no raw stderr.write.
-// Fix A: spawnHiddenPane detects /no space for new pane/, rotates the
-//   scratch session to a fresh window via tmux.newWindow, then retries.
+// **Bug A (capacity / "no space for new pane") was removed by the
+// per-source-tmux-sessions refactor — see
+// docs/plans/2026-05-22-001-refactor-per-source-tmux-sessions-plan.md.**
+// The spawn path no longer calls `split-window`, so the capacity-rotation
+// branch and its tests are gone. The retained tests below still pin Bug B
+// (stderr bleed → banner-only surface) and Bug C (suppressCompletionBanner).
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { mkdir, mkdtemp, rm } from 'node:fs/promises'
@@ -31,7 +30,6 @@ import {
   paneId,
   socketName,
   TmuxCommandError,
-  windowId,
 } from '../../../../../src/services/tmux/index.ts'
 import { path as toPath } from '../../../../../src/services/types.ts'
 import {
@@ -45,9 +43,7 @@ import {
 const RUN_ID: RunId = toRunId('r-2026-05-21-141104-5n')
 const RIGHT_PANE = paneId('%1')
 const LEFT_PANE = paneId('%0')
-const SCRATCH_SOCKET = socketName('orch-scratch-fr')
-const MAIN_SOCKET = socketName('orch-main-fr')
-const SCRATCH_SESSION = { socket: SCRATCH_SOCKET, session: 'orch-scratch' }
+const SOCKET = socketName('orch-main-fr')
 
 const stepName = (s: string): StepName => s as StepName
 
@@ -140,7 +136,7 @@ async function makeHarness(steps: Record<string, StepEntry>): Promise<Harness> {
   const overlayPath = `${tempDir}/tui-overlay.ndjson`
   const controller = createRightPaneController({
     tmux,
-    socket: MAIN_SOCKET,
+    socket: SOCKET,
     leftPaneId: LEFT_PANE,
     rightPaneId: RIGHT_PANE,
     paneQueue: queue,
@@ -150,14 +146,15 @@ async function makeHarness(steps: Record<string, StepEntry>): Promise<Harness> {
     cwd: toPath(tempDir),
     env: {},
     stderr: stderr.stream,
-    scratchSession: SCRATCH_SESSION,
+    width: 200,
+    height: 50,
     tuiOverlayPath: toPath(overlayPath),
   })
   return { tmux, stderr, overlayPath, controller }
 }
 
 // ---------------------------------------------------------------------------
-// Bug B — stderr bleed
+// Bug B — stderr bleed (still pinned under the per-source design)
 // ---------------------------------------------------------------------------
 
 describe('right-pane-controller failed replay dispatch — stderr bleed (Bug B)', () => {
@@ -166,8 +163,11 @@ describe('right-pane-controller failed replay dispatch — stderr bleed (Bug B)'
       'commit:c1': makeStep({ name: 'commit:c1', value: { sha: 'abc' } }),
     })
 
-    h.tmux.nextSplitPaneError(
-      new TmuxCommandError(1, 'no space for new pane', 'tmux split-window failed'),
+    // Per-source design: the spawn path is createSession, not splitPane.
+    // The error stderr is preserved verbatim so the Bug-B contract continues
+    // to assert: "no stderr.write, banner only."
+    h.tmux.nextCreateSessionError(
+      new TmuxCommandError(1, 'duplicate session', 'tmux new-session failed'),
     )
 
     h.controller.onIntent({ type: 'enter', stepName: 'commit:c1' })
@@ -178,17 +178,13 @@ describe('right-pane-controller failed replay dispatch — stderr bleed (Bug B)'
     await h.controller.stop()
   })
 
-  it('still surfaces a banner overlay on a non-recoverable failure', async () => {
-    // "can't find pane" is not the recoverable "no space" case — the
-    // controller does NOT rotate, so the failure reaches the user-visible
-    // banner path. This pins the contract that removing stderr.write didn't
-    // also remove the legitimate banner sink.
+  it('still surfaces a banner overlay on a session-create failure', async () => {
     const h = await makeHarness({
       'commit:c1': makeStep({ name: 'commit:c1', value: { sha: 'abc' } }),
     })
 
-    h.tmux.nextSplitPaneError(
-      new TmuxCommandError(1, "can't find pane: %99", 'tmux split-window failed'),
+    h.tmux.nextCreateSessionError(
+      new TmuxCommandError(1, "can't find pane: %99", 'tmux new-session failed'),
     )
 
     h.controller.onIntent({ type: 'enter', stepName: 'commit:c1' })
@@ -197,83 +193,6 @@ describe('right-pane-controller failed replay dispatch — stderr bleed (Bug B)'
     const overlayText = await Bun.file(h.overlayPath).text()
     expect(overlayText).toContain('replay failed for commit:c1')
     expect(overlayText).toContain('"kind":"error"')
-
-    await h.controller.stop()
-  })
-})
-
-// ---------------------------------------------------------------------------
-// Bug A — scratch window rotation
-// ---------------------------------------------------------------------------
-
-describe('right-pane-controller scratch window rotation (Bug A)', () => {
-  it('rotates to a new scratch window when splitPane fails with "no space for new pane", then retries', async () => {
-    const h = await makeHarness({
-      'commit:c1': makeStep({ name: 'commit:c1', value: { sha: 'abc' } }),
-    })
-
-    // First splitPane in the scratch session: window is "full".
-    h.tmux.nextSplitPaneError(
-      new TmuxCommandError(1, 'no space for new pane', 'tmux split-window failed'),
-    )
-    // Pre-script a window creation result (deterministic ids).
-    h.tmux.nextNewWindowResult({ windowId: windowId('@42'), paneId: paneId('%500') })
-    // Second splitPane (after rotation) succeeds and returns this pane id.
-    h.tmux.nextPaneId(paneId('%501'))
-
-    h.controller.onIntent({ type: 'enter', stepName: 'commit:c1' })
-    await flush()
-
-    // newWindow was created on the scratch session.
-    const newWindows = h.tmux.recordedCalls.filter((c) => c.method === 'newWindow')
-    expect(newWindows).toHaveLength(1)
-    const win = newWindows[0]
-    if (win?.method !== 'newWindow') throw new Error('expected newWindow')
-    expect(win.opts.session).toBe('orch-scratch')
-    expect(win.opts.socket).toBe(SCRATCH_SOCKET)
-
-    // splitPane was called twice — the failed one + the retry.
-    const splits = h.tmux.recordedCalls.filter((c) => c.method === 'splitPane')
-    expect(splits).toHaveLength(2)
-
-    // Retry pane was swapped into the visible slot — registerSource succeeded.
-    const swaps = h.tmux.recordedCalls.filter((c) => c.method === 'swapPane')
-    expect(swaps).toHaveLength(1)
-    const swap = swaps[0]
-    if (swap?.method !== 'swapPane') throw new Error('expected swapPane')
-    expect(swap.opts.src).toBe(paneId('%501'))
-
-    // No error banner — the rotation recovered the failure.
-    const overlayText = await Bun.file(h.overlayPath).text()
-    expect(overlayText).not.toContain('replay failed for commit:c1')
-
-    // And no stderr bleed during rotation either (cross-check on Bug B).
-    expect(h.stderr.chunks.join('')).toBe('')
-
-    await h.controller.stop()
-  })
-
-  it('does not rotate on unrelated tmux errors (e.g. "can\'t find pane")', async () => {
-    const h = await makeHarness({
-      'commit:c1': makeStep({ name: 'commit:c1', value: { sha: 'abc' } }),
-    })
-
-    h.tmux.nextSplitPaneError(
-      new TmuxCommandError(1, "can't find pane: %99", 'tmux split-window failed'),
-    )
-
-    h.controller.onIntent({ type: 'enter', stepName: 'commit:c1' })
-    await flush()
-
-    // No rotation for an unrelated error — original failure propagates.
-    const newWindows = h.tmux.recordedCalls.filter((c) => c.method === 'newWindow')
-    expect(newWindows).toHaveLength(0)
-    const splits = h.tmux.recordedCalls.filter((c) => c.method === 'splitPane')
-    expect(splits).toHaveLength(1)
-
-    // The error banner appears on the overlay.
-    const overlayText = await Bun.file(h.overlayPath).text()
-    expect(overlayText).toContain('replay failed for commit:c1')
 
     await h.controller.stop()
   })
@@ -298,7 +217,7 @@ describe('right-pane-controller unregisterSource: suppressCompletionBanner (Bug 
   it('still emits the completion banner by default (the live → replay info toast)', async () => {
     const h = await makeHarness({})
 
-    h.tmux.nextPaneId(paneId('%600'))
+    h.tmux.nextCreateSessionPaneId(paneId('%600'))
     const liveKey = { type: 'live' as const, stepName: stepName('plan') }
     await h.controller.registerSource(liveKey, {
       kind: 'file-tail',
@@ -318,7 +237,7 @@ describe('right-pane-controller unregisterSource: suppressCompletionBanner (Bug 
   it('skips the completion banner when suppressCompletionBanner is true', async () => {
     const h = await makeHarness({})
 
-    h.tmux.nextPaneId(paneId('%601'))
+    h.tmux.nextCreateSessionPaneId(paneId('%601'))
     const liveKey = { type: 'live' as const, stepName: stepName('plan') }
     await h.controller.registerSource(liveKey, {
       kind: 'file-tail',

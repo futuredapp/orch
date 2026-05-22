@@ -96,6 +96,14 @@ function makeCaptureLogger(runId: RunId): {
   }
 }
 
+// Logger variant with `logsDir` set so `teePathFor` returns a non-null path.
+// Used by tests that exercise the host's `step:start` → `registerSource` path,
+// which the host short-circuits when there is no logsDir.
+function makeLoggerWithLogsDir(runId: RunId): SessionLogger {
+  const base = createNullSessionLogger({ runId })
+  return { ...base, logsDir: path('/logs') }
+}
+
 class WaitForSessionLostTmuxService extends FakeTmuxService {
   override async waitFor(opts: WaitForOptions): Promise<void> {
     await super.waitFor(opts)
@@ -404,20 +412,23 @@ describe('TmuxHost.runInteractive', () => {
     await host.teardown()
   })
 
-  it('splits a scratch-session pane with runner argv + env + cwd, swaps it visible, and kills it on exit (U6)', async () => {
+  it('creates a per-source tmux session with the runner argv + env + cwd, swaps it visible, and kills the session on exit (U4)', async () => {
     const tmux = new FakeTmuxService()
     tmux.setListPanesResult(['%0'])
-    // First splitPane → visible right pane (%42). Second splitPane → the
-    // hidden PTY pane in the scratch session (synthesized as %1 by the
-    // FakeTmuxService counter).
+    // splitPane returns %42 for the visible right pane.
     tmux.nextPaneId(paneId('%42'))
+    // The `createSession` script is FIFO. The first createSession is the
+    // bootstrap `orch` session (eats %50 — value is discarded). The second
+    // is the per-source PTY pane (%77) whose id drives the pane-exit channel.
+    tmux.nextCreateSessionPaneId(paneId('%50'))
+    tmux.nextCreateSessionPaneId(paneId('%77'))
 
     const { host } = await buildHostWithController(tmux)
 
-    // The runner argv, env, and cwd all flow into the scratch-session
-    // splitPane call. `spawn.env` carries ANTHROPIC_API_KEY / OAuth
-    // bootstrap vars / FORCE_COLOR=3; `spawn.cwd` becomes tmux's `-c <dir>`
-    // flag — without it, the pane keeps tmux's default cwd of `/`.
+    // The runner argv, env, and cwd all flow into the per-source createSession
+    // call. `spawn.env` carries ANTHROPIC_API_KEY / OAuth bootstrap vars /
+    // FORCE_COLOR=3; `spawn.cwd` becomes tmux's `-c <dir>` flag — without it,
+    // the pane keeps tmux's default cwd of `/`.
     const spawnEnv = { ANTHROPIC_API_KEY: 'sk-test', FORCE_COLOR: '3' }
     const result = await host.runInteractive({
       argv: ['claude', '--resume', 'abc'],
@@ -428,53 +439,58 @@ describe('TmuxHost.runInteractive', () => {
 
     expect(result.exitCode).toBe(0)
 
-    // U6 invariant: NO `respawnPane` on the visible right pane. The
-    // interactive runner lives in a hidden PTY pane in the scratch session;
-    // the visible slot only ever sees `swapPane`.
+    // U4 invariant: NO `respawnPane` on the visible right pane. The
+    // interactive runner lives in a hidden PTY pane in its own per-source
+    // session; the visible slot only ever sees `swapPane`.
     const rightRespawns = tmux.recordedCalls.filter(
       (c) => c.method === 'respawnPane' && c.opts.target === paneId('%42'),
     )
     expect(rightRespawns).toHaveLength(0)
 
-    // The scratch-session splitPane carries the runner argv + env + cwd.
-    // The first splitPane is the visible right pane (placeholder cat); the
-    // second is the interactive PTY pane.
-    const splits = tmux.recordedCalls.filter((c) => c.method === 'splitPane')
-    const ptySplit = splits.find(
-      (c) => c.method === 'splitPane' && 'argv' in c.opts && c.opts.argv?.[0] === 'claude',
+    // U4 invariant: the interactive PTY pane is created via `createSession`
+    // with the sanitized per-source name, NOT via `splitPane` against a
+    // shared substrate. The first `createSession` is the bootstrap `orch`
+    // session; the per-source call carries the runner argv + env + cwd.
+    const createSessions = tmux.recordedCalls.filter((c) => c.method === 'createSession')
+    const ptyCreate = createSessions.find(
+      (c) => c.method === 'createSession' && c.opts.session === 'orch-src-interactive-review',
     )
-    if (ptySplit?.method !== 'splitPane') throw new Error('expected pty splitPane call')
-    if (!('argv' in ptySplit.opts)) throw new Error('expected argv-form splitPane')
-    expect(ptySplit.opts.argv).toEqual(['claude', '--resume', 'abc'])
-    expect(ptySplit.opts.env).toEqual(spawnEnv)
-    expect(ptySplit.opts.cwd).toBe(path('/tmp'))
-    expect(ptySplit.opts.session).toBe('orch-scratch')
+    if (ptyCreate?.method !== 'createSession') {
+      throw new Error('expected per-source createSession for interactive review')
+    }
+    expect(ptyCreate.opts.command).toEqual(['claude', '--resume', 'abc'])
+    expect(ptyCreate.opts.env).toEqual(spawnEnv)
+    expect(ptyCreate.opts.cwd).toBe(path('/tmp'))
+
+    // The interactive PTY pane no longer arrives via `splitPane`. We allow
+    // exactly one `splitPane` — the visible right pane bootstrap.
+    const splits = tmux.recordedCalls.filter((c) => c.method === 'splitPane')
+    expect(splits).toHaveLength(1)
 
     // `showSource` issues a `swapPane` from the hidden pane into the visible
     // slot. There may be other swaps from controller setup or
     // unregisterSource (placeholder restore) — assert at least one swap
-    // targeted the visible right pane id.
+    // happened.
     const swaps = tmux.recordedCalls.filter((c) => c.method === 'swapPane')
     expect(swaps.length).toBeGreaterThanOrEqual(1)
 
     // We wait on the HIDDEN pane id's pane-exit channel, not the visible
     // right pane. The global pane-died hook keys on the dying pane's id,
-    // and the runner dies in the hidden pane (which lives in the scratch
-    // session). The hidden pane id is `%1` — the next synthesized id after
-    // the visible right pane consumed `%42`.
+    // and the runner dies in the hidden pane (which lives in its own
+    // per-source session). The hidden pane id is `%77` — scripted above.
     const waits = tmux.recordedCalls.filter((c) => c.method === 'waitFor')
     expect(waits).toHaveLength(1)
     const wait = waits[0]
     if (wait?.method !== 'waitFor') throw new Error('expected waitFor call')
-    expect(wait.opts.channel).toBe('pane-exit-%1')
+    expect(wait.opts.channel).toBe('pane-exit-%77')
     expect(wait.opts.timeoutMs).toBeUndefined()
 
-    // unregisterSource for `interactive` kills the hidden pane. The old
-    // post-exit `respawnPane(['cat'])` restore is GONE — the visible
-    // right pane never ran the runner argv, so there's nothing to clean
-    // up on it.
-    const kills = tmux.recordedCalls.filter((c) => c.method === 'killPane')
-    expect(kills.length).toBeGreaterThanOrEqual(1)
+    // unregisterSource for `interactive` kills the per-source SESSION
+    // (which destroys the hidden pane with it). The old `killPane` is gone.
+    const sessionKills = tmux.recordedCalls.filter(
+      (c) => c.method === 'killSession' && c.opts.session === 'orch-src-interactive-review',
+    )
+    expect(sessionKills).toHaveLength(1)
   })
 
   it('omits timeoutMs on the pane-exit waitFor so an idle interactive agent never trips a default timeout', async () => {
@@ -521,22 +537,31 @@ describe('TmuxHost.teardown', () => {
     expect(tmux.recordedCalls.length).toBe(callsBefore)
   })
 
-  it('kills the tmux session so the server does not leave mouse-mode bits on the outer TTY', async () => {
+  it('kills the visible orch session on teardown — no shared substrate session is created at boot (U4)', async () => {
     const tmux = new FakeTmuxService()
     tmux.setListPanesResult(['%0'])
     tmux.nextPaneId(paneId('%42'))
 
     const { host } = await buildHost(tmux)
 
+    // U4: no controller is wired in this fixture (no basePath + stateStore),
+    // so no per-source sessions exist. Boot creates exactly one session
+    // (`orch`); no `orch-src-*` or legacy `orch-scratch` is created.
+    const createCalls = tmux.recordedCalls.filter((c) => c.method === 'createSession')
+    const createdSessions = createCalls.map((c) =>
+      c.method === 'createSession' ? c.opts.session : '',
+    )
+    expect(createdSessions).toEqual(['orch'])
+
     await host.teardown()
 
-    // Two sessions are torn down: the per-run scratch session FIRST so its
-    // hidden panes can't outlive their swap target, then the visible orch
-    // session.
+    // Only the visible `orch` session is torn down — no per-source sessions
+    // exist when the controller is absent, and the legacy `orch-scratch`
+    // session is gone for good.
     const killCalls = tmux.recordedCalls.filter((c) => c.method === 'killSession')
-    expect(killCalls).toHaveLength(2)
+    expect(killCalls).toHaveLength(1)
     const sessions = killCalls.map((c) => (c.method === 'killSession' ? c.opts.session : ''))
-    expect(sessions).toEqual(['orch-scratch', 'orch'])
+    expect(sessions).toEqual(['orch'])
   })
 
   it('is idempotent — a second teardown does not re-issue kill-session', async () => {
@@ -549,9 +574,84 @@ describe('TmuxHost.teardown', () => {
     await host.teardown()
     await host.teardown()
 
-    // Idempotent — orch-scratch + orch (no doubles on second teardown).
+    // Idempotent — only the visible orch session is killed; no doubles on
+    // the second teardown.
     const killCalls = tmux.recordedCalls.filter((c) => c.method === 'killSession')
-    expect(killCalls).toHaveLength(2)
+    expect(killCalls).toHaveLength(1)
+  })
+
+  it('drains every per-source session before killing the visible orch session (U4)', async () => {
+    const tmux = new FakeTmuxService()
+    tmux.setListPanesResult(['%0'])
+    tmux.nextPaneId(paneId('%42'))
+
+    // teePathFor() returns null when the logger has no logsDir; without a
+    // path the host's `step:start` short-circuits to an info banner instead
+    // of calling controller.registerSource. Wire a logger with logsDir so
+    // the host actually creates per-source sessions for these steps.
+    const logger = makeLoggerWithLogsDir('r-2026-04-23-phased1' as RunId)
+    const { host } = await buildHostWithController(tmux, logger)
+
+    // Drive three live sources through the host's lifecycle hook. The
+    // controller creates one per-source session per registerSource(...) call.
+    host.onLifecycleEvent({ type: 'step:start', stepName: stepName('plan'), mode: 'autonomous' })
+    host.onLifecycleEvent({ type: 'step:start', stepName: stepName('build'), mode: 'autonomous' })
+    host.onLifecycleEvent({ type: 'step:start', stepName: stepName('check'), mode: 'autonomous' })
+
+    // Let the fire-and-forget controller.registerSource(...) chains settle
+    // before we tear down — otherwise teardown can race the in-flight
+    // registrations and produce a non-deterministic kill order.
+    await new Promise((r) => setTimeout(r, 0))
+    await new Promise((r) => setTimeout(r, 0))
+
+    await host.teardown()
+
+    const killCalls = tmux.recordedCalls.filter((c) => c.method === 'killSession')
+    const killedSessions = killCalls.map((c) => (c.method === 'killSession' ? c.opts.session : ''))
+
+    // Every per-source session kill must land BEFORE the visible orch kill —
+    // the order among the per-source kills is not asserted (parallel work
+    // is allowed) but the orch kill must be last.
+    expect(killedSessions[killedSessions.length - 1]).toBe('orch')
+    const perSourceKills = killedSessions.slice(0, -1)
+    expect(perSourceKills).toContain('orch-src-live-plan')
+    expect(perSourceKills).toContain('orch-src-live-build')
+    expect(perSourceKills).toContain('orch-src-live-check')
+  })
+
+  it('still kills the visible orch session when controller.teardownSessions() fails (U4)', async () => {
+    class FailTeardownTmux extends FakeTmuxService {
+      override async killSession(
+        opts: import('../../../src/services/tmux/index.ts').KillSessionOptions,
+      ): Promise<void> {
+        if (opts.session.startsWith('orch-src-')) {
+          throw new TmuxCommandError(
+            1,
+            'simulated per-source kill failure',
+            'tmux kill-session failed (exit 1): simulated per-source kill failure',
+          )
+        }
+        await super.killSession(opts)
+      }
+    }
+    const tmux = new FailTeardownTmux()
+    tmux.setListPanesResult(['%0'])
+    tmux.nextPaneId(paneId('%42'))
+
+    const logger = makeLoggerWithLogsDir('r-2026-04-23-phased1' as RunId)
+    const { host } = await buildHostWithController(tmux, logger)
+    host.onLifecycleEvent({ type: 'step:start', stepName: stepName('plan'), mode: 'autonomous' })
+    await new Promise((r) => setTimeout(r, 0))
+    await new Promise((r) => setTimeout(r, 0))
+
+    await host.teardown()
+
+    // Even though every per-source killSession threw, the visible orch
+    // session must still be reaped — the existing try/catch shape preserves
+    // the contract.
+    const killCalls = tmux.recordedCalls.filter((c) => c.method === 'killSession')
+    const sessions = killCalls.map((c) => (c.method === 'killSession' ? c.opts.session : ''))
+    expect(sessions).toContain('orch')
   })
 
   // Regression: a second concurrent teardown call (e.g. back-to-back SIGINTs

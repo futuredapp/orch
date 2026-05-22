@@ -5,11 +5,13 @@
 // Two panes: left runs a `cat` placeholder with the status rollup drawn into
 // it; right is a *swap target* for the pane-map controller (post-2026-05-11
 // unified-pane-map plan). Hidden source panes — runner PTYs, `tail -F` over
-// per-step tees, the parallel-block rollup tail — live on a sibling tmux
-// session (`orch-scratch`) and are `tmux swap-pane`d into the visible right
-// slot on demand. The visible right pane never directly hosts a runner
-// process; bytes always arrive via swap. The left pane is unchanged (still
-// owns the steps-view daemon).
+// per-step tees, the parallel-block rollup tail — live in per-source tmux
+// sessions (`orch-src-<sanitized-key>`) created lazily by the controller on
+// the same socket as `orch`, and are `tmux swap-pane`d into the visible right
+// slot on demand. Pane ids are server-wide, so swap-pane works cross-session.
+// The visible right pane never directly hosts a runner process; bytes always
+// arrive via swap. The left pane is unchanged (still owns the steps-view
+// daemon).
 //
 // Every pane write goes through the shared PaneQueue — transcript fan-out,
 // status rollup, and respawn-pane -k all serialize per pane so a pending
@@ -59,11 +61,8 @@ import { assertNoNestedTmux, createAttachForeground } from './attach-foreground.
 import { renderFailurePanePayload } from './failure-pane.ts'
 import {
   createRightPaneController,
-  createScratchSession,
   type RightPaneController,
-  type ScratchSessionHandle,
   type SourceKey,
-  teardownScratchSession,
 } from './pane-map/index.ts'
 import { createPaneQueue, type PaneQueue } from './pane-queue.ts'
 import {
@@ -317,25 +316,11 @@ export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
     }),
   )
 
-  // Bootstrap ordering: the scratch session is created BEFORE the visible
-  // right-pane split. If scratch creation fails (fd exhaustion, server
-  // OOM, etc.), the visible right pane has not yet been split — so no
-  // orphaned UI exists and the error bubbles up cleanly to the run
-  // startup path.
-  const scratchSession = await createScratchSession({
-    tmux,
-    socket,
-    width: WIDTH,
-    height: HEIGHT,
-  })
-  void opts.logger
-    ?.append('lifecycle', {
-      type: 'scratch-session-created',
-      socket,
-      session: scratchSession.session,
-    })
-    .catch(() => {})
-
+  // Per-source tmux sessions are created lazily by the right-pane controller
+  // (one session per `registerSource(...)` call). No shared substrate session
+  // is created at boot — the visible `orch` session is the only one the host
+  // owns. Source sessions live on the same socket and are reaped during
+  // teardown via `controller.teardownSessions()`.
   const rightPaneId = await tmux.splitPane({
     socket,
     session: SESSION,
@@ -433,7 +418,8 @@ export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
       cwd: cwdPath,
       env: envForChild,
       stderr: opts.stderr,
-      scratchSession,
+      width: WIDTH,
+      height: HEIGHT,
       tuiOverlayPath: toPath(`${stateDir}/tui-overlay.ndjson`),
       ...(opts.logger !== undefined ? { logger: opts.logger } : {}),
       ...(opts.resumeRegistry !== undefined ? { resumeRegistry: opts.resumeRegistry } : {}),
@@ -461,7 +447,6 @@ export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
     stdout: opts.stdout ?? process.stdout,
     writeTerminalReset,
     tee: createPerStepTee(opts.logger),
-    scratchSession,
     ...(opts.logger !== undefined ? { logger: opts.logger } : {}),
     ...(pipePaneCapture !== undefined ? { pipePaneCapture } : {}),
     ...(stdioCapture !== undefined ? { stdioCapture } : {}),
@@ -665,8 +650,6 @@ interface BuildHostDeps {
    *  before pane-queue enqueue so the file mirrors per-step ordering even
    *  when two parallel branches interleave on the right pane. */
   readonly tee: PerStepTee
-  /** Per-run scratch session that hosts hidden panes for the pane-map. */
-  readonly scratchSession: ScratchSessionHandle
   /**
    * Right-pane controller for the pane-map. When present, lifecycle hooks
    * register/unregister `file-tail` sources for autonomous + command live
@@ -704,16 +687,9 @@ function buildHost(deps: BuildHostDeps): Host {
       const sessionReachable = serverReachable
         ? await deps.tmux.hasSession({ socket: deps.socket, session: SESSION })
         : false
-      const scratchSessionReachable = serverReachable
-        ? await deps.tmux.hasSession({
-            socket: deps.socket,
-            session: deps.scratchSession.session,
-          })
-        : false
       return {
         tmuxServerReachable: serverReachable,
         tmuxSessionReachable: sessionReachable,
-        tmuxScratchSessionReachable: scratchSessionReachable,
       }
     } catch (err) {
       return {
@@ -1047,22 +1023,29 @@ function buildHost(deps: BuildHostDeps): Host {
         cwd: spawn.cwd,
       })
     } catch (err) {
+      // The user-reported "[server exited]" crash hits here when the tmux
+      // session died externally between steps: the per-source `createSession`
+      // (or the older `splitPane`) against the dead socket fails. Translate
+      // it into the typed `HostUnavailableError` so the CLI renders a clean
+      // failure summary instead of an unwrapped `TmuxCommandError`.
+      //
+      // Two classification paths: the canonical session-lost stderr shape
+      // (`isSessionLostError`), OR a live reachability probe that finds the
+      // visible `orch` session gone. The reachability path catches the U4
+      // shift where `new-session` re-creates the server (so the next call
+      // succeeds against a fresh server) but the visible `orch` session is
+      // still missing — semantically still "host unavailable".
+      const reachability = await tmuxReachability()
+      const sessionLost = isSessionLostError(err) || reachability.tmuxSessionReachable === false
       await appendLifecycle({
         type: 'interactive-register-failed',
         stepName: spawn.stepName,
         sourceKey: sourceKeyString,
-        isSessionLost: isSessionLostError(err),
+        isSessionLost: sessionLost,
         ...errorLifecycleFields(err),
-        ...(isSessionLostError(err) ? await tmuxReachability() : {}),
+        ...reachability,
       })
-      // The user-reported "[server exited]" crash hits here when the tmux
-      // session died externally between steps: `splitPane` against the dead
-      // socket throws `TmuxCommandError`, which would otherwise escape
-      // `runInteractive` un-wrapped, propagate through the workflow as a
-      // `crashed` failure, and crash Bun because `mapRunError` does not
-      // recognise the error type. Translate it into the typed
-      // `HostUnavailableError` so the CLI renders a clean failure summary.
-      if (isSessionLostError(err)) {
+      if (sessionLost) {
         throw new HostUnavailableError(
           `tmux session is no longer reachable — cannot start interactive step ${spawn.stepName}`,
           err,
@@ -1130,6 +1113,14 @@ function buildHost(deps: BuildHostDeps): Host {
         exitCodeKnown: false,
       })
     } catch (err) {
+      // Same dual-path classification as the register-failed catch above:
+      // canonical session-lost stderr OR a live reachability probe that
+      // finds the visible `orch` session gone. Covers both the legacy
+      // "dead socket" failure shape and the U4-era "server re-created via
+      // new-session, but orch session still missing" shape (e.g. the swap
+      // fails with "can't find pane").
+      const reachability = await tmuxReachability()
+      const sessionLost = isSessionLostError(err) || reachability.tmuxSessionReachable === false
       await appendLifecycle({
         type: 'interactive-wait-failed',
         stepName: spawn.stepName,
@@ -1137,11 +1128,11 @@ function buildHost(deps: BuildHostDeps): Host {
         paneId: hiddenPaneId,
         channel: `pane-exit-${hiddenPaneId}`,
         durationMs: deps.clock.now() - startedAt,
-        isSessionLost: isSessionLostError(err),
+        isSessionLost: sessionLost,
         ...errorLifecycleFields(err),
-        ...(isSessionLostError(err) ? await tmuxReachability() : {}),
+        ...reachability,
       })
-      if (isSessionLostError(err)) {
+      if (sessionLost) {
         // Best-effort cleanup before surfacing the typed error — the
         // hidden pane is already dead with the server, but `unregisterSource`
         // also drops the in-memory bookkeeping. Failure here is expected
@@ -1258,27 +1249,24 @@ function buildHost(deps: BuildHostDeps): Host {
     if (deps.pipePaneCapture !== undefined) {
       await deps.pipePaneCapture.stop()
     }
-    // Kill the scratch session BEFORE the visible session so the hidden
-    // panes that host file-tail / pty sources can't outlive their swap
-    // target. `teardownScratchSession` is idempotent and tolerates "session
-    // not found" (matches the main killSession's contract).
-    appendLifecycleSoon({
-      type: 'scratch-session-teardown-start',
-      socket: deps.scratchSession.socket,
-      session: deps.scratchSession.session,
-    })
-    try {
-      await teardownScratchSession(deps.tmux, deps.scratchSession)
-    } catch (err) {
-      appendLifecycleSoon({
-        type: 'scratch-session-teardown-failed',
-        socket: deps.scratchSession.socket,
-        session: deps.scratchSession.session,
-        ...errorLifecycleFields(err),
-      })
-      deps.stderr.write(`[orch tmux] scratch kill-session failed: ${String(err)}\n`)
+    // Tear down every per-source session BEFORE killing the visible `orch`
+    // session so hidden source panes can never outlive their swap target.
+    // The controller owns the per-source session map; `teardownSessions` is
+    // idempotent and isolates per-entry failures (one already-gone session
+    // does not block the others). When no controller is wired (test fixtures
+    // that omit basePath + stateStore), no source sessions exist and there
+    // is nothing to reap here.
+    if (deps.controller !== undefined) {
+      try {
+        await deps.controller.teardownSessions()
+      } catch (err) {
+        appendLifecycleSoon({
+          type: 'source-sessions-teardown-failed',
+          ...errorLifecycleFields(err),
+        })
+        deps.stderr.write(`[orch tmux] source-sessions teardown failed: ${String(err)}\n`)
+      }
     }
-    appendLifecycleSoon({ type: 'scratch-session-torndown' })
     // Kill the session last so all pending writes have already drained.
     // `killSession` tolerates "session not found" — a racing teardown or an
     // already-gone server is the outcome we want.
@@ -1359,7 +1347,7 @@ function buildHost(deps: BuildHostDeps): Host {
         reason: 'tmux server is no longer reachable',
       }
     }
-    if (probe.tmuxSessionReachable === false || probe.tmuxScratchSessionReachable === false) {
+    if (probe.tmuxSessionReachable === false) {
       return {
         reachable: false,
         reason: 'tmux session is no longer reachable',

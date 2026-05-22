@@ -21,16 +21,17 @@ describe('isInsideTmux', () => {
 })
 
 describe('meetsMinimumTmuxVersion', () => {
-  it('accepts tmux 3.2 exactly', () => {
-    expect(meetsMinimumTmuxVersion({ raw: 'tmux 3.2', major: 3, minor: 2 })).toBe(true)
+  it('accepts tmux 3.3 exactly', () => {
+    expect(meetsMinimumTmuxVersion({ raw: 'tmux 3.3', major: 3, minor: 3 })).toBe(true)
   })
 
-  it('accepts any release above 3.2', () => {
+  it('accepts any release above 3.3', () => {
     expect(meetsMinimumTmuxVersion({ raw: 'tmux 3.6a', major: 3, minor: 6 })).toBe(true)
     expect(meetsMinimumTmuxVersion({ raw: 'tmux 4.0', major: 4, minor: 0 })).toBe(true)
   })
 
-  it('rejects tmux 3.1 and earlier', () => {
+  it('rejects tmux 3.2 and earlier (smart-wheel requires the mouse_any_flag format from 3.3)', () => {
+    expect(meetsMinimumTmuxVersion({ raw: 'tmux 3.2', major: 3, minor: 2 })).toBe(false)
     expect(meetsMinimumTmuxVersion({ raw: 'tmux 3.1c', major: 3, minor: 1 })).toBe(false)
     expect(meetsMinimumTmuxVersion({ raw: 'tmux 2.9', major: 2, minor: 9 })).toBe(false)
   })

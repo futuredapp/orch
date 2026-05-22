@@ -58,6 +58,26 @@ describe.skipIf(!canRun)('RealTmuxService against a real tmux server', () => {
     expect(pane).toMatch(/^%\d+$/)
   })
 
+  it('createSession returns the initial pane id, and listPanes confirms it owns that pane', async () => {
+    // U2 contract on the real adapter: `-P -F '#{pane_id}'` causes tmux to
+    // print the new session's initial pane id; the parsed result must match
+    // what `list-panes` reports for the same session.
+    const tmux = new RealTmuxService({ processService: new BunProcessService() })
+    const socket = newSocket('create-pane')
+
+    const result = await tmux.createSession({
+      socket,
+      session: 'main',
+      width: 200,
+      height: 50,
+      command: ['cat'],
+    })
+
+    expect(result.paneId).toMatch(/^%\d+$/)
+    const ids = await tmux.listPanes({ socket, session: 'main', format: '#{pane_id}' })
+    expect(ids).toContain(result.paneId)
+  })
+
   it('queries pane status via display-message with a format variable', async () => {
     const tmux = new RealTmuxService({ processService: new BunProcessService() })
     const socket = newSocket('display')
@@ -546,18 +566,24 @@ describe.skipIf(!canRun)('initOrchSession strict-sandbox lockdown on real tmux',
     return tmux
   }
 
-  it('list-keys -T root contains exactly the four allowlist bindings after init', async () => {
+  it('list-keys -T root contains exactly the six allowlist bindings after init', async () => {
     const socket = newSocket('strict-root-keys')
     await initStrict(socket)
 
     const { stdout, exitCode } = await runShell(['tmux', '-L', socket, 'list-keys', '-T', 'root'])
     expect(exitCode).toBe(0)
     const lines = stdout.split('\n').filter((l) => l.trim().length > 0)
-    expect(lines).toHaveLength(4)
+    expect(lines).toHaveLength(6)
     expect(stdout).toContain('MouseDrag1Border')
     expect(stdout).toContain('MouseDown1Pane')
     expect(stdout).toContain('M-Left')
     expect(stdout).toContain('M-Right')
+    expect(stdout).toContain('WheelUpPane')
+    expect(stdout).toContain('WheelDownPane')
+    // Smart-wheel rule preserves the nested if-shell shape on round-trip.
+    expect(stdout).toContain('mouse_any_flag')
+    expect(stdout).toContain('alternate_on')
+    expect(stdout).toContain('copy-mode -e')
   })
 
   it('list-keys for prefix, copy-mode, and copy-mode-vi tables are all empty after init', async () => {
@@ -589,10 +615,12 @@ describe.skipIf(!canRun)('initOrchSession strict-sandbox lockdown on real tmux',
     expect(stdout).toMatch(/prefix\s+None/)
   })
 
-  it('display-message #{history_size} returns 0 for the initial pane after init', async () => {
+  it('display-message #{history_limit} is >= 50000 on the initial pane after init', async () => {
     // tmux/tmux#4705 — history-limit is captured at pane allocation. The
     // `-f` config path applied in initOrchSession is the only way to make
-    // the initial pane's grid honor 0.
+    // the initial pane's grid honor a non-default buffer size. We assert on
+    // `#{history_limit}` (the configured ceiling) so the test is independent
+    // of how much output the pane has rendered.
     const socket = newSocket('strict-history-initial')
     const tmux = await initStrict(socket)
 
@@ -601,16 +629,16 @@ describe.skipIf(!canRun)('initOrchSession strict-sandbox lockdown on real tmux',
     if (first === undefined) throw new Error('expected initial pane')
     const initialPane = paneId(first)
 
-    const size = await tmux.displayMessage({
+    const limit = await tmux.displayMessage({
       socket,
       target: initialPane,
-      format: '#{history_size}',
+      format: '#{history_limit}',
     })
-    expect(size).toBe('0')
+    expect(Number(limit)).toBeGreaterThanOrEqual(50000)
   })
 
-  it('display-message #{history_size} stays 0 on a freshly split pane after a 200-line stream', async () => {
-    const socket = newSocket('strict-history-stream')
+  it('display-message #{history_limit} is >= 50000 on a freshly split pane', async () => {
+    const socket = newSocket('strict-history-split')
     const tmux = await initStrict(socket)
 
     const split = await tmux.splitPane({
@@ -621,17 +649,20 @@ describe.skipIf(!canRun)('initOrchSession strict-sandbox lockdown on real tmux',
       command: 'cat',
     })
 
+    // Drive some output so the buffer has something in it — the actual
+    // assertion is on `#{history_limit}`, not `#{history_size}`. The output
+    // is incidental, but it documents that the buffer accepts and retains
+    // input under the new ceiling.
     const lines = Array.from({ length: 200 }, (_, i) => `line ${i}`).join('\n')
     await tmux.sendKeys({ socket, target: split, keys: [lines], enter: true })
-    // Give cat a moment to render the keystrokes back to the pane.
     await new Promise((r) => setTimeout(r, 200))
 
-    const size = await tmux.displayMessage({
+    const limit = await tmux.displayMessage({
       socket,
       target: split,
-      format: '#{history_size}',
+      format: '#{history_limit}',
     })
-    expect(size).toBe('0')
+    expect(Number(limit)).toBeGreaterThanOrEqual(50000)
   })
 
   it('show-hooks -g pane-died reveals the lifecycle hook still installed after the unbind-key wipe', async () => {
@@ -655,7 +686,7 @@ describe.skipIf(!canRun)('initOrchSession strict-sandbox lockdown on real tmux',
     expect(stdout).toContain('pane-exit-#{hook_pane}')
   })
 
-  it('show-options -g status-right contains the orch logs hint after init', async () => {
+  it('show-options -g status-right contains the in-pane scroll hint after init', async () => {
     const socket = newSocket('strict-status-right')
     await initStrict(socket)
 
@@ -668,6 +699,9 @@ describe.skipIf(!canRun)('initOrchSession strict-sandbox lockdown on real tmux',
       'status-right',
     ])
     expect(exitCode).toBe(0)
-    expect(stdout).toContain('logs --latest --follow')
+    // The hint now leads with in-pane scroll (the new primary path through
+    // the smart-wheel binding and the Ink keymap).
+    expect(stdout).toContain('scroll')
+    expect(stdout).toContain('wheel')
   })
 })

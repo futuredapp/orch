@@ -9,6 +9,7 @@ import type {
   BindKeyOptions,
   CapturePaneOptions,
   CreateSessionOptions,
+  CreateSessionResult,
   DisplayMessageOptions,
   HasServerOptions,
   HasSessionOptions,
@@ -105,13 +106,16 @@ export class RealTmuxService implements TmuxService {
     this.#processService = deps.processService
   }
 
-  async createSession(opts: CreateSessionOptions): Promise<void> {
+  async createSession(opts: CreateSessionOptions): Promise<CreateSessionResult> {
     // `-f <path>` is load-bearing for `history-limit 0` (tmux/tmux#4705 —
     // captured at pane allocation, so a post-create `set -g` does not shrink
     // the initial pane). The strict-sandbox path supplies a generated config
     // file via `opts.configPath`; callers that don't need that pin keep the
     // historical `/dev/null` to ignore the user's `~/.tmux.conf`.
     // `-d` — detached. Orchestrator attaches later from a different call.
+    // `-P -F '#{pane_id}'` — print the initial pane id on stdout so callers
+    // can register it for swap-pane bookkeeping without a follow-up
+    // `listPanes`. Mirrors `newWindow` (see `newWindow` below).
     const configPath = opts.configPath ?? '/dev/null'
     const argv = [
       'tmux',
@@ -127,15 +131,35 @@ export class RealTmuxService implements TmuxService {
       String(opts.width),
       '-y',
       String(opts.height),
+      '-P',
+      '-F',
+      '#{pane_id}',
     ]
+    // env/cwd, if any, before the trailing command argv. Mirrors the
+    // splitPane / respawn-pane shape — tmux's `new-session` accepts both
+    // `-e KEY=VAL` and `-c <cwd>` and applies them to the initial pane.
+    if (opts.env !== undefined) appendEnvFlags(argv, opts.env, 'createSession')
+    if (opts.cwd !== undefined) argv.push('-c', opts.cwd)
     // Holder argv (optional). Appended after the new-session flags so it
     // becomes the initial pane's command — replaces the user's $SHELL.
     if (opts.command !== undefined) {
       assertNoNullByteArgv(opts.command, 'createSession command')
       argv.push(...opts.command)
     }
-    const { stderr, exitCode } = await this.#run(argv)
+    const { stdout, stderr, exitCode } = await this.#run(argv)
     if (exitCode !== 0) throw fail(exitCode, stderr, 'tmux new-session failed')
+
+    const first = stdout.split('\n').find((l) => l.trim().length > 0) ?? ''
+    const trimmed = first.trim()
+    try {
+      return { paneId: paneId(trimmed) }
+    } catch {
+      throw new TmuxCommandError(
+        exitCode,
+        truncateStderr(stderr),
+        `tmux new-session returned unexpected pane id: ${JSON.stringify(trimmed)}`,
+      )
+    }
   }
 
   async splitPane(opts: SplitPaneOptions): Promise<PaneId> {
@@ -306,7 +330,14 @@ export class RealTmuxService implements TmuxService {
     // server is down. Both 1-paths flatten to `false` — the caller asked a
     // reachability question and the answer is "no". Anything else is an
     // unexpected adapter failure and surfaces as a thrown error.
-    const argv = ['tmux', '-L', opts.socket, 'has-session', '-t', opts.session]
+    //
+    // The `=` prefix forces exact-name matching. Without it, tmux's default
+    // is prefix match: `has-session -t orch` would match `orch-src-foo`
+    // too. The per-source tmux sessions refactor (plan 2026-05-22-001)
+    // introduces session names that share the `orch-` prefix with the
+    // visible `orch` session, so exact match is now load-bearing for the
+    // reachability probe.
+    const argv = ['tmux', '-L', opts.socket, 'has-session', '-t', `=${opts.session}`]
     const { stderr, exitCode } = await this.#run(argv)
     if (exitCode === 0) return true
     if (exitCode === 1 && /no server running|session not found|can't find session/i.test(stderr)) {

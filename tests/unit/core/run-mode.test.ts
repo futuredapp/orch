@@ -137,7 +137,7 @@ describe('resolveRunMode', () => {
       caught = err
     }
     expect(caught).toBeInstanceOf(RunModeError)
-    expect((caught as Error).message).toContain('3.2')
+    expect((caught as Error).message).toContain('3.3')
   })
 })
 

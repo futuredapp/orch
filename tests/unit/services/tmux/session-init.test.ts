@@ -29,7 +29,7 @@ const baseOpts = {
 }
 
 describe('initOrchSession writes the strict-sandbox tmux config', () => {
-  it('writes a config file containing history-limit 0, mouse on, remain-on-exit on, prefix None, and exit-empty off', async () => {
+  it('writes a config file containing history-limit >= 50000, mouse on, remain-on-exit on, prefix None, exit-empty off, and destroy-unattached off', async () => {
     const fs = new FakeFsService()
     const tmux = new FakeTmuxService()
 
@@ -42,11 +42,18 @@ describe('initOrchSession writes the strict-sandbox tmux config', () => {
     if (configPath === undefined) throw new Error('configPath should be defined')
 
     const written = await fs.readFile(configPath)
-    expect(written).toContain('set -g history-limit 0')
+    const historyMatch = /set -g history-limit (\d+)/.exec(written)
+    expect(historyMatch).not.toBeNull()
+    const historyValue = Number(historyMatch?.[1])
+    expect(historyValue).toBeGreaterThanOrEqual(50000)
     expect(written).toContain('set -g mouse on')
     expect(written).toContain('set -g remain-on-exit on')
     expect(written).toContain('set -g prefix None')
     expect(written).toContain('set -s exit-empty off')
+    // Per-source sessions are unattached by design — pin `destroy-unattached
+    // off` server-wide before any source session is created, so a user's
+    // `~/.tmux.conf` cannot reap them behind our back.
+    expect(written).toContain('set -g destroy-unattached off')
   })
 
   it('passes the config path to createSession via the configPath option', async () => {
@@ -83,7 +90,7 @@ describe('initOrchSession wipes key tables before installing bindings', () => {
   })
 })
 
-describe('initOrchSession installs the four-item allowlist in order', () => {
+describe('initOrchSession installs the six-item allowlist in order', () => {
   it('binds MouseDrag1Border to resize-pane -M on the root table', async () => {
     const fs = new FakeFsService()
     const tmux = new FakeTmuxService()
@@ -91,7 +98,7 @@ describe('initOrchSession installs the four-item allowlist in order', () => {
     await initOrchSession(tmux, fs, baseOpts)
 
     const binds = tmux.recordedCalls.filter((c) => c.method === 'bindKey')
-    expect(binds).toHaveLength(4)
+    expect(binds).toHaveLength(6)
     const first = binds[0]
     if (first?.method !== 'bindKey') throw new Error('expected bindKey call')
     expect(first.opts.table).toBe('root')
@@ -99,19 +106,50 @@ describe('initOrchSession installs the four-item allowlist in order', () => {
     expect(first.opts.command).toEqual(['resize-pane', '-M'])
   })
 
-  it('installs exactly the four allowlist bindings in MouseDrag, MouseDown, M-Left, M-Right order', async () => {
+  it('installs exactly the six allowlist bindings in MouseDrag, MouseDown, M-Left, M-Right, WheelUpPane, WheelDownPane order', async () => {
     const fs = new FakeFsService()
     const tmux = new FakeTmuxService()
 
     await initOrchSession(tmux, fs, baseOpts)
 
     const binds = tmux.recordedCalls.filter((c) => c.method === 'bindKey')
-    expect(binds).toHaveLength(4)
+    expect(binds).toHaveLength(6)
     const keys = binds.map((c) => (c.method === 'bindKey' ? c.opts.key : ''))
-    expect(keys).toEqual(['MouseDrag1Border', 'MouseDown1Pane', 'M-Left', 'M-Right'])
+    expect(keys).toEqual([
+      'MouseDrag1Border',
+      'MouseDown1Pane',
+      'M-Left',
+      'M-Right',
+      'WheelUpPane',
+      'WheelDownPane',
+    ])
 
     const tables = binds.map((c) => (c.method === 'bindKey' ? c.opts.table : ''))
-    expect(tables).toEqual(['root', 'root', 'root-no-prefix', 'root-no-prefix'])
+    expect(tables).toEqual(['root', 'root', 'root-no-prefix', 'root-no-prefix', 'root', 'root'])
+  })
+
+  it('wheel bindings encode the nested if-shell smart-wheel rule with mouse_any_flag and alternate_on', async () => {
+    const fs = new FakeFsService()
+    const tmux = new FakeTmuxService()
+
+    await initOrchSession(tmux, fs, baseOpts)
+
+    const binds = tmux.recordedCalls.filter((c) => c.method === 'bindKey')
+    const wheelBinds = binds.filter(
+      (c) =>
+        c.method === 'bindKey' && (c.opts.key === 'WheelUpPane' || c.opts.key === 'WheelDownPane'),
+    )
+    expect(wheelBinds).toHaveLength(2)
+
+    for (const bind of wheelBinds) {
+      if (bind.method !== 'bindKey') throw new Error('expected bindKey call')
+      const command = bind.opts.command
+      expect(command[0]).toBe('if-shell')
+      expect(command[1]).toBe('-F')
+      expect(command[2]).toBe('#{?mouse_any_flag,1,0}')
+      expect(command[3]).toBe('send-keys -M')
+      expect(command[4]).toBe('if-shell -F "#{?alternate_on,1,0}" "send-keys -M" "copy-mode -e"')
+    }
   })
 })
 
@@ -131,7 +169,11 @@ describe('initOrchSession installs the discoverability hint and lifecycle hook',
     expect(statusRightIdx).toBeGreaterThan(lastBindIdx)
     const hint = calls[statusRightIdx]
     if (hint?.method !== 'setOption') throw new Error('expected setOption call')
-    expect(hint.opts.value).toContain('logs --latest --follow')
+    // The status-right hint now leads with in-pane scroll discoverability
+    // (the new primary surface); `logs --latest --follow` lives in the
+    // startup banner as the power-user fallback.
+    expect(hint.opts.value).toContain('scroll')
+    expect(hint.opts.value).toContain('wheel')
     expect(hint.opts.global).toBe(true)
   })
 

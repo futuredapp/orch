@@ -20,7 +20,7 @@ wrote for that run.
 |---|---|---|
 | `spawns.ndjson` | one line per agent launch | argv, envKeys, cwd, mode, exitCode, durationMs — "what did we run?" |
 | `events.ndjson` | merged cross-step RunnerEvents | parsed agent output, cheap for `grep` across steps |
-| `lifecycle.ndjson` | host + step lifecycle | `host-created`, `step:start` / `step:complete` / `step:failed`, `step:parallel-start` / `step:parallel-complete`, `pane-spawned` / `pane-killed` / `right-pane-swap`, `scratch-session-created` / `scratch-session-torndown`, `run-ended` |
+| `lifecycle.ndjson` | host + step lifecycle | `host-created`, `step:start` / `step:complete` / `step:failed`, `step:parallel-start` / `step:parallel-complete`, `pane-spawned` / `pane-killed` / `right-pane-swap`, `source-session-created` / `source-session-torndown`, `run-ended` |
 | `timeline.ndjson` | source-tagged mirror of the three streams above | the AI reader's primary entry point |
 | `run.meta.json` | reproducibility snapshot | orch version, argv, envKeys, os, runId, startedAt |
 | `README.md` | run-local navigation | generated per run; has grep recipes for this specific `runId` |
@@ -67,16 +67,26 @@ change. These records sit alongside the per-step lifecycle in
 
 | Event type | Fired when |
 |---|---|
-| `scratch-session-created` | Sibling tmux session (`orch-scratch`) created at host construction; hosts all hidden source panes. |
-| `scratch-session-torndown` | Scratch session killed during host teardown — must precede the visible session kill. |
-| `pane-spawned` | A new hidden pane is created in the scratch session for a source (live transcript tail, replay tail, rollup, interactive PTY). Payload: `sourceKey`, `paneId`. |
-| `pane-killed` | A hidden pane is destroyed (interactive runner exits, rollup unregisters). Payload: `sourceKey`, `paneId`. |
-| `right-pane-swap` | The visible right pane swapped to a different hidden source via `tmux swap-pane`. Payload: `to`, `paneId`. |
+| `source-session-created` | A per-source tmux session (`orch-src-<sanitized-key>`) created lazily on the first `registerSource(...)` for that key. Payload: `sourceKey`, `session`, `paneId`. |
+| `source-session-teardown-start` / `source-session-torndown` | Per-source session killed during unregister or host teardown — must precede the visible `orch` session kill so hidden panes never outlive their swap target. Payload: `sourceKey`, `session`, `paneId`, `torndown`. |
+| `source-session-teardown-failed` | A per-source `killSession` threw. Logged-only (no fd-2 write); the visible-session kill continues regardless. |
+| `source-session-create-failed` | `createSourceSession` threw for one source. Sibling sources are unaffected (KTD3: per-source failure isolation). |
+| `pane-spawned` | A new hidden pane is created for a source (live transcript tail, replay tail, rollup, interactive PTY). Payload: `sourceKey`, `paneId`. |
+| `pane-killed` | A hidden pane is destroyed (interactive runner exits, rollup unregisters). Payload: `sourceKey`, `paneId`, `killed`. |
+| `right-pane-swap` | The visible right pane swapped to a different hidden source via `tmux swap-pane` (cross-session because pane ids are server-wide). Payload: `to`, `paneId`. |
 | `live-to-replay-transform` | An autonomous step's `step:complete` rekeys its `live:<step>` source to `replay:<step>` without killing the pane (warm cache). |
 | `view-mode-changed` | The persistent footer mode changed (`live` ↔ `replay`). Pushed to the TUI overlay. |
 | `banner-emit` / `banner-dismissed` | Transient single-slot banner state. |
 | `replay-pane-opened` / `replay-pane-failed` / `replay-cached-skip` / `replay-lookup-miss` | Outcomes of `⏎` on a past step. |
 | `step:parallel-start` / `step:parallel-complete` | Bracket the lifetime of one `parallel(...)` block. Block-scoped (no `stepName`); the rollup source is registered between these events. |
+
+> Historical: the `scratch-*` event family (`scratch-session-created`,
+> `scratch-session-torndown`, `scratch-window-rotate`) was renamed to
+> `source-session-*` on 2026-05-22 as part of the per-source tmux sessions
+> refactor (`docs/plans/2026-05-22-001-refactor-per-source-tmux-sessions-plan.md`).
+> Single shared `orch-scratch` session → one session per source
+> (`orch-src-<sanitized-key>`). Replay tooling that greps for `pane-*` keeps
+> working; `scratch-*` greps will not match runs from 2026-05-22 onwards.
 
 ### Resume truncation
 

@@ -34,7 +34,7 @@ function bufferStream(): { stream: NodeJS.WritableStream; text: () => string } {
 const RUN_ID = 'r-2026-04-23-301840-rk' as RunId
 
 describe('two-pane interactive step', () => {
-  it('splits a scratch-session PTY pane with runner argv, swaps it visible, waits pane-exit, then kills it (U6)', async () => {
+  it('creates a per-source PTY session with runner argv, swaps it visible, waits pane-exit, then kills the session (U4)', async () => {
     const fs = new FakeFsService()
     const processService = new FakeProcessService()
     const clock = new FakeClock(1_700_000_000_000)
@@ -43,8 +43,8 @@ describe('two-pane interactive step', () => {
 
     const tmux = new FakeTmuxService()
     tmux.setListPanesResult(['%0'])
-    // First splitPane → visible right pane (%7). Second splitPane → the
-    // hidden PTY pane in the scratch session (synthesized id from the fake).
+    // splitPane → visible right pane (%7). Per-source createSession (consumed
+    // FIFO) → the interactive PTY pane.
     tmux.nextPaneId(paneId('%7'))
 
     const stateStore = new FileStateStore({ fs, basePath })
@@ -66,7 +66,7 @@ describe('two-pane interactive step', () => {
     // FakeRunner.buildCommand asserts one scripted invocation per call even
     // for interactive steps (it doesn't know autonomous vs. interactive). We
     // enqueue a single script so buildCommand succeeds; its argv feeds the
-    // scratch-session splitPane. The ProcessService response is never
+    // per-source createSession. The ProcessService response is never
     // consumed — the host takes over the pane and waits for pane-exit, not
     // child exit on stdout.
     const agent = new FakeRunner(processService)
@@ -86,39 +86,45 @@ describe('two-pane interactive step', () => {
     }
 
     // Interactive step resolves view to 'interactive' on 'right'. U6's
-    // pane-map path takes over — register a pty source on the scratch
-    // session, swap it visible, wait for pane-exit, kill it.
+    // pane-map path takes over — register a pty source in its own per-source
+    // session, swap it visible, wait for pane-exit, kill the session.
     await workflow('review-flow', async (run) => {
       await run(step.define('review', { agent, mode: 'interactive' }))
     }).execute(deps)
     await host.teardown()
 
-    // U6 invariant: NO `respawnPane` on the visible right pane (%7).
+    // U4 invariant: NO `respawnPane` on the visible right pane (%7).
     const rightRespawns = tmux.recordedCalls.filter(
       (c) => c.method === 'respawnPane' && c.opts.target === paneId('%7'),
     )
     expect(rightRespawns).toHaveLength(0)
 
-    // The scratch-session splitPane carries the runner argv. The first
-    // splitPane is the visible right pane (placeholder cat); the second is
-    // the interactive PTY pane (argv starts with ':fake:').
-    const splits = tmux.recordedCalls.filter((c) => c.method === 'splitPane')
-    const ptySplit = splits.find(
-      (c) => c.method === 'splitPane' && 'argv' in c.opts && c.opts.argv?.[0] === ':fake:',
+    // The per-source createSession carries the runner argv. The first
+    // createSession is the bootstrap `orch` session; the per-source one
+    // (session name starts with `orch-src-interactive-`) hosts the PTY.
+    const creates = tmux.recordedCalls.filter((c) => c.method === 'createSession')
+    const ptyCreate = creates.find(
+      (c) =>
+        c.method === 'createSession' &&
+        c.opts.command !== undefined &&
+        c.opts.command[0] === ':fake:',
     )
-    expect(ptySplit).toBeDefined()
-    if (ptySplit?.method !== 'splitPane' || !('argv' in ptySplit.opts)) {
-      throw new Error('expected argv-form splitPane for PTY')
+    expect(ptyCreate).toBeDefined()
+    if (ptyCreate?.method !== 'createSession') {
+      throw new Error('expected createSession for the PTY source')
     }
-    expect(ptySplit.opts.session).toBe('orch-scratch')
+    expect(ptyCreate.opts.session).toBe('orch-src-interactive-review')
 
     // swapPane brings the hidden pane into the visible slot. Then on exit,
-    // unregisterSource kills the hidden pane — no `cat` placeholder restore.
+    // unregisterSource kills the per-source SESSION (and the pane with it).
+    // The old `killPane` is gone; `killSession` is the new contract.
     const swaps = tmux.recordedCalls.filter((c) => c.method === 'swapPane')
     expect(swaps.length).toBeGreaterThanOrEqual(1)
 
-    const kills = tmux.recordedCalls.filter((c) => c.method === 'killPane')
-    expect(kills.length).toBeGreaterThanOrEqual(1)
+    const sessionKills = tmux.recordedCalls.filter(
+      (c) => c.method === 'killSession' && c.opts.session === 'orch-src-interactive-review',
+    )
+    expect(sessionKills.length).toBeGreaterThanOrEqual(1)
 
     const waits = tmux.recordedCalls.filter((c) => c.method === 'waitFor')
     expect(waits.length).toBeGreaterThan(0)

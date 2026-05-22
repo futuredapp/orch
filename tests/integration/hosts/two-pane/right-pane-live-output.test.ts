@@ -18,8 +18,8 @@
 //   - zero `sendKeys` calls on the visible right pane for runner-event bytes
 //   - zero `respawnPane` calls on the visible right pane (replay path moved
 //     to scratch+swap)
-//   - one `splitPane` on the scratch session per autonomous step (file-tail
-//     source registered on `step:start`)
+//   - one `createSession` per autonomous step's per-source session
+//     (file-tail source registered on `step:start`)
 
 import { describe, expect, it } from 'bun:test'
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -72,10 +72,9 @@ async function driveOneAssistantStep(events: ReadonlyArray<string>): Promise<Dri
 
     const tmux = new FakeTmuxService()
     tmux.setListPanesResult(['%0'])
-    // The host calls splitPane twice: once for the visible right pane (R)
-    // and once for the placeholder source inside the scratch session.
-    // Subsequent splitPane calls (file-tail sources, etc.) just get a
-    // synthesized id from the fake.
+    // The host calls splitPane once: for the visible right pane (R).
+    // Per-source sessions are created via `createSession` (auto-synthed pane
+    // ids from the fake's createSession counter) — no separate splitPane.
     tmux.nextPaneId(RIGHT)
 
     const host = await createTmuxHost({
@@ -178,20 +177,22 @@ describe('two-pane host live path: file-tail source per autonomous step', () => 
     expect(teeAnsi).toContain(`${ESC}[`)
   })
 
-  it('registers a file-tail source on step:start (splitPane on scratch with tail argv)', async () => {
+  it('registers a file-tail source on step:start (createSession for per-source session with tail command) (U4)', async () => {
     const { tmux } = await driveOneAssistantStep(['only thinking'])
 
-    // The host calls splitPane on the scratch session for the file-tail
-    // source. argv shape: ['tail', '-n', '5000', '-F', '<tee-path>'].
-    const argvSplits = tmux.recordedCalls.filter(
-      (c) => c.method === 'splitPane' && 'argv' in c.opts && c.opts.argv?.[0] === 'tail',
+    // The host calls createSession for the per-source session
+    // (`orch-src-live-plan`) hosting the file-tail. command shape:
+    // ['tail', '-n', '5000', '-F', '<tee-path>'].
+    const tailCreates = tmux.recordedCalls.filter(
+      (c) => c.method === 'createSession' && c.opts.command?.[0] === 'tail',
     )
-    expect(argvSplits.length).toBeGreaterThan(0)
-    const first = argvSplits[0]
-    if (first?.method !== 'splitPane' || !('argv' in first.opts)) return
-    const argv = first.opts.argv ?? []
-    expect(argv).toEqual(['tail', '-n', '5000', '-F', argv[4] as string])
-    expect(argv[4]).toContain('agents/plan/formatted_output.ansi')
+    expect(tailCreates.length).toBeGreaterThan(0)
+    const first = tailCreates[0]
+    if (first?.method !== 'createSession') return
+    expect(first.opts.session).toBe('orch-src-live-plan')
+    const command = first.opts.command ?? []
+    expect(command.slice(0, 4)).toEqual(['tail', '-n', '5000', '-F'])
+    expect(command[4]).toContain('agents/plan/formatted_output.ansi')
   })
 
   it('left-pane bootstrap respawn is unrelated to the right-pane live path', async () => {

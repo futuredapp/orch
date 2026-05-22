@@ -16,14 +16,12 @@ import {
 
 // Integration coverage for the commit/worktree/ask kind-details panel under
 // the U8 swap-based replay model: the controller writes the rendered payload
-// to `<stateDir>/.replay/<step>.txt` and registers a `file-tail` source on
-// the scratch session that tails it, then swaps the visible right pane to
-// the hidden tail pane. No `respawnPane` on the visible right pane.
+// to `<stateDir>/.replay/<step>.txt` and registers a `file-tail` source that
+// tails it (one per-source session per step), then swaps the visible right
+// pane to the hidden tail pane. No `respawnPane` on the visible right pane.
 
 const RUN_ID: RunId = toRunId('r-2026-05-06-100000-cc')
 const RIGHT_PANE = paneId('%1')
-const SCRATCH_SOCKET = socketName('orch-scratch-kind')
-const SCRATCH_SESSION = { socket: SCRATCH_SOCKET, session: 'orch-scratch' }
 
 function makeStep(overrides: Partial<StepEntry> & Pick<StepEntry, 'name'>): StepEntry {
   return {
@@ -116,30 +114,34 @@ describe('kind-details rendered through the swap-based replay controller (U8)', 
       cwd: toPath(tempDir),
       env: {},
       stderr: bufferStream(),
-      scratchSession: SCRATCH_SESSION,
+      width: 200,
+      height: 50,
     })
 
-    tmux.nextPaneId(paneId('%100'))
+    tmux.nextCreateSessionPaneId(paneId('%100'))
     controller.onIntent({ type: 'enter', stepName: 'commit:feat' })
     await flush()
-    tmux.nextPaneId(paneId('%101'))
+    tmux.nextCreateSessionPaneId(paneId('%101'))
     controller.onIntent({ type: 'enter', stepName: 'worktree:feat' })
     await flush()
-    tmux.nextPaneId(paneId('%102'))
+    tmux.nextCreateSessionPaneId(paneId('%102'))
     controller.onIntent({ type: 'enter', stepName: 'ask:approve' })
     await flush()
 
-    const splits = tmux.recordedCalls.filter((c) => c.method === 'splitPane')
-    expect(splits).toHaveLength(3)
-    for (const s of splits) {
-      if (s.method !== 'splitPane') throw new Error('unreachable')
-      expect(s.opts.session).toBe('orch-scratch')
-      const argv = s.opts.argv
-      if (argv === undefined) throw new Error('expected argv on splitPane')
-      expect(argv[0]).toBe('tail')
-      expect(argv[3]).toBe('-F')
-      // path arg sits at argv[4]
-      expect(typeof argv[4]).toBe('string')
+    // U4: each replay source now lives in its own per-source tmux session
+    // created via `createSession`, not via `splitPane` against a shared
+    // substrate. Three enters → three per-source sessions.
+    const creates = tmux.recordedCalls.filter((c) => c.method === 'createSession')
+    expect(creates).toHaveLength(3)
+    for (const c of creates) {
+      if (c.method !== 'createSession') throw new Error('unreachable')
+      expect(c.opts.session).toMatch(/^orch-src-replay-/)
+      const command = c.opts.command
+      if (command === undefined) throw new Error('expected command on createSession')
+      expect(command[0]).toBe('tail')
+      expect(command[3]).toBe('-F')
+      // path arg sits at command[4]
+      expect(typeof command[4]).toBe('string')
     }
 
     const swaps = tmux.recordedCalls.filter((c) => c.method === 'swapPane')

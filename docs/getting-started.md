@@ -537,26 +537,71 @@ Lossy on branches — a stub replay only goes down one side of an `if`. It's a "
 | Mode | When it fires | What you see |
 |---|---|---|
 | `plain` | `CI=true`, piped, no-TTY, or `--mode=plain` | `[orch] step:start plan` / `[plan] assistant> …` lines on stdout. `--format=json` emits one NDJSON envelope per event — structured for log ingestion. |
-| `two-pane` | TTY + tmux ≥ 3.2, or `--mode=two-pane` | Dedicated tmux session on `-L orch-<runId>`: left = status rollup, right = active step's view. **orch auto-attaches your terminal to the session immediately** — you see both panes the moment the run starts. Interactive steps take the right pane via `tmux respawn-pane -k`; autonomous steps stream a readable transcript. |
+| `two-pane` | TTY + tmux ≥ 3.3, or `--mode=two-pane` | Dedicated tmux session on `-L orch-<runId>`: left = status rollup, right = active step's view. **orch auto-attaches your terminal to the session immediately** — you see both panes the moment the run starts. Interactive steps take the right pane via `tmux respawn-pane -k`; autonomous steps stream a readable transcript. |
 | `single-pane` | *(v2 — deferred)* | Alt-screen TUI. Explicit `--mode=single-pane` exits 2 in v1 with the deferral message; autodetect never picks it. |
 
-Resolution precedence: `--mode=<x>` > `orch.config.ts` `defaultMode` > `CI=true → plain` > TTY + tmux ≥ 3.2 → `two-pane` > fallback `plain`. The first-run banner prints on stderr with the chosen mode + why, unless `--format=json` suppresses stdout-noise for log consumers.
+Resolution precedence: `--mode=<x>` > `orch.config.ts` `defaultMode` > `CI=true → plain` > TTY + tmux ≥ 3.3 → `two-pane` > fallback `plain`. The first-run banner prints on stderr with the chosen mode + why, unless `--format=json` suppresses stdout-noise for log consumers.
 
 #### Appliance mode (two-pane only)
 
 When you run `orch run <workflow> --mode=two-pane`, orch owns the terminal until the
-run completes. The session is locked down to four interactions:
+run completes. The session is locked down to six interactions:
 
-| Action              | How                                          |
-|---------------------|----------------------------------------------|
-| Resize the divider  | Drag the pane border with the mouse          |
-| Switch focus        | Click a pane, or press `M-Left` / `M-Right`  |
-| Select text         | Hold your terminal's modifier-drag (often Shift; Option on macOS Terminal) |
-| Watch live progress | `orch logs --latest --follow --step <name>` in another tab |
+| Action                       | How                                          |
+|------------------------------|----------------------------------------------|
+| Resize the divider           | Drag the pane border with the mouse          |
+| Switch focus                 | Click a pane, or press `M-Left` / `M-Right`  |
+| Select text                  | Hold your terminal's modifier-drag (often Shift; Option on macOS Terminal) |
+| Scroll the right pane        | Mouse wheel — routes to the agent when the agent is asserting mouse capture, otherwise enters tmux copy-mode (one-shot; exits when you reach the live tail) |
+| Scroll the left pane         | `j` / `k`, `PgUp` / `PgDn`, `Home` / `End` (see "The Steps TUI" below) |
+| Watch live progress remotely | `orch logs --latest --follow --step <name>` in another tab |
 
-Mouse-wheel scrolling is disabled — real history lives in `.orch/state/<runId>/logs/`
-(see [logging.md](logging.md)). The tmux status bar shows the live-progress hint at
-all times.
+The smart-wheel rule on the right pane reads tmux's `mouse_any_flag` and
+`alternate_on` format strings to decide which behavior applies. In practice
+this means:
+
+- **Alt-screen + mouse-captured agents** (Claude Code by default, Codex with
+  `--alt-screen`): the wheel is forwarded to the agent — the agent handles
+  scroll itself.
+- **Flat-buffer agents** (Codex defaults to `--no-alt-screen` under orch, see
+  below; autonomous transcripts): the wheel enters tmux copy-mode; wheel-down
+  at the live tail returns automatically.
+- **Alt-screen without mouse capture** (an uncommon edge case): the wheel is
+  forwarded as a safe no-op rather than entering copy-mode (the precise case
+  that historically produced the `not in a mode` regression).
+
+The tmux status bar shows the in-pane scroll hint at all times; the startup
+banner also prints `orch logs --latest --follow` as the power-user fallback.
+Real history is durable under `.orch/state/<runId>/logs/` regardless of which
+scroll path you use (see [logging.md](logging.md)).
+
+##### Claude Code in two-pane
+
+Claude Code uses its own alternate screen by default. To swap Claude into a
+flat buffer (so tmux copy-mode scrollback works), export the upstream env var
+in your shell before launching `orch`:
+
+```sh
+export CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1
+```
+
+orch does **not** set this for you — Claude Code has its own in-app
+scrollback (`Ctrl+O` then `[`) which most users prefer, so the choice is
+yours. The env var reaches the runner unchanged via the env passthrough
+layer; no further configuration is needed.
+
+##### Codex in two-pane
+
+Codex's interactive default now includes `--no-alt-screen`, so the right
+pane keeps a flat buffer that composes with the smart-wheel copy-mode entry
+out of the box. The autonomous (`codex exec`) path is unchanged. To opt back
+into Codex's alternate screen, pass the flag explicitly in your workflow:
+
+```ts
+codex({ flags: ['--alt-screen'] })
+```
+
+This does not change how Codex handles its own internal pager (`Ctrl+T`).
 
 The run ends in one of three ways: clean completion, step failure, or `Ctrl-C` to
 orch (SIGINT cancels). There is no mid-run detach in v1.
@@ -571,7 +616,32 @@ orch (SIGINT cancels). There is no mid-run detach in v1.
 
 #### The Steps TUI (two-pane left pane)
 
-Under `--mode=two-pane`, the left pane is a navigable Ink TUI: live driver's seat (current step, elapsed, totals), history browser (`↑/↓` to scroll past steps, `⏎` to inspect — replays autonomous transcripts, opens a details panel for `commit:` / `worktree:` / `ask:`, replays the captured pane log for `command:` steps, and resumes interactive Claude/Codex sessions in a second tmux window). `f` snaps back to the live step; `q` quits the TUI; the run continues silently. After the workflow finishes the TUI stays mounted with an end-of-run summary so you can review past steps before pressing `q`.
+Under `--mode=two-pane`, the left pane is a navigable Ink TUI: live driver's
+seat (current step, elapsed, totals), history browser, scrollable viewport.
+
+Keymap:
+
+| Key | Action |
+|---|---|
+| `↑` / `↓` | Move selection between steps |
+| `⏎` | Inspect the selected step (replay transcripts, open details, resume interactive runners in a second tmux window) |
+| `j` / `k` | Scroll the viewport down / up by one row |
+| `PgUp` / `PgDn` | Scroll the viewport by a page |
+| `Home` / `g` | Jump to the top of the buffer |
+| `End` / `G` | Jump to the live tail (and re-pin the right pane to its live source) |
+| `f` | Snap selection back to the live step |
+| `q` | Quit the TUI (the run continues silently) |
+| `?` | Toggle the in-app help overlay |
+
+When scrolled away from the live tail, the footer shows `↑ scrolled · End live`
+so you can always see which scroll state you're in; new `step:start` events
+arriving while you're scrolled do not move the viewport — only an explicit
+`End` (or `G`) jumps you back. Mouse-wheel events on the left pane are
+intentionally not bound to scroll (Ink redraws the whole canvas, so tmux
+scrollback would be deceptive — use the keys above).
+
+After the workflow finishes the TUI stays mounted with an end-of-run summary
+so you can review past steps before pressing `q`.
 
 The canonical walkthrough lives at [`examples/steps-tui-demo/`](../examples/steps-tui-demo/) — a five-step workflow that exercises every per-kind Enter behavior in under two minutes.
 
@@ -584,7 +654,7 @@ The canonical walkthrough lives at [`examples/steps-tui-demo/`](../examples/step
 
 #### How the right pane shows you bytes (the pane-map model)
 
-The visible right pane is a **swap target**, not a process host. Every "source of bytes" the user might want to see — a live autonomous transcript, a frozen replay of a past step, an interactive runner PTY, a parallel-block rollup — runs in its own hidden pane on a sibling tmux session (`orch-scratch`). When the user navigates, the orchestrator issues a `tmux swap-pane` so the visible slot now points at the hidden pane that owns the source they asked for. The byte delivery is:
+The visible right pane is a **swap target**, not a process host. Every "source of bytes" the user might want to see — a live autonomous transcript, a frozen replay of a past step, an interactive runner PTY, a parallel-block rollup — runs in its own hidden pane inside a **per-source tmux session** (`orch-src-<sanitized-key>`) created lazily on the same socket as `orch`. When the user navigates, the orchestrator issues a `tmux swap-pane` so the visible slot now points at the hidden pane that owns the source they asked for; the swap works cross-session because tmux pane ids are server-wide. The byte delivery is:
 
 - **Live autonomous & command steps** stream into a per-step ANSI tee on disk (`logs/agents/<step>/formatted_output.ansi`); a hidden pane runs `tail -n 5000 -F <that file>` so the visible right pane sees the live transcript as the file grows. Bound at 5000 lines so first-view backfill stays under ~500KB.
 - **Interactive runners** spawn directly into a hidden PTY pane (real TTY — arrow keys, Ctrl-C, resize all flow natively); the visible slot swaps to it.

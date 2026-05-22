@@ -98,12 +98,39 @@ export interface CreateSessionOptions {
   /**
    * Argv for the initial pane's holder process. When provided, appended
    * after `new-session` so the new session's first pane runs this command
-   * instead of the user's login shell. Use for sessions that need a stable
-   * non-exiting holder (e.g. the scratch session whose initial pane must
-   * never die — see incident r-2026-05-22-093650-j0). When omitted, tmux
+   * instead of the user's login shell. Use for sessions whose initial pane
+   * must never die (the historical scratch holder — see incident
+   * r-2026-05-22-093650-j0) and for per-source sessions whose initial pane
+   * IS the source process (e.g. `tail -F`, runner PTY). When omitted, tmux
    * spawns the user's `$SHELL` as usual.
    */
   readonly command?: readonly string[]
+  /**
+   * Optional per-session environment overrides. Each entry becomes a tmux
+   * `-e KEY=VAL` flag on the `new-session` argv, so the initial pane's
+   * process inherits the tmux server's env extended (and overridden) by
+   * these entries. Used by per-source `pty` sessions to carry runner-
+   * specific env (e.g. `FORCE_COLOR=3`). Adapters MUST reject keys
+   * containing `=` or newline — they corrupt the `-e KEY=VAL` argv shape.
+   */
+  readonly env?: Readonly<Record<string, string>>
+  /**
+   * Optional `-c <cwd>` flag — sets the initial pane's working directory.
+   * Without it, tmux inherits the cwd of the tmux client that issued
+   * `new-session`. Required for per-source PTY sessions so the runner
+   * process sees the project cwd.
+   */
+  readonly cwd?: Path
+}
+
+export interface CreateSessionResult {
+  /**
+   * Pane id of the new session's initial pane (parsed from
+   * `tmux new-session -P -F '#{pane_id}'`). Mirrors `newWindow`'s return
+   * shape so callers can register the initial pane for swap-pane bookkeeping
+   * without a follow-up `listPanes` round-trip.
+   */
+  readonly paneId: PaneId
 }
 
 interface SplitPaneCommonOptions {
@@ -402,8 +429,15 @@ export interface BindKeyOptions {
 // ---------------------------------------------------------------------------
 
 export interface TmuxService {
-  /** `tmux -L <socket> new-session -d -s <session> -x <w> -y <h> -f /dev/null`. */
-  createSession(opts: CreateSessionOptions): Promise<void>
+  /**
+   * `tmux -L <socket> new-session -d -s <session> -x <w> -y <h> -f <cfg> -P -F '#{pane_id}'`
+   * — returns the initial pane id parsed from stdout. The `-P -F '#{pane_id}'`
+   * shape mirrors `newWindow` and `splitPane`, so callers can register the
+   * initial pane immediately without a `listPanes` round-trip. Per-source
+   * sessions in the pane-map substrate rely on this (the initial pane *is*
+   * the source process).
+   */
+  createSession(opts: CreateSessionOptions): Promise<CreateSessionResult>
 
   /**
    * `tmux -L <socket> split-window -P -F '#{pane_id}' ...` — returns the new

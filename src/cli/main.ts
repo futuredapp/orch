@@ -302,14 +302,16 @@ export function buildBanner(resolution: RunModeResolution): string {
 }
 
 /**
- * Two-pane non-JSON-only hint pointing at the live-progress command.
- * Returns `undefined` for any other combination so the caller can
- * unconditionally `if (hint) write(hint)` without re-checking gates.
+ * Two-pane non-JSON-only hint pointing at in-pane scroll first and the
+ * live-progress command as the power-user fallback. Returns `undefined`
+ * for any other combination so the caller can unconditionally
+ * `if (hint) write(hint)` without re-checking gates.
  *
- * Two-pane appliance mode locks down wheel-scroll and the prefix table
- * (PR A — strict tmux sandbox), so users who want to step away or watch
- * progress from a second terminal need this command. Plain mode and JSON
- * output don't — plain prints the transcript inline; JSON suppresses the
+ * Smart-wheel scrollback (right pane) and the Ink keymap (left pane) are
+ * the primary scroll surfaces in two-pane mode; `orch logs --latest
+ * --follow` remains the durable fallback for users who want to watch
+ * progress from a second terminal. Plain mode and JSON output don't get
+ * the hint — plain prints the transcript inline; JSON suppresses the
  * banner entirely.
  */
 export function buildTwoPaneLogsHint(
@@ -318,7 +320,10 @@ export function buildTwoPaneLogsHint(
 ): string | undefined {
   if (format === 'json') return undefined
   if (resolution.mode !== 'two-pane') return undefined
-  return '[orch] live progress: orch logs --latest --follow --step <step-name>'
+  return (
+    '[orch] scroll: wheel (right) or j/k/PgUp/PgDn/End (left) · ' +
+    'orch logs --latest --follow --step <step-name>'
+  )
 }
 
 function pickHostFactory(

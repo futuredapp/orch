@@ -54,9 +54,7 @@ const LEFT_PANE = paneId('%0')
 const HIDDEN_INTERACTIVE = paneId('%3')
 const HIDDEN_REPLAY = paneId('%5')
 const HIDDEN_PLACEHOLDER = paneId('%4')
-const MAIN_SOCKET = socketName('orch-main-int-unreg')
-const SCRATCH_SOCKET = socketName('orch-scratch-int-unreg')
-const SCRATCH_SESSION = { socket: SCRATCH_SOCKET, session: 'orch-scratch' }
+const SOCKET = socketName('orch-int-unreg')
 
 function bufferStream(): NodeJS.WritableStream {
   return new Writable({
@@ -145,14 +143,13 @@ describe('right-pane-controller — interactive unregister keeps visible slot al
   it('leaves visiblePaneId pointing at a live pane so a subsequent replay swap does not target the killed pane', async () => {
     // ----- Arrange -----
     const tmux = new FakeTmuxService()
-    // splitPane returns hidden pane ids, FIFO:
-    //   1. interactive register → %A (the interactive runner pane)
-    //   2. replay register       → %B (the autonomous replay file-tail pane)
-    // If the fix lazily spawns a placeholder, that splitPane will consume an
-    // id from this queue too; we add a third so the queue doesn't run dry.
-    tmux.nextPaneId(HIDDEN_INTERACTIVE)
-    tmux.nextPaneId(HIDDEN_PLACEHOLDER)
-    tmux.nextPaneId(HIDDEN_REPLAY)
+    // createSession returns hidden pane ids, FIFO:
+    //   1. interactive register → %3 (the interactive runner pane)
+    //   2. placeholder (lazy ensurePlaceholderRegistered inside killHiddenSource)
+    //   3. replay register       → %5 (the autonomous replay file-tail pane)
+    tmux.nextCreateSessionPaneId(HIDDEN_INTERACTIVE)
+    tmux.nextCreateSessionPaneId(HIDDEN_PLACEHOLDER)
+    tmux.nextCreateSessionPaneId(HIDDEN_REPLAY)
 
     const stateDir = `${tempDir}/state`
     // Pre-create the autonomous tee so resolveReplaySpec takes the fast path
@@ -166,7 +163,7 @@ describe('right-pane-controller — interactive unregister keeps visible slot al
 
     const controller = createRightPaneController({
       tmux,
-      socket: MAIN_SOCKET,
+      socket: SOCKET,
       leftPaneId: LEFT_PANE,
       rightPaneId: RIGHT_PANE,
       paneQueue: createPaneQueue(),
@@ -188,7 +185,8 @@ describe('right-pane-controller — interactive unregister keeps visible slot al
       cwd: toPath(tempDir),
       env: {},
       stderr: bufferStream(),
-      scratchSession: SCRATCH_SESSION,
+      width: 200,
+      height: 50,
       logger: captured.logger,
     })
 
@@ -209,9 +207,10 @@ describe('right-pane-controller — interactive unregister keeps visible slot al
     // ----- Assert -----
     const calls = tmux.recordedCalls
 
-    // Sanity: the interactive hidden pane was killed.
+    // Sanity: the interactive per-source session was killed (which destroys
+    // the hidden pane with it — `killPane` is gone after the U4 refactor).
     const killIdx = calls.findIndex(
-      (c) => c.method === 'killPane' && c.opts.target === HIDDEN_INTERACTIVE,
+      (c) => c.method === 'killSession' && c.opts.session === 'orch-src-interactive-write-riddle',
     )
     expect(killIdx).toBeGreaterThanOrEqual(0)
 

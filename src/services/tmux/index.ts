@@ -9,6 +9,7 @@ export type {
   BindTable,
   CapturePaneOptions,
   CreateSessionOptions,
+  CreateSessionResult,
   DisplayMessageOptions,
   HasServerOptions,
   HasSessionOptions,

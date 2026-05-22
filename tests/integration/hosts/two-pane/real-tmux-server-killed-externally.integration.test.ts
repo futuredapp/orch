@@ -147,18 +147,25 @@ describe.skipIf(!tmuxAvailable)('two-pane host — tmux server killed externally
     )
     const contents = await readFile(lifecyclePath, 'utf8')
     // The contract: somewhere in the lifecycle log, the host recorded the
-    // session-lost diagnostic. The host emits one of two shapes depending
+    // session-lost diagnostic. The host emits one of three shapes depending
     // on what `tmuxReachability()` itself could observe at the moment of
     // failure:
-    //   - probe succeeded → `tmuxServerReachable:false` (the common case
-    //     after a clean `kill-server`)
+    //   - probe succeeded, server gone → `tmuxServerReachable:false`
+    //   - probe succeeded, server present but orch session gone →
+    //     `tmuxSessionReachable:false` (the U4-era case: `new-session` for a
+    //     per-source pane re-creates the server but the visible `orch`
+    //     session is still missing)
     //   - probe also threw → `tmuxReachabilityProbeFailed:true`
-    // Both are valid post-mortem signals; we accept either.
-    expect(contents).toMatch(/tmuxReachabilityProbeFailed":\s*true|tmuxServerReachable":\s*false/)
-    // The session-lost classification fired and was attached to the
-    // interactive-register-failed event.
+    // All three are valid post-mortem signals; we accept any.
+    expect(contents).toMatch(
+      /tmuxReachabilityProbeFailed":\s*true|tmuxServerReachable":\s*false|tmuxSessionReachable":\s*false/,
+    )
+    // The session-lost classification fired. Under U4 it may be attached to
+    // either `interactive-register-failed` (if createSession against the
+    // dead socket failed directly) or `interactive-wait-failed` (if
+    // createSession re-grew the server but the subsequent swap-pane failed).
     expect(contents).toMatch(/isSessionLost":\s*true/)
-    expect(contents).toMatch(/interactive-register-failed/)
+    expect(contents).toMatch(/interactive-(register|wait)-failed/)
   }, 30_000)
 
   it('host.teardown() against a dead server completes without throwing', async () => {

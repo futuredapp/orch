@@ -96,9 +96,9 @@ describe('steps-tui mocked e2e', () => {
       new Promise<void>((_r, rej) => setTimeout(() => rej(new Error('timeout')), 2_000)),
     ])
 
-    // Now teardown — the visible orch session must be killed exactly once
-    // (the scratch session is also killed at teardown, but that's a separate
-    // session-kill recorded under `orch-scratch`).
+    // Now teardown — the visible orch session must be killed exactly once.
+    // (Per-source sessions live under `orch-src-*` and are killed first by
+    // the controller; this assertion targets only the visible `orch` kill.)
     await host.teardown()
     const killOrch = tmux.recordedCalls.filter(
       (c) => c.method === 'killSession' && c.opts.session === 'orch',

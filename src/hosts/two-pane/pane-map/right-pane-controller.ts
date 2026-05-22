@@ -2,22 +2,34 @@
 // right-pane-controller (pane-map edition)
 // ---------------------------------------------------------------------------
 //
-// Owns the `Map<SourceKey, PaneId>` that records which hidden pane in the
-// per-run scratch session is currently rendering each source. Every change
-// to the visible right pane is a `tmux swap-pane` issued by `showSource`;
-// no caller directly respawns or sendKeys-blasts the visible slot.
+// Owns the `Map<SourceKey, {session, paneId}>` that records which hidden pane
+// (and which per-source tmux session that pane lives in) is currently
+// rendering each source. Every change to the visible right pane is a
+// `tmux swap-pane` issued by `showSource`; no caller directly respawns or
+// sendKeys-blasts the visible slot.
 //
 // The public surface is four pane-map methods (`registerSource`, `showSource`,
 // `unregisterSource`, `followLive`) plus `onIntent` for the steps-view
-// keypress channel. The host wires `registerSource` / `unregisterSource` from
-// `step:start` / `step:complete` lifecycle events; `onIntent('enter')`
-// resolves a `PaneSpec` per step kind, registers the replay source (warm-
-// cached on second view), and swaps it in.
+// keypress channel + `teardownSessions` for the host's shutdown path. The
+// host wires `registerSource` / `unregisterSource` from `step:start` /
+// `step:complete` lifecycle events; `onIntent('enter')` resolves a `PaneSpec`
+// per step kind, registers the replay source (warm-cached on second view),
+// and swaps it in.
+//
+// **Per-source-session substrate (replaces the historical `orch-scratch`).**
+// Each registered source gets its own tmux session named
+// `orch-src-<sanitized-key>` on the per-run socket. The session's initial
+// pane IS the source's process (the `tail -F …` for file-tail, the runner
+// PTY for pty, a `cat` holder only for `placeholder`). `swap-pane` works
+// cross-session because tmux pane ids are server-wide. This design
+// eliminates `split-window` from the spawn path — and therefore eliminates
+// the "no space for new pane" failure mode that bit run
+// `r-2026-05-22-135756-tc`. See the per-source-tmux-sessions plan.
 //
 // **Visible-slot invariant.** `swap-pane` exchanges processes between two
 // pane positions, but pane ids stay attached to their original processes.
 // So after every swap, the pane id rendering in the visible slot changes.
-// The controller tracks the *current* visible pane id (`#visiblePaneId`)
+// The controller tracks the *current* visible pane id (`visiblePaneId`)
 // and updates it after every swap; future swaps target the up-to-date
 // destination.
 
@@ -47,7 +59,12 @@ import {
   type ViewMode,
 } from '../steps-view/index.ts'
 import { type PaneSpec, type SourceKey, sourceKeyToString } from './pane-spec.ts'
-import type { ScratchSessionHandle } from './scratch-session.ts'
+import {
+  createSourceSession,
+  SOURCE_HOLDER_ARGV,
+  sanitizeSessionName,
+  teardownSourceSession,
+} from './source-session.ts'
 
 // Bound the first-view backfill when a hidden pane is swapped in for the
 // first time. `-F` (capital) retries on inode changes so a tee reopen
@@ -68,15 +85,12 @@ export interface RightPaneControllerOptions {
   readonly stderr: NodeJS.WritableStream
   readonly logger?: SessionLogger
   /**
-   * Handle to the per-run scratch session that hosts hidden panes. Required
-   * for every pane-map operation (`registerSource` / `showSource` /
-   * `unregisterSource` / `followLive`) and for `onIntent('enter')`, which
-   * registers a replay source on enter. Kept optional in the type so unit
-   * tests that only exercise the banner / view-mode plumbing can omit it,
-   * but any method that needs a hidden pane will throw with a clear error
-   * when it's not configured.
+   * Width/height for per-source tmux sessions — forwarded to `new-session
+   * -x / -y` so the source pane is sized at allocation. Matches the visible
+   * `orch` session's dimensions at construct time.
    */
-  readonly scratchSession?: ScratchSessionHandle
+  readonly width: number
+  readonly height: number
   /**
    * Renderer for autonomous-agent transcripts. The CLI defaults this to
    * Claude's `toClaudeTranscriptLines`. Without it, replay falls back to a
@@ -170,10 +184,20 @@ export interface RightPaneController {
    * Used by U6's interactive path: `runInteractive` registers a `pty`
    * source, then waits on `pane-exit-<hiddenPaneId>` to detect the runner's
    * exit. The hidden pane id is needed before `unregisterSource` runs
-   * (which kills it), so the host queries the controller right after
-   * register.
+   * (which kills the source session and the pane with it), so the host
+   * queries the controller right after register.
    */
   getPaneId(key: SourceKey): PaneId | undefined
+  /**
+   * Tear down every per-source tmux session this controller created.
+   * Called by `tmux-host`'s shutdown path BEFORE killing the visible `orch`
+   * session so hidden source panes never outlive their swap target.
+   *
+   * Idempotent: tolerates already-gone sessions (the underlying
+   * `TmuxService.killSession` adapter swallows "session not found"). Each
+   * session's teardown is independent — one failure does not abort the rest.
+   */
+  teardownSessions(): Promise<void>
   /**
    * Emit a banner. Bumps the controller's monotonic `bannerSeq` and writes a
    * snapshot to the TUI overlay IPC channel so the child renderer can
@@ -205,8 +229,18 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
   let visiblePaneId: PaneId = opts.rightPaneId
   /** Currently active source key. Undefined when nothing has been swapped in. */
   let currentKey: SourceKey | undefined
-  /** The map. Keyed on `sourceKeyToString(key)` so structural equality works. */
-  const panes = new Map<string, PaneId>()
+  /**
+   * Per-source entry: which tmux session hosts this source, plus the pane id
+   * inside it. Keyed on `sourceKeyToString(key)` so structural equality
+   * works. The pane id is sticky to its process — `swap-pane` does not
+   * rewrite it, so this entry remains the canonical reference for every
+   * subsequent swap and for `killSession` at unregister time.
+   */
+  interface PaneEntry {
+    readonly session: string
+    readonly paneId: PaneId
+  }
+  const panes = new Map<string, PaneEntry>()
   /** Insertion order of `live` / `interactive` keys, for `followLive()`. */
   const liveSources: string[] = []
   /** Map back from string key to its original SourceKey, for replay-key
@@ -291,70 +325,38 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
   // Pane-map operations — every right-pane state change funnels through here.
   // ---------------------------------------------------------------------------
 
-  const requireScratchSession = (): ScratchSessionHandle => {
-    if (opts.scratchSession === undefined) {
-      throw new Error(
-        'right-pane-controller: scratchSession not configured (pane-map methods require it)',
-      )
+  /**
+   * Build the argv for one source's initial pane. `file-tail` follows the
+   * tee with `tail -n <backfill> -F <path>`; `pty` runs the runner argv
+   * directly; `placeholder` runs the dormant `cat` holder. The returned
+   * argv is the initial pane's *process* — no `split-window` ever runs
+   * against the source session, so the historical "no space for new pane"
+   * failure mode is gone by construction.
+   */
+  const commandForSpec = (spec: PaneSpec, key: SourceKey): readonly string[] => {
+    if (key.type === 'placeholder') return SOURCE_HOLDER_ARGV
+    if (spec.kind === 'file-tail') {
+      return ['tail', '-n', TAIL_BACKFILL_LINES, '-F', spec.path]
     }
-    return opts.scratchSession
+    return spec.argv
   }
 
-  // Monotonic counter for rotated scratch windows. Each "no space for new
-  // pane" failure bumps it and feeds the next window's `name`. Pure label —
-  // tmux assigns the window id; the name is only for human-facing tooling
-  // (`tmux list-windows`).
-  let scratchWindowSeq = 0
-  const NO_SPACE_PATTERN = /no space for new pane/i
-
-  const spawnHiddenPane = async (spec: PaneSpec): Promise<PaneId> => {
-    const scratch = requireScratchSession()
-    const split = async (): Promise<PaneId> => {
-      if (spec.kind === 'file-tail') {
-        return opts.tmux.splitPane({
-          socket: scratch.socket,
-          session: scratch.session,
-          orientation: 'h',
-          percent: 50,
-          argv: ['tail', '-n', TAIL_BACKFILL_LINES, '-F', spec.path],
-        })
-      }
-      return opts.tmux.splitPane({
-        socket: scratch.socket,
-        session: scratch.session,
-        orientation: 'h',
-        percent: 50,
-        argv: spec.argv,
-        ...(spec.env !== undefined ? { env: spec.env } : {}),
-        ...(spec.cwd !== undefined ? { cwd: spec.cwd } : {}),
-      })
-    }
-    try {
-      return await split()
-    } catch (err) {
-      // Recover from "no space for new pane": every completed `live:` pane
-      // stays alive in scratch as a warm replay cache, so after enough steps
-      // the active scratch window's columns fall below tmux's split minimum.
-      // Rotate to a fresh window in the same session and retry. Other tmux
-      // errors propagate unchanged.
-      if (!(err instanceof TmuxCommandError) || !NO_SPACE_PATTERN.test(err.stderr)) {
-        throw err
-      }
-      scratchWindowSeq += 1
-      const name = `orch-scratch-${scratchWindowSeq}`
-      logLifecycle({
-        type: 'scratch-window-rotate',
-        reason: err.stderr,
-        windowName: name,
-      })
-      await opts.tmux.newWindow({
-        socket: scratch.socket,
-        session: scratch.session,
-        name,
-        cwd: opts.cwd,
-      })
-      return await split()
-    }
+  const spawnHiddenSource = async (spec: PaneSpec, key: SourceKey): Promise<PaneEntry> => {
+    const sessionName = sanitizeSessionName(sourceKeyToString(key))
+    const command = commandForSpec(spec, key)
+    const env = spec.kind === 'pty' ? spec.env : undefined
+    const cwd = spec.kind === 'pty' ? spec.cwd : undefined
+    const handle = await createSourceSession({
+      tmux: opts.tmux,
+      socket: opts.socket,
+      sessionName,
+      width: opts.width,
+      height: opts.height,
+      command,
+      ...(env !== undefined ? { env } : {}),
+      ...(cwd !== undefined ? { cwd } : {}),
+    })
+    return { session: handle.session, paneId: handle.paneId }
   }
 
   const registerSource = async (key: SourceKey, spec: PaneSpec): Promise<void> => {
@@ -371,34 +373,49 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
       return
     }
     const work = (async (): Promise<void> => {
-      const scratch = requireScratchSession()
+      const sessionName = sanitizeSessionName(skey)
       logLifecycle({
         type: 'pane-spawn-start',
         sourceKey: skey,
         specKind: spec.kind,
-        socket: scratch.socket,
-        session: scratch.session,
+        socket: opts.socket,
+        session: sessionName,
       })
-      let paneId: PaneId
+      let entry: PaneEntry
       try {
-        paneId = await spawnHiddenPane(spec)
+        entry = await spawnHiddenSource(spec, key)
       } catch (err) {
         logLifecycle({
           type: 'pane-spawn-failed',
           sourceKey: skey,
           specKind: spec.kind,
-          socket: scratch.socket,
-          session: scratch.session,
+          socket: opts.socket,
+          session: sessionName,
+          ...errorLifecycleFields(err),
+        })
+        // Also surface as a source-session-create-failed event so the
+        // lifecycle log makes the failure mode explicit — sibling sources
+        // are unaffected (KTD3: per-source isolation).
+        logLifecycle({
+          type: 'source-session-create-failed',
+          sourceKey: skey,
+          session: sessionName,
           ...errorLifecycleFields(err),
         })
         throw err
       }
-      panes.set(skey, paneId)
+      panes.set(skey, entry)
       keyByString.set(skey, key)
       if (key.type === 'live' || key.type === 'interactive') {
         liveSources.push(skey)
       }
-      logLifecycle({ type: 'pane-spawned', sourceKey: skey, paneId })
+      logLifecycle({
+        type: 'source-session-created',
+        sourceKey: skey,
+        session: entry.session,
+        paneId: entry.paneId,
+      })
+      logLifecycle({ type: 'pane-spawned', sourceKey: skey, paneId: entry.paneId })
       // U5/U7: auto-swap-or-banner for live + rollup sources. If the user is
       // on live mode, swap the new source in (most-recent-live wins; rollup
       // takes the visible slot on registration just like a fresh live source).
@@ -433,8 +450,8 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
   const showSource = async (key: SourceKey): Promise<void> => {
     if (stopped) return
     const skey = sourceKeyToString(key)
-    const hidden = panes.get(skey)
-    if (hidden === undefined) {
+    const entry = panes.get(skey)
+    if (entry === undefined) {
       logLifecycle({ type: 'right-pane-swap-miss', sourceKey: skey })
       return
     }
@@ -442,23 +459,25 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
     // Sequential single-pane enqueue: visible-pane settles first (no work),
     // then hidden-pane carries the swap. Both calls share the global pane
     // queue so any pending writes to either pane finish before the swap.
+    // `swap-pane` works across sessions because tmux pane ids are
+    // server-wide — entry.paneId lives inside the per-source session, dst
+    // lives in the visible `orch` session, the swap exchanges them.
+    const src = entry.paneId
     const dst = visiblePaneId
     logLifecycle({
       type: 'right-pane-swap-start',
       to: skey,
-      srcPaneId: hidden,
+      srcPaneId: src,
       dstPaneId: dst,
     })
     try {
       await opts.paneQueue.enqueue(dst, () => Promise.resolve())
-      await opts.paneQueue.enqueue(hidden, () =>
-        opts.tmux.swapPane({ socket: opts.socket, src: hidden, dst }),
-      )
+      await opts.paneQueue.enqueue(src, () => opts.tmux.swapPane({ socket: opts.socket, src, dst }))
     } catch (err) {
       logLifecycle({
         type: 'right-pane-swap-failed',
         to: skey,
-        srcPaneId: hidden,
+        srcPaneId: src,
         dstPaneId: dst,
         ...errorLifecycleFields(err),
       })
@@ -467,9 +486,9 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
     // After the swap: the hidden pane id now occupies the visible slot, and
     // the previously-visible pane id has moved to the hidden slot. We track
     // which pane id is visible so subsequent swaps target it.
-    visiblePaneId = hidden
+    visiblePaneId = src
     currentKey = key
-    logLifecycle({ type: 'right-pane-swap', to: skey, paneId: hidden })
+    logLifecycle({ type: 'right-pane-swap', to: skey, paneId: src })
   }
 
   const removeFromLiveSources = (skey: string): void => {
@@ -480,12 +499,12 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
   const transformLiveToReplay = (
     liveKey: SourceKey & { readonly type: 'live' },
     skey: string,
-    hidden: PaneId,
+    entry: PaneEntry,
   ): void => {
     const replayKey: SourceKey = { type: 'replay', stepName: liveKey.stepName }
     const replaySkey = sourceKeyToString(replayKey)
     panes.delete(skey)
-    panes.set(replaySkey, hidden)
+    panes.set(replaySkey, entry)
     keyByString.delete(skey)
     keyByString.set(replaySkey, replayKey)
     removeFromLiveSources(skey)
@@ -493,57 +512,105 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
       currentKey = replayKey
     }
     logLifecycle({ type: 'live-to-replay-transform', from: skey, to: replaySkey })
+    // Note: the per-source session is *not* renamed in tmux — its name still
+    // reflects the original `live:` key. Replay tooling that greps logs for
+    // pane-id-by-session must consult `keyByString` (or the controller's
+    // entry shape), not parse the session name. The session stays alive
+    // because nothing kills it; the pane id is sticky to the tail process.
   }
 
-  // Lazily register the always-blank placeholder hidden pane. Used by
+  // Lazily register the always-present placeholder source. Used by
   // killHiddenSource to keep the visible slot alive when the soon-to-be-
-  // killed pane is the current visible source. Tails /dev/null so it
-  // produces no bytes. Idempotent — second call is a no-op.
+  // killed pane is the current visible source. The placeholder source has
+  // no underlying byte stream; its session runs a dormant `cat` holder so
+  // the pane stays alive across swap-out periods. Idempotent — second call
+  // is a no-op.
   const ensurePlaceholderRegistered = async (): Promise<void> => {
     const placeholderKey: SourceKey = { type: 'placeholder' }
     const skey = sourceKeyToString(placeholderKey)
     if (panes.has(skey)) return
-    if (opts.scratchSession === undefined) return
-    const paneId = await spawnHiddenPane({ kind: 'file-tail', path: toPath('/dev/null') })
-    panes.set(skey, paneId)
+    // spec.path here is unused — commandForSpec routes `placeholder` to the
+    // `cat` holder argv regardless. We pass a benign file-tail spec to
+    // satisfy the type checker; the spec.kind field is not read for
+    // placeholder.
+    const entry = await spawnHiddenSource(
+      { kind: 'file-tail', path: toPath('/dev/null') },
+      placeholderKey,
+    )
+    panes.set(skey, entry)
     keyByString.set(skey, placeholderKey)
-    logLifecycle({ type: 'pane-spawned', sourceKey: skey, paneId })
+    logLifecycle({
+      type: 'source-session-created',
+      sourceKey: skey,
+      session: entry.session,
+      paneId: entry.paneId,
+    })
+    logLifecycle({ type: 'pane-spawned', sourceKey: skey, paneId: entry.paneId })
   }
 
-  const killHiddenSource = async (skey: string, hidden: PaneId): Promise<void> => {
+  const killHiddenSource = async (skey: string, entry: PaneEntry): Promise<void> => {
     if (currentKey !== undefined && sourceKeyToString(currentKey) === skey) {
       // The pane we are about to kill is currently in the visible slot
       // (due to a prior swap). Killing it without first relocating the
       // visible slot collapses the right pane and orphans visiblePaneId
       // at a dead pane id — every subsequent swapPane then fails with
-      // `can't find pane: <hidden>`. Ensure a placeholder hidden pane
+      // `can't find pane: <entry.paneId>`. Ensure a placeholder source
       // exists, swap to it, then proceed with the kill (which now lands
       // on the hidden slot, not the visible one).
-      logLifecycle({ type: 'visible-pane-relocation-start', from: skey, paneId: hidden })
+      logLifecycle({
+        type: 'visible-pane-relocation-start',
+        from: skey,
+        paneId: entry.paneId,
+      })
       await ensurePlaceholderRegistered()
       const placeholderKey: SourceKey = { type: 'placeholder' }
       if (panes.has(sourceKeyToString(placeholderKey))) await showSource(placeholderKey)
-      logLifecycle({ type: 'visible-pane-relocation-complete', from: skey, paneId: hidden })
+      logLifecycle({
+        type: 'visible-pane-relocation-complete',
+        from: skey,
+        paneId: entry.paneId,
+      })
     }
     panes.delete(skey)
     keyByString.delete(skey)
     removeFromLiveSources(skey)
-    logLifecycle({ type: 'pane-kill-start', sourceKey: skey, paneId: hidden })
-    let killed = false
+    logLifecycle({
+      type: 'source-session-teardown-start',
+      sourceKey: skey,
+      session: entry.session,
+      paneId: entry.paneId,
+    })
+    let torndown = false
     try {
-      await opts.tmux.killPane({ socket: requireScratchSession().socket, target: hidden })
-      killed = true
+      await teardownSourceSession(opts.tmux, { socket: opts.socket, session: entry.session })
+      torndown = true
     } catch (err) {
       // Lifecycle log only — no fd-2 write (would bleed into the attached
       // tmux client's terminal grid).
       logLifecycle({
-        type: 'pane-kill-failed',
+        type: 'source-session-teardown-failed',
         sourceKey: skey,
-        paneId: hidden,
+        session: entry.session,
+        paneId: entry.paneId,
         ...errorLifecycleFields(err),
       })
     }
-    logLifecycle({ type: 'pane-killed', sourceKey: skey, paneId: hidden, killed })
+    logLifecycle({
+      type: 'source-session-torndown',
+      sourceKey: skey,
+      session: entry.session,
+      paneId: entry.paneId,
+      torndown,
+    })
+    // Killing the session destroys its pane along with it — preserve the
+    // historical `pane-killed` event so replay tooling and finding-doc
+    // greps continue to fire on per-source unregistrations.
+    logLifecycle({
+      type: 'pane-killed',
+      sourceKey: skey,
+      paneId: entry.paneId,
+      killed: torndown,
+    })
   }
 
   const unregisterSource = async (
@@ -562,18 +629,22 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
     if (inFlight !== undefined) {
       await inFlight.catch(() => {})
     }
-    const hidden = panes.get(skey)
-    if (hidden === undefined) {
+    const entry = panes.get(skey)
+    if (entry === undefined) {
       logLifecycle({ type: 'source-unregister-miss', sourceKey: skey })
       return
     }
     if (key.type === 'live') {
-      logLifecycle({ type: 'source-unregister-live-to-replay', sourceKey: skey, paneId: hidden })
-      // Transform: rekey the same hidden pane under the replay key. No kill.
-      // The pane continues to tail the (now-frozen) tee; subsequent revisits
-      // are O(1).
+      logLifecycle({
+        type: 'source-unregister-live-to-replay',
+        sourceKey: skey,
+        paneId: entry.paneId,
+      })
+      // Transform: rekey the same per-source session under the replay key.
+      // No kill. The pane continues to tail the (now-frozen) tee; subsequent
+      // revisits are O(1).
       const wasCurrent = currentKey !== undefined && sourceKeyToString(currentKey) === skey
-      transformLiveToReplay(key, skey, hidden)
+      transformLiveToReplay(key, skey, entry)
       // U5: if the user was watching this live source, surface the frozen-
       // transcript cue — view-mode flip is always correct; the info banner is
       // skipped on the failure path so its durable error banner is the
@@ -590,11 +661,60 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
       }
       return
     }
-    // Interactive / rollup / placeholder / replay: kill the hidden pane and
-    // drop the entry. If the current key is this one, swap to placeholder
-    // FIRST so the visible slot doesn't reference a dead pane.
-    logLifecycle({ type: 'source-unregister-kill', sourceKey: skey, paneId: hidden })
-    await killHiddenSource(skey, hidden)
+    // Interactive / rollup / placeholder / replay: kill the per-source
+    // session (which destroys its pane) and drop the entry. If the current
+    // key is this one, swap to placeholder FIRST so the visible slot
+    // doesn't reference a dead pane.
+    logLifecycle({ type: 'source-unregister-kill', sourceKey: skey, paneId: entry.paneId })
+    await killHiddenSource(skey, entry)
+  }
+
+  const teardownSessions = async (): Promise<void> => {
+    // Drain the per-source session map. Each session's teardown is
+    // independent — one already-gone session must not block the others, so
+    // we wrap every kill in a per-entry try/catch. Idempotency at the
+    // adapter level (`TmuxService.killSession` swallows "session not
+    // found") covers the racing-teardown case.
+    const entries = Array.from(panes.entries())
+    panes.clear()
+    keyByString.clear()
+    liveSources.length = 0
+    for (const [skey, entry] of entries) {
+      logLifecycle({
+        type: 'source-session-teardown-start',
+        sourceKey: skey,
+        session: entry.session,
+        paneId: entry.paneId,
+      })
+      try {
+        await teardownSourceSession(opts.tmux, {
+          socket: opts.socket,
+          session: entry.session,
+        })
+        logLifecycle({
+          type: 'source-session-torndown',
+          sourceKey: skey,
+          session: entry.session,
+          paneId: entry.paneId,
+          torndown: true,
+        })
+      } catch (err) {
+        logLifecycle({
+          type: 'source-session-teardown-failed',
+          sourceKey: skey,
+          session: entry.session,
+          paneId: entry.paneId,
+          ...errorLifecycleFields(err),
+        })
+        logLifecycle({
+          type: 'source-session-torndown',
+          sourceKey: skey,
+          session: entry.session,
+          paneId: entry.paneId,
+          torndown: false,
+        })
+      }
+    }
   }
 
   const followLive = async (): Promise<void> => {
@@ -777,7 +897,7 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
   }
 
   const getPaneId = (key: SourceKey): PaneId | undefined => {
-    return panes.get(sourceKeyToString(key))
+    return panes.get(sourceKeyToString(key))?.paneId
   }
 
   return {
@@ -790,6 +910,7 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
     emitBanner,
     setViewMode,
     stop,
+    teardownSessions,
   }
 }
 

@@ -41,9 +41,8 @@ import {
 const RUN_ID: RunId = toRunId('r-2026-05-22-093650-j0')
 const RIGHT_PANE = paneId('%1')
 const LEFT_PANE = paneId('%0')
-const SCRATCH_SOCKET = socketName('orch-scratch-sl')
-const MAIN_SOCKET = socketName('orch-main-sl')
-const SCRATCH_SESSION = { socket: SCRATCH_SOCKET, session: 'orch-scratch' }
+// Per-source sessions and `orch` share the per-run socket.
+const SOCKET = socketName('orch-main-sl')
 
 function makeStore(steps: Record<string, StepEntry>): StateStore {
   const state: RunState = {
@@ -127,7 +126,7 @@ async function makeHarness(steps: Record<string, StepEntry>): Promise<Harness> {
   // assertions through stderr emptiness + thrown error shape + pane map.
   const controller = createRightPaneController({
     tmux,
-    socket: MAIN_SOCKET,
+    socket: SOCKET,
     leftPaneId: LEFT_PANE,
     rightPaneId: RIGHT_PANE,
     paneQueue: queue,
@@ -137,7 +136,8 @@ async function makeHarness(steps: Record<string, StepEntry>): Promise<Harness> {
     cwd: toPath(tempDir),
     env: {},
     stderr: stderr.stream,
-    scratchSession: SCRATCH_SESSION,
+    width: 200,
+    height: 50,
     tuiOverlayPath: toPath(overlayPath),
   })
   return { tmux, stderr, overlayPath, lifecyclePath, controller }
@@ -150,7 +150,7 @@ describe('right-pane-controller — tmux server lost mid-run', () => {
     const h = await makeHarness({})
 
     // Server dies between host construction and the next interactive step.
-    h.tmux.markSocketLost(SCRATCH_SOCKET)
+    h.tmux.markSocketLost(SOCKET)
 
     let caught: unknown
     try {
@@ -180,7 +180,7 @@ describe('right-pane-controller — tmux server lost mid-run', () => {
   it('a session-lost registerSource leaves no ghost entry in the pane map', async () => {
     const h = await makeHarness({})
 
-    h.tmux.markSocketLost(SCRATCH_SOCKET)
+    h.tmux.markSocketLost(SOCKET)
 
     await h.controller
       .registerSource(
@@ -218,10 +218,11 @@ describe('right-pane-controller — tmux server lost mid-run', () => {
     }
     expect(secondCaught).toBeInstanceOf(TmuxCommandError)
 
-    // Two splitPane attempts were recorded (the second was not skipped as
-    // "existing" — i.e. no ghost entry).
-    const splits = h.tmux.recordedCalls.filter((c) => c.method === 'splitPane')
-    expect(splits.length).toBeGreaterThanOrEqual(2)
+    // Two createSession attempts were recorded (the second was not skipped
+    // as "existing" — i.e. no ghost entry). Per-source design: the spawn
+    // path is createSession, not splitPane.
+    const creates = h.tmux.recordedCalls.filter((c) => c.method === 'createSession')
+    expect(creates.length).toBeGreaterThanOrEqual(2)
 
     // And still no stderr bleed across the two attempts.
     expect(h.stderr.chunks.join('')).toBe('')
@@ -233,7 +234,7 @@ describe('right-pane-controller — tmux server lost mid-run', () => {
     const h = await makeHarness({})
 
     // Register an interactive source successfully (server alive).
-    h.tmux.nextPaneId(paneId('%50'))
+    h.tmux.nextCreateSessionPaneId(paneId('%50'))
     await h.controller.registerSource(
       { type: 'interactive', stepName: stepName('brainstorm') },
       {
@@ -245,15 +246,15 @@ describe('right-pane-controller — tmux server lost mid-run', () => {
     )
     await flush()
 
-    // Now the server dies.
-    h.tmux.markSocketLost(SCRATCH_SOCKET)
-    h.tmux.markSocketLost(MAIN_SOCKET)
+    // Now the server dies — per-source sessions and `orch` share one socket
+    // in the per-source design, so a single `markSocketLost` reaches both.
+    h.tmux.markSocketLost(SOCKET)
 
     // Trying to unregister surfaces the session-lost error (it comes from
-    // either killPane on the scratch socket OR a relocation call on the
-    // main socket — either way, an unrecoverable failure). The test does
-    // not pin which sub-call throws; it pins the user-visible contract:
-    // no stderr bleed.
+    // either killSession on the per-source socket OR a relocation call on
+    // the visible socket — either way, an unrecoverable failure). The
+    // test does not pin which sub-call throws; it pins the user-visible
+    // contract: no stderr bleed.
     await h.controller
       .unregisterSource({ type: 'interactive', stepName: stepName('brainstorm') })
       .catch(() => {
@@ -274,15 +275,15 @@ describe('right-pane-controller — tmux server lost mid-run', () => {
     // would not exercise the real classification path. This test pins the
     // shape so the rest stays load-bearing.
     const tmux = new FakeTmuxService()
-    tmux.markSocketLost(SCRATCH_SOCKET)
+    tmux.markSocketLost(SOCKET)
 
     let caught: unknown
     try {
-      await tmux.splitPane({
-        socket: SCRATCH_SOCKET,
-        session: 'orch-scratch',
-        orientation: 'h',
-        percent: 50,
+      await tmux.createSession({
+        socket: SOCKET,
+        session: 'orch-src-x',
+        width: 80,
+        height: 24,
       })
     } catch (err) {
       caught = err
@@ -291,7 +292,7 @@ describe('right-pane-controller — tmux server lost mid-run', () => {
     const stderr = (caught as TmuxCommandError).stderr
     expect(stderr).toMatch(/error connecting to/)
     expect(stderr).toMatch(/No such file or directory/)
-    expect(stderr).toContain(String(SCRATCH_SOCKET))
+    expect(stderr).toContain(String(SOCKET))
   })
 
   // Track the unused-helper to keep biome happy without churning the file shape.

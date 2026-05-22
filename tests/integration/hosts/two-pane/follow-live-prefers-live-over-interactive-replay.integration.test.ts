@@ -51,9 +51,7 @@ const HIDDEN_INTERACTIVE = paneId('%3')
 const HIDDEN_PLACEHOLDER = paneId('%4')
 const HIDDEN_LIVE = paneId('%5')
 const HIDDEN_INTERACTIVE_REPLAY = paneId('%6')
-const MAIN_SOCKET = socketName('orch-main-flv')
-const SCRATCH_SOCKET = socketName('orch-scratch-flv')
-const SCRATCH_SESSION = { socket: SCRATCH_SOCKET, session: 'orch-scratch' }
+const SOCKET = socketName('orch-flv')
 
 function bufferStream(): NodeJS.WritableStream {
   return new Writable({
@@ -142,15 +140,15 @@ describe('right-pane-controller — follow-live prefers the running live source 
   it('after entering a past interactive step replay, pressing follow-live swaps the visible slot back to the live autonomous source', async () => {
     // ----- Arrange -----
     const tmux = new FakeTmuxService()
-    // splitPane return order (FIFO):
+    // createSession return order (FIFO):
     //   1. interactive write-riddle (initial registerSource)
     //   2. placeholder (prior fix's ensurePlaceholderRegistered inside killHiddenSource)
     //   3. live solve-riddle (autonomous step:start)
     //   4. interactive write-riddle replay (dispatchEnter re-register)
-    tmux.nextPaneId(HIDDEN_INTERACTIVE)
-    tmux.nextPaneId(HIDDEN_PLACEHOLDER)
-    tmux.nextPaneId(HIDDEN_LIVE)
-    tmux.nextPaneId(HIDDEN_INTERACTIVE_REPLAY)
+    tmux.nextCreateSessionPaneId(HIDDEN_INTERACTIVE)
+    tmux.nextCreateSessionPaneId(HIDDEN_PLACEHOLDER)
+    tmux.nextCreateSessionPaneId(HIDDEN_LIVE)
+    tmux.nextCreateSessionPaneId(HIDDEN_INTERACTIVE_REPLAY)
 
     const stateDir = `${tempDir}/state`
     // resolveReplaySpec writes refusal text to .replay/<step>.txt; ensure
@@ -161,7 +159,7 @@ describe('right-pane-controller — follow-live prefers the running live source 
 
     const controller = createRightPaneController({
       tmux,
-      socket: MAIN_SOCKET,
+      socket: SOCKET,
       leftPaneId: LEFT_PANE,
       rightPaneId: RIGHT_PANE,
       paneQueue: createPaneQueue(),
@@ -183,7 +181,8 @@ describe('right-pane-controller — follow-live prefers the running live source 
       cwd: toPath(tempDir),
       env: {},
       stderr: bufferStream(),
-      scratchSession: SCRATCH_SESSION,
+      width: 200,
+      height: 50,
       logger: captured.logger,
     })
 
@@ -201,7 +200,7 @@ describe('right-pane-controller — follow-live prefers the running live source 
 
     // 2. Autonomous solve-riddle starts — host registers a live file-tail.
     // The tee file doesn't need to exist for FakeTmux; only its path is
-    // shipped to splitPane's argv.
+    // shipped to createSession's command.
     const teePath = toPath(`${stateDir}/logs/agents/solve-riddle/formatted_output.ansi`)
     await mkdir(`${stateDir}/logs/agents/solve-riddle`, { recursive: true })
     await writeFile(teePath, '', 'utf8')

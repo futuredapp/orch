@@ -28,8 +28,6 @@ import {
 
 const RUN_ID: RunId = toRunId('r-2026-05-06-300000-rs')
 const RIGHT_PANE = paneId('%1')
-const SCRATCH_SOCKET = socketName('orch-scratch-resume')
-const SCRATCH_SESSION = { socket: SCRATCH_SOCKET, session: 'orch-scratch' }
 
 function makeStep(overrides: Partial<StepEntry> & Pick<StepEntry, 'name'>): StepEntry {
   return {
@@ -120,9 +118,9 @@ afterEach(async () => {
 })
 
 describe('resume launcher (U8 swap-based, mocked tmux + scripted runner)', () => {
-  it('spawns the resume argv as a pty source on the scratch session and swaps it in', async () => {
+  it('spawns the resume argv as a pty source in a per-source session and swaps it in', async () => {
     const tmux = new FakeTmuxService()
-    tmux.nextPaneId(paneId('%500'))
+    tmux.nextCreateSessionPaneId(paneId('%500'))
     const stateDir = `${tempDir}/state`
     await mkdir(stateDir, { recursive: true })
 
@@ -148,20 +146,21 @@ describe('resume launcher (U8 swap-based, mocked tmux + scripted runner)', () =>
       env: { HOME: '/home/orch' },
       stderr: bufferStream(),
       resumeRegistry,
-      scratchSession: SCRATCH_SESSION,
+      width: 200,
+      height: 50,
     })
 
     controller.onIntent({ type: 'enter', stepName: 'work-auth' })
     await flush()
 
-    const splits = tmux.recordedCalls.filter((c) => c.method === 'splitPane')
-    expect(splits).toHaveLength(1)
-    const split = splits[0]
-    if (split?.method !== 'splitPane') throw new Error('expected splitPane')
-    expect(split.opts.session).toBe('orch-scratch')
-    expect(split.opts.argv).toEqual(['mocked-resume', '--resume', 'sess-int-001'])
-    expect(split.opts.env?.FORCE_COLOR).toBe('3')
-    expect(split.opts.env?.HOME).toBe('/home/orch')
+    const creates = tmux.recordedCalls.filter((c) => c.method === 'createSession')
+    expect(creates).toHaveLength(1)
+    const create = creates[0]
+    if (create?.method !== 'createSession') throw new Error('expected createSession')
+    expect(create.opts.session).toBe('orch-src-interactive-work-auth')
+    expect(create.opts.command).toEqual(['mocked-resume', '--resume', 'sess-int-001'])
+    expect(create.opts.env?.FORCE_COLOR).toBe('3')
+    expect(create.opts.env?.HOME).toBe('/home/orch')
 
     const swaps = tmux.recordedCalls.filter((c) => c.method === 'swapPane')
     expect(swaps).toHaveLength(1)

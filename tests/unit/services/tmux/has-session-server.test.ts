@@ -18,7 +18,7 @@ const SOCKET = socketName('orch-test')
 describe('RealTmuxService.hasSession', () => {
   it('returns true when tmux has-session exits 0', async () => {
     const procs = new FakeProcessService()
-    procs.when(['tmux', '-L', SOCKET, 'has-session', '-t', 'orch']).respondWith({ exitCode: 0 })
+    procs.when(['tmux', '-L', SOCKET, 'has-session', '-t', '=orch']).respondWith({ exitCode: 0 })
     const tmux = new RealTmuxService({ processService: procs })
 
     const exists = await tmux.hasSession({ socket: SOCKET, session: 'orch' })
@@ -29,7 +29,7 @@ describe('RealTmuxService.hasSession', () => {
   it('returns false when tmux reports a missing session on a live server', async () => {
     const procs = new FakeProcessService()
     procs
-      .when(['tmux', '-L', SOCKET, 'has-session', '-t', 'orch'])
+      .when(['tmux', '-L', SOCKET, 'has-session', '-t', '=orch'])
       .respondWith({ exitCode: 1, stderr: [`can't find session: orch`] })
     const tmux = new RealTmuxService({ processService: procs })
 
@@ -41,7 +41,7 @@ describe('RealTmuxService.hasSession', () => {
   it('returns false when the tmux server itself is down', async () => {
     const procs = new FakeProcessService()
     procs
-      .when(['tmux', '-L', SOCKET, 'has-session', '-t', 'orch'])
+      .when(['tmux', '-L', SOCKET, 'has-session', '-t', '=orch'])
       .respondWith({ exitCode: 1, stderr: ['no server running on /tmp/tmux/orch-test'] })
     const tmux = new RealTmuxService({ processService: procs })
 
@@ -52,7 +52,7 @@ describe('RealTmuxService.hasSession', () => {
 
   it('returns false when tmux exits 1 with empty stderr (silent missing-session)', async () => {
     const procs = new FakeProcessService()
-    procs.when(['tmux', '-L', SOCKET, 'has-session', '-t', 'orch']).respondWith({ exitCode: 1 })
+    procs.when(['tmux', '-L', SOCKET, 'has-session', '-t', '=orch']).respondWith({ exitCode: 1 })
     const tmux = new RealTmuxService({ processService: procs })
 
     const exists = await tmux.hasSession({ socket: SOCKET, session: 'orch' })
@@ -63,7 +63,7 @@ describe('RealTmuxService.hasSession', () => {
   it('throws TmuxCommandError on unexpected tmux failures', async () => {
     const procs = new FakeProcessService()
     procs
-      .when(['tmux', '-L', SOCKET, 'has-session', '-t', 'orch'])
+      .when(['tmux', '-L', SOCKET, 'has-session', '-t', '=orch'])
       .respondWith({ exitCode: 127, stderr: ['command not found: tmux'] })
     const tmux = new RealTmuxService({ processService: procs })
 

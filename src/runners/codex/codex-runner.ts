@@ -221,6 +221,13 @@ function buildInteractiveArgv(
   if (opts.sandbox === 'full-auto') argv.push('--full-auto')
   else argv.push('--sandbox', opts.sandbox)
   if (opts.model) argv.push('-m', opts.model)
+  // `--no-alt-screen` is the interactive-only switch that gives the user a
+  // flat-buffer Codex — composes with the smart-wheel binding's copy-mode
+  // entry on the right pane (see docs/plans/2026-05-21-001-feat-scrollable-
+  // two-pane-plan.md U3). Always available on the pinned MIN_CODEX_VERSION
+  // (0.118.0 >> 0.81.0-alpha.1 where the flag landed). Idempotent if the
+  // user supplies it again via flags/extraArgs — Codex accepts the repeat.
+  argv.push('--no-alt-screen')
   argv.push(...(opts.flags ?? []))
   argv.push(...ctx.extraArgs)
   argv.push('--', ctx.prompt)
@@ -360,7 +367,17 @@ export function codex(
       // Codex resume is its own subcommand. The current sandbox/model flags
       // don't apply to `codex resume` (it inherits the original thread's
       // configuration); we only thread through caller-supplied extras.
-      const argv = ['codex', 'resume', sessionId, ...(flags ?? []), ...ctx.extraArgs]
+      // `--no-alt-screen` is a top-level flag and must precede the sessionId
+      // positional, mirroring the interactive default so resumed sessions
+      // get the same flat-buffer behavior the smart-wheel binding expects.
+      const argv = [
+        'codex',
+        'resume',
+        '--no-alt-screen',
+        sessionId,
+        ...(flags ?? []),
+        ...ctx.extraArgs,
+      ]
       return { argv, env: mergeEnv(process.env, { FORCE_COLOR: '3' }, ctx.env) }
     },
 

@@ -36,8 +36,6 @@ import {
 
 const RUN_ID: RunId = toRunId('r-2026-05-13-100000-r5')
 const RIGHT_PANE = paneId('%1')
-const SCRATCH_SOCKET = socketName('orch-scratch-refusal')
-const SCRATCH_SESSION = { socket: SCRATCH_SOCKET, session: 'orch-scratch' }
 
 function bufferStream(): NodeJS.WritableStream {
   return new Writable({
@@ -154,7 +152,7 @@ interface FixtureOpts {
 
 async function runEnterAndReadReplay(opts: FixtureOpts): Promise<string> {
   const tmux = new FakeTmuxService()
-  tmux.nextPaneId(paneId('%500'))
+  tmux.nextCreateSessionPaneId(paneId('%500'))
   const stateDir = `${tempDir}/state`
   await mkdir(stateDir, { recursive: true })
 
@@ -170,7 +168,8 @@ async function runEnterAndReadReplay(opts: FixtureOpts): Promise<string> {
     cwd: toPath(tempDir),
     env: {},
     stderr: bufferStream(),
-    scratchSession: SCRATCH_SESSION,
+    width: 200,
+    height: 50,
     ...(opts.resumeRegistry !== undefined ? { resumeRegistry: opts.resumeRegistry } : {}),
   })
 
@@ -296,7 +295,7 @@ describe('right-pane refusal branch dispatch', () => {
     // pins the pty argv shape end-to-end; we assert the absence of refusal
     // text here.
     const tmux = new FakeTmuxService()
-    tmux.nextPaneId(paneId('%500'))
+    tmux.nextCreateSessionPaneId(paneId('%500'))
     const stateDir = `${tempDir}/state`
     await mkdir(stateDir, { recursive: true })
 
@@ -317,20 +316,22 @@ describe('right-pane refusal branch dispatch', () => {
       cwd: toPath(tempDir),
       env: {},
       stderr: bufferStream(),
-      scratchSession: SCRATCH_SESSION,
+      width: 200,
+      height: 50,
       resumeRegistry: reg,
     })
 
     controller.onIntent({ type: 'enter', stepName: 'work' })
     await flush()
 
-    // The pty source path runs splitPane with the runner's resume argv;
-    // it never writes a `.replay/work.txt` refusal file.
-    const splits = tmux.recordedCalls.filter((c) => c.method === 'splitPane')
-    expect(splits.length).toBeGreaterThan(0)
-    const split = splits[0]
-    if (split?.method !== 'splitPane') throw new Error('expected splitPane')
-    expect(split.opts.argv).toEqual(['codex', '--resume', 'sess-real'])
+    // The pty source path creates a per-source session with the runner's
+    // resume argv as its initial pane command; it never writes a
+    // `.replay/work.txt` refusal file.
+    const creates = tmux.recordedCalls.filter((c) => c.method === 'createSession')
+    expect(creates.length).toBeGreaterThan(0)
+    const create = creates[0]
+    if (create?.method !== 'createSession') throw new Error('expected createSession')
+    expect(create.opts.command).toEqual(['codex', '--resume', 'sess-real'])
 
     await controller.stop()
   })
@@ -343,8 +344,8 @@ describe('right-pane refusal branch dispatch', () => {
     reg.register(toStepName('implement'), runnerB)
 
     const tmux = new FakeTmuxService()
-    tmux.nextPaneId(paneId('%500'))
-    tmux.nextPaneId(paneId('%501'))
+    tmux.nextCreateSessionPaneId(paneId('%500'))
+    tmux.nextCreateSessionPaneId(paneId('%501'))
     const stateDir = `${tempDir}/state`
     await mkdir(stateDir, { recursive: true })
 
@@ -363,7 +364,8 @@ describe('right-pane refusal branch dispatch', () => {
       cwd: toPath(tempDir),
       env: {},
       stderr: bufferStream(),
-      scratchSession: SCRATCH_SESSION,
+      width: 200,
+      height: 50,
       resumeRegistry: reg,
     })
 
@@ -372,9 +374,9 @@ describe('right-pane refusal branch dispatch', () => {
     controller.onIntent({ type: 'enter', stepName: 'implement' })
     await flush()
 
-    const splits = tmux.recordedCalls.filter((c) => c.method === 'splitPane')
-    const argvs = splits
-      .map((c) => (c.method === 'splitPane' ? c.opts.argv : undefined))
+    const creates = tmux.recordedCalls.filter((c) => c.method === 'createSession')
+    const argvs = creates
+      .map((c) => (c.method === 'createSession' ? c.opts.command : undefined))
       .filter((a): a is readonly string[] => a !== undefined)
     // Each Enter should produce its own resume invocation with the runner's
     // bound sessionId — the registry returning the wrong runner would route

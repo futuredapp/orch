@@ -9,9 +9,12 @@ export type {
   RightPaneControllerOptions,
 } from './right-pane-controller.ts'
 export { createRightPaneController } from './right-pane-controller.ts'
-export type { CreateScratchSessionDeps, ScratchSessionHandle } from './scratch-session.ts'
+export type { CreateSourceSessionOptions, SourceSessionHandle } from './source-session.ts'
 export {
-  createScratchSession,
-  SCRATCH_SESSION_NAME,
-  teardownScratchSession,
-} from './scratch-session.ts'
+  createSourceSession,
+  MAX_SESSION_NAME_LENGTH,
+  SOURCE_HOLDER_ARGV,
+  SOURCE_SESSION_PREFIX,
+  sanitizeSessionName,
+  teardownSourceSession,
+} from './source-session.ts'

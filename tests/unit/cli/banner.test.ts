@@ -28,10 +28,14 @@ describe('buildBanner', () => {
 })
 
 describe('buildTwoPaneLogsHint', () => {
-  it('returns the orch logs hint for two-pane non-JSON runs', () => {
+  it('returns the in-pane scroll + orch logs hint for two-pane non-JSON runs', () => {
     const out = buildTwoPaneLogsHint(resolution('two-pane'), 'text')
 
     expect(out).toBeDefined()
+    // In-pane scroll is the new primary surface; `logs --latest --follow`
+    // remains the power-user fallback in the same hint string.
+    expect(out).toContain('scroll')
+    expect(out).toContain('wheel')
     expect(out).toContain('orch logs --latest --follow')
   })
 

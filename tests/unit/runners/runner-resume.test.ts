@@ -65,15 +65,15 @@ describe('claude().resumeCommand', () => {
 })
 
 describe('codex().resumeCommand', () => {
-  it('returns argv that resumes the named thread via codex resume', async () => {
+  it('returns argv that resumes the named thread via codex resume with --no-alt-screen before the sessionId positional', async () => {
     const runner = codex({}, { fs: new FakeFsService(), ps: new FakeProcessService() })
 
     const cmd = await resumeOf(runner)(ctxFor(), 'thread-001')
 
-    expect(cmd.argv).toEqual(['codex', 'resume', 'thread-001'])
+    expect(cmd.argv).toEqual(['codex', 'resume', '--no-alt-screen', 'thread-001'])
   })
 
-  it('threads configured flags into the resume argv', async () => {
+  it('threads configured flags into the resume argv after the sessionId positional', async () => {
     const runner = codex(
       { flags: ['--ask-for-approval', 'never'] },
       { fs: new FakeFsService(), ps: new FakeProcessService() },
@@ -81,7 +81,14 @@ describe('codex().resumeCommand', () => {
 
     const cmd = await resumeOf(runner)(ctxFor(), 'thread-7')
 
-    expect(cmd.argv).toEqual(['codex', 'resume', 'thread-7', '--ask-for-approval', 'never'])
+    expect(cmd.argv).toEqual([
+      'codex',
+      'resume',
+      '--no-alt-screen',
+      'thread-7',
+      '--ask-for-approval',
+      'never',
+    ])
   })
 })
 

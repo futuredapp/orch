@@ -6,9 +6,11 @@
 import type { ProcessService } from '../services/process/index.ts'
 import { path } from '../services/types.ts'
 
-/** Minimum tmux version required for the observability features in 13b/13c. */
+/** Minimum tmux version. Floor of 3.3 is required for the
+ * `mouse_any_flag` format string used by the smart-wheel binding in
+ * `session-init.ts` (tmux 3.3+). */
 export const MIN_TMUX_MAJOR = 3
-export const MIN_TMUX_MINOR = 2
+export const MIN_TMUX_MINOR = 3
 
 /**
  * Returns `true` if the orchestrator is running inside an existing tmux

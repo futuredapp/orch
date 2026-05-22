@@ -280,12 +280,10 @@ describe('runCmd auto-attach — race semantics', () => {
     // used to only be asserted implicitly via the attach client returning.
     // Without kill-session, the tmux server lingers and leaves `mouse on`
     // bits on the outer TTY (the symptom from the bug that motivated this
-    // plumbing). Assert it fired, and on the right session.
-    // Two kill-session calls: the per-run scratch session first, then the
-    // visible orch session. The visible session kill is the one that ends
-    // the attach client and clears the outer TTY's mouse bits.
+    // plumbing). Assert the visible `orch` kill fired. Per-source sessions
+    // are dynamic (one per registered live source); this fixture doesn't
+    // register any sources, so only `orch` is reaped.
     const killCalls = tmux.recordedCalls.filter((c) => c.method === 'killSession')
-    expect(killCalls).toHaveLength(2)
     const killOrch = killCalls.find((c) => c.method === 'killSession' && c.opts.session === 'orch')
     expect(killOrch).toBeDefined()
 

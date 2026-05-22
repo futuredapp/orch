@@ -30,8 +30,6 @@ import {
 
 const RUN_ID: RunId = toRunId('r-2026-05-06-300000-fl')
 const RIGHT_PANE = paneId('%1')
-const SCRATCH_SOCKET = socketName('orch-scratch-fail')
-const SCRATCH_SESSION = { socket: SCRATCH_SOCKET, session: 'orch-scratch' }
 
 function makeStep(overrides: Partial<StepEntry> & Pick<StepEntry, 'name'>): StepEntry {
   return {
@@ -124,7 +122,7 @@ afterEach(async () => {
 describe('resume launcher — failure path (U8 swap-based, mocked tmux)', () => {
   it('writes the canonical "resume failed" footer and tails it from a hidden pane', async () => {
     const tmux = new FakeTmuxService()
-    tmux.nextPaneId(paneId('%500'))
+    tmux.nextCreateSessionPaneId(paneId('%500'))
     const { stream, chunks } = bufferingStderr()
     const stateDir = `${tempDir}/state`
     await mkdir(stateDir, { recursive: true })
@@ -147,7 +145,8 @@ describe('resume launcher — failure path (U8 swap-based, mocked tmux)', () => 
       env: {},
       stderr: stream,
       resumeRegistry,
-      scratchSession: SCRATCH_SESSION,
+      width: 200,
+      height: 50,
     })
 
     controller.onIntent({ type: 'enter', stepName: 'x' })
@@ -158,16 +157,16 @@ describe('resume launcher — failure path (U8 swap-based, mocked tmux)', () => 
     expect(replayBytes).toContain('resume failed')
     expect(replayBytes).toContain('press f to return')
 
-    // The controller registers a `file-tail` source on the scratch session
+    // The controller registers a `file-tail` source in a per-source session
     // over that file. No respawnPane on the visible right pane.
-    const splits = tmux.recordedCalls.filter((c) => c.method === 'splitPane')
-    expect(splits).toHaveLength(1)
-    const split = splits[0]
-    if (split?.method !== 'splitPane') throw new Error('expected splitPane')
-    const argv = split.opts.argv
-    if (argv === undefined) throw new Error('expected argv on splitPane')
-    expect(argv[0]).toBe('tail')
-    expect(argv[4]).toMatch(/\.replay\/x\.txt$/)
+    const creates = tmux.recordedCalls.filter((c) => c.method === 'createSession')
+    expect(creates).toHaveLength(1)
+    const create = creates[0]
+    if (create?.method !== 'createSession') throw new Error('expected createSession')
+    const command = create.opts.command
+    if (command === undefined) throw new Error('expected command on createSession')
+    expect(command[0]).toBe('tail')
+    expect(command[4]).toMatch(/\.replay\/x\.txt$/)
 
     const respawns = tmux.recordedCalls.filter(
       (c) => c.method === 'respawnPane' && c.opts.target === RIGHT_PANE,
