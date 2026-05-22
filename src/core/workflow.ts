@@ -1130,19 +1130,40 @@ async function runStepOnce(
         overrides,
       )
       break
-    case 'ask':
-      result = await runAskStep(
-        {
-          clock: deps.clock,
-          host: deps.host,
-          promptService: deps.promptService,
-          interactivity: deps.interactivity,
-        },
-        config,
-        key,
-        overrides,
-      )
+    case 'ask': {
+      // Emit step:start so the row appears in the steps-view projection
+      // while the prompt is awaiting input — without this, the user can
+      // navigate away from the prompt pane (Enter on another row) and have
+      // no UI affordance to come back. See incident r-2026-05-22-212450-07.
+      const askStartedAt = deps.clock.now()
+      emitStepLifecycle(deps.host, stepSpan, {
+        type: 'step:start',
+        stepName: key,
+        mode: 'interactive',
+      })
+      try {
+        result = await runAskStep(
+          {
+            clock: deps.clock,
+            host: deps.host,
+            promptService: deps.promptService,
+            interactivity: deps.interactivity,
+          },
+          config,
+          key,
+          overrides,
+        )
+      } catch (err) {
+        emitStepLifecycle(deps.host, stepSpan, { type: 'step:failed', stepName: key, error: err })
+        throw err
+      }
+      emitStepLifecycle(deps.host, stepSpan, {
+        type: 'step:complete',
+        stepName: key,
+        durationMs: deps.clock.now() - askStartedAt,
+      })
       break
+    }
     case 'command': {
       const inParallel = currentParallelDepth() > 0
       const startedAt = deps.clock.now()

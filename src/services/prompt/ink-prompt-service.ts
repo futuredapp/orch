@@ -1,5 +1,6 @@
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { HostUnavailableError } from '../../hosts/host.ts'
 import type { FsService } from '../fs/index.ts'
 import { mergeEnv } from '../process/merge-env.ts'
 import { type Path, path as toPath } from '../types.ts'
@@ -77,6 +78,19 @@ export class InkPromptService implements PromptService {
       // — tmux's pane-died hook doesn't surface the child exit code. Treat the
       // presence of the result file as the success signal.
       if (!(await this.#fs.exists(resultPath))) {
+        // Disambiguate "the host died under us (tmux server gone, terminal
+        // closed)" from "the child crashed or the user killed the pane". The
+        // former misleads users into blaming their input — see incident
+        // r-2026-05-22-212450-07 where the tmux server died externally while
+        // the prompt was open and orch surfaced the generic message.
+        const reachability = await ctx.host.probeReachability()
+        if (!reachability.reachable) {
+          throw new HostUnavailableError(
+            `InkPromptService: host became unreachable while waiting for "${ctx.stepName}"` +
+              (reachability.reason !== undefined ? ` — ${reachability.reason}` : ''),
+            undefined,
+          )
+        }
         throw new Error(
           `InkPromptService: child for "${ctx.stepName}" exited without writing a result. ` +
             'Either the user killed the pane, the Ink renderer crashed, or the ' +

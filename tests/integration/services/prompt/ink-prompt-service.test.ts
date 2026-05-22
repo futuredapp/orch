@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'bun:test'
 import { writeFile } from 'node:fs/promises'
 import type { StepName } from '../../../../src/core/types.ts'
-import type { Host, InteractiveResult, InteractiveSpawn } from '../../../../src/hosts/index.ts'
+import { HostUnavailableError } from '../../../../src/hosts/host.ts'
+import type {
+  Host,
+  HostReachability,
+  InteractiveResult,
+  InteractiveSpawn,
+} from '../../../../src/hosts/index.ts'
 import { BunFsService } from '../../../../src/services/index.ts'
 import { InkPromptService } from '../../../../src/services/prompt/index.ts'
 import type { PromptResult, PromptSpec } from '../../../../src/services/prompt/prompt-service.ts'
@@ -29,9 +35,10 @@ const SPEC: PromptSpec = {
 interface FakeHostOptions {
   readonly handler: (spawn: InteractiveSpawn) => Promise<InteractiveResult>
   readonly mode?: 'plain' | 'two-pane' | 'single-pane'
+  readonly reachability?: HostReachability
 }
 
-function makeHost({ handler, mode = 'two-pane' }: FakeHostOptions): Host {
+function makeHost({ handler, mode = 'two-pane', reachability }: FakeHostOptions): Host {
   return {
     mode,
     writeBanner: () => {},
@@ -49,7 +56,7 @@ function makeHost({ handler, mode = 'two-pane' }: FakeHostOptions): Host {
       /* no-op */
     },
     awaitForegroundShutdown: async () => 'attach-exited' as const,
-    probeReachability: async () => ({ reachable: true }),
+    probeReachability: async () => reachability ?? { reachable: true },
     teardown: async () => {
       /* no-op */
     },
@@ -105,6 +112,32 @@ describe('InkPromptService (mocked host)', () => {
     await expect(svc.ask(SPEC, { stepName: 'ask:no-result' as StepName, host })).rejects.toThrow(
       /exited without writing a result/,
     )
+  })
+
+  // Pins the "the run crashed when I came back" bug reported against incident
+  // r-2026-05-22-212450-07: while the prompt was open and the user was away,
+  // the tmux server died externally; orch surfaced the generic "child exited
+  // without writing a result" error which misleads the user into blaming
+  // their input or the workflow. The correct behaviour is to detect that the
+  // host is no longer reachable and throw HostUnavailableError instead.
+  it('throws HostUnavailableError (not the generic message) when the host is unreachable after the child exited', async () => {
+    const fs = new BunFsService()
+    const svc = new InkPromptService({ fs, runnerScript: toPath('/fake/runner.ts') })
+    const host = makeHost({
+      handler: async () => ({ exitCode: 0, durationMs: 1 }),
+      reachability: { reachable: false, reason: 'tmux server is no longer reachable' },
+    })
+
+    let caught: unknown
+    try {
+      await svc.ask(SPEC, { stepName: 'ask:tmux-died' as StepName, host })
+    } catch (err) {
+      caught = err
+    }
+    expect(caught).toBeInstanceOf(HostUnavailableError)
+    const message = (caught as Error | undefined)?.message ?? ''
+    expect(message).not.toMatch(/exited without writing a result/)
+    expect(message).toMatch(/tmux|session|host/i)
   })
 
   it('cleans up the temp dir after a successful ask', async () => {

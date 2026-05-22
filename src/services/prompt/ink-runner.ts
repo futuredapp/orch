@@ -70,9 +70,15 @@ async function main(): Promise<void> {
     })
   }
 
+  // `alternateScreen: true` is load-bearing: tmux's smart-wheel binding from
+  // session-init.ts enters `copy-mode -e` on a wheel-up when the pane's
+  // `alternate_on` flag is 0. Without alt-screen the prompt UI would slip
+  // under the scrollback view on the first wheel-up — see incident
+  // r-2026-05-22-212450-07. Matches the steps-view child's render options.
   const instance = render(React.createElement(AskApp, { spec, onResolve }), {
     exitOnCtrlC: false,
     patchConsole: false,
+    alternateScreen: true,
   })
 
   await instance.waitUntilExit()
