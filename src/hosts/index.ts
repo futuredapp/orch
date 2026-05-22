@@ -10,6 +10,7 @@ export type {
   CommandLine,
   ForegroundShutdownReason,
   Host,
+  HostReachability,
   InteractiveResult,
   InteractiveSpawn,
   PaneAttachment,

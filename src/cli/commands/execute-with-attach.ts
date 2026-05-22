@@ -71,6 +71,30 @@ export interface ExecuteWithAttachOpts {
   readonly skipAttach?: boolean
 }
 
+async function handleAttachExitedTwoPane(opts: ExecuteWithAttachOpts): Promise<void> {
+  const reach = await opts.host.probeReachability()
+  if (reach.reachable) {
+    opts.stderr.write(
+      `[orch] detached. run continues in background.\n` +
+        `[orch] re-attach with: tmux -L orch-${opts.runId} attach -t orch\n` +
+        `[orch] tail logs with: orch logs ${opts.runId}\n`,
+    )
+    return
+  }
+  // Don't print the detach hint. The workflow's next host call will throw
+  // HostUnavailableError, which `mapError` translates into the standard
+  // failure summary — we just need to not lie about a background
+  // continuation that physically cannot happen.
+  opts.stderr.write(
+    `[orch] ${reach.reason ?? 'host is no longer reachable'} — workflow cannot continue in background.\n` +
+      `[orch] data: ${opts.summary.runDir}/\n`,
+  )
+  orchLog(opts.logger, 'attach-exited-unreachable', {
+    runId: opts.runId,
+    reason: reach.reason ?? 'unknown',
+  })
+}
+
 export async function executeWithAttach(opts: ExecuteWithAttachOpts): Promise<number> {
   // Signal handlers: Ctrl-C / SIGTERM during attach would otherwise kill orch
   // mid-race and leave the tmux session alive with mouse-tracking bits on the
@@ -140,15 +164,18 @@ export async function executeWithAttach(opts: ExecuteWithAttachOpts): Promise<nu
         return EXIT.SIGINT
       }
 
-      // Attach-exited branch: user detached cleanly (two-pane only — plain
-      // never takes the TTY). Keep the workflow running in the background;
-      // print the re-attach hint and fall through to the workflow await.
+      // Attach-exited branch: the foreground attach client went away. Two
+      // very different causes look identical here:
+      //   1. User cleanly detached (prefix-d). tmux server is alive; the
+      //      workflow CAN keep running in the background. Print the
+      //      re-attach hint.
+      //   2. tmux server died externally (incident r-2026-05-22-093650-j0):
+      //      attach client exited because the server vanished. The workflow
+      //      CANNOT continue — the next interactive step has nowhere to
+      //      spawn. Printing the re-attach hint would actively mislead the
+      //      user. Surface the failure path instead.
       if (opts.host.mode === 'two-pane') {
-        opts.stderr.write(
-          `[orch] detached. run continues in background.\n` +
-            `[orch] re-attach with: tmux -L orch-${opts.runId} attach -t orch\n` +
-            `[orch] tail logs with: orch logs ${opts.runId}\n`,
-        )
+        await handleAttachExitedTwoPane(opts)
       }
     }
 

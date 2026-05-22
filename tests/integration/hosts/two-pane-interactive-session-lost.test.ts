@@ -15,18 +15,12 @@
 
 import { describe, expect, it } from 'bun:test'
 import { Writable } from 'node:stream'
+import { stepName as makeStepName } from '../../../src/core/types.ts'
 import { HostUnavailableError } from '../../../src/hosts/host.ts'
 import { createTmuxHost } from '../../../src/hosts/index.ts'
 import { FakeClock, FakeFsService, FakeProcessService, path } from '../../../src/services/index.ts'
-import {
-  FakeTmuxService,
-  type PaneId,
-  paneId,
-  type SplitPaneOptions,
-  TmuxCommandError,
-} from '../../../src/services/tmux/index.ts'
+import { FakeTmuxService, paneId } from '../../../src/services/tmux/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
-import { stepName as makeStepName } from '../../../src/core/types.ts'
 
 function bufferStream(): { stream: NodeJS.WritableStream; text: () => string } {
   const chunks: string[] = []
@@ -39,30 +33,6 @@ function bufferStream(): { stream: NodeJS.WritableStream; text: () => string } {
   return { stream: stream as unknown as NodeJS.WritableStream, text: () => chunks.join('') }
 }
 
-// A FakeTmuxService that lets the test trip a "tmux server is gone" failure on
-// the NEXT splitPane call. The error mirrors what tmux's CLI emits when the
-// socket file no longer exists — exit 1 with stderr "error connecting to
-// /private/tmp/tmux-501/<socket> (No such file or directory)".
-class SessionLostFakeTmuxService extends FakeTmuxService {
-  #failNextSplit = false
-
-  failNextSplitWithSessionLost(): void {
-    this.#failNextSplit = true
-  }
-
-  override async splitPane(opts: SplitPaneOptions): Promise<PaneId> {
-    if (this.#failNextSplit) {
-      this.#failNextSplit = false
-      throw new TmuxCommandError(
-        1,
-        `error connecting to /private/tmp/tmux-501/${opts.socket} (No such file or directory)`,
-        `tmux split-window failed (exit 1): error connecting to /private/tmp/tmux-501/${opts.socket} (No such file or directory)`,
-      )
-    }
-    return super.splitPane(opts)
-  }
-}
-
 const RUN_ID = 'r-2026-05-21-993100-zz' as RunId
 
 describe('two-pane interactive step — tmux session lost externally', () => {
@@ -73,7 +43,7 @@ describe('two-pane interactive step — tmux session lost externally', () => {
     const stderr = bufferStream()
     const basePath = path('/state')
 
-    const tmux = new SessionLostFakeTmuxService()
+    const tmux = new FakeTmuxService()
     tmux.setListPanesResult(['%0'])
     // First splitPane → visible right pane (placeholder cat). This succeeds —
     // the host is being constructed BEFORE the session is killed.
@@ -96,10 +66,15 @@ describe('two-pane interactive step — tmux session lost externally', () => {
     })
 
     // Simulate: the user detached and tmux server died between the previous
-    // step finishing and the next interactive step starting. The next
-    // splitPane (the scratch-session PTY for the interactive step) will see
-    // the dead socket.
-    tmux.failNextSplitWithSessionLost()
+    // step finishing and the next interactive step starting. From this point
+    // on EVERY tmux call against this socket fails — that's the real-world
+    // failure mode we're guarding against (incident r-2026-05-22-093650-j0).
+    const socket = (
+      tmux.recordedCalls.find((c) => c.method === 'createSession') as {
+        opts: { socket: import('../../../src/services/tmux/index.ts').SocketName }
+      }
+    ).opts.socket
+    tmux.markSocketLost(socket)
 
     let caught: unknown
     try {

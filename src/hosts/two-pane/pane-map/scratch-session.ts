@@ -34,11 +34,40 @@
 // on` would otherwise tear the session down the moment we create it (no
 // client attached) — that's the wrong outcome here, since no client will
 // ever attach.
+//
+// Initial-pane holder: the scratch session is created with an explicit
+// `sleep infinity` holder argv (see `SCRATCH_HOLDER_ARGV` below). Without
+// it, tmux would spawn the user's `$SHELL` as the initial pane's process,
+// which can exit on its own (login-shell `EXIT` traps, errexit, a sourced
+// rc that returns nonzero, idle timeouts). If that single initial pane
+// exits AND every other hidden pane has been killed at the same instant
+// (e.g. between two interactive steps), the scratch session goes
+// pane-less and tmux destroys it — combined with `exit-empty on` (the
+// tmux default — orch overrides this server-wide in the appliance config,
+// but the holder is belt-and-suspenders), the whole tmux server would
+// die. See incident r-2026-05-22-093650-j0.
 
 import type { SocketName, TmuxService } from '../../../services/tmux/index.ts'
 
 /** Session name (relative to the per-run socket `orch-<runId>`). */
 export const SCRATCH_SESSION_NAME = 'orch-scratch'
+
+/**
+ * Holder shell-command for the scratch session's initial pane. Passed as a
+ * single trailing argument to `tmux new-session`, which then runs it under
+ * `/bin/sh -c`. `cat` with its default stdin (the tmux pane's pty, which
+ * is never written to in the scratch session) blocks indefinitely without
+ * burning CPU and without depending on any non-POSIX flags. Earlier
+ * iterations tried `sleep infinity`, but BSD `sleep` on macOS rejects it
+ * with a usage error — the holder exited immediately and (combined with
+ * the tmux default `exit-empty on`) brought the whole server down.
+ *
+ * Single-element argv: tmux's `cmd_to_string` joins multi-arg argv into
+ * one space-separated string before passing to `/bin/sh -c`, so multi-arg
+ * `['sh', '-c', ...]` shapes hit quoting traps. One arg ⇒ one shell
+ * command, no surprises.
+ */
+export const SCRATCH_HOLDER_ARGV: readonly string[] = ['cat']
 
 export interface CreateScratchSessionDeps {
   readonly tmux: TmuxService
@@ -65,6 +94,7 @@ export const createScratchSession = async (
     session: SCRATCH_SESSION_NAME,
     width: deps.width,
     height: deps.height,
+    command: SCRATCH_HOLDER_ARGV,
   })
   // Pin `destroy-unattached off` so the user's `~/.tmux.conf` cannot tear
   // the session down behind our back. No client ever attaches to this

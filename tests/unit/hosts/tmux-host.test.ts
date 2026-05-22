@@ -554,6 +554,58 @@ describe('TmuxHost.teardown', () => {
     expect(killCalls).toHaveLength(2)
   })
 
+  // Regression: a second concurrent teardown call (e.g. back-to-back SIGINTs
+  // routed through `executeWithAttach`'s signal handler) used to short-circuit
+  // on the inner `torndown` flag and resolve immediately, while the first
+  // call's `killSession` was still in flight. The signal handler's
+  // `.finally(process.exit)` then fired before tmux was actually killed,
+  // leaving the session alive after orch exited. This pins the latch
+  // contract: both callers await the same underlying cleanup.
+  it('latches concurrent teardown calls — second caller waits for kill-session to complete', async () => {
+    let releaseKill: (() => void) | undefined
+    const killGate = new Promise<void>((resolve) => {
+      releaseKill = resolve
+    })
+    class GatedKillTmuxService extends FakeTmuxService {
+      override async killSession(
+        opts: import('../../../src/services/tmux/index.ts').KillSessionOptions,
+      ): Promise<void> {
+        await killGate
+        await super.killSession(opts)
+      }
+    }
+    const tmux = new GatedKillTmuxService()
+    tmux.setListPanesResult(['%0'])
+    tmux.nextPaneId(paneId('%42'))
+
+    const { host } = await buildHost(tmux)
+
+    let firstResolved = false
+    let secondResolved = false
+    const first = host.teardown().then(() => {
+      firstResolved = true
+    })
+    const second = host.teardown().then(() => {
+      secondResolved = true
+    })
+
+    // Let any microtasks settle: with the latch, neither call may resolve
+    // until killSession (gated below) actually returns.
+    await new Promise((r) => setTimeout(r, 20))
+    expect(firstResolved).toBe(false)
+    expect(secondResolved).toBe(false)
+
+    releaseKill?.()
+    await Promise.all([first, second])
+
+    expect(firstResolved).toBe(true)
+    expect(secondResolved).toBe(true)
+    // Still idempotent — kill-session is issued at most twice (scratch + main)
+    // across all concurrent callers.
+    const killCalls = tmux.recordedCalls.filter((c) => c.method === 'killSession')
+    expect(killCalls.length).toBeLessThanOrEqual(2)
+  })
+
   // Regression: real-world symptom on macOS — after `bunx orch run …`
   // exits, the user's terminal is left with the shell prompt redrawn in
   // the middle of the screen, the rest blank below, and the success

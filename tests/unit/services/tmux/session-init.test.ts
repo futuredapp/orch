@@ -29,7 +29,7 @@ const baseOpts = {
 }
 
 describe('initOrchSession writes the strict-sandbox tmux config', () => {
-  it('writes a config file containing history-limit 0, mouse on, remain-on-exit on, and prefix None', async () => {
+  it('writes a config file containing history-limit 0, mouse on, remain-on-exit on, prefix None, and exit-empty off', async () => {
     const fs = new FakeFsService()
     const tmux = new FakeTmuxService()
 
@@ -46,6 +46,7 @@ describe('initOrchSession writes the strict-sandbox tmux config', () => {
     expect(written).toContain('set -g mouse on')
     expect(written).toContain('set -g remain-on-exit on')
     expect(written).toContain('set -g prefix None')
+    expect(written).toContain('set -s exit-empty off')
   })
 
   it('passes the config path to createSession via the configPath option', async () => {

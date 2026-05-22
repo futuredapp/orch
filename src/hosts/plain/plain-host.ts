@@ -190,6 +190,11 @@ export function createPlainHost(opts: PlainHostOptions): Host {
     /* plain writes are synchronous; nothing to flush. */
   }
 
+  const probeReachability = async (): Promise<{ reachable: true }> => {
+    /* plain has no backing surface that can vanish; always reachable. */
+    return { reachable: true }
+  }
+
   return {
     mode,
     writeBanner,
@@ -200,6 +205,7 @@ export function createPlainHost(opts: PlainHostOptions): Host {
     runInteractive,
     attachForeground,
     awaitForegroundShutdown,
+    probeReachability,
     teardown,
   }
 }

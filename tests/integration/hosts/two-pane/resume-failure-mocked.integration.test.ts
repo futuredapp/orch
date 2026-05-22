@@ -177,7 +177,12 @@ describe('resume launcher — failure path (U8 swap-based, mocked tmux)', () => 
     // No new window.
     expect(tmux.recordedCalls.some((c) => c.method === 'newWindow')).toBe(false)
 
-    expect(chunks.join('')).toContain('synthetic resume failure')
+    // No stderr write: see right-pane-controller-failure-recovery.test.ts.
+    // The parent process shares the TTY with `tmux attach-session`, so any
+    // fd-2 write bleeds across both panes. The error detail now lives in the
+    // lifecycle log (`resume-failed` event with `errorMessage`); the warm-
+    // cache file footer covers the user-visible surface.
+    expect(chunks.join('')).toBe('')
 
     await controller.stop()
   })

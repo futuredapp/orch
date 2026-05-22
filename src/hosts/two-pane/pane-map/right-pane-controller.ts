@@ -123,6 +123,15 @@ const errorLifecycleFields = (err: unknown): Readonly<Record<string, unknown>> =
   return base
 }
 
+export interface UnregisterSourceOptions {
+  /**
+   * Skip the `"step X complete"` info banner that the `live → replay`
+   * transform normally emits when the user was watching this source.
+   * Used by the `step:failed` path so its error banner survives.
+   */
+  readonly suppressCompletionBanner?: boolean
+}
+
 export interface RightPaneController {
   /** Wire this into `startStepsView`'s `onIntent`. */
   onIntent(intent: StepsIntent): void
@@ -142,8 +151,13 @@ export interface RightPaneController {
    * Remove a source from the map. The rule is type-specific:
    *   - `live`: rekeyed to `replay` (warm cache, no kill).
    *   - `interactive`/`rollup`/`placeholder`: kill the hidden pane.
+   *
+   * `suppressCompletionBanner` skips the `"step X complete"` info banner that
+   * normally fires from the `live → replay` transform when the user was
+   * watching this source. The failure path uses this so its durable error
+   * banner is not overwritten by a misleading "complete" toast.
    */
-  unregisterSource(key: SourceKey): Promise<void>
+  unregisterSource(key: SourceKey, options?: UnregisterSourceOptions): Promise<void>
   /**
    * Swap to the most-recently-registered live or interactive source, or to
    * rollup if registered, or to placeholder if neither exists.
@@ -237,7 +251,10 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
     try {
       await appendFile(opts.tuiOverlayPath, serializeTuiOverlayLine(snapshot), 'utf8')
     } catch (err) {
-      opts.stderr.write(`[orch tui] tui-overlay write failed: ${String(err)}\n`)
+      // Never write to opts.stderr while the parent process shares a TTY with
+      // `tmux attach-session`: bytes leak into the active tmux pane. The
+      // failure is durably recorded via logLifecycle (file sink, not fd-2).
+      logLifecycle({ type: 'tui-overlay-write-failed', ...errorLifecycleFields(err) })
     }
   }
 
@@ -283,26 +300,61 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
     return opts.scratchSession
   }
 
+  // Monotonic counter for rotated scratch windows. Each "no space for new
+  // pane" failure bumps it and feeds the next window's `name`. Pure label —
+  // tmux assigns the window id; the name is only for human-facing tooling
+  // (`tmux list-windows`).
+  let scratchWindowSeq = 0
+  const NO_SPACE_PATTERN = /no space for new pane/i
+
   const spawnHiddenPane = async (spec: PaneSpec): Promise<PaneId> => {
     const scratch = requireScratchSession()
-    if (spec.kind === 'file-tail') {
+    const split = async (): Promise<PaneId> => {
+      if (spec.kind === 'file-tail') {
+        return opts.tmux.splitPane({
+          socket: scratch.socket,
+          session: scratch.session,
+          orientation: 'h',
+          percent: 50,
+          argv: ['tail', '-n', TAIL_BACKFILL_LINES, '-F', spec.path],
+        })
+      }
       return opts.tmux.splitPane({
         socket: scratch.socket,
         session: scratch.session,
         orientation: 'h',
         percent: 50,
-        argv: ['tail', '-n', TAIL_BACKFILL_LINES, '-F', spec.path],
+        argv: spec.argv,
+        ...(spec.env !== undefined ? { env: spec.env } : {}),
+        ...(spec.cwd !== undefined ? { cwd: spec.cwd } : {}),
       })
     }
-    return opts.tmux.splitPane({
-      socket: scratch.socket,
-      session: scratch.session,
-      orientation: 'h',
-      percent: 50,
-      argv: spec.argv,
-      ...(spec.env !== undefined ? { env: spec.env } : {}),
-      ...(spec.cwd !== undefined ? { cwd: spec.cwd } : {}),
-    })
+    try {
+      return await split()
+    } catch (err) {
+      // Recover from "no space for new pane": every completed `live:` pane
+      // stays alive in scratch as a warm replay cache, so after enough steps
+      // the active scratch window's columns fall below tmux's split minimum.
+      // Rotate to a fresh window in the same session and retry. Other tmux
+      // errors propagate unchanged.
+      if (!(err instanceof TmuxCommandError) || !NO_SPACE_PATTERN.test(err.stderr)) {
+        throw err
+      }
+      scratchWindowSeq += 1
+      const name = `orch-scratch-${scratchWindowSeq}`
+      logLifecycle({
+        type: 'scratch-window-rotate',
+        reason: err.stderr,
+        windowName: name,
+      })
+      await opts.tmux.newWindow({
+        socket: scratch.socket,
+        session: scratch.session,
+        name,
+        cwd: opts.cwd,
+      })
+      return await split()
+    }
   }
 
   const registerSource = async (key: SourceKey, spec: PaneSpec): Promise<void> => {
@@ -482,18 +534,22 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
       await opts.tmux.killPane({ socket: requireScratchSession().socket, target: hidden })
       killed = true
     } catch (err) {
+      // Lifecycle log only — no fd-2 write (would bleed into the attached
+      // tmux client's terminal grid).
       logLifecycle({
         type: 'pane-kill-failed',
         sourceKey: skey,
         paneId: hidden,
         ...errorLifecycleFields(err),
       })
-      opts.stderr.write(`[orch tui] killPane failed for ${skey}: ${String(err)}\n`)
     }
     logLifecycle({ type: 'pane-killed', sourceKey: skey, paneId: hidden, killed })
   }
 
-  const unregisterSource = async (key: SourceKey): Promise<void> => {
+  const unregisterSource = async (
+    key: SourceKey,
+    options?: UnregisterSourceOptions,
+  ): Promise<void> => {
     if (stopped) return
     const skey = sourceKeyToString(key)
     logLifecycle({ type: 'source-unregister-start', sourceKey: skey })
@@ -519,16 +575,18 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
       const wasCurrent = currentKey !== undefined && sourceKeyToString(currentKey) === skey
       transformLiveToReplay(key, skey, hidden)
       // U5: if the user was watching this live source, surface the frozen-
-      // transcript cue — info banner + view-mode flip. The host emits the
-      // unconditional error banner separately on `step:failed`; that
-      // overwrites this info banner via last-write-wins.
+      // transcript cue — view-mode flip is always correct; the info banner is
+      // skipped on the failure path so its durable error banner is the
+      // user-visible message instead of a misleading "step X complete" toast.
       if (wasCurrent) {
         await setViewMode({ mode: 'replay', stepName: key.stepName })
-        await emitBanner({
-          kind: 'info',
-          text: `step ${key.stepName} complete`,
-          ttlMs: 4000,
-        })
+        if (options?.suppressCompletionBanner !== true) {
+          await emitBanner({
+            kind: 'info',
+            text: `step ${key.stepName} complete`,
+            ttlMs: 4000,
+          })
+        }
       }
       return
     }
@@ -674,8 +732,14 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
       })
       orchLog(opts.logger, 'replay-kind-dispatched', { stepName, kind: step.kind })
     } catch (err) {
-      opts.stderr.write(`[orch tui] replay dispatch failed: ${String(err)}\n`)
-      logLifecycle({ type: 'replay-pane-failed', stepName, error: String(err) })
+      // The banner is the user-visible sink; the lifecycle log is the durable
+      // record. Never write to opts.stderr — see writeTuiOverlay for the
+      // bleed mechanism.
+      logLifecycle({
+        type: 'replay-pane-failed',
+        stepName,
+        ...errorLifecycleFields(err),
+      })
       await emitBanner({
         kind: 'error',
         text: `replay failed for ${stepName} — ${String(err)}`,
@@ -847,10 +911,17 @@ async function resolveInteractiveReplaySpec(
       cwd: opts.cwd,
     }
   } catch (err) {
-    opts.stderr.write(`[orch tui] resume failed: ${String(err)}\n`)
-    // Surface the failure in the warm-cache file so the user sees something
-    // when they enter the step. The dispatcher additionally emits an error
-    // banner so the message is durable above the steps grid.
+    // No fd-2 write — would leak into the attached tmux client. The warm-
+    // cache file below surfaces the failure inside the pane; the dispatcher
+    // additionally emits an error banner so the message is durable above
+    // the steps grid.
+    void opts.logger
+      ?.append('lifecycle', {
+        type: 'resume-failed',
+        stepName: step.name,
+        ...errorLifecycleFields(err),
+      })
+      .catch(() => {})
     const filePath = replayFilePath(opts, step.name)
     await writeReplayFile(
       opts,

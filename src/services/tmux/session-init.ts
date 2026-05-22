@@ -143,6 +143,12 @@ const APPLIANCE_CONFIG_LINES = [
   // the smallest size and letterbox the larger client. Phase 2's two-window
   // dance assumes this so window 1's replay can render at the full pane.
   'set -g window-size latest',
+  // Keep the per-run tmux server alive even if every session momentarily
+  // empties. Orch tears the server down explicitly in `host.teardown()`; we
+  // never want tmux's own `exit-empty on` default to dissolve the server
+  // mid-run if a session goes pane-less for a beat (see incident
+  // r-2026-05-22-093650-j0). Server scope (`-s`) — not session scope.
+  'set -s exit-empty off',
 ] as const
 
 const writeAppliancConfig = async (fs: FsService): Promise<Path> => {

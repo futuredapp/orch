@@ -49,6 +49,7 @@ function makeHost({ handler, mode = 'two-pane' }: FakeHostOptions): Host {
       /* no-op */
     },
     awaitForegroundShutdown: async () => 'attach-exited' as const,
+    probeReachability: async () => ({ reachable: true }),
     teardown: async () => {
       /* no-op */
     },

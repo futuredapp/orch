@@ -17,6 +17,7 @@ import type { StepLifecycleEvent } from '../../src/core/workflow.ts'
 import type {
   CommandLine,
   Host,
+  HostReachability,
   InteractiveResult,
   InteractiveSpawn,
   PaneAttachment,
@@ -63,6 +64,8 @@ export interface FakeHost extends Host {
   readonly attachments: readonly PaneRole[]
   readonly interactiveSpawns: readonly RecordedInteractiveSpawn[]
   setInteractiveResult(result: InteractiveResult): void
+  /** Override the value `probeReachability()` returns. Defaults to `{ reachable: true }`. */
+  setReachability(value: HostReachability): void
 }
 
 export function createFakeHost(opts: FakeHostOptions = {}): FakeHost {
@@ -72,6 +75,7 @@ export function createFakeHost(opts: FakeHostOptions = {}): FakeHost {
   const interactiveSpawns: RecordedInteractiveSpawn[] = []
   const mode: RunMode = opts.mode ?? 'plain'
   let nextInteractive: InteractiveResult = { exitCode: 0, durationMs: 0 }
+  let reachability: HostReachability = { reachable: true }
 
   const host: FakeHost = {
     mode,
@@ -81,6 +85,9 @@ export function createFakeHost(opts: FakeHostOptions = {}): FakeHost {
     interactiveSpawns,
     setInteractiveResult(result: InteractiveResult): void {
       nextInteractive = result
+    },
+    setReachability(value: HostReachability): void {
+      reachability = value
     },
     writeBanner(line: string): void {
       banners.push(line)
@@ -120,6 +127,9 @@ export function createFakeHost(opts: FakeHostOptions = {}): FakeHost {
       /* FakeHost has no foreground UI — workflow completion drives shutdown.
          Reports `'attach-exited'` to keep the CLI race on the benign branch. */
       return 'attach-exited'
+    },
+    async probeReachability(): Promise<HostReachability> {
+      return reachability
     },
     async teardown(): Promise<void> {
       /* no-op */

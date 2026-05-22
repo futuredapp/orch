@@ -169,7 +169,32 @@ export interface Host {
    * detach — same signal, very different shutdown semantics in the CLI.
    */
   awaitForegroundShutdown(): Promise<ForegroundShutdownReason>
+  /**
+   * Cheap probe: is the host's backing surface still alive?
+   *
+   * Used by the launcher right after `attachForeground()` resolves with the
+   * `'attach-exited'` reason: a clean user-detach (prefix-d) leaves the
+   * tmux server alive, so the workflow can keep running in the background;
+   * a tmux server death also makes the attach client exit, but the next
+   * interactive step has nowhere to spawn. We need to tell those two apart
+   * BEFORE printing the "run continues in background" hint, which would
+   * otherwise mislead the user (see incident r-2026-05-22-093650-j0).
+   *
+   * - Plain host: always `reachable: true` (no backing surface to lose).
+   * - Two-pane host: probes the tmux server and both sessions.
+   */
+  probeReachability(): Promise<HostReachability>
   teardown(): Promise<void>
+}
+
+/**
+ * Result of `Host.probeReachability()`. When `reachable === false`, the
+ * `reason` field carries a short human-readable string the CLI can quote in
+ * the failure summary ("tmux server is no longer reachable").
+ */
+export interface HostReachability {
+  readonly reachable: boolean
+  readonly reason?: string
 }
 
 /**

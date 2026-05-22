@@ -114,10 +114,27 @@ const buildPaneDiedCommand = (socket: SocketName): string =>
 // `TmuxCommandError` crashed Bun with a stack trace. Recognising the pattern
 // lets the host translate it into a typed `HostUnavailableError` the CLI
 // can render as a clean failure summary.
-const TMUX_SESSION_LOST_PATTERN =
-  /no server running|session not found|can't find session|no such file or directory/i
+// Belt-and-suspenders: tmux/macOS variants surface this state with a few
+// distinct stderr shapes. The current observed set (incident
+// r-2026-05-22-093650-j0):
+//   - "error connecting to /private/tmp/tmux-501/<sock> (No such file or directory)"
+//   - "no server running on /tmp/tmux-501/<sock>"
+//   - "session not found: <name>" / "can't find session <name>"
+//   - "lost server"
+// Each alternation is independently sufficient; "no such file or directory"
+// alone catches the macOS connect-time variant we hit in the wild, but the
+// explicit alternations protect against upstream tmux changing the prefix.
+export const TMUX_SESSION_LOST_PATTERN =
+  /no server running|session not found|can't find session|no such file or directory|error connecting to|lost server/i
 
-const isSessionLostError = (err: unknown): err is TmuxCommandError =>
+/**
+ * True when a `TmuxCommandError`'s stderr matches the canonical
+ * "tmux server is gone" shapes observed in the wild. Used by the host to
+ * translate dead-socket failures into `HostUnavailableError`. Exported so
+ * adapter-level tests can pin classification against new wild-string
+ * variants without going through the full host construction.
+ */
+export const isSessionLostError = (err: unknown): err is TmuxCommandError =>
   err instanceof TmuxCommandError && TMUX_SESSION_LOST_PATTERN.test(err.stderr)
 
 const errorLifecycleFields = (err: unknown): JsonObject => {
@@ -578,18 +595,31 @@ function wrapHostWithStepsView(
       awaitForegroundShutdown,
     }
   }
+  // Latch: a second concurrent caller (e.g. a back-to-back SIGINT during
+  // teardown) joins the in-flight teardown promise instead of starting a
+  // second run. Without this, the inner's `if (torndown) return` makes the
+  // second call resolve immediately — the signal handler's
+  // `.finally(process.exit)` then fires before `killSession` completes and
+  // leaks the tmux session.
+  let teardownPromise: Promise<void> | undefined
+  const wrappedTeardown = async (): Promise<void> => {
+    if (teardownPromise === undefined) {
+      teardownPromise = (async () => {
+        // Order: stop intent dispatch (controller) first so a late intent can't
+        // reach the tearing-down tmux server, then stop the tailer + child,
+        // then the inner host (which kills the session).
+        if (controller !== undefined) await controller.stop()
+        if (steps !== undefined) await steps.stop()
+        await inner.teardown()
+      })()
+    }
+    return teardownPromise
+  }
   return {
     ...inner,
     attachForeground: wrappedAttachForeground,
     awaitForegroundShutdown,
-    teardown: async () => {
-      // Order: stop intent dispatch (controller) first so a late intent can't
-      // reach the tearing-down tmux server, then stop the tailer + child,
-      // then the inner host (which kills the session).
-      if (controller !== undefined) await controller.stop()
-      if (steps !== undefined) await steps.stop()
-      await inner.teardown()
-    },
+    teardown: wrappedTeardown,
   }
 }
 
@@ -796,20 +826,30 @@ function buildHost(deps: BuildHostDeps): Host {
         deps.tee.write(event.stepName, renderFailurePanePayload(summary))
       }
       const teePath = teePathFor(deps.logger, event.stepName)
-      if (teePath !== null && controller !== undefined) {
+      const ctrl = controller
+      if (teePath !== null && ctrl !== undefined) {
+        // Sequential: drain the unregister (with the completion banner
+        // suppressed at the source) BEFORE the error emit. Without this,
+        // a fire-and-forget unregister whose pendingRegistrations drain
+        // is slow could land its info banner after our error and overwrite
+        // it via last-write-wins.
+        void (async () => {
+          await ctrl
+            .unregisterSource(
+              { type: 'live', stepName: event.stepName },
+              { suppressCompletionBanner: true },
+            )
+            .catch(handleSendError)
+          await ctrl
+            .emitBanner({ kind: 'error', text: `step ${event.stepName} failed` })
+            .catch(handleSendError)
+        })()
+      } else {
         void controller
-          .unregisterSource({ type: 'live', stepName: event.stepName })
+          ?.emitBanner({ kind: 'error', text: `step ${event.stepName} failed` })
           .catch(handleSendError)
       }
       deps.tee.close(event.stepName)
-      // Error banner is the durable, unconditional signal that something
-      // went wrong — even if the user is on a replay or rollup view. The
-      // info `step X complete` banner from `transformLiveToReplay` (when
-      // the user was watching this live source) is overwritten by this
-      // error via last-write-wins.
-      void controller
-        ?.emitBanner({ kind: 'error', text: `step ${event.stepName} failed` })
-        .catch(handleSendError)
       return
     }
     if (event.type === 'step:parallel-start') {
@@ -1191,7 +1231,14 @@ function buildHost(deps: BuildHostDeps): Host {
     }
   }
 
-  const teardown = async (): Promise<void> => {
+  // Latch: a second concurrent caller joins the in-flight teardown promise
+  // instead of seeing the `torndown` short-circuit and resolving early.
+  // Critical for the back-to-back SIGINT path — a fire-and-forget
+  // `host.teardown().finally(process.exit)` must wait for `killSession` even
+  // on the second invocation. `torndown` is retained as a true post-cleanup
+  // idempotency guard for callers that arrive after the promise has settled.
+  let innerTeardownPromise: Promise<void> | undefined
+  const teardownInner = async (): Promise<void> => {
     if (torndown) return
     // Order matters: flip `teardownStarted` BEFORE killSession so the attach
     // client exit (triggered by kill-session) routes through the "expected"
@@ -1251,6 +1298,22 @@ function buildHost(deps: BuildHostDeps): Host {
       })
       deps.stderr.write(`[orch tmux] kill-session failed: ${String(err)}\n`)
     }
+    // Explicit kill-server. The appliance config pins `exit-empty off` so the
+    // server stays alive even after both sessions are killed (intentional —
+    // it lets us survive a momentary pane-less window without dissolving the
+    // server, see incident r-2026-05-22-093650-j0). Teardown therefore has
+    // to take the server down itself; idempotent against "no server running".
+    appendLifecycleSoon({ type: 'tmux-server-teardown-start', socket: deps.socket })
+    try {
+      await deps.tmux.killServer({ socket: deps.socket })
+    } catch (err) {
+      appendLifecycleSoon({
+        type: 'tmux-server-teardown-failed',
+        socket: deps.socket,
+        ...errorLifecycleFields(err),
+      })
+      deps.stderr.write(`[orch tmux] kill-server failed: ${String(err)}\n`)
+    }
     // Restore DEC private modes the attach client may have left on the outer
     // TTY (mouse tracking, alt-screen, bracketed paste). Safe no-op when
     // `stdout.isTTY` is false (pipes, tests). The latched closure ensures
@@ -1259,6 +1322,11 @@ function buildHost(deps: BuildHostDeps): Host {
     deps.writeTerminalReset()
     void deps.logger?.append('lifecycle', { type: 'host-torndown', mode }).catch(() => {})
     orchLog(deps.logger, 'host-teardown', { mode })
+  }
+  const teardown = async (): Promise<void> => {
+    if (innerTeardownPromise !== undefined) return innerTeardownPromise
+    innerTeardownPromise = teardownInner()
+    return innerTeardownPromise
   }
 
   // Inner stub: `wrapHostWithStepsView` always replaces this with a real
@@ -1271,6 +1339,35 @@ function buildHost(deps: BuildHostDeps): Host {
     return 'attach-exited'
   }
 
+  const probeReachability = async (): Promise<{
+    readonly reachable: boolean
+    readonly reason?: string
+  }> => {
+    // Reuse the existing internal probe — it already handles the both-sessions
+    // + probe-failed cases used for lifecycle telemetry. Compress the JsonObject
+    // result down to the boolean+reason shape the Host interface promises.
+    const probe = await tmuxReachability()
+    if (probe.tmuxReachabilityProbeFailed === true) {
+      return {
+        reachable: false,
+        reason: 'tmux server is no longer reachable',
+      }
+    }
+    if (probe.tmuxServerReachable === false) {
+      return {
+        reachable: false,
+        reason: 'tmux server is no longer reachable',
+      }
+    }
+    if (probe.tmuxSessionReachable === false || probe.tmuxScratchSessionReachable === false) {
+      return {
+        reachable: false,
+        reason: 'tmux session is no longer reachable',
+      }
+    }
+    return { reachable: true }
+  }
+
   return {
     mode,
     writeBanner,
@@ -1281,6 +1378,7 @@ function buildHost(deps: BuildHostDeps): Host {
     runInteractive,
     attachForeground,
     awaitForegroundShutdown,
+    probeReachability,
     teardown,
   }
 }

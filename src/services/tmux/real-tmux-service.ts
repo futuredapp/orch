@@ -13,6 +13,7 @@ import type {
   HasServerOptions,
   HasSessionOptions,
   KillPaneOptions,
+  KillServerOptions,
   KillSessionOptions,
   KillWindowOptions,
   ListPanesOptions,
@@ -127,6 +128,12 @@ export class RealTmuxService implements TmuxService {
       '-y',
       String(opts.height),
     ]
+    // Holder argv (optional). Appended after the new-session flags so it
+    // becomes the initial pane's command — replaces the user's $SHELL.
+    if (opts.command !== undefined) {
+      assertNoNullByteArgv(opts.command, 'createSession command')
+      argv.push(...opts.command)
+    }
     const { stderr, exitCode } = await this.#run(argv)
     if (exitCode !== 0) throw fail(exitCode, stderr, 'tmux new-session failed')
   }
@@ -335,6 +342,16 @@ export class RealTmuxService implements TmuxService {
     if (exitCode === 0) return
     if (/session not found|no server running|can't find session/i.test(stderr)) return
     throw fail(exitCode, stderr, 'tmux kill-session failed')
+  }
+
+  async killServer(opts: KillServerOptions): Promise<void> {
+    // Idempotent — "no server running" means "already gone", which is the
+    // outcome we want. Anything else surfaces as a real failure.
+    const argv = ['tmux', '-L', opts.socket, 'kill-server']
+    const { stderr, exitCode } = await this.#run(argv)
+    if (exitCode === 0) return
+    if (/no server running|error connecting to|no such file or directory/i.test(stderr)) return
+    throw fail(exitCode, stderr, 'tmux kill-server failed')
   }
 
   async attachSession(opts: AttachSessionOptions): Promise<void> {

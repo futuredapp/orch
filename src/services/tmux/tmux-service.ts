@@ -95,6 +95,15 @@ export interface CreateSessionOptions {
    * user's `~/.tmux.conf`).
    */
   readonly configPath?: Path
+  /**
+   * Argv for the initial pane's holder process. When provided, appended
+   * after `new-session` so the new session's first pane runs this command
+   * instead of the user's login shell. Use for sessions that need a stable
+   * non-exiting holder (e.g. the scratch session whose initial pane must
+   * never die — see incident r-2026-05-22-093650-j0). When omitted, tmux
+   * spawns the user's `$SHELL` as usual.
+   */
+  readonly command?: readonly string[]
 }
 
 interface SplitPaneCommonOptions {
@@ -222,6 +231,10 @@ export interface KillPaneOptions {
 export interface KillSessionOptions {
   readonly socket: SocketName
   readonly session: string
+}
+
+export interface KillServerOptions {
+  readonly socket: SocketName
 }
 
 export interface HasSessionOptions {
@@ -448,6 +461,18 @@ export interface TmuxService {
    * signal handlers) and must be idempotent.
    */
   killSession(opts: KillSessionOptions): Promise<void>
+
+  /**
+   * `tmux -L <socket> kill-server`. Tears down the entire per-run tmux
+   * server (process + socket file). Called after the orch + scratch
+   * sessions have been killed individually — needed because the appliance
+   * config pins `exit-empty off` (see incident r-2026-05-22-093650-j0),
+   * so emptying all sessions no longer dissolves the server on its own.
+   * Adapters MUST tolerate "no server running" as a no-op — teardown is
+   * idempotent and may be invoked after a previous teardown already
+   * killed the server.
+   */
+  killServer(opts: KillServerOptions): Promise<void>
 
   /**
    * `tmux -L <socket> has-session -t <session>` — exit-code probe. Returns

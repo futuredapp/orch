@@ -8,6 +8,8 @@ interface FakeHostState {
   attachSettled: boolean
   teardownCalls: number
   resolveAttach: () => void
+  setReachable: (reachable: boolean, reason?: string) => void
+  probeCalls: number
 }
 
 function fakeHost(mode: Host['mode'] = 'plain'): FakeHostState {
@@ -15,12 +17,19 @@ function fakeHost(mode: Host['mode'] = 'plain'): FakeHostState {
   const attachPromise = new Promise<void>((resolve) => {
     resolveAttach = resolve
   })
+  let reachable = true
+  let reason: string | undefined
   const state: FakeHostState = {
     attachSettled: false,
     teardownCalls: 0,
+    probeCalls: 0,
     resolveAttach: () => {
       state.attachSettled = true
       resolveAttach()
+    },
+    setReachable: (r, why) => {
+      reachable = r
+      reason = why
     },
     host: {
       mode,
@@ -33,6 +42,10 @@ function fakeHost(mode: Host['mode'] = 'plain'): FakeHostState {
         mode === 'plain'
           ? Promise.resolve('attach-exited' as const)
           : attachPromise.then(() => 'attach-exited' as const),
+      probeReachability: async () => {
+        state.probeCalls++
+        return reachable ? { reachable: true } : { reachable: false, reason }
+      },
       teardown: async () => {
         state.teardownCalls++
       },
@@ -113,6 +126,68 @@ describe('executeWithAttach (unit)', () => {
     const text = stderr.text()
     const occurrences = text.split('boom').length - 1
     expect(occurrences).toBe(1)
+  })
+
+  it('two-pane: prints the detach hint when the host is still reachable after attach exits', async () => {
+    const host = fakeHost('two-pane')
+    const stderr = bufferStream()
+    host.setReachable(true)
+
+    // Workflow resolves on a macro-task tick so the foreground settlement
+    // (microtask chain off the attach promise) wins the race deterministically.
+    const workflow = new Promise<void>((resolve) => {
+      setTimeout(resolve, 10)
+    })
+
+    host.resolveAttach()
+
+    const code = await executeWithAttach({
+      host: host.host,
+      workflow,
+      runId: 'r-2026-05-22-093650-j0',
+      stderr: stderr.stream,
+      mapError: () => undefined,
+      summary: { workflowName: 'feature', runDir: '.orch/state/r-2026-05-22-093650-j0' },
+    })
+
+    expect(code).toBe(EXIT.OK)
+    expect(host.probeCalls).toBe(1)
+    const text = stderr.text()
+    expect(text).toContain('detached. run continues in background')
+    expect(text).toContain('re-attach with: tmux -L orch-r-2026-05-22-093650-j0')
+  })
+
+  it('two-pane: prints unreachable notice (NOT the detach hint) when probe fails after attach exits', async () => {
+    const host = fakeHost('two-pane')
+    const stderr = bufferStream()
+    host.setReachable(false, 'tmux server is no longer reachable')
+
+    // Workflow rejects on a macro-task tick — same ordering trick as above so
+    // the foreground race winner is `attach-exited`, not the workflow's reject.
+    const workflow = new Promise<void>((_, reject) => {
+      setTimeout(
+        () => reject(new Error('tmux session is no longer reachable — cannot start step deepen')),
+        10,
+      )
+    })
+
+    host.resolveAttach()
+
+    const code = await executeWithAttach({
+      host: host.host,
+      workflow,
+      runId: 'r-2026-05-22-093650-j0',
+      stderr: stderr.stream,
+      mapError: (err) => ({ code: EXIT.STEP_FAILURE, reason: (err as Error).message }),
+      summary: { workflowName: 'feature', runDir: '.orch/state/r-2026-05-22-093650-j0' },
+    })
+
+    expect(code).toBe(EXIT.STEP_FAILURE)
+    expect(host.probeCalls).toBe(1)
+    const text = stderr.text()
+    expect(text).not.toContain('run continues in background')
+    expect(text).not.toContain('re-attach with')
+    expect(text).toContain('tmux server is no longer reachable')
   })
 
   it('re-throws when mapError returns undefined and writes no summary', async () => {

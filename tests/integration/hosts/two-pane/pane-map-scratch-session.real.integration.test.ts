@@ -75,6 +75,25 @@ describe.skipIf(!canRun)('scratch-session lifecycle on real tmux', () => {
     expect(scratchPanes.length).toBeGreaterThanOrEqual(1)
   })
 
+  it('runs the cat holder argv as the scratch initial pane', async () => {
+    const tmux = new RealTmuxService({ processService: new BunProcessService() })
+    const socket = newSocket('holder')
+
+    await tmux.createSession({ socket, session: 'orch', width: 200, height: 50 })
+    const handle = await createScratchSession({ tmux, socket, width: 200, height: 50 })
+
+    // The initial pane's running command must be `cat` — it blocks on the
+    // pane's pty stdin (no one ever writes to it in the scratch session)
+    // and never exits on its own. `pane_current_command` reflects the
+    // foreground process in the pane's pty.
+    const cmds = await tmux.listPanes({
+      socket,
+      session: handle.session,
+      format: '#{pane_current_command}',
+    })
+    expect(cmds).toContain('cat')
+  })
+
   it('teardown kills the scratch session and leaves the orch session alive', async () => {
     const tmux = new RealTmuxService({ processService: new BunProcessService() })
     const socket = newSocket('teardown-order')
