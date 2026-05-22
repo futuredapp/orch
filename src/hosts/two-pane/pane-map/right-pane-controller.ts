@@ -227,6 +227,18 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
   /** The pane id currently rendering in the visible slot. Updated after every
    *  successful swap. Initially the visible right pane the host created. */
   let visiblePaneId: PaneId = opts.rightPaneId
+  /**
+   * Controller-wide serial chain for `showSource`. Concurrent invocations
+   * (step:start fires fire-and-forget `registerSource` from
+   * `tmux-host.ts:746`; each registration's auto-swap-on-live block calls
+   * `showSource`) otherwise read `visiblePaneId` before any prior swap's
+   * write commits — every swap then targets the original right pane id and
+   * the chain breaks, leaving the first source's content stuck in the
+   * visible slot. Canonical reproduction: run r-2026-05-22-170039-0o. The
+   * per-paneId `paneQueue` cannot close this race because each call enqueues
+   * on a different `src` paneId.
+   */
+  let swapChain: Promise<void> = Promise.resolve()
   /** Currently active source key. Undefined when nothing has been swapped in. */
   let currentKey: SourceKey | undefined
   /**
@@ -447,7 +459,7 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
     await work
   }
 
-  const showSource = async (key: SourceKey): Promise<void> => {
+  const doShowSource = async (key: SourceKey): Promise<void> => {
     if (stopped) return
     const skey = sourceKeyToString(key)
     const entry = panes.get(skey)
@@ -489,6 +501,17 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
     visiblePaneId = src
     currentKey = key
     logLifecycle({ type: 'right-pane-swap', to: skey, paneId: src })
+  }
+
+  const showSource = (key: SourceKey): Promise<void> => {
+    // Serialize every swap behind `swapChain` so the read of `visiblePaneId`,
+    // the swap, and the write of `visiblePaneId` are atomic across concurrent
+    // callers. `prev.catch` swallows upstream rejections so one failed swap
+    // does not poison every later showSource — the rejection still surfaces
+    // to its own caller via `next`.
+    const next = swapChain.catch(() => undefined).then(() => doShowSource(key))
+    swapChain = next.catch(() => undefined)
+    return next
   }
 
   const removeFromLiveSources = (skey: string): void => {

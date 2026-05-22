@@ -26,39 +26,52 @@ export interface InitSessionOptions {
 // Strict appliance-mode allowlist (PR A — tmux strict sandbox)
 // ---------------------------------------------------------------------------
 //
-// Six interactions survive the lockdown:
+// Six root-table interactions survive the lockdown, plus a small audited
+// copy-mode allowlist so users can escape and scroll once they land there:
 //
 //   1. Drag pane border to resize         — MouseDrag1Border → resize-pane -M
 //   2. Click pane to focus                — MouseDown1Pane   → select-pane -t=
 //   3. Keyboard pane switch (left)        — M-Left           → select-pane -L
 //   4. Keyboard pane switch (right)       — M-Right          → select-pane -R
-//   5. Wheel up (smart)                   — WheelUpPane      → if-shell -F …
-//   6. Wheel down (smart)                 — WheelDownPane    → if-shell -F …
+//   5. Wheel up (smart, enters scrollback)— WheelUpPane      → if-shell -F …
+//   6. Wheel down (smart, NEVER enters)   — WheelDownPane    → if-shell -F …
 //
 // Native terminal text selection survives by NOT touching it — users hold
 // Shift (or Option on macOS Terminal) to bypass tmux mouse capture and use
 // the host terminal's own selection.
 //
-// Smart-wheel rule (R1/R2/R3 from the scrollable-two-pane plan):
-//   mouse_any_flag? — the app has asserted mouse tracking
-//     yes  → send-keys -M           (forward; agent owns the wheel)
-//     no   → alternate_on?
-//              yes → send-keys -M    (alt-screen w/o mouse capture: safe no-op
-//                                     fallback; do NOT enter copy-mode — that
-//                                     is the precise case that produced
-//                                     `not in a mode` historically)
-//              no  → copy-mode -e    (one-shot; exit at live tail)
+// Asymmetric wheel rule:
+//   WheelUpPane:
+//     mouse_any_flag yes → send-keys -M (forward; agent owns the wheel)
+//     else if alternate_on → send-keys -M (alt-screen w/o mouse capture: safe
+//                                          no-op forward; do NOT enter copy-
+//                                          mode — that produced `not in a
+//                                          mode` historically)
+//     else → copy-mode -e (one-shot; exit at live tail)
+//   WheelDownPane:
+//     mouse_any_flag yes → send-keys -M
+//     else if alternate_on → send-keys -M
+//     else → (no command — explicitly do nothing)
 //
-// Encoded as nested `if-shell -F` argv. tmux's `bind-key` grammar accepts the
-// inner if-shell as a single quoted token; verified empirically on tmux 3.6a
-// against the real-tmux fixture (U2 characterization).
+// The asymmetry is deliberate. Scrolling DOWN at the live tail of a normal
+// text pane has no legitimate "enter scrollback" intent — entering copy-mode
+// from a wheel-down was a surprise on every report we've seen. Scrolling UP
+// still enters scrollback per standard tmux UX.
 //
-// `copy-mode` and `copy-mode-vi` tables stay empty per R6: once the user is
-// in copy-mode, tmux's built-in modal scrolling handles further wheel events
-// — copy-mode entry is reachable only via this root-table rule, and exit is
-// automatic at the live tail via `-e`.
+// Encoded as nested `if-shell -F` argv. tmux's `bind-key` grammar accepts
+// the inner if-shell as a single quoted token; verified empirically on tmux
+// 3.6a against the real-tmux fixture (U2 characterization). When the inner
+// if-shell has only the true branch, tmux's "no else command" semantics
+// apply (man tmux: "If shell-command returns failure and a second command is
+// not given, nothing happens").
+//
+// Copy-mode key tables get a small, explicit allowlist (see
+// COPY_MODE_BINDINGS below) because tmux's modal scrolling routes ALL key
+// events through the active mode's table — wiping the defaults without
+// reinstalling exit + scroll commands traps the user with no escape (no `q`,
+// no Escape, no arrows, no wheel scroll). See the trapped-in-copy-mode bug.
 
-const SMART_WHEEL_COMMAND: readonly string[] = [
+const SMART_WHEEL_UP_COMMAND: readonly string[] = [
   'if-shell',
   '-F',
   '#{?mouse_any_flag,1,0}',
@@ -66,20 +79,74 @@ const SMART_WHEEL_COMMAND: readonly string[] = [
   'if-shell -F "#{?alternate_on,1,0}" "send-keys -M" "copy-mode -e"',
 ] as const
 
+// Symmetric with WheelUp on the mouse-capture / alt-screen branches, but the
+// live-tail else branch is omitted. The inner if-shell has only its true
+// branch — tmux does nothing when `alternate_on` is false.
+const SMART_WHEEL_DOWN_COMMAND: readonly string[] = [
+  'if-shell',
+  '-F',
+  '#{?mouse_any_flag,1,0}',
+  'send-keys -M',
+  'if-shell -F "#{?alternate_on,1,0}" "send-keys -M"',
+] as const
+
 const ALLOWLIST: readonly Omit<BindKeyOptions, 'socket'>[] = [
   { table: 'root', key: 'MouseDrag1Border', command: ['resize-pane', '-M'] },
   { table: 'root', key: 'MouseDown1Pane', command: ['select-pane', '-t='] },
   { table: 'root-no-prefix', key: 'M-Left', command: ['select-pane', '-L'] },
   { table: 'root-no-prefix', key: 'M-Right', command: ['select-pane', '-R'] },
-  { table: 'root', key: 'WheelUpPane', command: SMART_WHEEL_COMMAND },
-  { table: 'root', key: 'WheelDownPane', command: SMART_WHEEL_COMMAND },
+  { table: 'root', key: 'WheelUpPane', command: SMART_WHEEL_UP_COMMAND },
+  { table: 'root', key: 'WheelDownPane', command: SMART_WHEEL_DOWN_COMMAND },
 ] as const
 
-// `prefix` and `copy-mode` / `copy-mode-vi` are the four namespaces that
-// can fire `send-keys -X` against the running pane. Wiping all of them
-// removes every default callsite; the next wheel/key event after a stray
-// copy-mode entry/exit can no longer leak `not in a mode` into the visible
-// stream (tmux/tmux#638, tmux/tmux#3705).
+// Minimal copy-mode keymap. Installed identically under both `copy-mode` and
+// `copy-mode-vi` so the user's preferred mode doesn't matter — orch is
+// appliance mode, we own the bindings.
+//
+//   q, Escape, C-c → cancel       (exit copy-mode; load-bearing trap escape)
+//   j / Down       → cursor-down
+//   k / Up         → cursor-up
+//   PageDown       → page-down
+//   PageUp         → page-up
+//   g              → history-top
+//   G              → history-bottom
+//   WheelUpPane    → scroll-up   -N 3
+//   WheelDownPane  → scroll-down -N 3
+//
+// WheelDownPane in copy-mode IS bound (unlike in root) — once the user is
+// already in scrollback, scrolling back down to the live tail is the natural
+// way out. The `-e` flag on the entering `copy-mode -e` command makes
+// reaching the bottom of history auto-exit copy-mode.
+const COPY_MODE_KEYS: readonly { readonly key: string; readonly command: readonly string[] }[] = [
+  { key: 'q', command: ['send-keys', '-X', 'cancel'] },
+  { key: 'Escape', command: ['send-keys', '-X', 'cancel'] },
+  { key: 'C-c', command: ['send-keys', '-X', 'cancel'] },
+  { key: 'j', command: ['send-keys', '-X', 'cursor-down'] },
+  { key: 'k', command: ['send-keys', '-X', 'cursor-up'] },
+  { key: 'Down', command: ['send-keys', '-X', 'cursor-down'] },
+  { key: 'Up', command: ['send-keys', '-X', 'cursor-up'] },
+  { key: 'PageDown', command: ['send-keys', '-X', 'page-down'] },
+  { key: 'PageUp', command: ['send-keys', '-X', 'page-up'] },
+  { key: 'g', command: ['send-keys', '-X', 'history-top'] },
+  { key: 'G', command: ['send-keys', '-X', 'history-bottom'] },
+  { key: 'WheelUpPane', command: ['send-keys', '-X', '-N', '3', 'scroll-up'] },
+  { key: 'WheelDownPane', command: ['send-keys', '-X', '-N', '3', 'scroll-down'] },
+] as const
+
+const COPY_MODE_TABLES: readonly Extract<KeyTable, 'copy-mode' | 'copy-mode-vi'>[] = [
+  'copy-mode',
+  'copy-mode-vi',
+] as const
+
+const COPY_MODE_ALLOWLIST: readonly Omit<BindKeyOptions, 'socket'>[] = COPY_MODE_TABLES.flatMap(
+  (table) => COPY_MODE_KEYS.map((entry) => ({ table, key: entry.key, command: entry.command })),
+)
+
+// Wipe defaults across every key table that can fire `send-keys -X` against
+// the running pane — root (default events before a prefix), prefix (events
+// after the prefix key, neutralized by `prefix None`), and the two copy-mode
+// tables. After wiping, the explicit allowlists below reinstall exactly the
+// bindings we want; nothing else survives (tmux/tmux#638, tmux/tmux#3705).
 const TABLES_TO_WIPE: readonly KeyTable[] = ['root', 'prefix', 'copy-mode', 'copy-mode-vi']
 
 // Copy persisted in the tmux status bar at all times — survives
@@ -87,7 +154,7 @@ const TABLES_TO_WIPE: readonly KeyTable[] = ['root', 'prefix', 'copy-mode', 'cop
 // Points users at in-pane scroll first (the new primary path via the
 // smart-wheel binding and the Ink keymap); `orch logs --latest --follow`
 // remains the power-user fallback surfaced in the startup banner.
-const STATUS_RIGHT_HINT = 'scroll: wheel · keys j/k PgUp/PgDn'
+const STATUS_RIGHT_HINT = 'scroll: wheel up · j/k PgUp/PgDn · q exits'
 
 /**
  * Create a new detached tmux session locked down to the appliance-mode
@@ -99,7 +166,9 @@ const STATUS_RIGHT_HINT = 'scroll: wheel · keys j/k PgUp/PgDn'
  *   1. `fs.writeFile(configPath, …)`   — generated `-f` config
  *   2. `tmux.createSession(configPath)` — pane is allocated under the config
  *   3. `tmux.unbindKey × 4`             — root → prefix → copy-mode → copy-mode-vi
- *   4. `tmux.bindKey × 4`               — the allowlist, in order
+ *   4. `tmux.bindKey × (root allowlist + copy-mode allowlist × 2 tables)`
+ *      — root first (in `ALLOWLIST` order), then the copy-mode allowlist
+ *        replicated under both `copy-mode` and `copy-mode-vi`
  *   5. `tmux.setOption(status-right)`   — discoverability hint
  *   6. `tmux.setHook(pane-died)`        — lifecycle wait-for signal
  *
@@ -133,6 +202,14 @@ export const initOrchSession = async (
   }
 
   for (const item of ALLOWLIST) {
+    await tmux.bindKey({ socket: opts.socket, ...item })
+  }
+
+  // Reinstall the minimal copy-mode keymap under both `copy-mode` and
+  // `copy-mode-vi`. Without this, the user is trapped the moment a wheel-up
+  // event lands them in copy-mode: no `q` to exit, no arrows or wheel to
+  // scroll, no Ctrl-C — every key event routes through an empty table.
+  for (const item of COPY_MODE_ALLOWLIST) {
     await tmux.bindKey({ socket: opts.socket, ...item })
   }
 

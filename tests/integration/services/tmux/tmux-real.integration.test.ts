@@ -586,16 +586,49 @@ describe.skipIf(!canRun)('initOrchSession strict-sandbox lockdown on real tmux',
     expect(stdout).toContain('copy-mode -e')
   })
 
-  it('list-keys for prefix, copy-mode, and copy-mode-vi tables are all empty after init', async () => {
-    const socket = newSocket('strict-empty-tables')
+  it('list-keys for the prefix table is empty after init (no prefix-rooted commands survive the wipe)', async () => {
+    const socket = newSocket('strict-empty-prefix-table')
     await initStrict(socket)
 
     // tmux `list-keys -T <table>` returns exit 1 with stderr "table … is
     // empty" once every binding is wiped — empty stdout regardless of exit
     // code is the contract that proves the table is gone.
-    for (const table of ['prefix', 'copy-mode', 'copy-mode-vi'] as const) {
+    const { stdout } = await runShell(['tmux', '-L', socket, 'list-keys', '-T', 'prefix'])
+    expect(stdout.trim()).toBe('')
+  })
+
+  it('list-keys for copy-mode and copy-mode-vi tables contain the audited allowlist (exit + scroll) after init', async () => {
+    const socket = newSocket('strict-copy-mode-allowlist')
+    await initStrict(socket)
+
+    // Copy-mode tables are intentionally NOT empty — the strict-sandbox
+    // bug fix installs a minimal allowlist (q/Escape/C-c → cancel; j/k/Up/
+    // Down/PageUp/PageDown/g/G/wheel → scroll) so a stray copy-mode entry
+    // from the WheelUpPane rule does not trap the user. The bindings are
+    // identical under both `copy-mode` and `copy-mode-vi`.
+    for (const table of ['copy-mode', 'copy-mode-vi'] as const) {
       const { stdout } = await runShell(['tmux', '-L', socket, 'list-keys', '-T', table])
-      expect(stdout.trim()).toBe('')
+      // Exit keys — the load-bearing escapes from copy-mode.
+      expect(stdout).toContain(' q ')
+      expect(stdout).toContain(' Escape ')
+      expect(stdout).toContain(' C-c ')
+      expect(stdout).toContain('cancel')
+      // Scroll keys — keyboard + wheel. tmux normalizes the displayed key
+      // name: `PageUp` is shown as `PPage`, `PageDown` as `NPage`.
+      expect(stdout).toContain(' j ')
+      expect(stdout).toContain(' k ')
+      expect(stdout).toContain(' Up ')
+      expect(stdout).toContain(' Down ')
+      expect(stdout).toContain(' PPage ')
+      expect(stdout).toContain(' NPage ')
+      expect(stdout).toContain(' g ')
+      expect(stdout).toContain(' G ')
+      expect(stdout).toContain('WheelUpPane')
+      expect(stdout).toContain('WheelDownPane')
+      expect(stdout).toContain('scroll-up')
+      expect(stdout).toContain('scroll-down')
+      expect(stdout).toContain('history-top')
+      expect(stdout).toContain('history-bottom')
     }
   })
 

@@ -39,7 +39,7 @@ afterEach(async () => {
 describe.skipIf(!tmuxAvailable)(
   'Tier 1 — smart-wheel binding structurally prevents the `not in a mode` regression',
   () => {
-    it('list-keys -T root after init exposes WheelUpPane and WheelDownPane with the nested if-shell shape gating copy-mode entry on both mouse_any_flag and alternate_on', async () => {
+    it('list-keys -T root after init exposes WheelUpPane with the nested if-shell shape gating copy-mode entry on both mouse_any_flag and alternate_on', async () => {
       const fixture = await createRealTmuxFixture({ env: {} })
       fixturesToDispose.push(fixture)
       const harness = await mountTmuxHost(fixture, { disableStepsView: true })
@@ -52,30 +52,71 @@ describe.skipIf(!tmuxAvailable)(
       const stdout = await new Response(proc.stdout).text()
       await proc.exited
 
-      const wheelLines = stdout
-        .split('\n')
-        .filter((l) => l.includes('WheelUpPane') || l.includes('WheelDownPane'))
+      const upLine = stdout.split('\n').find((l) => l.includes('WheelUpPane'))
+      expect(upLine).toBeDefined()
+      if (upLine === undefined) throw new Error('expected WheelUpPane in list-keys -T root')
 
-      // Both wheel events must be present.
-      expect(wheelLines.some((l) => l.includes('WheelUpPane'))).toBe(true)
-      expect(wheelLines.some((l) => l.includes('WheelDownPane'))).toBe(true)
-
-      // Both must encode the dual-guard rule: mouse_any_flag at the outer
-      // conditional, alternate_on at the inner one. Losing either guard
+      // WheelUpPane must encode the dual-guard rule: mouse_any_flag at the
+      // outer conditional, alternate_on at the inner one. Losing either guard
       // re-opens the `not in a mode` regression class.
-      for (const line of wheelLines) {
-        expect(line).toContain('mouse_any_flag')
-        expect(line).toContain('alternate_on')
-        expect(line).toContain('send-keys -M')
-        expect(line).toContain('copy-mode -e')
-      }
+      expect(upLine).toContain('mouse_any_flag')
+      expect(upLine).toContain('alternate_on')
+      expect(upLine).toContain('send-keys -M')
+      expect(upLine).toContain('copy-mode -e')
     })
 
-    it('copy-mode and copy-mode-vi tables are empty after init so a stale entry from the wheel rule cannot leak `not in a mode`', async () => {
+    it('WheelDownPane in the root table NEVER falls back to copy-mode at the live tail — only WheelUp opens scrollback (regression guard for trapped-in-copy-mode)', async () => {
       const fixture = await createRealTmuxFixture({ env: {} })
       fixturesToDispose.push(fixture)
       const harness = await mountTmuxHost(fixture, { disableStepsView: true })
       harnessesToTeardown.push(harness)
+
+      const proc = Bun.spawn(['tmux', '-L', fixture.socket, 'list-keys', '-T', 'root'], {
+        stdout: 'pipe',
+        stderr: 'ignore',
+      })
+      const stdout = await new Response(proc.stdout).text()
+      await proc.exited
+
+      const downLine = stdout.split('\n').find((l) => l.includes('WheelDownPane'))
+      expect(downLine).toBeDefined()
+      if (downLine === undefined) throw new Error('expected WheelDownPane in list-keys -T root')
+
+      // WheelDownPane keeps the same outer mouse_any_flag / inner alternate_on
+      // forwards for apps that opt into mouse tracking or alt-screen — but
+      // the live-tail else branch is GONE: scrolling down on a normal text
+      // pane is a no-op, not a copy-mode trap.
+      expect(downLine).toContain('mouse_any_flag')
+      expect(downLine).toContain('alternate_on')
+      expect(downLine).toContain('send-keys -M')
+      expect(downLine).not.toContain('copy-mode')
+    })
+
+    it('copy-mode and copy-mode-vi tables contain ONLY the audited allowlist after init — exit (q/Escape/C-c) and scroll (j/k/Up/Down/PageUp/PageDown/g/G/wheel) — so the user can never get trapped', async () => {
+      const fixture = await createRealTmuxFixture({ env: {} })
+      fixturesToDispose.push(fixture)
+      const harness = await mountTmuxHost(fixture, { disableStepsView: true })
+      harnessesToTeardown.push(harness)
+
+      // The exact keys we expect in BOTH copy-mode tables. Extra defaults
+      // surviving the wipe would re-introduce send-keys -X callsites the
+      // strict-sandbox plan explicitly removes. tmux normalizes the input
+      // keys on display: `PageUp` is shown as `PPage`, `PageDown` as `NPage`.
+      const expectedKeys = new Set([
+        'q',
+        'Escape',
+        'C-c',
+        'j',
+        'k',
+        'Down',
+        'Up',
+        'NPage',
+        'PPage',
+        'g',
+        'G',
+        'WheelUpPane',
+        'WheelDownPane',
+      ])
 
       for (const table of ['copy-mode', 'copy-mode-vi'] as const) {
         const proc = Bun.spawn(['tmux', '-L', fixture.socket, 'list-keys', '-T', table], {
@@ -84,7 +125,24 @@ describe.skipIf(!tmuxAvailable)(
         })
         const stdout = await new Response(proc.stdout).text()
         await proc.exited
-        expect(stdout.trim()).toBe('')
+
+        const lines = stdout.split('\n').filter((l) => l.trim().length > 0)
+        // Every bound key in this table must be in the allowlist; the wipe
+        // happened before the install, so anything extra is a regression.
+        for (const line of lines) {
+          const found = [...expectedKeys].some((k) => line.includes(` ${k} `) || line.endsWith(k))
+          if (!found) {
+            // Surface the offending line so a regression report points at it.
+            throw new Error(`unexpected ${table} binding survived the wipe: ${line}`)
+          }
+        }
+
+        // Load-bearing escape keys must be present — the bug this test
+        // guards against was: copy-mode entered, no `q`/Escape bound, user
+        // stuck. Assert by listing each key individually.
+        for (const must of ['q', 'Escape', 'C-c']) {
+          expect(lines.some((l) => l.includes(must))).toBe(true)
+        }
       }
     })
 

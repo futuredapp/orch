@@ -90,15 +90,14 @@ describe('initOrchSession wipes key tables before installing bindings', () => {
   })
 })
 
-describe('initOrchSession installs the six-item allowlist in order', () => {
-  it('binds MouseDrag1Border to resize-pane -M on the root table', async () => {
+describe('initOrchSession installs the root allowlist followed by the copy-mode allowlist', () => {
+  it('binds MouseDrag1Border to resize-pane -M as the first root-table binding', async () => {
     const fs = new FakeFsService()
     const tmux = new FakeTmuxService()
 
     await initOrchSession(tmux, fs, baseOpts)
 
     const binds = tmux.recordedCalls.filter((c) => c.method === 'bindKey')
-    expect(binds).toHaveLength(6)
     const first = binds[0]
     if (first?.method !== 'bindKey') throw new Error('expected bindKey call')
     expect(first.opts.table).toBe('root')
@@ -106,15 +105,15 @@ describe('initOrchSession installs the six-item allowlist in order', () => {
     expect(first.opts.command).toEqual(['resize-pane', '-M'])
   })
 
-  it('installs exactly the six allowlist bindings in MouseDrag, MouseDown, M-Left, M-Right, WheelUpPane, WheelDownPane order', async () => {
+  it('installs the six root-table bindings first, in MouseDrag, MouseDown, M-Left, M-Right, WheelUpPane, WheelDownPane order', async () => {
     const fs = new FakeFsService()
     const tmux = new FakeTmuxService()
 
     await initOrchSession(tmux, fs, baseOpts)
 
     const binds = tmux.recordedCalls.filter((c) => c.method === 'bindKey')
-    expect(binds).toHaveLength(6)
-    const keys = binds.map((c) => (c.method === 'bindKey' ? c.opts.key : ''))
+    const rootBinds = binds.slice(0, 6)
+    const keys = rootBinds.map((c) => (c.method === 'bindKey' ? c.opts.key : ''))
     expect(keys).toEqual([
       'MouseDrag1Border',
       'MouseDown1Pane',
@@ -124,31 +123,112 @@ describe('initOrchSession installs the six-item allowlist in order', () => {
       'WheelDownPane',
     ])
 
-    const tables = binds.map((c) => (c.method === 'bindKey' ? c.opts.table : ''))
+    const tables = rootBinds.map((c) => (c.method === 'bindKey' ? c.opts.table : ''))
     expect(tables).toEqual(['root', 'root', 'root-no-prefix', 'root-no-prefix', 'root', 'root'])
   })
 
-  it('wheel bindings encode the nested if-shell smart-wheel rule with mouse_any_flag and alternate_on', async () => {
+  it('WheelUpPane uses the smart-wheel rule that falls back to copy-mode -e on a normal text pane', async () => {
     const fs = new FakeFsService()
     const tmux = new FakeTmuxService()
 
     await initOrchSession(tmux, fs, baseOpts)
 
     const binds = tmux.recordedCalls.filter((c) => c.method === 'bindKey')
-    const wheelBinds = binds.filter(
-      (c) =>
-        c.method === 'bindKey' && (c.opts.key === 'WheelUpPane' || c.opts.key === 'WheelDownPane'),
-    )
-    expect(wheelBinds).toHaveLength(2)
+    const upBind = binds.find((c) => c.method === 'bindKey' && c.opts.key === 'WheelUpPane')
+    if (upBind?.method !== 'bindKey') throw new Error('expected WheelUpPane bindKey call')
+    const command = upBind.opts.command
+    expect(command[0]).toBe('if-shell')
+    expect(command[1]).toBe('-F')
+    expect(command[2]).toBe('#{?mouse_any_flag,1,0}')
+    expect(command[3]).toBe('send-keys -M')
+    expect(command[4]).toBe('if-shell -F "#{?alternate_on,1,0}" "send-keys -M" "copy-mode -e"')
+  })
 
-    for (const bind of wheelBinds) {
-      if (bind.method !== 'bindKey') throw new Error('expected bindKey call')
-      const command = bind.opts.command
-      expect(command[0]).toBe('if-shell')
-      expect(command[1]).toBe('-F')
-      expect(command[2]).toBe('#{?mouse_any_flag,1,0}')
-      expect(command[3]).toBe('send-keys -M')
-      expect(command[4]).toBe('if-shell -F "#{?alternate_on,1,0}" "send-keys -M" "copy-mode -e"')
+  it('WheelDownPane uses the smart-wheel rule WITHOUT a copy-mode fallback (no surprise enter on scroll-down at the live tail)', async () => {
+    const fs = new FakeFsService()
+    const tmux = new FakeTmuxService()
+
+    await initOrchSession(tmux, fs, baseOpts)
+
+    const binds = tmux.recordedCalls.filter((c) => c.method === 'bindKey')
+    const downBind = binds.find((c) => c.method === 'bindKey' && c.opts.key === 'WheelDownPane')
+    if (downBind?.method !== 'bindKey') throw new Error('expected WheelDownPane bindKey call')
+    const command = downBind.opts.command
+    expect(command[0]).toBe('if-shell')
+    expect(command[1]).toBe('-F')
+    expect(command[2]).toBe('#{?mouse_any_flag,1,0}')
+    expect(command[3]).toBe('send-keys -M')
+    // Inner if-shell has the alt-screen forward branch only — no copy-mode -e
+    // else, so the live-tail case is an explicit no-op.
+    expect(command[4]).toBe('if-shell -F "#{?alternate_on,1,0}" "send-keys -M"')
+    expect(command[4]).not.toContain('copy-mode')
+  })
+
+  it('after the root bindings, installs the copy-mode allowlist under both copy-mode and copy-mode-vi tables', async () => {
+    const fs = new FakeFsService()
+    const tmux = new FakeTmuxService()
+
+    await initOrchSession(tmux, fs, baseOpts)
+
+    const binds = tmux.recordedCalls.filter((c) => c.method === 'bindKey')
+    const copyModeBinds = binds.slice(6)
+    const tables = new Set(copyModeBinds.map((c) => (c.method === 'bindKey' ? c.opts.table : '')))
+    expect(tables).toEqual(new Set(['copy-mode', 'copy-mode-vi']))
+
+    // Same key/command set under each table, so total count is 2 × per-table.
+    expect(copyModeBinds.length % 2).toBe(0)
+    expect(copyModeBinds.length).toBeGreaterThanOrEqual(2 * 7) // at minimum: exit + scroll keys
+  })
+
+  it('the copy-mode allowlist binds q, Escape, and C-c to the cancel command so the user can always exit copy-mode', async () => {
+    const fs = new FakeFsService()
+    const tmux = new FakeTmuxService()
+
+    await initOrchSession(tmux, fs, baseOpts)
+
+    const binds = tmux.recordedCalls.filter((c) => c.method === 'bindKey')
+    for (const table of ['copy-mode', 'copy-mode-vi'] as const) {
+      for (const key of ['q', 'Escape', 'C-c'] as const) {
+        const match = binds.find(
+          (c) => c.method === 'bindKey' && c.opts.table === table && c.opts.key === key,
+        )
+        if (match?.method !== 'bindKey') {
+          throw new Error(`expected ${table}/${key} bindKey call`)
+        }
+        expect(match.opts.command).toEqual(['send-keys', '-X', 'cancel'])
+      }
+    }
+  })
+
+  it('the copy-mode allowlist binds j/k/Up/Down/PageUp/PageDown/g/G and the wheel to the documented scroll commands', async () => {
+    const fs = new FakeFsService()
+    const tmux = new FakeTmuxService()
+
+    await initOrchSession(tmux, fs, baseOpts)
+
+    const binds = tmux.recordedCalls.filter((c) => c.method === 'bindKey')
+    const expectations: ReadonlyArray<readonly [string, readonly string[]]> = [
+      ['j', ['send-keys', '-X', 'cursor-down']],
+      ['k', ['send-keys', '-X', 'cursor-up']],
+      ['Down', ['send-keys', '-X', 'cursor-down']],
+      ['Up', ['send-keys', '-X', 'cursor-up']],
+      ['PageDown', ['send-keys', '-X', 'page-down']],
+      ['PageUp', ['send-keys', '-X', 'page-up']],
+      ['g', ['send-keys', '-X', 'history-top']],
+      ['G', ['send-keys', '-X', 'history-bottom']],
+      ['WheelUpPane', ['send-keys', '-X', '-N', '3', 'scroll-up']],
+      ['WheelDownPane', ['send-keys', '-X', '-N', '3', 'scroll-down']],
+    ]
+    for (const table of ['copy-mode', 'copy-mode-vi'] as const) {
+      for (const [key, command] of expectations) {
+        const match = binds.find(
+          (c) => c.method === 'bindKey' && c.opts.table === table && c.opts.key === key,
+        )
+        if (match?.method !== 'bindKey') {
+          throw new Error(`expected ${table}/${key} bindKey call`)
+        }
+        expect(match.opts.command).toEqual(command)
+      }
     }
   })
 })

@@ -163,6 +163,28 @@ export async function runStepsViewRunner(opts: ParsedOpts): Promise<void> {
     alternateScreen: true,
   })
 
+  // Alt-screen alone still leaks stale header rows when the pane resizes:
+  // Ink's resize handler uses `log-update`'s `previousLineCount` (a `\n`
+  // count of the prior frame's string), which underestimates the rows the
+  // prior frame physically occupies whenever a Yoga-wrapped line in that
+  // frame was split across multiple terminal rows. `eraseLines(prevCount)`
+  // then frees fewer rows than the prior frame actually used, so the new
+  // frame is written below the residual top rows. In the reported bug, the
+  // `orch · <workflow> · <runId>` header (wrapped to 2 rows at a narrow
+  // pane width) accumulates above every subsequent frame.
+  //
+  // The fix prepends a resize listener that emits `\x1b[H\x1b[2J` (cursor
+  // home + erase entire screen) BEFORE Ink's own resize handler runs.
+  // `prependListener` puts ours at the head of the listener array so the
+  // alt-screen canvas is wiped first; Ink then renders the new frame onto
+  // the clean canvas. `log-update`'s internal `previousLineCount` stays
+  // out of sync with the visible state for exactly one render, but the
+  // next `eraseLines(prevCount)` (issued before Ink writes the new frame)
+  // erases only blank rows, so there is no visible artifact.
+  process.stdout.prependListener('resize', () => {
+    process.stdout.write('\x1b[H\x1b[2J')
+  })
+
   try {
     await Promise.race([exitPromise, instance.waitUntilExit()])
   } finally {
