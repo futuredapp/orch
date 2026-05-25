@@ -31,7 +31,7 @@ describe('claude().prepareAutoStop with no pre-existing settings', () => {
     await runner.prepareAutoStop?.(ctx())
 
     const settings = await readJson(fs, SETTINGS)
-    const expected = 'tmux -S "$ORCH_SOCKET" wait-for -S "$ORCH_STOP_CHANNEL"'
+    const expected = 'tmux -L "$ORCH_SOCKET" wait-for -S "$ORCH_STOP_CHANNEL"'
     expect(commandsFor(settings, 'Stop')).toEqual([expected])
     expect(commandsFor(settings, 'StopFailure')).toEqual([expected])
   })

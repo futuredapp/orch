@@ -113,8 +113,12 @@ function assertFlagAllowed(flag: string): void {
 // into any existing hooks so a user's own settings are never clobbered.
 
 /** Signal-only one-liner. No termination verb, no stdout side effect — just
- *  unblocks orch's `wait-for` on the per-run stop channel. */
-const AUTO_STOP_HOOK_COMMAND = 'tmux -S "$ORCH_SOCKET" wait-for -S "$ORCH_STOP_CHANNEL"' as const
+ *  unblocks orch's `wait-for` on the per-run stop channel. The socket selector
+ *  is `-L <name>` (not `-S <path>`): orch's server runs on a named socket
+ *  (`tmux -L orch-<runId>`), and a fresh `tmux` client from the hook would
+ *  otherwise connect to the default server and never reach orch's `wait-for`.
+ *  The `-S` after `wait-for` is the unrelated signal-channel flag. */
+const AUTO_STOP_HOOK_COMMAND = 'tmux -L "$ORCH_SOCKET" wait-for -S "$ORCH_STOP_CHANNEL"' as const
 
 /** Events that mean "the turn is over" — a normal stop and a stop-hook failure. */
 const AUTO_STOP_HOOK_EVENTS = ['Stop', 'StopFailure'] as const

@@ -103,6 +103,56 @@ const ROLLUP_STEP_NAME = metaStepName('_rollup')
 const buildPaneDiedCommand = (socket: SocketName): string =>
   `run-shell "tmux -L ${socket} wait-for -S pane-exit-#{hook_pane}"`
 
+// Auto-stop: how long to wait for a clean EOF-driven pane exit before falling
+// through to the existing kill-session teardown. Generous because Codex's
+// interactive REPL is slow to flush/exit (see the codex-capture handover).
+const AUTO_STOP_CLEAN_EXIT_MS = 5000
+
+/**
+ * Race the pane's `pane-exit` death against the auto-stop signal channel the
+ * agent's hook fires on turn completion. Returns which branch won. The losing
+ * waiter is left parked (its `tmux wait-for` client); callers release it during
+ * teardown (kill-session resolves pane-exit; an explicit `signalChannel`
+ * releases the stop channel). Both `.catch` guards keep a late settle from
+ * surfacing as an unhandled rejection after the race resolves.
+ */
+function racePaneExitVsStop(
+  tmux: TmuxService,
+  socket: SocketName,
+  paneExitChannel: string,
+  stopChannel: string,
+): Promise<'pane-exit' | 'stop'> {
+  const paneExit = tmux
+    .waitFor({ socket, channel: paneExitChannel })
+    .then((): 'pane-exit' => 'pane-exit')
+  const stop = tmux.waitFor({ socket, channel: stopChannel }).then((): 'stop' => 'stop')
+  paneExit.catch(() => {})
+  stop.catch(() => {})
+  return Promise.race([paneExit, stop])
+}
+
+/**
+ * Attempt a clean exit on the stop signal: send EOF (Ctrl-D) to the idle REPL
+ * and bounded-wait the pane's death. `remain-on-exit on` makes a clean agent
+ * exit fire `pane-died`, resolving `pane-exit`. If the bounded wait elapses,
+ * return `'forced'` so the caller falls through to the existing kill-session
+ * teardown — no new kill mechanism is invented.
+ */
+async function terminateOnAutoStop(
+  tmux: TmuxService,
+  socket: SocketName,
+  target: PaneId,
+  paneExitChannel: string,
+): Promise<'clean' | 'forced'> {
+  await tmux.sendKeys({ socket, target, keys: ['\u0004'] }).catch(() => {})
+  try {
+    await tmux.waitFor({ socket, channel: paneExitChannel, timeoutMs: AUTO_STOP_CLEAN_EXIT_MS })
+    return 'clean'
+  } catch {
+    return 'forced'
+  }
+}
+
 // tmux's `(No such file or directory)` / `no server running` / `session not
 // found` / `can't find session` stderr patterns all share one meaning: the
 // tmux session (or the whole server) the host was talking to is gone, and
@@ -1039,6 +1089,19 @@ function buildHost(deps: BuildHostDeps): Host {
     }
     const sourceKey: SourceKey = { type: 'interactive', stepName: spawn.stepName }
     const sourceKeyString = `interactive:${spawn.stepName}`
+    // Auto-stop: allocate a per-step stop channel and inject the socket +
+    // channel NAMES the agent's hook references (`$ORCH_SOCKET` /
+    // `$ORCH_STOP_CHANNEL`). Injected here so the env is present the instant
+    // the pane's process starts. The channel can't embed the pane id — the id
+    // doesn't exist until the pane does — so it's keyed off the unique step
+    // name instead.
+    const autoStopChannel = spawn.autoStop
+      ? `auto-stop-${spawn.stepName.replace(/[^a-zA-Z0-9-]/g, '_')}`
+      : undefined
+    const spawnEnv =
+      autoStopChannel !== undefined
+        ? { ...spawn.env, ORCH_SOCKET: deps.socket, ORCH_STOP_CHANNEL: autoStopChannel }
+        : spawn.env
     try {
       appendLifecycleSoon({
         type: 'interactive-register-start',
@@ -1054,7 +1117,7 @@ function buildHost(deps: BuildHostDeps): Host {
       await controller.registerSource(sourceKey, {
         kind: 'pty',
         argv: spawn.argv,
-        env: spawn.env,
+        env: spawnEnv,
         cwd: spawn.cwd,
       })
     } catch (err) {
@@ -1134,10 +1197,50 @@ function buildHost(deps: BuildHostDeps): Host {
       // server (cross-session OK), so `pane-exit-<hiddenPaneId>` resolves
       // when the runner exits even though the pane lives in the scratch
       // session.
-      await deps.tmux.waitFor({
-        socket: deps.socket,
-        channel: `pane-exit-${hiddenPaneId}`,
-      })
+      //
+      // With auto-stop armed, race that pane-exit wait against the stop
+      // channel the agent's hook signals on turn completion. A manual human
+      // close still resolves via pane-exit (the non-autoStop path is
+      // unchanged); a stop signal triggers an external termination (clean EOF
+      // first, kill-session teardown as the bounded fallback).
+      const paneExitChannel = `pane-exit-${hiddenPaneId}`
+      if (autoStopChannel === undefined) {
+        await deps.tmux.waitFor({ socket: deps.socket, channel: paneExitChannel })
+      } else {
+        appendLifecycleSoon({
+          type: 'interactive-auto-stop-armed',
+          stepName: spawn.stepName,
+          pane: paneRole,
+          paneId: hiddenPaneId,
+          channel: autoStopChannel,
+        })
+        const winner = await racePaneExitVsStop(
+          deps.tmux,
+          deps.socket,
+          paneExitChannel,
+          autoStopChannel,
+        )
+        if (winner === 'stop') {
+          appendLifecycleSoon({
+            type: 'interactive-auto-stop-signaled',
+            stepName: spawn.stepName,
+            paneId: hiddenPaneId,
+            channel: autoStopChannel,
+          })
+          const terminationPath = await terminateOnAutoStop(
+            deps.tmux,
+            deps.socket,
+            hiddenPaneId,
+            paneExitChannel,
+          )
+          appendLifecycleSoon({
+            type: 'interactive-auto-stop-terminated',
+            stepName: spawn.stepName,
+            paneId: hiddenPaneId,
+            path: terminationPath,
+          })
+        }
+      }
       appendLifecycleSoon({
         type: 'interactive-wait-complete',
         stepName: spawn.stepName,
@@ -1180,6 +1283,16 @@ function buildHost(deps: BuildHostDeps): Host {
       }
       throw err
     } finally {
+      // Auto-stop: release any parked stop-channel waiter. If the pane closed
+      // some other way (manual human close → pane-exit won the race, or an
+      // error path), the stop-channel `tmux wait-for` client is still blocked;
+      // signalling the channel lets it exit instead of lingering. Idempotent
+      // and harmless when the channel was already the winner.
+      if (autoStopChannel !== undefined) {
+        await deps.tmux
+          .signalChannel({ socket: deps.socket, channel: autoStopChannel })
+          .catch(() => {})
+      }
       // unregisterSource for `interactive` kills the hidden pane and (if
       // the interactive source was current) swaps the placeholder back to
       // the visible slot. The old post-exit `respawnPane(['cat'])` restore
@@ -1211,6 +1324,18 @@ function buildHost(deps: BuildHostDeps): Host {
           })
           handleSendError(err)
         })
+      // Run the runner's auto-stop artifact cleanup (Claude's settings file,
+      // Codex's temp CODEX_HOME) after the pane is gone. Guarded so a cleanup
+      // failure is logged, never thrown out of `finally`.
+      if (spawn.onCleanup !== undefined) {
+        await spawn.onCleanup().catch((err) => {
+          appendLifecycleSoon({
+            type: 'interactive-auto-stop-cleanup-failed',
+            stepName: spawn.stepName,
+            ...errorLifecycleFields(err),
+          })
+        })
+      }
     }
 
     // tmux's `pane-died` hook doesn't give us the child's exit code through

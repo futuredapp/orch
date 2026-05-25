@@ -277,9 +277,12 @@ async function buildAutonomousArgv(
 
 /** Signal-only notify hook: pings orch's wait-for channel on turn completion.
  *  No termination, no state mutation. The `\"` escapes survive into the TOML
- *  string so the shell sees real double-quotes around the env-var refs. */
+ *  string so the shell sees real double-quotes around the env-var refs. The
+ *  socket selector is `-L <name>` (orch's server is `tmux -L orch-<runId>`);
+ *  `-S <path>` would reach the wrong server. The `-S` after `wait-for` is the
+ *  separate signal-channel flag. */
 const CODEX_NOTIFY_LINE =
-  'notify = ["bash", "-lc", "tmux -S \\"$ORCH_SOCKET\\" wait-for -S \\"$ORCH_STOP_CHANNEL\\""]'
+  'notify = ["bash", "-lc", "tmux -L \\"$ORCH_SOCKET\\" wait-for -S \\"$ORCH_STOP_CHANNEL\\""]'
 
 async function prepareCodexAutoStop(
   fs: FsService,

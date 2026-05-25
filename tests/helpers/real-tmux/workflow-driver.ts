@@ -36,6 +36,8 @@ export interface HarnessStep {
   readonly mode?: StepMode
   /** Optional prompt forwarded to the runner. */
   readonly prompt?: string
+  /** Interactive auto-stop opt-in. Only valid with `mode: 'interactive'`. */
+  readonly autoStop?: boolean
 }
 
 export interface MountedHarness {
@@ -251,7 +253,8 @@ function buildWorkflowBody(
           agent: harnessStep.agent,
           ...(harnessStep.prompt !== undefined ? { prompt: harnessStep.prompt } : {}),
           ...(harnessStep.mode !== undefined ? { mode: harnessStep.mode } : {}),
-        }),
+          ...(harnessStep.autoStop !== undefined ? { autoStop: harnessStep.autoStop } : {}),
+        } as Parameters<typeof step.define>[1]),
         overrides,
       )
     }
