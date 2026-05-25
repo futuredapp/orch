@@ -1,7 +1,12 @@
+// **File size.** This file exceeds the project's 300-LOC warning cap after the
+// auto-stop hook-injection block (parser + argv builders + two runner methods +
+// the prepareAutoStop helpers). The pieces are cohesive — all Claude-CLI
+// adapter concerns — and splitting for size alone would scatter the adapter.
+// Revisit if a second large capability lands here.
+
 import { z } from 'zod'
-import type { FsService } from '../../services/fs/fs-service.ts'
-import { BunFsService, mergeEnv } from '../../services/index.ts'
-import { path } from '../../services/types.ts'
+import { BunFsService, type FsService, mergeEnv } from '../../services/index.ts'
+import { type Path, path } from '../../services/types.ts'
 import type {
   AutoStopPreparation,
   Runner,
@@ -150,7 +155,7 @@ function mergeStopHooks(existing: Record<string, unknown>): Record<string, unkno
  *  original bytes for the cleanup inverse, or `undefined` if absent. */
 async function readExistingSettings(
   fs: FsService,
-  settingsPath: import('../../services/types.ts').Path,
+  settingsPath: Path,
 ): Promise<{ readonly original: string | undefined; readonly parsed: Record<string, unknown> }> {
   if (!(await fs.exists(settingsPath))) return { original: undefined, parsed: {} }
   const original = await fs.readFile(settingsPath)

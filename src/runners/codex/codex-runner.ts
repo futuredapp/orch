@@ -1,3 +1,9 @@
+// **File size.** This file exceeds the project's 300-LOC warning cap: it carries
+// the Codex CLI adapter end to end — schemas, denylist, NDJSON parser, version
+// preflight, both argv builders, the factory, post-spawn session-id capture, and
+// the auto-stop CODEX_HOME injection. These are one adapter's cohesive concerns;
+// splitting for size alone would scatter them. Revisit if a new capability lands.
+
 import { homedir } from 'node:os'
 import { z } from 'zod'
 import type { FsService } from '../../services/fs/fs-service.ts'
@@ -284,27 +290,43 @@ async function buildAutonomousArgv(
 const CODEX_NOTIFY_LINE =
   'notify = ["bash", "-lc", "tmux -L \\"$ORCH_SOCKET\\" wait-for -S \\"$ORCH_STOP_CHANNEL\\""]'
 
+const CONFIG_TOML = path('config.toml')
+
+/** True when the copied config already declares a top-level `notify` key.
+ *  Appending a second one would make duplicate-key TOML, which Codex's parser
+ *  rejects — refusing to start at all. Detecting it lets us skip our injection
+ *  (auto-stop silently won't fire — the visible-hang follow-up) rather than
+ *  corrupt the user's config (a strictly worse outcome). */
+function hasNotifyKey(config: string): boolean {
+  return /^\s*notify\s*=/m.test(config)
+}
+
 async function prepareCodexAutoStop(
   fs: FsService,
   ctx: RunnerContext,
 ): Promise<AutoStopPreparation> {
-  const realCodexHome = path(ctx.env.CODEX_HOME ?? `${homedir()}/.codex`)
+  // The interactive executor passes `ctx.env = {}`, so the real CODEX_HOME comes
+  // from the process env (or the default) — not ctx.env. ctx.env is checked
+  // first only for forward-compat with a future caller that threads it.
+  const realCodexHome = path(ctx.env.CODEX_HOME ?? process.env.CODEX_HOME ?? `${homedir()}/.codex`)
   const runCodexHome = await fs.tempDir('orch-codex')
 
   // Symlink every real-home entry except config.toml so auth.json, sessions/,
   // etc. are inherited without copying. readDir yields basenames.
   const entries = (await fs.exists(realCodexHome)) ? await fs.readDir(realCodexHome) : []
   for (const entry of entries) {
-    if ((entry as string) === 'config.toml') continue
+    if (entry === CONFIG_TOML) continue
     await fs.symlink(path(`${realCodexHome}/${entry}`), path(`${runCodexHome}/${entry}`))
   }
 
   // Copy config.toml (if any) and append the notify line. Never writes back to
-  // the real home — only the throwaway copy gets the hook.
+  // the real home — only the throwaway copy gets the hook. If the user's config
+  // already defines `notify`, leave it untouched (see hasNotifyKey).
   const realConfig = path(`${realCodexHome}/config.toml`)
   const existing = (await fs.exists(realConfig)) ? await fs.readFile(realConfig) : ''
   const base = existing === '' || existing.endsWith('\n') ? existing : `${existing}\n`
-  await fs.writeFile(path(`${runCodexHome}/config.toml`), `${base}${CODEX_NOTIFY_LINE}\n`)
+  const body = hasNotifyKey(existing) ? base : `${base}${CODEX_NOTIFY_LINE}\n`
+  await fs.writeFile(path(`${runCodexHome}/config.toml`), body)
 
   const cleanup = async (): Promise<void> => {
     // Removes the temp dir — drops only symlinks + the copied config. The real

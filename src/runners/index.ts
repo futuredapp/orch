@@ -4,7 +4,7 @@ export type { CodexOptions } from './codex/index.ts'
 export { CodexVersionError, codex, parseCodexLine } from './codex/index.ts'
 export type { InteractiveRunResult, RunnerResult } from './execute.ts'
 export { runInteractive, runRunner } from './execute.ts'
-export type { FakeScript } from './fake/index.ts'
+export type { FakeRunnerOptions, FakeScript } from './fake/index.ts'
 export { FakeRunner } from './fake/index.ts'
 export type {
   AutoStopPreparation,

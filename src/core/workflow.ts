@@ -517,10 +517,11 @@ async function runInteractiveStep(
     const cmd = await config.agent.buildCommand(buildCtx)
     argv = cmd.argv
     // Auto-stop preparation runs after buildCommand (it only needs ctx). Its
-    // env additions (e.g. Codex's CODEX_HOME) are merged on top of the command
-    // env; the cleanup handle rides the spawn so the host runs it in `finally`.
+    // env additions (e.g. Codex's CODEX_HOME) ride the `extras` layer — below
+    // `buildCtx.env` so a workflow author's step env still wins last. The
+    // cleanup handle is wrapped once-guarded and handed to the host.
     const autoStopPrep = await prepareAutoStopForStep(config, buildCtx)
-    cmdEnv = mergeEnv(cmd.env, autoStopPrep.extras, {})
+    cmdEnv = mergeEnv(cmd.env, autoStopPrep.extras, buildCtx.env)
     const interactivePromise = deps.host.runInteractive({
       argv: cmd.argv,
       env: cmdEnv,

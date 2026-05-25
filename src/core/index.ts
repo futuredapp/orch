@@ -18,6 +18,7 @@ export { commit } from './commit.ts'
 export {
   AskNoDefaultError,
   AskParallelError,
+  AutoStopUnsupportedError,
   InteractiveParallelError,
   ResumeError,
   RunNotFoundError,

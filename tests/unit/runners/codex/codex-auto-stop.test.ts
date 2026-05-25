@@ -86,6 +86,25 @@ describe('codex().prepareAutoStop CODEX_HOME construction', () => {
 
     expect(await fs.readFile(path('/home/u/.codex/config.toml'))).toBe('model = "o3"\n')
   })
+
+  it('does not append a second notify line when the user config already defines one (no duplicate-key TOML)', async () => {
+    const fs = new FakeFsService()
+    await fs.mkdir(REAL_HOME, { recursive: true })
+    await fs.writeFile(
+      path('/home/u/.codex/config.toml'),
+      'notify = ["my-notifier"]\nmodel = "o3"\n',
+    )
+
+    const prep = await makeCodex(fs).prepareAutoStop?.(ctx())
+    const runHome = path(prep?.env.CODEX_HOME as string)
+
+    const config = await fs.readFile(path(`${runHome}/config.toml`))
+    // Exactly one notify key survives — the user's. Ours is skipped to avoid a
+    // duplicate-key config that Codex would refuse to parse.
+    expect(config.match(/^\s*notify\s*=/gm)?.length).toBe(1)
+    expect(config).toContain('my-notifier')
+    expect(config).not.toContain('$ORCH_STOP_CHANNEL')
+  })
 })
 
 describe('codex().prepareAutoStop cleanup', () => {

@@ -79,6 +79,16 @@ async function waitForLifecycle(
   throw new Error('timed out waiting for the expected lifecycle event')
 }
 
+/** Read a string-typed field off a lifecycle record, failing loudly rather than
+ *  casting `unknown` to `string`. */
+function stringField(event: Record<string, unknown>, key: string): string {
+  const value = event[key]
+  if (typeof value !== 'string') {
+    throw new Error(`expected lifecycle field "${key}" to be a string, got ${typeof value}`)
+  }
+  return value
+}
+
 describe.skipIf(!tmuxAvailable)('Tier 1 — interactive auto-stop', () => {
   it('closes itself when the stop channel is signaled, with no manual close', async () => {
     const fixture = await createRealTmuxFixture({ env: {} })
@@ -101,7 +111,10 @@ describe.skipIf(!tmuxAvailable)('Tier 1 — interactive auto-stop', () => {
     expect(armed.channel).toBe('auto-stop-brainstorm')
 
     // Play the agent hook's role: signal turn completion on the stop channel.
-    await fixture.tmux.signalChannel({ socket: fixture.socket, channel: armed.channel as string })
+    await fixture.tmux.signalChannel({
+      socket: fixture.socket,
+      channel: stringField(armed, 'channel'),
+    })
 
     const result = await runPromise
     expect(result.completed).toBe(true)
@@ -124,7 +137,10 @@ describe.skipIf(!tmuxAvailable)('Tier 1 — interactive auto-stop', () => {
       (e) => e.type === 'interactive-auto-stop-armed',
       8000,
     )
-    await fixture.tmux.signalChannel({ socket: fixture.socket, channel: armed.channel as string })
+    await fixture.tmux.signalChannel({
+      socket: fixture.socket,
+      channel: stringField(armed, 'channel'),
+    })
     await runPromise
 
     const types = (await readLifecycle(fixture, harness)).map((e) => e.type)
@@ -134,6 +150,32 @@ describe.skipIf(!tmuxAvailable)('Tier 1 — interactive auto-stop', () => {
     expect(armedAt).toBeGreaterThanOrEqual(0)
     expect(signaledAt).toBeGreaterThan(armedAt)
     expect(terminatedAt).toBeGreaterThan(signaledAt)
+  }, 20_000)
+
+  it('resolves via pane-exit when an armed autoStop pane is manually closed, with no stop signal', async () => {
+    const fixture = await createRealTmuxFixture({ env: {} })
+    fixturesToDispose.push(fixture)
+    const harness = await mountTmuxHost(fixture, { disableStepsView: true })
+    harnessesToTeardown.push(harness)
+
+    const agent = longLivedRunner(['cat'])
+    const runPromise = harness.runWorkflow([
+      { name: 'brainstorm', agent, mode: 'interactive', autoStop: true },
+    ])
+
+    await waitForLifecycle(fixture, harness, (e) => e.type === 'interactive-auto-stop-armed', 8000)
+
+    // Close the pane by hand (EOF to cat) before any stop signal — pane-exit
+    // wins the race; the finally must release the parked stop-channel waiter.
+    const rightId = await harness.right.paneId
+    await harness.sendKeysToPaneId(rightId, '\u0004')
+
+    const result = await runPromise
+    expect(result.completed).toBe(true)
+
+    const types = (await readLifecycle(fixture, harness)).map((e) => e.type)
+    expect(types).toContain('interactive-auto-stop-armed')
+    expect(types).not.toContain('interactive-auto-stop-signaled')
   }, 20_000)
 
   it('a step without autoStop never arms and ignores a stop-channel signal', async () => {
