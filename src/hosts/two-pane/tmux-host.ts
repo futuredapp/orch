@@ -205,6 +205,18 @@ export interface TmuxHostOptions {
    */
   readonly installExitHandler?: (handler: () => void) => void
   /**
+   * Hook used to register a global unhandled-rejection backstop. Defaults to
+   * `process.on('unhandledRejection', ...)`. Tests inject their own to capture
+   * the registered handler without touching the global process.
+   *
+   * Lives on the two-pane host because it is the only host that shares its
+   * stdout/stderr TTY with an attached `tmux` client. Node's default handler
+   * prints the rejection stack to fd-2, which in that mode bleeds over the live
+   * TUI grid (incident r-2026-05-25-171216-nu). The backstop routes the
+   * rejection to the session lifecycle log instead and never touches fd-2.
+   */
+  readonly installRejectionHandler?: (handler: (reason: unknown) => void) => void
+  /**
    * `<cwd>/.orch/state` — the run-state base directory. The steps-view daemon
    * uses this to compute `<basePath>/<runId>/` for tailing `state.json` and
    * `tui-intents.ndjson`. Required when the steps view is enabled; ignored
@@ -381,6 +393,29 @@ export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
     opts.installExitHandler ?? ((handler: () => void) => process.on('exit', handler))
   installExitHandler(() => {
     writeTerminalReset()
+  })
+
+  // Systemic backstop for the fd-2 bleed. The "never write to stderr while
+  // attached to tmux" rule is otherwise enforced only by convention at each
+  // call site; a single escaped rejection from any `void asyncFn()` would
+  // reach Node's default handler and print its stack to the shared TTY, drawing
+  // over the live TUI (incident r-2026-05-25-171216-nu). Route every unhandled
+  // rejection to the session lifecycle log and swallow it — a logged line, not
+  // terminal corruption. Scoped to the tmux host (the only host that shares the
+  // TTY), mirroring the exit-handler placement decision.
+  const installRejectionHandler =
+    opts.installRejectionHandler ??
+    ((handler: (reason: unknown) => void) => process.on('unhandledRejection', handler))
+  installRejectionHandler((reason: unknown) => {
+    void opts.logger
+      ?.append('lifecycle', {
+        type: 'unhandled-rejection-suppressed',
+        error: String(reason),
+        ...(reason instanceof Error
+          ? { errorName: reason.name, errorMessage: reason.message, stack: reason.stack }
+          : {}),
+      })
+      .catch(() => {})
   })
 
   // Phase 4 + q/Ctrl-C fix: track which branch settled the foreground

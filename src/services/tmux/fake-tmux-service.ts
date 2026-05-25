@@ -96,6 +96,14 @@ export class FakeTmuxService implements TmuxService {
    * stay distinct.
    */
   readonly #panesBySession: Map<string, PaneId[]> = new Map()
+  /**
+   * Panes whose process has exited but whose containing session is still alive
+   * (real tmux with `remain-on-exit on` leaves the dead pane lingering). A swap
+   * touching such a pane throws the canonical "can't find pane" error, while
+   * `hasSession` keeps reporting the session as alive — the exact condition a
+   * session-granular liveness check cannot detect.
+   */
+  readonly #deadPanes: Set<string> = new Set()
   #nextCreateSessionCounter = 1
   #nextSplitPaneCounter = 1
   #nextWindowCounter = 1
@@ -230,9 +238,24 @@ export class FakeTmuxService implements TmuxService {
     return synthetic
   }
 
+  /**
+   * Mark a pane as dead-but-lingering: its process exited, but `remain-on-exit`
+   * keeps the pane (and its session) present. Subsequent `swapPane` calls that
+   * reference it throw "can't find pane" while `hasSession` still returns true.
+   */
+  markPaneDead(id: PaneId): void {
+    this.#deadPanes.add(String(id))
+  }
+
   async swapPane(opts: SwapPaneOptions): Promise<void> {
     this.#calls.push({ method: 'swapPane', opts })
     this.#failIfSocketLost('swap-pane')
+    for (const target of [opts.src, opts.dst]) {
+      if (this.#deadPanes.has(String(target))) {
+        const stderr = `can't find pane: ${target}`
+        throw new TmuxCommandError(1, stderr, `tmux swap-pane failed (exit 1): ${stderr}`)
+      }
+    }
   }
 
   async sendKeys(opts: SendKeysOptions): Promise<void> {

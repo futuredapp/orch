@@ -740,41 +740,73 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
     }
   }
 
+  /**
+   * Walk `liveSources` newest-first and show the first source matching
+   * `accept` whose backing session is still alive. Each candidate is
+   * liveness-checked before we swap to it: a runner whose session was torn
+   * down leaves a stale `liveSources` entry, and swapping to its dead pane
+   * would crash exactly like the Enter path did. `liveSources` mutates as
+   * `invalidateSourceIfSessionGone` forgets dead entries, so we iterate over a
+   * snapshot. Returns true if a source was shown.
+   */
+  const showNewestLiveSource = async (accept: (key: SourceKey) => boolean): Promise<boolean> => {
+    for (const skey of [...liveSources].reverse()) {
+      if (skey === undefined) continue
+      await invalidateSourceIfSessionGone(skey)
+      if (!panes.has(skey)) continue
+      const key = keyByString.get(skey)
+      if (key !== undefined && accept(key)) {
+        await showSource(key)
+        return true
+      }
+    }
+    return false
+  }
+
   const followLive = async (): Promise<void> => {
     if (stopped) return
     const rollupKey: SourceKey = { type: 'rollup' }
-    if (panes.has(sourceKeyToString(rollupKey))) {
+    const rollupSkey = sourceKeyToString(rollupKey)
+    await invalidateSourceIfSessionGone(rollupSkey)
+    if (panes.has(rollupSkey)) {
       await showSource(rollupKey)
       return
     }
-    // Walk newest-first and prefer a truly-live source. dispatchEnter on a
-    // past interactive step re-registers `interactive:<step>` (an interactive
-    // *replay* pane), and registerSource pushes both `live` and `interactive`
-    // keys onto liveSources. Without this preference, `f` after entering a
-    // past interactive step short-circuits — the replay key is both the
-    // visible source and `liveSources.at(-1)`, so showSource returns early.
-    for (let i = liveSources.length - 1; i >= 0; i--) {
-      const skey = liveSources[i]
-      if (skey === undefined) continue
-      const key = keyByString.get(skey)
-      if (key !== undefined && key.type === 'live') {
-        await showSource(key)
-        return
-      }
-    }
-    // No truly-live source. Fall back to most-recent-anything so workflows
-    // with only interactive steps still respond to `f`.
-    const lastLive = liveSources.at(-1)
-    if (lastLive !== undefined) {
-      const key = keyByString.get(lastLive)
-      if (key !== undefined) {
-        await showSource(key)
-        return
-      }
-    }
+    // Prefer a truly-live source. dispatchEnter on a past interactive step
+    // re-registers `interactive:<step>` and registerSource pushes both `live`
+    // and `interactive` keys onto liveSources; without this preference, `f`
+    // after entering a past interactive step short-circuits on the replay key.
+    if (await showNewestLiveSource((key) => key.type === 'live')) return
+    // No truly-live source. Fall back to most-recent still-alive source so
+    // workflows with only interactive steps still respond to `f`.
+    if (await showNewestLiveSource(() => true)) return
     const placeholderKey: SourceKey = { type: 'placeholder' }
     if (panes.has(sourceKeyToString(placeholderKey))) await showSource(placeholderKey)
   }
+
+  /**
+   * Drop a source from every index unconditionally. Used both when a session
+   * probe proves the source is gone and when a `swap-pane` answers "can't find
+   * pane" (the source's process exited out-of-band, e.g. an interactive resume
+   * pty that finished while it was hidden — incident r-2026-05-25-171216-nu).
+   */
+  const forgetSource = (skey: string): void => {
+    panes.delete(skey)
+    keyByString.delete(skey)
+    removeFromLiveSources(skey)
+    if (currentKey !== undefined && sourceKeyToString(currentKey) === skey) {
+      currentKey = undefined
+    }
+  }
+
+  /**
+   * True for the tmux failure raised when a swap targets a pane whose process
+   * exited and tmux already destroyed it. `hasSession` cannot detect this when
+   * `remain-on-exit` keeps the session alive around the dead pane, so it is the
+   * canonical signal that a cached entry must be forgotten and re-resolved.
+   */
+  const isStalePaneError = (err: unknown): boolean =>
+    err instanceof TmuxCommandError && /can't find pane/i.test(err.stderr)
 
   const invalidateSourceIfSessionGone = async (skey: string): Promise<void> => {
     const entry = panes.get(skey)
@@ -784,12 +816,7 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
       session: entry.session,
     })
     if (sessionAlive) return
-    panes.delete(skey)
-    keyByString.delete(skey)
-    removeFromLiveSources(skey)
-    if (currentKey !== undefined && sourceKeyToString(currentKey) === skey) {
-      currentKey = undefined
-    }
+    forgetSource(skey)
     logLifecycle({
       type: 'source-session-stale',
       sourceKey: skey,
@@ -830,50 +857,75 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
     return { type: 'replay', stepName: step.name as StepName }
   }
 
+  /**
+   * If the step has a live/interactive source already cached, tune in to it
+   * and return true. Returns false when there is none, or when the cached
+   * source's pane had died and was refreshed away (caller falls through to the
+   * replay path, which re-registers a fresh source).
+   *
+   * The step may be currently running — a `live:<step>`/`interactive:<step>`
+   * source is registered while it executes, and the replay path's `lookupStep`
+   * can't satisfy an in-flight step with no persisted entry. It may also be a
+   * past interactive step whose warm-cached resume pane has no teardown owner
+   * and exited out-of-band; both are handled here so we never swap to a dead
+   * pane (incident r-2026-05-25-171216-nu).
+   */
+  const showCachedRunningSource = async (stepName: string): Promise<boolean> => {
+    const liveKey: SourceKey = { type: 'live', stepName: stepName as StepName }
+    const interactiveKey: SourceKey = { type: 'interactive', stepName: stepName as StepName }
+    await invalidateSourceIfSessionGone(sourceKeyToString(liveKey))
+    await invalidateSourceIfSessionGone(sourceKeyToString(interactiveKey))
+    const liveExists = panes.has(sourceKeyToString(liveKey))
+    const interactiveExists = panes.has(sourceKeyToString(interactiveKey))
+    if (!liveExists && !interactiveExists) return false
+    const key = liveExists ? liveKey : interactiveKey
+    try {
+      await showSource(key)
+      await setViewMode({ mode: 'live' })
+      logLifecycle({ type: 'live-pane-opened', stepName, sourceKey: sourceKeyToString(key) })
+      return true
+    } catch (err) {
+      // `hasSession` can report alive while the pane inside it is dead
+      // (remain-on-exit keeps the session up), so the swap still fails with
+      // "can't find pane". Forget the stale source and let the caller fall
+      // through to re-register. Any other failure propagates → error banner.
+      if (!isStalePaneError(err)) throw err
+      forgetSource(sourceKeyToString(key))
+      logLifecycle({ type: 'live-pane-stale-refresh', stepName, sourceKey: sourceKeyToString(key) })
+      return false
+    }
+  }
+
   const dispatchEnter = async (stepName: string): Promise<void> => {
     if (stopped) return
 
-    // If the step is currently running, a `live:<step>` or `interactive:<step>`
-    // source is already registered. Tune in to it instead of routing through
-    // the replay path (which `lookupStep` can't satisfy for an in-flight step
-    // with no persisted entry). Without this, Enter on the running row from
-    // the step list silently logs `replay-lookup-miss` and the right pane
-    // stays on the previous replay — the running step becomes unreachable.
-    const liveKey: SourceKey = { type: 'live', stepName: stepName as StepName }
-    const interactiveKey: SourceKey = { type: 'interactive', stepName: stepName as StepName }
-    const liveExists = panes.has(sourceKeyToString(liveKey))
-    const interactiveExists = panes.has(sourceKeyToString(interactiveKey))
-    if (liveExists || interactiveExists) {
-      const key = liveExists ? liveKey : interactiveKey
-      await showSource(key)
-      await setViewMode({ mode: 'live' })
-      logLifecycle({
-        type: 'live-pane-opened',
-        stepName,
-        sourceKey: sourceKeyToString(key),
-      })
-      return
-    }
-
-    const step = await lookupStep(stepName)
-    if (step === undefined) {
-      logLifecycle({ type: 'replay-lookup-miss', stepName })
-      return
-    }
-    // Cached steps never produced a transcript; surface that as a transient
-    // info banner rather than swapping to an empty replay pane.
-    if (step.status === 'cached') {
-      logLifecycle({ type: 'replay-cached-skip', stepName })
-      await emitBanner({
-        kind: 'info',
-        text: `step ${stepName} — cached (no transcript captured)`,
-        ttlMs: 4000,
-      })
-      return
-    }
-
-    const replayKey = replayKeyFor(step)
+    // One try/catch around the whole body. The short-circuit used to sit
+    // outside it; a `swap-pane` failure there escaped `dispatchEnter`, and
+    // because `onIntent` fires this as `void dispatchEnter(...)` it became an
+    // unhandled rejection whose stack Node wrote to fd-2 — the TTY shared with
+    // the tmux client — bleeding over the live TUI (r-2026-05-25-171216-nu).
+    // Every failure must surface as a banner, never escape.
     try {
+      if (await showCachedRunningSource(stepName)) return
+
+      const step = await lookupStep(stepName)
+      if (step === undefined) {
+        logLifecycle({ type: 'replay-lookup-miss', stepName })
+        return
+      }
+      // Cached steps never produced a transcript; surface that as a transient
+      // info banner rather than swapping to an empty replay pane.
+      if (step.status === 'cached') {
+        logLifecycle({ type: 'replay-cached-skip', stepName })
+        await emitBanner({
+          kind: 'info',
+          text: `step ${stepName} — cached (no transcript captured)`,
+          ttlMs: 4000,
+        })
+        return
+      }
+
+      const replayKey = replayKeyFor(step)
       const replaySkey = sourceKeyToString(replayKey)
       // If a registration for this replay key is mid-flight (the user pressed
       // Enter twice in quick succession), wait for it to finish before

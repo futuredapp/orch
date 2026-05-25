@@ -196,6 +196,48 @@ describe('createTmuxHost setup', () => {
     expect(written).toContain('\x1b[?1049l')
     expect(written).toContain('\x1b[?1006l')
   })
+
+  it('routes an unhandled rejection to the lifecycle log instead of bleeding the stack to fd-2', async () => {
+    // Backstop for the fd-2 bleed (incident r-2026-05-25-171216-nu): an escaped
+    // rejection must never reach Node's default handler, which writes to the
+    // TTY shared with the attached tmux client. The host installs an
+    // `unhandledRejection` handler that logs to the session lifecycle file and
+    // swallows the rejection. Here we capture the registered handler via the
+    // injection seam and assert it logs without writing a single byte to fd-2.
+    const tmux = new FakeTmuxService()
+    tmux.setListPanesResult(['%0'])
+    tmux.nextPaneId(paneId('%1'))
+    const capture = makeCaptureLogger('r-2026-04-23-phased1' as RunId)
+    const stderr = makeStderr()
+
+    let registeredRejectionHandler: ((reason: unknown) => void) | undefined
+    await createTmuxHost({
+      tmux,
+      processService: new FakeProcessService() as ProcessService,
+      clock: new FakeClock(0),
+      runId: 'r-2026-04-23-phased1' as RunId,
+      workflowName: 'compound',
+      stderr: stderr.stream,
+      skipVersionCheck: true,
+      disableStepsView: true,
+      logger: capture.logger,
+      installRejectionHandler: (h) => {
+        registeredRejectionHandler = h
+      },
+    })
+
+    expect(registeredRejectionHandler).toBeDefined()
+    registeredRejectionHandler?.(new Error("swap-pane failed: can't find pane: %29"))
+    await new Promise((r) => setTimeout(r, 0))
+
+    const suppressed = capture.records.find(
+      (e) => e.category === 'lifecycle' && e.record.type === 'unhandled-rejection-suppressed',
+    )
+    expect(suppressed).toBeDefined()
+    expect(String(suppressed?.record.errorMessage)).toContain("can't find pane")
+    // The whole point: nothing reaches the shared TTY.
+    expect(stderr.text()).toBe('')
+  })
 })
 
 describe('TmuxHost.onRunnerEvent', () => {
