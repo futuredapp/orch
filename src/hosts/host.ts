@@ -76,9 +76,10 @@ export interface InteractiveSpawn {
   readonly autoStop?: boolean
   /**
    * Runner-supplied cleanup for the per-run auto-stop artifact (Claude's
-   * settings file, Codex's temp CODEX_HOME). The host runs it in its `finally`
-   * regardless of how the step ends — signal, manual close, or error. A throw
-   * is logged, not propagated.
+   * settings file, Codex's temp CODEX_HOME). The workflow executor passes an
+   * idempotent wrapper and also invokes it after `runInteractive` returns or
+   * throws; hosts may call it earlier from a pane-safe `finally` once their own
+   * teardown has completed.
    */
   readonly onCleanup?: () => Promise<void>
 }

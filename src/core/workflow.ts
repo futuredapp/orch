@@ -342,6 +342,33 @@ function emitStepLifecycle(
   void stepSpan.append('lifecycle', { type, ...(rest as JsonObject) }).catch(() => {})
 }
 
+function errorLogFields(err: unknown): JsonObject {
+  const base: Record<string, unknown> = { error: String(err) }
+  if (err instanceof Error) {
+    base.errorName = err.name
+    base.errorMessage = err.message
+  }
+  return base
+}
+
+function onceLoggedAutoStopCleanup(
+  stepSpan: StepSpan | undefined,
+  cleanup: () => Promise<void>,
+): () => Promise<void> {
+  let cleanupPromise: Promise<void> | undefined
+  return async (): Promise<void> => {
+    cleanupPromise ??= cleanup().catch((err) => {
+      void stepSpan
+        ?.append('lifecycle', {
+          type: 'interactive-auto-stop-cleanup-failed',
+          ...errorLogFields(err),
+        })
+        .catch(() => {})
+    })
+    await cleanupPromise
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Reproduce command — `cd <cwd> && KEY=v ... <argv>` with secret redaction.
 // Values are omitted by default (envKeys-only); the string is already passed
@@ -519,19 +546,27 @@ async function runInteractiveStep(
     // Auto-stop preparation runs after buildCommand (it only needs ctx). Its
     // env additions (e.g. Codex's CODEX_HOME) ride the `extras` layer — below
     // `buildCtx.env` so a workflow author's step env still wins last. The
-    // cleanup handle is wrapped once-guarded and handed to the host.
+    // cleanup handle is once-guarded: tmux can invoke it at its pane-safe point,
+    // and the executor finally still owns the register/plain-host failure paths.
     const autoStopPrep = await prepareAutoStopForStep(config, buildCtx)
+    const autoStopCleanup =
+      autoStopPrep.onCleanup === undefined
+        ? undefined
+        : onceLoggedAutoStopCleanup(stepSpan, autoStopPrep.onCleanup)
     cmdEnv = mergeEnv(cmd.env, autoStopPrep.extras, buildCtx.env)
-    const interactivePromise = deps.host.runInteractive({
-      argv: cmd.argv,
-      env: cmdEnv,
-      cwd,
-      stepName: key,
-      ...(autoStop ? { autoStop: true } : {}),
-      ...(autoStopPrep.onCleanup ? { onCleanup: autoStopPrep.onCleanup } : {}),
-    })
-
-    const result = await interactivePromise
+    let result: Awaited<ReturnType<Host['runInteractive']>>
+    try {
+      result = await deps.host.runInteractive({
+        argv: cmd.argv,
+        env: cmdEnv,
+        cwd,
+        stepName: key,
+        ...(autoStop ? { autoStop: true } : {}),
+        ...(autoStopCleanup ? { onCleanup: autoStopCleanup } : {}),
+      })
+    } finally {
+      await autoStopCleanup?.()
+    }
     exitCode = result.exitCode
     durationMs = result.durationMs
 

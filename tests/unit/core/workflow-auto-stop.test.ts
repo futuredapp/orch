@@ -118,7 +118,7 @@ describe('interactive auto-stop wiring', () => {
     expect(spawnEnv?.BASE).toBe('1')
   })
 
-  it('passes the cleanup handle from prepareAutoStop through to the host', async () => {
+  it('cleans up the prepared auto-stop artifact after the interactive spawn', async () => {
     const deps = makeDeps()
     const { runner, state } = makeAutoStopRunner()
     const STEP = step.define('brainstorm', { agent: runner, mode: 'interactive', autoStop: true })
@@ -129,7 +129,45 @@ describe('interactive auto-stop wiring', () => {
 
     const onCleanup = deps.host.interactiveSpawns[0]?.onCleanup
     expect(typeof onCleanup).toBe('function')
+    expect(state.cleanupCalls).toBe(1)
     await onCleanup?.()
+    expect(state.cleanupCalls).toBe(1)
+  })
+
+  it('cleans up when the host spawn path throws before host-owned cleanup can run', async () => {
+    const deps = makeDeps()
+    const originalRunInteractive = deps.host.runInteractive.bind(deps.host)
+    deps.host.runInteractive = async (spawn) => {
+      await originalRunInteractive(spawn)
+      throw new Error('register failed')
+    }
+    const { runner, state } = makeAutoStopRunner()
+    const STEP = step.define('brainstorm', { agent: runner, mode: 'interactive', autoStop: true })
+
+    await expect(
+      workflow('test', async (run) => {
+        await run(STEP)
+      }).execute(deps),
+    ).rejects.toThrow('register failed')
+
+    expect(state.cleanupCalls).toBe(1)
+  })
+
+  it('does not double-clean when the host also invokes the cleanup handle', async () => {
+    const deps = makeDeps()
+    const originalRunInteractive = deps.host.runInteractive.bind(deps.host)
+    deps.host.runInteractive = async (spawn) => {
+      const result = await originalRunInteractive(spawn)
+      await spawn.onCleanup?.()
+      return result
+    }
+    const { runner, state } = makeAutoStopRunner()
+    const STEP = step.define('brainstorm', { agent: runner, mode: 'interactive', autoStop: true })
+
+    await workflow('test', async (run) => {
+      await run(STEP)
+    }).execute(deps)
+
     expect(state.cleanupCalls).toBe(1)
   })
 
