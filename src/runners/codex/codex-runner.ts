@@ -5,6 +5,7 @@ import { mergeEnv } from '../../services/index.ts'
 import type { ProcessService } from '../../services/process/process-service.ts'
 import { path } from '../../services/types.ts'
 import type {
+  AutoStopPreparation,
   CaptureHandle,
   CaptureResult,
   CaptureSessionIdContext,
@@ -264,6 +265,53 @@ async function buildAutonomousArgv(
 }
 
 // ---------------------------------------------------------------------------
+// Auto-stop injection via per-run CODEX_HOME (R3–R5, R7, R9)
+// ---------------------------------------------------------------------------
+//
+// Codex has no flag to register a turn-completion hook that survives the
+// denylist, but it honors `notify` from `CODEX_HOME/config.toml`. We build a
+// throwaway `CODEX_HOME` that symlinks every real `~/.codex` entry (so auth and
+// sessions are inherited untouched) EXCEPT `config.toml`, which we copy and
+// append a single signal-only `notify` line to. `CODEX_HOME` is an env var, not
+// the denylisted `-c`/`--config`, so it passes the Codex flag denylist.
+
+/** Signal-only notify hook: pings orch's wait-for channel on turn completion.
+ *  No termination, no state mutation. The `\"` escapes survive into the TOML
+ *  string so the shell sees real double-quotes around the env-var refs. */
+const CODEX_NOTIFY_LINE =
+  'notify = ["bash", "-lc", "tmux -S \\"$ORCH_SOCKET\\" wait-for -S \\"$ORCH_STOP_CHANNEL\\""]'
+
+async function prepareCodexAutoStop(
+  fs: FsService,
+  ctx: RunnerContext,
+): Promise<AutoStopPreparation> {
+  const realCodexHome = path(ctx.env.CODEX_HOME ?? `${homedir()}/.codex`)
+  const runCodexHome = await fs.tempDir('orch-codex')
+
+  // Symlink every real-home entry except config.toml so auth.json, sessions/,
+  // etc. are inherited without copying. readDir yields basenames.
+  const entries = (await fs.exists(realCodexHome)) ? await fs.readDir(realCodexHome) : []
+  for (const entry of entries) {
+    if ((entry as string) === 'config.toml') continue
+    await fs.symlink(path(`${realCodexHome}/${entry}`), path(`${runCodexHome}/${entry}`))
+  }
+
+  // Copy config.toml (if any) and append the notify line. Never writes back to
+  // the real home — only the throwaway copy gets the hook.
+  const realConfig = path(`${realCodexHome}/config.toml`)
+  const existing = (await fs.exists(realConfig)) ? await fs.readFile(realConfig) : ''
+  const base = existing === '' || existing.endsWith('\n') ? existing : `${existing}\n`
+  await fs.writeFile(path(`${runCodexHome}/config.toml`), `${base}${CODEX_NOTIFY_LINE}\n`)
+
+  const cleanup = async (): Promise<void> => {
+    // Removes the temp dir — drops only symlinks + the copied config. The real
+    // ~/.codex entries the links point at are untouched.
+    await fs.remove(runCodexHome)
+  }
+  return { env: { CODEX_HOME: runCodexHome }, cleanup }
+}
+
+// ---------------------------------------------------------------------------
 // Factory
 // ---------------------------------------------------------------------------
 
@@ -389,6 +437,10 @@ export function codex(
     // timeout) so the interactive session itself is never blocked behind it.
     captureSessionId(ctx: CaptureSessionIdContext): CaptureHandle {
       return runCaptureSessionId(ctx)
+    },
+
+    prepareAutoStop(ctx: RunnerContext): Promise<AutoStopPreparation> {
+      return prepareCodexAutoStop(deps.fs, ctx)
     },
   })
 }

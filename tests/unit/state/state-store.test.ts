@@ -72,6 +72,10 @@ class RecordingFsService implements FsService {
   tempDir(prefix: string): Promise<Path> {
     return this.inner.tempDir(prefix)
   }
+
+  symlink(target: Path, linkPath: Path): Promise<void> {
+    return this.inner.symlink(target, linkPath)
+  }
 }
 
 describe('FileStateStore', () => {

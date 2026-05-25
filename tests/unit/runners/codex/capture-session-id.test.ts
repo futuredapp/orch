@@ -132,6 +132,7 @@ describe('codex().captureSessionId', () => {
       stat: deps.fs.stat.bind(deps.fs),
       remove: deps.fs.remove.bind(deps.fs),
       tempDir: deps.fs.tempDir.bind(deps.fs),
+      symlink: deps.fs.symlink.bind(deps.fs),
       readDir: async (p: Path) => {
         readDirCalls += 1
         if (readDirCalls >= 3) {

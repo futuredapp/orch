@@ -130,6 +130,7 @@ describe('captureCodexThreadId', () => {
       stat: fs.stat.bind(fs),
       remove: fs.remove.bind(fs),
       tempDir: fs.tempDir.bind(fs),
+      symlink: fs.symlink.bind(fs),
       readDir: async (p: Path) => {
         readDirCalls += 1
         if (readDirCalls >= 3) {

@@ -15,4 +15,11 @@ export interface FsService {
   stat(path: Path): Promise<{ readonly size: number; readonly mtimeMs: number }>
   remove(path: Path): Promise<void>
   tempDir(prefix: string): Promise<Path>
+  /**
+   * Create a symbolic link at `linkPath` pointing to `target`. The parent
+   * directory of `linkPath` must already exist. Used by the Codex auto-stop
+   * strategy to build a per-run `CODEX_HOME` that inherits the real `~/.codex`
+   * entries (including `auth.json`) without copying them.
+   */
+  symlink(target: Path, linkPath: Path): Promise<void>
 }

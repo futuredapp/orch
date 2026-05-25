@@ -11,6 +11,9 @@ interface FileEntry {
 export class FakeFsService implements FsService {
   #files = new Map<string, FileEntry>()
   #dirs = new Set<string>()
+  /** linkPath -> target. Reads through to the target so tests can prove a link
+   *  "resolves to" the real entry using only port methods. */
+  #links = new Map<string, string>()
   #tempCounter = 0
   readonly #clock: Clock | undefined
 
@@ -21,11 +24,24 @@ export class FakeFsService implements FsService {
   }
 
   async readFile(p: Path): Promise<string> {
-    const entry = this.#files.get(p)
+    const resolved = this.#resolveLink(p)
+    const entry = this.#files.get(resolved)
     if (!entry) {
       throw new Error(`ENOENT: no such file: ${p}`)
     }
     return entry.data
+  }
+
+  /** Follow a chain of symlinks to the underlying real path. Non-links pass
+   *  through unchanged. Bounded so a cyclic link can't hang a test. */
+  #resolveLink(p: string): string {
+    let current = p
+    for (let hops = 0; hops < 32; hops++) {
+      const target = this.#links.get(current)
+      if (target === undefined) return current
+      current = target
+    }
+    return current
   }
 
   async writeFile(p: Path, data: string): Promise<void> {
@@ -73,7 +89,7 @@ export class FakeFsService implements FsService {
   }
 
   async exists(p: Path): Promise<boolean> {
-    return this.#files.has(p) || this.#dirs.has(p)
+    return this.#files.has(p) || this.#dirs.has(p) || this.#links.has(p)
   }
 
   async *glob(pattern: string, opts?: { readonly cwd?: Path }): AsyncIterable<Path> {
@@ -93,17 +109,10 @@ export class FakeFsService implements FsService {
     const prefix = p === '/' ? '/' : `${p}/`
     const children = new Set<string>()
 
-    for (const filePath of this.#files.keys()) {
-      if (!filePath.startsWith(prefix)) continue
-      const relative = filePath.slice(prefix.length)
-      const firstSegment = relative.split('/')[0]
-      if (firstSegment) children.add(firstSegment)
-    }
-
-    for (const dirPath of this.#dirs) {
-      if (!dirPath.startsWith(prefix)) continue
-      const relative = dirPath.slice(prefix.length)
-      const firstSegment = relative.split('/')[0]
+    // Files, dirs, and symlinks all contribute their immediate child segment.
+    for (const key of [...this.#files.keys(), ...this.#dirs, ...this.#links.keys()]) {
+      if (!key.startsWith(prefix)) continue
+      const firstSegment = key.slice(prefix.length).split('/')[0]
       if (firstSegment) children.add(firstSegment)
     }
 
@@ -121,15 +130,20 @@ export class FakeFsService implements FsService {
   async remove(p: Path): Promise<void> {
     // Match BunFsService.remove's `recursive: true, force: true` contract:
     // remove the target plus every descendant. The trailing slash in the
-    // prefix prevents `/a` from matching `/aaa/x.txt`.
+    // prefix prevents `/a` from matching `/aaa/x.txt`. Removing a symlink drops
+    // the link itself, never the target it points at.
     this.#files.delete(p)
     this.#dirs.delete(p)
+    this.#links.delete(p)
     const prefix = `${p}/`
     for (const filePath of this.#files.keys()) {
       if (filePath.startsWith(prefix)) this.#files.delete(filePath)
     }
     for (const dirPath of this.#dirs) {
       if (dirPath.startsWith(prefix)) this.#dirs.delete(dirPath)
+    }
+    for (const linkPath of this.#links.keys()) {
+      if (linkPath.startsWith(prefix)) this.#links.delete(linkPath)
     }
   }
 
@@ -138,6 +152,14 @@ export class FakeFsService implements FsService {
     const dir = path(`/tmp/${prefix}${this.#tempCounter}`)
     this.#dirs.add(dir)
     return dir
+  }
+
+  async symlink(target: Path, linkPath: Path): Promise<void> {
+    const parent = parentDir(linkPath)
+    if (parent && !this.#dirs.has(parent)) {
+      throw new Error(`ENOENT: parent directory does not exist: ${parent}`)
+    }
+    this.#links.set(linkPath, target)
   }
 }
 

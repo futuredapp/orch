@@ -89,4 +89,8 @@ export class BunFsService implements FsService {
   async tempDir(prefix: string): Promise<Path> {
     return path(await fs.mkdtemp(nodePath.join(os.tmpdir(), prefix)))
   }
+
+  async symlink(target: Path, linkPath: Path): Promise<void> {
+    await fs.symlink(target, linkPath)
+  }
 }
