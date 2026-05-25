@@ -1,6 +1,14 @@
 import { z } from 'zod'
-import { mergeEnv } from '../../services/index.ts'
-import type { Runner, RunnerCommand, RunnerContext, TerminalEvent } from '../types.ts'
+import type { FsService } from '../../services/fs/fs-service.ts'
+import { BunFsService, mergeEnv } from '../../services/index.ts'
+import { path } from '../../services/types.ts'
+import type {
+  AutoStopPreparation,
+  Runner,
+  RunnerCommand,
+  RunnerContext,
+  TerminalEvent,
+} from '../types.ts'
 import { defineRunner } from '../types.ts'
 import { toClaudeTranscriptLines } from './format-event.ts'
 
@@ -90,6 +98,89 @@ function assertFlagAllowed(flag: string): void {
       throw new Error(`claude(): flag "${flag}" is on the denylist`)
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Auto-stop hook injection (R3–R6, R9)
+// ---------------------------------------------------------------------------
+//
+// The injected hook is a signal *only*: it pings orch over the tmux wait-for
+// channel when Claude finishes (or fails to finish) a turn. orch — which owns
+// the pane — performs the actual termination. The command references the
+// env-var NAMES the tmux host injects at spawn; prepareAutoStop never needs
+// the socket/channel values. We write `.claude/settings.local.json` in cwd
+// rather than passing `--settings` (which is on the denylist), and we MERGE
+// into any existing hooks so a user's own settings are never clobbered.
+
+/** Signal-only one-liner. No termination verb, no stdout side effect — just
+ *  unblocks orch's `wait-for` on the per-run stop channel. */
+const AUTO_STOP_HOOK_COMMAND = 'tmux -S "$ORCH_SOCKET" wait-for -S "$ORCH_STOP_CHANNEL"' as const
+
+/** Events that mean "the turn is over" — a normal stop and a stop-hook failure. */
+const AUTO_STOP_HOOK_EVENTS = ['Stop', 'StopFailure'] as const
+
+interface ClaudeHookEntry {
+  readonly hooks: ReadonlyArray<{ readonly type: 'command'; readonly command: string }>
+}
+
+/** Append the signal-only hook to each stop event, preserving any hooks the
+ *  user already registered for that event (merge, never replace). */
+function mergeStopHooks(existing: Record<string, unknown>): Record<string, unknown> {
+  const priorHooks =
+    typeof existing.hooks === 'object' && existing.hooks !== null
+      ? (existing.hooks as Record<string, unknown>)
+      : {}
+  const injected: ClaudeHookEntry = {
+    hooks: [{ type: 'command', command: AUTO_STOP_HOOK_COMMAND }],
+  }
+  const nextHooks: Record<string, unknown> = { ...priorHooks }
+  for (const event of AUTO_STOP_HOOK_EVENTS) {
+    const current = Array.isArray(priorHooks[event]) ? (priorHooks[event] as unknown[]) : []
+    nextHooks[event] = [...current, injected]
+  }
+  return { ...existing, hooks: nextHooks }
+}
+
+/** Read + parse the existing settings file, tolerating malformed JSON (treated
+ *  as "no usable prior settings" so injection still succeeds). Returns the
+ *  original bytes for the cleanup inverse, or `undefined` if absent. */
+async function readExistingSettings(
+  fs: FsService,
+  settingsPath: import('../../services/types.ts').Path,
+): Promise<{ readonly original: string | undefined; readonly parsed: Record<string, unknown> }> {
+  if (!(await fs.exists(settingsPath))) return { original: undefined, parsed: {} }
+  const original = await fs.readFile(settingsPath)
+  try {
+    const parsed = JSON.parse(original) as unknown
+    if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+      return { original, parsed: parsed as Record<string, unknown> }
+    }
+  } catch {
+    // Malformed prior file — keep the original bytes for restore, but merge
+    // into an empty base so we still register the hook.
+  }
+  return { original, parsed: {} }
+}
+
+async function prepareClaudeAutoStop(
+  fs: FsService,
+  cwd: RunnerContext['cwd'],
+): Promise<AutoStopPreparation> {
+  const claudeDir = path(`${cwd}/.claude`)
+  const settingsPath = path(`${cwd}/.claude/settings.local.json`)
+  await fs.mkdir(claudeDir, { recursive: true })
+
+  const { original, parsed } = await readExistingSettings(fs, settingsPath)
+  const merged = mergeStopHooks(parsed)
+  await fs.writeFile(settingsPath, `${JSON.stringify(merged, null, 2)}\n`)
+
+  const cleanup = async (): Promise<void> => {
+    // True inverse: restore the user's original file, or remove ours if none
+    // existed. Only ever touches the per-run cwd file — never `~/.claude`.
+    if (original === undefined) await fs.remove(settingsPath)
+    else await fs.writeFile(settingsPath, original)
+  }
+  return { env: {}, cleanup }
 }
 
 // ---------------------------------------------------------------------------
@@ -211,8 +302,14 @@ function buildAutonomousArgv(
 // Factory
 // ---------------------------------------------------------------------------
 
-export function claude(opts: ClaudeOptions = {}): Readonly<Runner> {
+export function claude(
+  opts: ClaudeOptions = {},
+  deps: { readonly fs?: FsService } = {},
+): Readonly<Runner> {
   const { model, maxTurns, bare = true, flags } = opts
+  // `fs` is only needed by `prepareAutoStop` (auto-stop opt-in). Defaulted so
+  // the public `claude({...})` call form stays intact; tests inject a fake.
+  const fs = deps.fs ?? new BunFsService()
 
   return defineRunner({
     name: 'claude',
@@ -266,6 +363,13 @@ export function claude(opts: ClaudeOptions = {}): Readonly<Runner> {
       ]
       const env = mergeEnv(process.env, { FORCE_COLOR: '3' }, ctx.env)
       return { argv, env }
+    },
+
+    prepareAutoStop(ctx: RunnerContext): Promise<AutoStopPreparation> {
+      // Write the merge-safe `.claude/settings.local.json` before launch (the
+      // host order guarantees this happens before the pane spawns). Claude
+      // reads it from cwd, so no env additions are needed.
+      return prepareClaudeAutoStop(fs, ctx.cwd)
     },
   })
 }
