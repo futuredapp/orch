@@ -29,6 +29,7 @@ import type { ColumnSet } from './adaptive-columns.ts'
 import { EndOfRunFooter, EndOfRunSummary } from './end-of-run-summary.tsx'
 import type { Banner, StepRow as StepRowData, StepsViewState, ViewMode } from './step-types.ts'
 import { useAdaptiveColumns, useStepsScroll, useStepsSelection } from './steps-view-hooks.ts'
+import { computeVisibleCount, estimateWrappedRows } from './steps-view-layout.ts'
 
 export type { StepsScroll, StepsSelection } from './steps-view-hooks.ts'
 export { useAdaptiveColumns, useStepsScroll, useStepsSelection } from './steps-view-hooks.ts'
@@ -106,12 +107,19 @@ export function StepsView({
   )
   const [helpOpen, setHelpOpen] = useState(false)
 
-  // Visible-row budget for the steps body. Subtracts a rough chrome envelope
-  // (header line, two single-pixel borders, footer + margin, optional banner).
-  // The exact number is forgiving — scrollOffset is clamped at read time, so
-  // an over- or under-estimate of one row just shifts where the "top" lands.
-  const chromeRows = 5 + (state.banner !== undefined ? 1 : 0)
-  const visibleCount = Math.max(1, (stdout?.rows ?? 24) - chromeRows)
+  // Visible-row budget for the steps body. The frame must stay below the
+  // pane viewport or Ink full-clears (a visible blank-then-repaint) on every
+  // render — so the chrome envelope is measured against the actual wrapped
+  // height of the header/banner/footer rather than a flat constant. See
+  // `steps-view-layout.ts`.
+  const paneCols = stdout?.columns ?? 80
+  const paneRows = stdout?.rows ?? 24
+  const visibleCount = computeVisibleCount(paneRows, {
+    headerRows: estimateHeaderRows(state, paneCols),
+    bannerRows:
+      state.banner !== undefined ? estimateWrappedRows(bannerText(state.banner), paneCols) : 0,
+    footerRows: 1,
+  })
 
   const scroll = useStepsScroll(state.steps.length, visibleCount, () => {
     onIntent({ type: 'follow-live' })
@@ -286,17 +294,24 @@ function BannerBox({ banner }: { readonly banner: Banner }): React.ReactElement 
   if (banner.kind === 'error') {
     return (
       <Box>
-        <Text color="red">{`! ${truncate(banner.text, 200)} · Esc dismiss`}</Text>
+        <Text color="red">{bannerText(banner)}</Text>
       </Box>
     )
   }
   return (
     <Box>
       <Text color="cyan" dimColor>
-        {truncate(banner.text, 200)}
+        {bannerText(banner)}
       </Text>
     </Box>
   )
+}
+
+/** The rendered banner string — also used to measure its wrapped height. */
+function bannerText(banner: Banner): string {
+  return banner.kind === 'error'
+    ? `! ${truncate(banner.text, 200)} · Esc dismiss`
+    : truncate(banner.text, 200)
 }
 
 // ---------------------------------------------------------------------------
@@ -419,7 +434,13 @@ function ViewModeFooter({
 }): React.ReactElement {
   return (
     <Box marginTop={1}>
-      <Text dimColor>{renderViewModeFooter(view, scrollOffset)}</Text>
+      {/* Single line: a wrapping footer changes height as its text grows,
+          which tips the frame across Ink's fullscreen boundary and triggers a
+          full-clear flicker (see steps-view-layout.ts). `truncate-end` keeps
+          the line at one row regardless of width. */}
+      <Text dimColor wrap="truncate-end">
+        {renderViewModeFooter(view, scrollOffset)}
+      </Text>
     </Box>
   )
 }
@@ -432,7 +453,10 @@ function renderViewModeFooter(view: ViewMode, scrollOffset: number): string {
     view.mode === 'live'
       ? '▶ live · ⏎ view step · q quit · ? help'
       : `⏸ viewing ${truncate(view.stepName, STEP_NAME_MAX)} · f live · ⏎ view another · q quit · ? help`
-  return scrollOffset > 0 ? `${base} · ↑ scrolled · End live` : base
+  // Lead with the scroll indicator when scrolled so it survives single-line
+  // truncation at narrow widths — losing "End live" would strand the user
+  // away from the live tail with no visible way back.
+  return scrollOffset > 0 ? `↑ scrolled · End live · ${base}` : base
 }
 
 function truncate(text: string, max: number): string {
@@ -443,6 +467,24 @@ function truncate(text: string, max: number): string {
 function renderHeader(state: StepsViewState): string {
   const title = stripAnsi(state.run.workflowName)
   return `orch · ${title} · ${state.run.runId}`
+}
+
+/**
+ * Wrapped row count of the header block at `columns`. The live header is one
+ * (wrapping) line; the terminal-state header is the two-line
+ * `<EndOfRunSummary>` block (breadcrumb + status, then the totals line).
+ */
+function estimateHeaderRows(state: StepsViewState, columns: number): number {
+  if (state.status === 'live') {
+    return estimateWrappedRows(renderHeader(state), columns)
+  }
+  const summary = state.summary
+  const breadcrumb = `orch · ${stripAnsi(state.run.workflowName)} · ${state.run.runId} · ${state.status}`
+  const totals =
+    summary !== undefined
+      ? `steps ${summary.stepsCompleted}/${summary.stepsTotal} completed · duration`
+      : ''
+  return estimateWrappedRows(breadcrumb, columns) + estimateWrappedRows(totals, columns)
 }
 
 interface KeyInfo {

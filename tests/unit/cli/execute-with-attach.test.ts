@@ -190,6 +190,50 @@ describe('executeWithAttach (unit)', () => {
     expect(text).toContain('tmux server is no longer reachable')
   })
 
+  it('two-pane: when attach exits to an unreachable host, fails on host loss instead of continuing to a later interactive step', async () => {
+    const host = fakeHost('two-pane')
+    const stderr = bufferStream()
+    host.setReachable(false, 'tmux server is no longer reachable')
+
+    // Mirrors the user-visible sequence from r-2026-05-25-085934-pd:
+    // the attach client reports host loss while the workflow is still doing
+    // autonomous work, and only later would the workflow hit an ask() step.
+    // The launcher behavior we want is to fail at the host-loss boundary,
+    // not let that later ask() become the primary failure message.
+    const workflow = new Promise<void>((_, reject) => {
+      setTimeout(
+        () =>
+          reject(
+            new Error(
+              'tmux session is no longer reachable — interactive step play-again-1 cannot continue',
+            ),
+          ),
+        10,
+      )
+    })
+
+    host.resolveAttach()
+
+    const code = await executeWithAttach({
+      host: host.host,
+      workflow,
+      runId: 'r-2026-05-25-085934-pd',
+      stderr: stderr.stream,
+      mapError: (err) => ({ code: EXIT.STEP_FAILURE, reason: (err as Error).message }),
+      summary: { workflowName: 'tic-tac-toe', runDir: '.orch/state/r-2026-05-25-085934-pd' },
+    })
+
+    expect(code).toBe(EXIT.STEP_FAILURE)
+    expect(host.probeCalls).toBe(1)
+    expect(host.teardownCalls).toBe(1)
+
+    const text = stderr.text()
+    expect(text).toContain('Workflow "tic-tac-toe" failed: tmux server is no longer reachable')
+    expect(text).not.toContain('interactive step play-again-1 cannot continue')
+    expect(text).not.toContain('run continues in background')
+    expect(text).not.toContain('re-attach with')
+  })
+
   it('re-throws when mapError returns undefined and writes no summary', async () => {
     const host = fakeHost()
     const stderr = bufferStream()

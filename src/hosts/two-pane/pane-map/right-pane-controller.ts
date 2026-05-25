@@ -776,6 +776,28 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
     if (panes.has(sourceKeyToString(placeholderKey))) await showSource(placeholderKey)
   }
 
+  const invalidateSourceIfSessionGone = async (skey: string): Promise<void> => {
+    const entry = panes.get(skey)
+    if (entry === undefined) return
+    const sessionAlive = await opts.tmux.hasSession({
+      socket: opts.socket,
+      session: entry.session,
+    })
+    if (sessionAlive) return
+    panes.delete(skey)
+    keyByString.delete(skey)
+    removeFromLiveSources(skey)
+    if (currentKey !== undefined && sourceKeyToString(currentKey) === skey) {
+      currentKey = undefined
+    }
+    logLifecycle({
+      type: 'source-session-stale',
+      sourceKey: skey,
+      session: entry.session,
+      paneId: entry.paneId,
+    })
+  }
+
   // ---------------------------------------------------------------------------
   // onIntent — swap-based replay path (U8).
   //
@@ -862,6 +884,7 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
       if (pending !== undefined) {
         await pending.catch(() => {})
       }
+      await invalidateSourceIfSessionGone(replaySkey)
       if (!panes.has(replaySkey)) {
         const spec = await resolveReplaySpec(opts, step)
         await registerSource(replayKey, spec)

@@ -71,7 +71,9 @@ export interface ExecuteWithAttachOpts {
   readonly skipAttach?: boolean
 }
 
-async function handleAttachExitedTwoPane(opts: ExecuteWithAttachOpts): Promise<void> {
+async function handleAttachExitedTwoPane(
+  opts: ExecuteWithAttachOpts,
+): Promise<{ readonly reachable: true } | { readonly reachable: false; readonly reason: string }> {
   const reach = await opts.host.probeReachability()
   if (reach.reachable) {
     opts.stderr.write(
@@ -79,7 +81,7 @@ async function handleAttachExitedTwoPane(opts: ExecuteWithAttachOpts): Promise<v
         `[orch] re-attach with: tmux -L orch-${opts.runId} attach -t orch\n` +
         `[orch] tail logs with: orch logs ${opts.runId}\n`,
     )
-    return
+    return { reachable: true }
   }
   // Don't print the detach hint. The workflow's next host call will throw
   // HostUnavailableError, which `mapError` translates into the standard
@@ -93,6 +95,10 @@ async function handleAttachExitedTwoPane(opts: ExecuteWithAttachOpts): Promise<v
     runId: opts.runId,
     reason: reach.reason ?? 'unknown',
   })
+  return {
+    reachable: false,
+    reason: reach.reason ?? 'host is no longer reachable',
+  }
 }
 
 export async function executeWithAttach(opts: ExecuteWithAttachOpts): Promise<number> {
@@ -175,7 +181,17 @@ export async function executeWithAttach(opts: ExecuteWithAttachOpts): Promise<nu
       //      spawn. Printing the re-attach hint would actively mislead the
       //      user. Surface the failure path instead.
       if (opts.host.mode === 'two-pane') {
-        await handleAttachExitedTwoPane(opts)
+        const reachability = await handleAttachExitedTwoPane(opts)
+        if (!reachability.reachable) {
+          // The foreground surface is gone, so there is no valid host for the
+          // workflow's next interactive operation. Stop here and report the
+          // host-loss boundary instead of waiting for a later ask()/interactive
+          // step to fail with a derivative pane error.
+          void trackedWorkflow.catch(() => {})
+          await opts.host.teardown()
+          writeFailureSummary(opts.stderr, opts.summary, reachability.reason)
+          return EXIT.STEP_FAILURE
+        }
       }
     }
 
