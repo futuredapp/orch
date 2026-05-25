@@ -53,6 +53,33 @@ export class RunnerCapabilityError extends Error {
   }
 }
 
+/**
+ * Thrown when an interactive step sets `autoStop: true` but its runner does
+ * not implement the `prepareAutoStop` capability. Fail-fast at the executor
+ * before any pane is spawned. The message names the step and runner and points
+ * at the two runners that DO support auto-stop, so the fix is obvious without
+ * reading the docs.
+ */
+export class AutoStopUnsupportedError extends Error {
+  constructor(
+    readonly stepName: StepName,
+    readonly runnerName: string,
+  ) {
+    super(
+      `Step "${stepName}" sets \`autoStop: true\`, but runner "${runnerName}" ` +
+        `does not support auto-stop — it has no \`prepareAutoStop\` capability.\n` +
+        `Auto-stop injects a per-run, signal-only stop hook so orch can close a ` +
+        `finished interactive turn without a human keystroke. Today the built-in ` +
+        `claude() and codex() runners support it; a custom runner must implement ` +
+        `\`prepareAutoStop(ctx)\` to opt in.\n` +
+        `Either switch this step to a runner that supports auto-stop, or remove ` +
+        `\`autoStop: true\` from step "${stepName}".`,
+    )
+    this.name = 'AutoStopUnsupportedError'
+    Object.setPrototypeOf(this, new.target.prototype)
+  }
+}
+
 export class AskParallelError extends Error {
   constructor(readonly stepName: StepName) {
     super(

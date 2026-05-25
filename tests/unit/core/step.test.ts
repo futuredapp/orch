@@ -137,6 +137,39 @@ describe('step.define', () => {
     )
   })
 
+  it('carries autoStop:true on an interactive step config', () => {
+    const agent = makeFakeRunner()
+
+    const s = step.define('brainstorm', { agent, mode: 'interactive', autoStop: true })
+
+    expect(s.config.kind).toBe('agent')
+    if (s.config.kind === 'agent') {
+      expect(s.config.autoStop).toBe(true)
+    }
+  })
+
+  it('leaves autoStop absent on an interactive step that does not set it', () => {
+    const agent = makeFakeRunner()
+
+    const s = step.define('brainstorm', { agent, mode: 'interactive' })
+
+    expect(s.config.kind).toBe('agent')
+    if (s.config.kind === 'agent') {
+      expect(s.config.autoStop).toBeUndefined()
+    }
+  })
+
+  it('throws at definition time when autoStop:true is set on an autonomous step', () => {
+    const agent = makeFakeRunner()
+
+    // Cast to bypass the interactive-only overload — exercising the runtime guard.
+    const badConfig = { agent, mode: 'autonomous' as const, autoStop: true }
+
+    expect(() => step.define('work', badConfig as never)).toThrow(
+      'autoStop:true is only valid on interactive steps',
+    )
+  })
+
   it('accepts a step-level view override of transcript', () => {
     const agent = makeFakeRunner()
 

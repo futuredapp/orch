@@ -44,6 +44,16 @@ export interface AgentStepConfig<T = unknown> {
    * rollups (Phase D) see `step:start` / `step:complete`.
    */
   readonly silent?: boolean
+  /**
+   * Interactive-only opt-in: when `true`, orch injects a per-run, signal-only
+   * stop hook into the agent CLI and closes the pane automatically when the
+   * agent finishes a turn — so an unattended pipeline doesn't stall on a
+   * finished-but-idle step waiting for a human. Default `false`. Setting it on
+   * an autonomous step is a definition-time error (autonomous steps already
+   * self-terminate). Requires a runner with the `prepareAutoStop` capability,
+   * or the executor fails fast with `AutoStopUnsupportedError`.
+   */
+  readonly autoStop?: boolean
 }
 
 export interface CommitStepConfig {
@@ -138,6 +148,7 @@ type InteractiveStepInput = {
   readonly view?: ViewKind
   readonly pane?: PaneRole
   readonly silent?: boolean
+  readonly autoStop?: boolean
 }
 
 /** Autonomous overload input: optional `returns` for structured output. */
@@ -168,6 +179,12 @@ function defineStep(
     throw new Error(
       `step.define("${name}"): interactive steps cannot have "returns:" — ` +
         'structured output is not available in interactive mode',
+    )
+  }
+  if (config.autoStop === true && config.mode !== 'interactive') {
+    throw new Error(
+      `step.define("${name}"): autoStop:true is only valid on interactive steps — ` +
+        'autonomous steps self-terminate, so there is no idle turn to auto-stop',
     )
   }
   assertViewFieldsValid(name, config)

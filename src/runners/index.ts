@@ -7,6 +7,7 @@ export { runInteractive, runRunner } from './execute.ts'
 export type { FakeScript } from './fake/index.ts'
 export { FakeRunner } from './fake/index.ts'
 export type {
+  AutoStopPreparation,
   InfoEvent,
   Runner,
   RunnerCommand,

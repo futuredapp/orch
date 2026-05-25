@@ -1,6 +1,7 @@
 import type { ViewDefault } from '../../core/view.ts'
 import type { FakeProcessService } from '../../services/process/fake-process-service.ts'
 import type {
+  AutoStopPreparation,
   CaptureHandle,
   CaptureSessionIdContext,
   InfoEvent,
@@ -11,6 +12,15 @@ import type {
   TerminalEvent,
   TranscriptLine,
 } from '../types.ts'
+
+/** Construction-time knobs that toggle optional capabilities on/off so tests
+ *  can exercise both the supported and unsupported code paths. */
+export interface FakeRunnerOptions {
+  /** When `false`, the `prepareAutoStop` method is omitted entirely so the
+   *  `typeof === 'function'` capability check reports the runner as
+   *  auto-stop-unsupported. Defaults to `true`. */
+  readonly supportsAutoStop?: boolean
+}
 
 export interface FakeScript {
   readonly events?: readonly InfoEvent[]
@@ -36,10 +46,12 @@ export class FakeRunner implements Runner {
   #invocations = 0
   #resumeArgvBuilder?: (sessionId: string) => readonly string[]
   #captureImpl?: (ctx: CaptureSessionIdContext) => CaptureHandle
+  readonly #supportsAutoStop: boolean
 
-  constructor(processService: FakeProcessService) {
+  constructor(processService: FakeProcessService, opts: FakeRunnerOptions = {}) {
     this.#fps = processService
     this.#nonce = `f-${Math.random().toString(36).slice(2, 6)}`
+    this.#supportsAutoStop = opts.supportsAutoStop ?? true
   }
 
   script(s: FakeScript): this {
@@ -169,5 +181,17 @@ export class FakeRunner implements Runner {
     if (this.#captureImpl === undefined) return undefined
     const impl = this.#captureImpl
     return (ctx: CaptureSessionIdContext): CaptureHandle => impl(ctx)
+  }
+
+  /**
+   * Present by default so interactive auto-stop tests get a supporting runner
+   * for free. Omitted when constructed with `{ supportsAutoStop: false }` so
+   * the executor's fail-fast (`AutoStopUnsupportedError`) path is exercisable.
+   * The no-op preparation adds no env and its cleanup is a true no-op — the
+   * FakeRunner has no on-disk artifact to write or restore.
+   */
+  get prepareAutoStop(): Runner['prepareAutoStop'] {
+    if (!this.#supportsAutoStop) return undefined
+    return async (): Promise<AutoStopPreparation> => ({ env: {}, cleanup: async () => {} })
   }
 }

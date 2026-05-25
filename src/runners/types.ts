@@ -17,6 +17,30 @@ export interface RunnerContext {
   readonly mode?: 'interactive' | 'autonomous'
   /** Session ID for interactive steps. Passed via --session-id. */
   readonly sessionId?: string
+  /**
+   * Set when the interactive step opted into auto-stop (`autoStop: true`).
+   * Runners that implement `prepareAutoStop` read this only as a signal that
+   * the executor will call `prepareAutoStop`; the preparation itself needs no
+   * values from the context beyond `cwd`/`env`. Absent on autonomous steps.
+   */
+  readonly autoStop?: boolean
+}
+
+// ---------------------------------------------------------------------------
+// AutoStopPreparation — return type of the optional prepareAutoStop capability
+// ---------------------------------------------------------------------------
+
+/**
+ * What `Runner.prepareAutoStop` hands back to the executor. `env` carries any
+ * runner-injected environment additions (e.g. Codex's `CODEX_HOME`) that ride
+ * the `extras` slot of `mergeEnv`; it is `{}` when the runner writes a cwd file
+ * the CLI discovers on its own (Claude). `cleanup` is an idempotent inverse the
+ * host runs in its `finally` regardless of how the step ends; it must only
+ * touch per-run artifacts and never the user's real config or credentials.
+ */
+export interface AutoStopPreparation {
+  readonly env: Readonly<Record<string, string>>
+  readonly cleanup: () => Promise<void>
 }
 
 // ---------------------------------------------------------------------------
@@ -145,6 +169,24 @@ export interface Runner {
    * Capability check: `typeof runner.captureSessionId === 'function'`.
    */
   captureSessionId?(ctx: CaptureSessionIdContext): CaptureHandle
+  /**
+   * Prepare a per-run, signal-only stop hook so the agent CLI pings orch over
+   * a tmux `wait-for` channel when it finishes a turn. The runner writes its
+   * CLI-specific artifact (Claude: a merge-safe `.claude/settings.local.json`
+   * in cwd; Codex: a temp `CODEX_HOME` with a `notify` line), referencing the
+   * env-var NAMES `$ORCH_SOCKET` / `$ORCH_STOP_CHANNEL` that the tmux host
+   * injects at spawn. Returns `{ env, cleanup }` — `env` for any runner-side
+   * additions, `cleanup` an idempotent inverse the host runs in `finally`.
+   *
+   * Optional — runners that cannot register a stop hook omit it. The executor
+   * fails fast with `AutoStopUnsupportedError` when a step sets `autoStop: true`
+   * against a runner lacking this method.
+   *
+   * Capability check: `typeof runner.prepareAutoStop === 'function'`. There is
+   * NO `supports.autoStop` flag — the optional method is the single source of
+   * truth, mirroring `resumeCommand` / `captureSessionId`.
+   */
+  prepareAutoStop?(ctx: RunnerContext): Promise<AutoStopPreparation>
 }
 
 // ---------------------------------------------------------------------------
@@ -228,6 +270,16 @@ const RunnerAdapterSchema = z.object({
   // source of truth.
   captureSessionId: z
     .custom<NonNullable<Runner['captureSessionId']>>((v) => typeof v === 'function', {
+      message: 'expected function',
+    })
+    .optional(),
+  // Optional auto-stop primitive. Parallels `resumeCommand` / `captureSessionId`:
+  // runners that can register a signal-only stop hook declare it; the rest leave
+  // it `undefined`. The executor's capability check
+  // (`typeof config.agent.prepareAutoStop === 'function'`) is the single source
+  // of truth and powers the fail-fast `AutoStopUnsupportedError`.
+  prepareAutoStop: z
+    .custom<NonNullable<Runner['prepareAutoStop']>>((v) => typeof v === 'function', {
       message: 'expected function',
     })
     .optional(),

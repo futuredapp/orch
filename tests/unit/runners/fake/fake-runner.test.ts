@@ -122,4 +122,28 @@ describe('FakeRunner', () => {
 
     expect(() => fr.buildCommand(ctxFor('oops'))).toThrow(/no script configured/)
   })
+
+  it('exposes prepareAutoStop as a function by default', () => {
+    const fps = new FakeProcessService()
+    const fr = new FakeRunner(fps)
+
+    expect(typeof fr.prepareAutoStop).toBe('function')
+  })
+
+  it('returns a no-op preparation (empty env, inert cleanup) from the default prepareAutoStop', async () => {
+    const fps = new FakeProcessService()
+    const fr = new FakeRunner(fps)
+
+    const prep = await fr.prepareAutoStop?.(ctxFor('go'))
+
+    expect(prep?.env).toEqual({})
+    await expect(prep?.cleanup()).resolves.toBeUndefined()
+  })
+
+  it('omits prepareAutoStop when constructed with supportsAutoStop:false', () => {
+    const fps = new FakeProcessService()
+    const fr = new FakeRunner(fps, { supportsAutoStop: false })
+
+    expect(typeof fr.prepareAutoStop).toBe('undefined')
+  })
 })

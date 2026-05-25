@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'bun:test'
 import type { AskStepConfig } from '../../../src/core/ask.ts'
-import { AskNoDefaultError, AskParallelError } from '../../../src/core/errors.ts'
+import {
+  AskNoDefaultError,
+  AskParallelError,
+  AutoStopUnsupportedError,
+} from '../../../src/core/errors.ts'
 import { stepName } from '../../../src/core/types.ts'
 
 describe('AskParallelError', () => {
@@ -12,6 +16,21 @@ describe('AskParallelError', () => {
     expect(err.stepName as string).toBe('ask:continue')
     expect(err.message).toContain('Hoist the ask above')
     expect(err.message).not.toContain('--noninteractive')
+  })
+})
+
+describe('AutoStopUnsupportedError', () => {
+  it('names the step and runner and points at the supporting runners', () => {
+    const err = new AutoStopUnsupportedError(stepName('brainstorm'), 'my-runner')
+
+    expect(err).toBeInstanceOf(Error)
+    expect(err.name).toBe('AutoStopUnsupportedError')
+    expect(err.stepName as string).toBe('brainstorm')
+    expect(err.runnerName).toBe('my-runner')
+    expect(err.message).toContain('brainstorm')
+    expect(err.message).toContain('my-runner')
+    expect(err.message).toContain('prepareAutoStop')
+    expect(err.message).toContain('autoStop: true')
   })
 })
 
