@@ -79,6 +79,10 @@ change. These records sit alongside the per-step lifecycle in
 | `banner-emit` / `banner-dismissed` | Transient single-slot banner state. |
 | `replay-pane-opened` / `replay-pane-failed` / `replay-cached-skip` / `replay-lookup-miss` | Outcomes of `⏎` on a past step. |
 | `step:parallel-start` / `step:parallel-complete` | Bracket the lifetime of one `parallel(...)` block. Block-scoped (no `stepName`); the rollup source is registered between these events. |
+| `interactive-auto-stop-armed` | An `autoStop: true` interactive step injected `ORCH_SOCKET`/`ORCH_STOP_CHANNEL` and is now racing the agent's stop channel against `pane-exit`. Payload: `stepName`, `pane`, `paneId`, `channel`. |
+| `interactive-auto-stop-signaled` | The agent's stop hook signalled the channel (turn complete) — orch is about to terminate the pane externally. Payload: `stepName`, `paneId`, `channel`. |
+| `interactive-auto-stop-terminated` | The pane was torn down after a stop signal. `path: 'clean'` means EOF (Ctrl-D) exited the agent within the bounded wait; `path: 'forced'` means the bounded wait elapsed and the existing kill-session teardown closed it. Payload: `stepName`, `paneId`, `path`. |
+| `interactive-auto-stop-cleanup-failed` | The runner's per-run artifact cleanup (Claude settings file / Codex temp `CODEX_HOME`) threw. Logged-only; teardown continues. Payload: `stepName`, plus error fields. |
 
 > Historical: the `scratch-*` event family (`scratch-session-created`,
 > `scratch-session-torndown`, `scratch-window-rotate`) was renamed to

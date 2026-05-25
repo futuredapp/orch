@@ -83,14 +83,14 @@ block (`thinking`, `tool_use`, `text`, `tool_result`), and turns
 
 ## Environment
 
-Build the subprocess env via `mergeEnv(processEnv, extras, ctxEnv)` from `src/runners/_shared/merge-env.ts`. Passthrough by default — the child sees the same env the orch process saw, with `undefined` values filtered. `extras` is a runner/mode-specific override slot (today the only entry is `{ FORCE_COLOR: '3' }` for Claude in interactive mode); `ctx.env` always wins last on conflict, so workflow authors can disable extras (`FORCE_COLOR=0`) per step. No allowlist, no filtering. See [2026-04-27 env passthrough plan](../../../docs/plans/2026-04-27-feat-env-passthrough-plan.md).
+Build the subprocess env via `mergeEnv(processEnv, extras, ctxEnv)` from `src/services/process/merge-env.ts` (re-exported via `src/services/index.ts`). Passthrough by default — the child sees the same env the orch process saw, with `undefined` values filtered. `extras` is a runner/mode-specific override slot (today the only entry is `{ FORCE_COLOR: '3' }` for Claude in interactive mode); `ctx.env` always wins last on conflict, so workflow authors can disable extras (`FORCE_COLOR=0`) per step. No allowlist, no filtering. See [2026-04-27 env passthrough plan](../../../docs/plans/2026-04-27-feat-env-passthrough-plan.md).
 
 ## Minimal example (30 lines)
 
 ```ts
 // src/runners/myagent/myagent-runner.ts
 import { defineRunner } from '@orch/runners/runner'
-import { mergeEnv } from '@orch/runners/_shared/merge-env'
+import { mergeEnv } from '@orch/services'
 
 export const myagent = defineRunner({
   name: 'myagent',
