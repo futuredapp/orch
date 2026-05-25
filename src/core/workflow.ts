@@ -9,9 +9,9 @@ import { envKeys as envKeyList, orchLog, redactReproduceCommand } from '../obser
 // runner ever needs it.
 import { createCaptureLock } from '../runners/codex/capture-lock.ts'
 import { runRunner } from '../runners/index.ts'
-import type { CaptureError, CaptureLock } from '../runners/types.ts'
+import type { CaptureError, CaptureLock, RunnerContext } from '../runners/types.ts'
 import type { Clock, FsService, GitService, ProcessService } from '../services/index.ts'
-import { GitCommandError } from '../services/index.ts'
+import { GitCommandError, mergeEnv } from '../services/index.ts'
 import type { PromptService } from '../services/prompt/index.ts'
 import type { StateStore, StepEntry, TranscriptSidecar } from '../state/index.ts'
 import {
@@ -24,6 +24,7 @@ import {
 import { isAskCacheValid, runAskStep } from './ask-executor.ts'
 import { runCommandStep } from './command.ts'
 import {
+  AutoStopUnsupportedError,
   InteractiveParallelError,
   ResumeError,
   RunNotFoundError,
@@ -367,6 +368,29 @@ function shellQuote(s: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// prepareAutoStopForStep — invoke the runner's auto-stop preparation.
+//
+// Kept out of `runInteractiveStep` (already long) and behind the same
+// `autoStop && prepareAutoStop` predicate the fail-fast guard uses. Returns the
+// runner-injected env additions (merged on top of the command env by the
+// caller) and the cleanup handle the host runs in its `finally`.
+// ---------------------------------------------------------------------------
+
+async function prepareAutoStopForStep(
+  config: AgentStepConfig,
+  buildCtx: RunnerContext,
+): Promise<{
+  readonly extras: Readonly<Record<string, string>>
+  readonly onCleanup?: () => Promise<void>
+}> {
+  if (config.autoStop !== true || typeof config.agent.prepareAutoStop !== 'function') {
+    return { extras: {} }
+  }
+  const prep = await config.agent.prepareAutoStop(buildCtx)
+  return { extras: prep.env, onCleanup: prep.cleanup }
+}
+
+// ---------------------------------------------------------------------------
 // runInteractiveStep — executes an interactive step via foreground spawn
 // ---------------------------------------------------------------------------
 
@@ -386,6 +410,13 @@ async function runInteractiveStep(
   // Guard: runner capability
   if (!config.agent.supports.interactive) {
     throw new RunnerCapabilityError(key, config.agent.name)
+  }
+
+  // Guard: auto-stop capability. Fail fast — before any pane is spawned — when
+  // a step opted into auto-stop but its runner can't register a stop hook.
+  const autoStop = config.autoStop === true
+  if (autoStop && typeof config.agent.prepareAutoStop !== 'function') {
+    throw new AutoStopUnsupportedError(key, config.agent.name)
   }
 
   // View resolution surfaces the "interactive step under --mode=plain" error
@@ -474,21 +505,29 @@ async function runInteractiveStep(
       await captureHandle.snapshotReady
     }
 
-    const cmd = await config.agent.buildCommand({
+    const buildCtx: RunnerContext = {
       cwd,
       env: {},
       prompt,
       extraArgs: [],
       mode: 'interactive',
       sessionId: orchSessionId,
-    })
+      ...(autoStop ? { autoStop: true } : {}),
+    }
+    const cmd = await config.agent.buildCommand(buildCtx)
     argv = cmd.argv
-    cmdEnv = cmd.env
+    // Auto-stop preparation runs after buildCommand (it only needs ctx). Its
+    // env additions (e.g. Codex's CODEX_HOME) are merged on top of the command
+    // env; the cleanup handle rides the spawn so the host runs it in `finally`.
+    const autoStopPrep = await prepareAutoStopForStep(config, buildCtx)
+    cmdEnv = mergeEnv(cmd.env, autoStopPrep.extras, {})
     const interactivePromise = deps.host.runInteractive({
       argv: cmd.argv,
-      env: cmd.env,
+      env: cmdEnv,
       cwd,
       stepName: key,
+      ...(autoStop ? { autoStop: true } : {}),
+      ...(autoStopPrep.onCleanup ? { onCleanup: autoStopPrep.onCleanup } : {}),
     })
 
     const result = await interactivePromise

@@ -56,6 +56,8 @@ export interface RecordedInteractiveSpawn {
   readonly env: Readonly<Record<string, string>>
   readonly stepName: StepName
   readonly pane?: PaneRole
+  readonly autoStop?: boolean
+  readonly onCleanup?: () => Promise<void>
 }
 
 export interface FakeHost extends Host {
@@ -116,6 +118,8 @@ export function createFakeHost(opts: FakeHostOptions = {}): FakeHost {
         env: spawn.env,
         stepName: spawn.stepName,
         ...(spawn.pane !== undefined ? { pane: spawn.pane } : {}),
+        ...(spawn.autoStop !== undefined ? { autoStop: spawn.autoStop } : {}),
+        ...(spawn.onCleanup !== undefined ? { onCleanup: spawn.onCleanup } : {}),
       })
       return nextInteractive
     },

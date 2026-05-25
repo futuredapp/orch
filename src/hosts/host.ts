@@ -66,6 +66,21 @@ export interface InteractiveSpawn {
    * regardless of pane.
    */
   readonly pane?: PaneRole
+  /**
+   * Auto-stop opt-in (interactive steps only). When `true`, the tmux host
+   * allocates a stop channel, injects `ORCH_SOCKET`/`ORCH_STOP_CHANNEL` into
+   * the spawn env, and races that channel against the pane-exit wait so a
+   * finished-but-idle turn closes itself. Plain host ignores it (no pane to
+   * terminate).
+   */
+  readonly autoStop?: boolean
+  /**
+   * Runner-supplied cleanup for the per-run auto-stop artifact (Claude's
+   * settings file, Codex's temp CODEX_HOME). The host runs it in its `finally`
+   * regardless of how the step ends — signal, manual close, or error. A throw
+   * is logged, not propagated.
+   */
+  readonly onCleanup?: () => Promise<void>
 }
 
 export interface InteractiveResult {
