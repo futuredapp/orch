@@ -21,7 +21,7 @@
  * Requires `codex` (>= 0.118.0) and `claude` on PATH, a TTY, and tmux ≥ 3.2.
  */
 
-import { step, workflow } from '../../src/core/index.ts'
+import { ask, step, workflow } from '../../src/core/index.ts'
 import { claude, codex } from '../../src/runners/index.ts'
 import { BunFsService, BunProcessService } from '../../src/services/index.ts'
 import { fileProduced } from '../../src/validators/index.ts'
@@ -61,7 +61,31 @@ const EXPAND = step.define('expand', {
   validate: [fileProduced(NOTE_FILE)],
 })
 
+const SUMMARY1 = ask({
+  name: 'summary1',
+  question: 'Is this summary correct?',
+  fields: {
+    name: { placeholder: 'your name' },
+    color: { placeholder: 'favorite color' },
+  },
+  buttons: ['save', 'skip'],
+  defaultWhenNoninteractive: { button: 'skip' },
+})
+
+const SUMMARY2 = ask({
+  name: 'summary2',
+  question: 'Is this summary correct?',
+  fields: {
+    name: { placeholder: 'your name' },
+    color: { placeholder: 'favorite color' },
+  },
+  buttons: ['save', 'skip'],
+  defaultWhenNoninteractive: { button: 'skip' },
+})
+
 export default workflow('codex-and-claude', async (run) => {
   await run(DRAFT)
+  await run(SUMMARY1)
   await run(EXPAND)
+  await run(SUMMARY2)
 })
