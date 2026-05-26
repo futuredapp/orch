@@ -4,9 +4,12 @@
 //
 // Renders a `StepsViewState` plus user-driven selection. Hooks:
 //   - `useAdaptiveColumns(stdout)` — width → ColumnSet (debounced re-render)
-//   - `useStepsSelection(steps)`  — sticky-on-stepName selection w/ ↑/↓/f
+//   - `useStepsSelection(steps, view)` — the COMMITTED highlight (`▌`+bold+cyan)
+//     tracks `state.view` so the left pane always points at what the right pane
+//     shows (Issue 2); `↑/↓` drive a separate PREVIEW cursor (`›`) committed on
+//     `⏎`.
 //
-// Keymap: `↑/↓` move selection · `⏎` fire intent · `f` snap-to-live ·
+// Keymap: `↑/↓` move the preview cursor · `⏎` commit it · `f` snap-to-live ·
 // `Esc` close help / dismiss error banner · `?` help overlay · `q` quit ·
 // `Ctrl-C` quit (same quit-intent as `q`; routed by the CLI to teardown).
 //
@@ -102,9 +105,8 @@ export function StepsView({
 }: StepsViewProps): React.ReactElement {
   const columns = useAdaptiveColumns()
   const { stdout } = useStdout()
-  const { selectedName, moveUp, moveDown, snapToLive, isUserDriven } = useStepsSelection(
-    state.steps,
-  )
+  const { committedName, selectedName, moveUp, moveDown, snapToLive, isUserDriven } =
+    useStepsSelection(state.steps, state.view)
   const [helpOpen, setHelpOpen] = useState(false)
 
   // Visible-row budget for the steps body. The frame must stay below the
@@ -261,7 +263,8 @@ export function StepsView({
               step={step}
               columns={columns}
               now={now()}
-              selected={step.name === selectedName && isUserDriven}
+              selected={step.name === committedName}
+              preview={isUserDriven && step.name === selectedName && step.name !== committedName}
             />
           ))}
         </Box>
@@ -322,12 +325,24 @@ interface StepRowProps {
   readonly step: StepRowData
   readonly columns: ColumnSet
   readonly now: number
+  /** Committed selection — the row the right pane shows. Drawn `▌` + bold + cyan. */
   readonly selected: boolean
+  /** `↑/↓` preview cursor (only when it differs from `selected`). Drawn bold `›`. */
+  readonly preview: boolean
 }
 
 const StepRow = memo(
-  function StepRowImpl({ step, columns, now, selected }: StepRowProps): React.ReactElement {
-    const cursor = selected ? '▌' : ' '
+  function StepRowImpl({
+    step,
+    columns,
+    now,
+    selected,
+    preview,
+  }: StepRowProps): React.ReactElement {
+    // `▌` marks the committed row (= right pane); `›` is the preview cursor the
+    // user is browsing with `↑/↓` before committing with `Enter`. They never
+    // coincide — the call site suppresses `preview` on the committed row.
+    const cursor = selected ? '▌' : preview ? '›' : ' '
     const view = stepGlyphView(step.status)
     const name = stripAnsi(step.name)
     const elapsed = formatElapsedFor(step, now)
@@ -335,14 +350,18 @@ const StepRow = memo(
     // Multi-segment <Text>: produces the same byte sequence as the previous
     // `parts.join('  ')` output (cursor · space · name · two-space · glyph
     // [· two-space · elapsed]), with style spans around cursor, name, and
-    // glyph. Selection cyan applies only to cursor + name; glyph keeps its
-    // semantic color from `stepGlyphView`.
+    // glyph. The committed row accents cursor + name cyan; the preview cursor
+    // is bold (no color) so the eye follows it without claiming "this is shown".
+    // The glyph keeps its semantic color from `stepGlyphView`.
     const accent = selected ? 'cyan' : undefined
+    const emphasised = selected || preview
     return (
       <Text>
-        <Text color={accent}>{cursor}</Text>
+        <Text bold={preview} color={accent}>
+          {cursor}
+        </Text>
         <Text> </Text>
-        <Text bold={selected} color={accent}>
+        <Text bold={emphasised} color={accent}>
           {name}
         </Text>
         <Text>{'  '}</Text>
@@ -355,6 +374,7 @@ const StepRow = memo(
   },
   (prev, next) => {
     if (prev.selected !== next.selected) return false
+    if (prev.preview !== next.preview) return false
     if (prev.columns.elapsed !== next.columns.elapsed) return false
     if (prev.step.name !== next.step.name) return false
     if (prev.step.status !== next.step.status) return false

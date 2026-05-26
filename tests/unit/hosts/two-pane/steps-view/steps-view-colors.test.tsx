@@ -112,18 +112,69 @@ describe('<StepsView> selection accent', () => {
     expect(planLine).toContain('▌')
   })
 
-  it('does not put cyan or bold on an unselected row', () => {
-    const state = stateWithSingleStep('running')
+  it('does not put cyan or bold on a row that is neither committed nor previewed', () => {
+    // Two steps; the right pane is replaying `plan`, so `plan` is the committed
+    // (highlighted) row and `next` is genuinely unselected. With no keypress
+    // there is no preview cursor either, so `next` must carry no accent.
+    const state: StepsViewState = {
+      status: 'live',
+      run: { runId: 'r-2026-05-12-000000-aa', workflowName: 'demo', startedAt: 0 },
+      steps: [
+        { kind: 'agent', mode: 'autonomous', status: 'running', name: 'plan', startedAt: 0 },
+        { kind: 'agent', mode: 'autonomous', status: 'pending', name: 'next' },
+      ],
+      view: { mode: 'replay', stepName: 'plan' },
+    }
     const frame = renderToString(<StepsView state={state} onIntent={NOOP} now={() => NOW} />, {
       columns: 110,
     })
+    const nextLine = frame.split('\n').find((line) => line.includes('next'))
+    expect(nextLine).toBeDefined()
+    if (nextLine === undefined) return
+    // Unselected row carries neither the cyan accent nor bold, and no marker.
+    expect(nextLine).not.toContain(CYAN_FG)
+    expect(nextLine).not.toContain(BOLD)
+    expect(nextLine).not.toContain('▌')
+    expect(nextLine).not.toContain('›')
+  })
+
+  it('renders the preview cursor as a bold chevron with no cyan', async () => {
+    // Two live steps: committed row is the running `plan` (live). Arrow-up
+    // moves the preview cursor up — but `plan` is already top, so the cursor
+    // stays on `plan` and coincides with committed. Use a three-step list so
+    // the cursor lands on a DISTINCT row.
+    const state: StepsViewState = {
+      status: 'live',
+      run: { runId: 'r-2026-05-12-000000-aa', workflowName: 'demo', startedAt: 0 },
+      steps: [
+        {
+          kind: 'agent',
+          mode: 'autonomous',
+          status: 'completed',
+          name: 'plan',
+          startedAt: 0,
+          endedAt: 1,
+        },
+        { kind: 'agent', mode: 'autonomous', status: 'running', name: 'work', startedAt: 2 },
+        { kind: 'agent', mode: 'autonomous', status: 'pending', name: 'next' },
+      ],
+      view: { mode: 'live' },
+    }
+    const ui = render(<StepsView state={state} onIntent={NOOP} now={() => NOW} />)
+    await tick()
+    ui.stdin.write('\x1b[A') // preview cursor: work → plan (committed stays on live `work`)
+    await tick()
+    const frame = ui.lastFrame() ?? ''
+    ui.unmount()
+
     const planLine = frame.split('\n').find((line) => line.includes('plan'))
     expect(planLine).toBeDefined()
     if (planLine === undefined) return
-    // Name segment carries no cyan or bold when unselected.
-    // (Cursor cell is a literal space with no preceding color sequence.)
+    // Preview cursor: bold `›` chevron, but NO cyan — it is not "what's shown".
+    expect(planLine).toContain('›')
+    expect(planLine).toContain(BOLD)
     expect(planLine).not.toContain(CYAN_FG)
-    expect(planLine).not.toContain(BOLD)
+    expect(planLine).not.toContain('▌')
   })
 })
 
@@ -164,8 +215,28 @@ describe('<StepsView> semantic glyph colors', () => {
     expect(frame).toContain('·')
   })
 
-  it('keeps glyph color independent of selection (selected failed row stays red, name turns cyan)', async () => {
-    const frame = await renderSelectedFrame('failed')
+  it('keeps glyph color independent of selection (committed failed row stays red, name turns cyan)', () => {
+    // The committed row is the failed step (right pane is replaying it). Its
+    // name takes the cyan selection accent while the `✗` glyph keeps its
+    // semantic red — the two color spans are independent.
+    const state: StepsViewState = {
+      status: 'live',
+      run: { runId: 'r-2026-05-12-000000-aa', workflowName: 'demo', startedAt: 0 },
+      steps: [
+        {
+          kind: 'agent',
+          mode: 'autonomous',
+          status: 'failed',
+          name: 'plan',
+          startedAt: 0,
+          endedAt: 1,
+        },
+      ],
+      view: { mode: 'replay', stepName: 'plan' },
+    }
+    const frame = renderToString(<StepsView state={state} onIntent={NOOP} now={() => NOW} />, {
+      columns: 110,
+    })
     const planLine = frame.split('\n').find((line) => line.includes('plan'))
     expect(planLine).toBeDefined()
     if (planLine === undefined) return

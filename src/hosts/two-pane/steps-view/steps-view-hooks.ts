@@ -9,7 +9,7 @@
 import { useStdout } from 'ink'
 import { useEffect, useRef, useState } from 'react'
 import { type ColumnSet, pickColumns } from './adaptive-columns.ts'
-import type { StepRow } from './step-types.ts'
+import type { StepRow, ViewMode } from './step-types.ts'
 
 const SIGWINCH_DEBOUNCE_MS = 75
 
@@ -39,6 +39,18 @@ export function useAdaptiveColumns(): ColumnSet {
 }
 
 export interface StepsSelection {
+  /**
+   * The step the RIGHT pane is showing, derived from `view`. This is the
+   * committed selection: it is rendered as the prominent highlight (cursor +
+   * bold + accent) so the left pane always points at what the right pane
+   * displays — the HARD invariant from Issue 2. Independent of `↑/↓`.
+   */
+  readonly committedName: string | undefined
+  /**
+   * The `↑/↓` preview-cursor position. Equals `committedName` until the user
+   * moves it; while moved (`isUserDriven`) it is the candidate the user is
+   * browsing and is committed on `Enter`. The right pane does NOT follow it.
+   */
   readonly selectedName: string | undefined
   readonly isUserDriven: boolean
   moveUp(): void
@@ -46,23 +58,35 @@ export interface StepsSelection {
   snapToLive(): void
 }
 
-export function useStepsSelection(steps: readonly StepRow[]): StepsSelection {
+const LIVE_VIEW: ViewMode = { mode: 'live' }
+
+export function useStepsSelection(
+  steps: readonly StepRow[],
+  view: ViewMode = LIVE_VIEW,
+): StepsSelection {
+  // Single source of truth for the highlight: the right pane's `view`. In
+  // replay it is the pinned step; in live it is the running step (or the last
+  // known step when nothing is live).
+  const committedName = committedFromView(steps, view)
   const [selectedName, setSelectedName] = useState<string | undefined>(undefined)
   const [isUserDriven, setIsUserDriven] = useState(false)
 
   useEffect(() => {
     if (isUserDriven && selectedName !== undefined) {
-      // Selection sticky-on-stepName: if the selected step disappeared, fall
-      // back to live.
+      // Preview-cursor sticky-on-stepName: if the previewed step disappeared,
+      // hand control back to the committed (right-pane) row.
       const stillThere = steps.some((s) => s.name === selectedName)
       if (!stillThere) {
-        setSelectedName(findLive(steps))
+        setSelectedName(committedName)
         setIsUserDriven(false)
       }
       return
     }
-    setSelectedName(findLive(steps) ?? steps[steps.length - 1]?.name)
-  }, [steps, isUserDriven, selectedName])
+    // Not user-driven: the preview cursor tracks the committed row so an idle
+    // left pane always points at what the right pane shows — including when the
+    // controller auto-advances `view` to the next step without a keypress.
+    setSelectedName(committedName)
+  }, [steps, isUserDriven, selectedName, committedName])
 
   const move = (delta: number): void => {
     if (steps.length === 0) return
@@ -76,15 +100,21 @@ export function useStepsSelection(steps: readonly StepRow[]): StepsSelection {
   }
 
   return {
+    committedName,
     selectedName,
     isUserDriven,
     moveUp: () => move(-1),
     moveDown: () => move(1),
     snapToLive: () => {
-      setSelectedName(findLive(steps))
+      setSelectedName(committedName)
       setIsUserDriven(false)
     },
   }
+}
+
+function committedFromView(steps: readonly StepRow[], view: ViewMode): string | undefined {
+  if (view.mode === 'replay') return view.stepName
+  return findLive(steps) ?? steps[steps.length - 1]?.name
 }
 
 function findLive(steps: readonly StepRow[]): string | undefined {
