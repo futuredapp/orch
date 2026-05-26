@@ -24,9 +24,8 @@
 // obscure that integration. Revisit if/when this file exceeds 700 LOC
 // after the parallel-switcher pass.
 
-import { summarizeFailure } from '../../core/failure-summary.ts'
 import type { RunMode } from '../../core/run-mode.ts'
-import { metaStepName, type RunId, type StepName } from '../../core/types.ts'
+import type { RunId, StepName } from '../../core/types.ts'
 import type { StepLifecycleEvent } from '../../core/workflow.ts'
 import { type JsonObject, orchLog, type SessionLogger } from '../../observability/index.ts'
 import type { RunnerEvent, TranscriptLine } from '../../runners/index.ts'
@@ -55,21 +54,16 @@ import type {
   PaneRole,
 } from '../host.ts'
 import { HostUnavailableError } from '../host.ts'
-import { createPerStepTee, type PerStepTee, teePathFor } from '../plain/per-step-tee.ts'
+import { createPerStepTee, type PerStepTee } from '../plain/per-step-tee.ts'
 import { renderTranscriptLine } from '../plain/render-line.ts'
 import { assertNoNestedTmux, createAttachForeground } from './attach-foreground.ts'
-import { renderFailurePanePayload } from './failure-pane.ts'
+import { createLifecycleChoreographer } from './lifecycle-choreographer.ts'
 import {
   createRightPaneController,
   type RightPaneController,
   type SourceKey,
 } from './pane-map/index.ts'
 import { createPaneQueue, type PaneQueue } from './pane-queue.ts'
-import {
-  createRollupAggregator,
-  type RollupAggregator,
-  renderRollupPayload,
-} from './parallel-rollup.ts'
 import { startPipePaneCapture } from './pipe-pane-capture.ts'
 import { installStdioCapture, type StdioCapture } from './stdio-capture.ts'
 import { type StartStepsViewHandle, type StepsIntent, startStepsView } from './steps-view/index.ts'
@@ -83,10 +77,6 @@ const WIDTH = 200
 const HEIGHT = 50
 const RIGHT_PERCENT = 70
 const PLACEHOLDER_CMD = 'cat'
-// U7: fixed meta step key for the parallel-block rollup tee + hidden pane.
-// Leading underscore keeps it out of the user-facing `stepName()` namespace
-// and sorts above step names in directory listings.
-const ROLLUP_STEP_NAME = metaStepName('_rollup')
 // Global pane-died hook that `initOrchSession` wires — fires once per pane
 // death and signals a per-pane `wait-for` channel so interactive runs can
 // detect their child's exit deterministically.
@@ -756,7 +746,6 @@ function buildHost(deps: BuildHostDeps): Host {
   // "attach client exited because we killed the session" (clean) from
   // "attach client exited on its own" (unexpected — diagnostic to stderr).
   let teardownStarted = false
-  const rollup: RollupAggregator = createRollupAggregator()
 
   const appendLifecycle = async (record: JsonObject): Promise<void> => {
     await deps.logger?.append('lifecycle', record).catch(() => {})
@@ -810,149 +799,26 @@ function buildHost(deps: BuildHostDeps): Host {
 
   const controller = deps.controller
 
+  // Right-pane lifecycle choreography lives in its own deep module behind a
+  // FIFO queue (see lifecycle-choreographer.ts). The host forwards each event
+  // fire-and-forget; the choreographer owns the ordering invariants, the
+  // parallel rollup, and the per-step tee/source side effects.
+  const choreographer = createLifecycleChoreographer({
+    controller,
+    tee: deps.tee,
+    logger: deps.logger,
+    runId: deps.runId,
+    clock: deps.clock,
+    isTorndown: () => torndown,
+    onSendError: handleSendError,
+  })
+
   const onLifecycleEvent = (event: StepLifecycleEvent): void => {
     // The steps-view daemon tails on-disk lifecycle events directly — no
-    // in-process forwarding needed. This handler manages right-pane side
-    // effects (per-step tee, file-tail source register/unregister, failure
-    // summary, parallel rollup).
-    if (event.type === 'step:start' && event.mode === 'autonomous') {
-      deps.tee.open(event.stepName)
-      // Force the tee file into existence with a visible marker so the live
-      // `tail -F` source has bytes to render immediately. Runners can take
-      // 5–25 s to emit their first transcript-renderable event; without this,
-      // the right pane stays blank long enough that users navigate away,
-      // never see the step's output, and have no signal the step is running.
-      deps.tee.write(event.stepName, `[${event.stepName}] starting…\r\n`)
-      // U5: wire a live file-tail source. When `logsDir` is null (no file
-      // logging configured) the tee writes are a no-op; surface that to
-      // the user so the empty right pane has a one-time explanation.
-      const teePath = teePathFor(deps.logger, event.stepName)
-      if (teePath !== null) {
-        void controller
-          ?.registerSource(
-            { type: 'live', stepName: event.stepName },
-            { kind: 'file-tail', path: teePath },
-          )
-          .catch(handleSendError)
-      } else if (controller !== undefined) {
-        void controller
-          .emitBanner({
-            kind: 'info',
-            text: `step ${event.stepName} running (no transcript captured — file logging disabled)`,
-            ttlMs: 4000,
-          })
-          .catch(handleSendError)
-      }
-      return
-    }
-    if (event.type === 'step:cached') {
-      // Cached steps never run on the right pane — surface the cache hit as
-      // a transient info banner so the user understands why no transcript
-      // appeared. `viewMode` is unchanged (no pane swap occurred).
-      void controller
-        ?.emitBanner({
-          kind: 'info',
-          text: `step ${event.stepName} — cached (no transcript captured)`,
-          ttlMs: 4000,
-        })
-        .catch(handleSendError)
-      return
-    }
-    if (event.type === 'step:complete') {
-      // Ordering: unregister BEFORE close. The controller's `live → replay`
-      // transform leaves the hidden pane alive tailing the tee; the pane
-      // continues to see bytes until the tee actually closes. Bytes written
-      // between unregister and close (e.g. trailing summary lines) still
-      // surface in the warm-cached replay.
-      const teePath = teePathFor(deps.logger, event.stepName)
-      if (teePath !== null && controller !== undefined) {
-        void controller
-          .unregisterSource({ type: 'live', stepName: event.stepName })
-          .catch(handleSendError)
-      }
-      deps.tee.close(event.stepName)
-      return
-    }
-    if (event.type === 'step:failed') {
-      // tee.write the failure summary FIRST so the bytes land in the file
-      // (and therefore in the hidden pane that's still tailing it) before
-      // the live → replay transform freezes the source for warm replay.
-      if (!torndown) {
-        const summary = summarizeFailure({
-          stepName: event.stepName,
-          runId: deps.runId,
-          error: event.error,
-          failedAt: deps.clock.now(),
-        })
-        deps.tee.write(event.stepName, renderFailurePanePayload(summary))
-      }
-      const teePath = teePathFor(deps.logger, event.stepName)
-      const ctrl = controller
-      if (teePath !== null && ctrl !== undefined) {
-        // Sequential: drain the unregister (with the completion banner
-        // suppressed at the source) BEFORE the error emit. Without this,
-        // a fire-and-forget unregister whose pendingRegistrations drain
-        // is slow could land its info banner after our error and overwrite
-        // it via last-write-wins.
-        void (async () => {
-          await ctrl
-            .unregisterSource(
-              { type: 'live', stepName: event.stepName },
-              { suppressCompletionBanner: true },
-            )
-            .catch(handleSendError)
-          await ctrl
-            .emitBanner({ kind: 'error', text: `step ${event.stepName} failed` })
-            .catch(handleSendError)
-        })()
-      } else {
-        void controller
-          ?.emitBanner({ kind: 'error', text: `step ${event.stepName} failed` })
-          .catch(handleSendError)
-      }
-      deps.tee.close(event.stepName)
-      return
-    }
-    if (event.type === 'step:parallel-start') {
-      // U7: open the `_rollup` meta tee and register a rollup source on the
-      // scratch session. The hidden pane tails the tee via `tail -F`; the
-      // controller auto-swaps to it when the user is in live mode, or emits
-      // an info banner when they're on a replay.
-      deps.tee.open(ROLLUP_STEP_NAME)
-      const teePath = teePathFor(deps.logger, ROLLUP_STEP_NAME)
-      if (teePath !== null && controller !== undefined) {
-        void controller
-          .registerSource({ type: 'rollup' }, { kind: 'file-tail', path: teePath })
-          .catch(handleSendError)
-      }
-      return
-    }
-    if (event.type === 'step:parallel-branch-update') {
-      // U7: rollup snapshot writes to the `_rollup` tee; the hidden pane's
-      // `tail -F` mirrors it into the visible right pane when the rollup
-      // source is current. The legacy direct `sendKeys` on the right pane is
-      // gone — the rollup lives on its own swap-able pane.
-      const snapshot = rollup.apply({
-        stepName: event.stepName,
-        branchStatus: event.branchStatus,
-        ...(event.elapsedMs !== undefined ? { elapsedMs: event.elapsedMs } : {}),
-        ...(event.toolCount !== undefined ? { toolCount: event.toolCount } : {}),
-      })
-      deps.tee.write(ROLLUP_STEP_NAME, renderRollupPayload(snapshot))
-      return
-    }
-    if (event.type === 'step:parallel-complete') {
-      // U7: unregister BEFORE closing the tee (the hidden pane is killed by
-      // unregisterSource, so there's no consumer reading the trailing bytes
-      // after we close) and reset the aggregator so a subsequent parallel
-      // block starts with a fresh snapshot.
-      if (controller !== undefined) {
-        void controller.unregisterSource({ type: 'rollup' }).catch(handleSendError)
-      }
-      deps.tee.close(ROLLUP_STEP_NAME)
-      rollup.reset()
-      return
-    }
+    // in-process forwarding needed. The choreographer drives the right-pane
+    // side effects (per-step tee, file-tail source register/unregister,
+    // failure summary, parallel rollup) behind its serialization queue.
+    void choreographer.handle(event)
   }
 
   const onRunnerEvent = (
@@ -1396,7 +1262,10 @@ function buildHost(deps: BuildHostDeps): Host {
     // branch in `attachForeground`, not the "attach died unexpectedly" path.
     teardownStarted = true
     torndown = true
-    rollup.reset()
+    // Let any queued lifecycle choreography settle before draining the tee —
+    // pending `handle()` work may still hold a tee sink open, and draining
+    // mid-write would race a close against a write (KTD6).
+    await choreographer.quiescent()
     // Flush any open per-step formatted_output sinks so SIGINT mid-step
     // still leaves bytes on disk before the run-ended record.
     await deps.tee.drain()

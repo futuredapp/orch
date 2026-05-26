@@ -9,7 +9,7 @@
 // view daemon owns the left pane and command output never lands there.
 
 import { describe, expect, it } from 'bun:test'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { Writable } from 'node:stream'
 import { stepName } from '../../../src/core/types.ts'
@@ -31,6 +31,22 @@ function bufferStream(): { stream: NodeJS.WritableStream; text: () => string } {
 }
 
 const RUN_ID = 'r-2026-05-05-100000-tc' as RunId
+
+// `step:start` opens the tee behind the lifecycle choreographer's FIFO queue,
+// so the open is no longer synchronous with `onLifecycleEvent` returning. In
+// production the subprocess spawn between `step:start` and the first command
+// line provides this ordering; here we poll for the starting-marker the open
+// writes before firing `onCommandLine`, mirroring the `waitForFile` idiom the
+// autonomous-live-pane integration test already uses.
+async function waitForTeeOpen(absPath: string, timeoutMs = 2000): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const body = await readFile(absPath, 'utf8').catch(() => '')
+    if (body.includes('starting…')) return
+    await new Promise((r) => setTimeout(r, 10))
+  }
+  throw new Error(`tee did not open within ${timeoutMs}ms: ${absPath}`)
+}
 
 interface Harness {
   readonly host: Awaited<ReturnType<typeof createTmuxHost>>
@@ -107,6 +123,7 @@ describe('TmuxHost.onCommandLine', () => {
       stepName: stepName('command:tests'),
       mode: 'autonomous',
     })
+    await waitForTeeOpen(`${h.basePath}/${RUN_ID}/logs/agents/command:tests/formatted_output.ansi`)
     h.host.onCommandLine({
       stream: 'stdout',
       line: 'hello',
@@ -137,6 +154,7 @@ describe('TmuxHost.onCommandLine', () => {
       stepName: stepName('command:status'),
       mode: 'autonomous',
     })
+    await waitForTeeOpen(`${h.basePath}/${RUN_ID}/logs/agents/command:status/formatted_output.ansi`)
     h.host.onCommandLine({
       stream: 'stdout',
       line: 'sidebar',
@@ -169,6 +187,9 @@ describe('TmuxHost.onCommandLine', () => {
       stepName: stepName('command:colorful'),
       mode: 'autonomous',
     })
+    await waitForTeeOpen(
+      `${h.basePath}/${RUN_ID}/logs/agents/command:colorful/formatted_output.ansi`,
+    )
     h.host.onCommandLine({
       stream: 'stdout',
       line: ansi,

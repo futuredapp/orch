@@ -46,12 +46,36 @@ interface LifecycleEvent {
 }
 
 const readLifecycleEvents = async (logsDir: string): Promise<LifecycleEvent[]> => {
-  const text = await readFile(`${logsDir}/lifecycle.ndjson`, 'utf8')
+  const text = await readFile(`${logsDir}/lifecycle.ndjson`, 'utf8').catch(() => '')
   return text
     .split('\n')
     .filter((line) => line.length > 0)
     .map((line) => JSON.parse(line) as LifecycleEvent)
 }
+
+// The host's lifecycle side effects (source-session creation, register) are
+// serialized behind the choreographer's FIFO queue, so they trail the fast
+// FakeRunner workflow's completion instead of finishing synchronously with it.
+// Poll the lifecycle log until the predicate holds rather than reading once.
+const waitForLifecycle = async (
+  logsDir: string,
+  done: (events: LifecycleEvent[]) => boolean,
+  timeoutMs = 10_000,
+): Promise<LifecycleEvent[]> => {
+  const deadline = Date.now() + timeoutMs
+  let events: LifecycleEvent[] = []
+  while (Date.now() < deadline) {
+    events = await readLifecycleEvents(logsDir)
+    if (done(events)) return events
+    await new Promise((r) => setTimeout(r, 25))
+  }
+  return events
+}
+
+const liveCreateCount = (events: LifecycleEvent[]): number =>
+  events.filter(
+    (e) => e.type === 'source-session-created' && e.sourceKey?.startsWith('live:') === true,
+  ).length
 
 describe.skipIf(!tmuxAvailable)(
   'Tier 5 — per-source sessions: 10-step walkthrough lifecycle invariants',
@@ -86,9 +110,14 @@ describe.skipIf(!tmuxAvailable)(
       await harness.right.waitForText('step-1-marker', { timeoutMs: 5000 })
 
       // Read the lifecycle log MID-RUN — before teardown — so we can
-      // distinguish create-time events from teardown-time events.
+      // distinguish create-time events from teardown-time events. The
+      // choreographer's FIFO queue drains the per-source creations after the
+      // workflow returns, so poll until all 10 live sources have spawned.
       const logsDir = `${harness.logger.logsDir}`
-      const eventsBeforeTeardown = await readLifecycleEvents(logsDir)
+      const eventsBeforeTeardown = await waitForLifecycle(
+        logsDir,
+        (events) => liveCreateCount(events) >= 10,
+      )
 
       // Every step's live source spawns exactly once.
       const liveCreates = eventsBeforeTeardown.filter(
