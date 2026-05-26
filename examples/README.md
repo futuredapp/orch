@@ -13,6 +13,7 @@
 | [`hello-file/`](./hello-file/) | Minimal first workflow — a single autonomous Claude step. |
 | [`riddle-solver*/`](./riddle-solver/) | Multi-step Claude flow that solves a riddle from the prompt. |
 | [`codex-riddle-solver/`](./codex-riddle-solver/) | Same shape, but driven by Codex. |
+| [`codex-and-claude/`](./codex-and-claude/) | Smallest two-runner workflow — one Codex step + one Claude Code step, chained through a shared file. |
 
 Run any example from the project root:
 
