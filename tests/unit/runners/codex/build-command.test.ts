@@ -297,6 +297,50 @@ describe('buildCommand interactive mode', () => {
     expect(cmd.argv).toEqual(['codex', '--full-auto', '--no-alt-screen', '--', 'hello world'])
   })
 
+  it('adds --dangerously-bypass-hook-trust for interactive auto-stop runs', async () => {
+    const deps = makeDeps()
+    const runner = codex({}, deps)
+    const cmd = await runner.buildCommand(
+      ctxFor('hello world', { mode: 'interactive', autoStop: true }),
+    )
+
+    expect(cmd.argv).toEqual([
+      'codex',
+      '--full-auto',
+      '--no-alt-screen',
+      '--dangerously-bypass-hook-trust',
+      '--',
+      'hello world',
+    ])
+  })
+
+  it('does not add --dangerously-bypass-hook-trust for interactive runs without auto-stop', async () => {
+    const deps = makeDeps()
+    const runner = codex({}, deps)
+    const cmd = await runner.buildCommand(ctxFor('hello world', { mode: 'interactive' }))
+
+    expect(cmd.argv).not.toContain('--dangerously-bypass-hook-trust')
+  })
+
+  it('does not add --dangerously-bypass-hook-trust to autonomous argv', async () => {
+    const deps = makeDeps()
+    const runner = codex({}, deps)
+    const cmd = await runner.buildCommand(
+      ctxFor('hello world', { mode: 'autonomous', autoStop: true }),
+    )
+
+    expect(cmd.argv).not.toContain('--dangerously-bypass-hook-trust')
+  })
+
+  it('does not duplicate --dangerously-bypass-hook-trust when a workflow already passes it', async () => {
+    const deps = makeDeps()
+    const runner = codex({ flags: ['--dangerously-bypass-hook-trust'] }, deps)
+    const cmd = await runner.buildCommand(ctxFor('p', { mode: 'interactive', autoStop: true }))
+
+    const occurrences = cmd.argv.filter((a) => a === '--dangerously-bypass-hook-trust').length
+    expect(occurrences).toBe(1)
+  })
+
   it('keeps --no-alt-screen out of the autonomous (exec) argv', async () => {
     const deps = makeDeps()
     const runner = codex({}, deps)

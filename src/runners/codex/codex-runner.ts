@@ -83,6 +83,12 @@ function assertFlagAllowed(flag: string): void {
   }
 }
 
+const BYPASS_HOOK_TRUST_FLAG = '--dangerously-bypass-hook-trust' as const
+
+function includesFlag(flags: readonly string[] | undefined, flag: string): boolean {
+  return flags?.includes(flag) ?? false
+}
+
 // ---------------------------------------------------------------------------
 // Standalone NDJSON parser — exported for direct unit testing
 // ---------------------------------------------------------------------------
@@ -235,6 +241,17 @@ function buildInteractiveArgv(
   // (0.118.0 >> 0.81.0-alpha.1 where the flag landed). Idempotent if the
   // user supplies it again via flags/extraArgs — Codex accepts the repeat.
   argv.push('--no-alt-screen')
+  // TODO(docs/issues/2026-05-26-codex-tui-ignores-hook-trust-bypass.md): this
+  // flag is a no-op in the Codex TUI for v0.131–0.133 (upstream bug, fixed by
+  // PR #24317, not yet released) — the startup hook-review prompt still appears.
+  // Wiring is correct; bump MIN_CODEX_VERSION once the fix ships, no argv change.
+  if (
+    ctx.autoStop === true &&
+    !includesFlag(opts.flags, BYPASS_HOOK_TRUST_FLAG) &&
+    !ctx.extraArgs.includes(BYPASS_HOOK_TRUST_FLAG)
+  ) {
+    argv.push(BYPASS_HOOK_TRUST_FLAG)
+  }
   argv.push(...(opts.flags ?? []))
   argv.push(...ctx.extraArgs)
   argv.push('--', ctx.prompt)
@@ -274,31 +291,30 @@ async function buildAutonomousArgv(
 // Auto-stop injection via per-run CODEX_HOME (R3–R5, R7, R9)
 // ---------------------------------------------------------------------------
 //
-// Codex has no flag to register a turn-completion hook that survives the
-// denylist, but it honors `notify` from `CODEX_HOME/config.toml`. We build a
-// throwaway `CODEX_HOME` that symlinks every real `~/.codex` entry (so auth and
-// sessions are inherited untouched) EXCEPT `config.toml`, which we copy and
-// append a single signal-only `notify` line to. `CODEX_HOME` is an env var, not
-// the denylisted `-c`/`--config`, so it passes the Codex flag denylist.
+// Codex reads lifecycle hooks from `hooks.json` or inline `[hooks]` tables
+// inside `CODEX_HOME/config.toml`. We build a throwaway `CODEX_HOME` that
+// symlinks every real `~/.codex` entry (so auth and sessions are inherited
+// untouched) EXCEPT `config.toml`, which we copy and append a single
+// signal-only `Stop` hook to. `CODEX_HOME` is an env var, not the denylisted
+// `-c`/`--config`, so it passes the Codex flag denylist.
 
-/** Signal-only notify hook: pings orch's wait-for channel on turn completion.
- *  No termination, no state mutation. The `\"` escapes survive into the TOML
- *  string so the shell sees real double-quotes around the env-var refs. The
- *  socket selector is `-L <name>` (orch's server is `tmux -L orch-<runId>`);
- *  `-S <path>` would reach the wrong server. The `-S` after `wait-for` is the
- *  separate signal-channel flag. */
-const CODEX_NOTIFY_LINE =
-  'notify = ["bash", "-lc", "tmux -L \\"$ORCH_SOCKET\\" wait-for -S \\"$ORCH_STOP_CHANNEL\\""]'
+/** Signal-only Stop hook: pings orch's wait-for channel on turn completion.
+ *  No termination, no state mutation. Single-quoted TOML leaves the shell's
+ *  `$ORCH_*` expansion intact. The socket selector is `-L <name>` (orch's
+ *  server is `tmux -L orch-<runId>`); `-S <path>` would reach the wrong server.
+ *  The `-S` after `wait-for` is the separate signal-channel flag. */
+const CODEX_STOP_HOOK_BLOCK = [
+  '[[hooks.Stop]]',
+  '[[hooks.Stop.hooks]]',
+  'type = "command"',
+  'command = \'tmux -L "$ORCH_SOCKET" wait-for -S "$ORCH_STOP_CHANNEL"\'',
+  'timeout = 30',
+].join('\n')
 
 const CONFIG_TOML = path('config.toml')
 
-/** True when the copied config already declares a top-level `notify` key.
- *  Appending a second one would make duplicate-key TOML, which Codex's parser
- *  rejects — refusing to start at all. Detecting it lets us skip our injection
- *  (auto-stop silently won't fire — the visible-hang follow-up) rather than
- *  corrupt the user's config (a strictly worse outcome). */
-function hasNotifyKey(config: string): boolean {
-  return /^\s*notify\s*=/m.test(config)
+function hasOrchStopHook(config: string): boolean {
+  return config.includes('$ORCH_STOP_CHANNEL')
 }
 
 async function prepareCodexAutoStop(
@@ -319,13 +335,12 @@ async function prepareCodexAutoStop(
     await fs.symlink(path(`${realCodexHome}/${entry}`), path(`${runCodexHome}/${entry}`))
   }
 
-  // Copy config.toml (if any) and append the notify line. Never writes back to
-  // the real home — only the throwaway copy gets the hook. If the user's config
-  // already defines `notify`, leave it untouched (see hasNotifyKey).
+  // Copy config.toml (if any) and append the Stop hook. Never writes back to
+  // the real home — only the throwaway copy gets the hook.
   const realConfig = path(`${realCodexHome}/config.toml`)
   const existing = (await fs.exists(realConfig)) ? await fs.readFile(realConfig) : ''
   const base = existing === '' || existing.endsWith('\n') ? existing : `${existing}\n`
-  const body = hasNotifyKey(existing) ? base : `${base}${CODEX_NOTIFY_LINE}\n`
+  const body = hasOrchStopHook(existing) ? base : `${base}${CODEX_STOP_HOOK_BLOCK}\n`
   await fs.writeFile(path(`${runCodexHome}/config.toml`), body)
 
   const cleanup = async (): Promise<void> => {

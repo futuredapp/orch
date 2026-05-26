@@ -62,7 +62,7 @@ describe('codex().prepareAutoStop CODEX_HOME construction', () => {
     expect(await fs.readFile(path(`${runHome}/auth.json`))).toBe('{"token":"secret"}')
   })
 
-  it('copies config.toml and appends a signal-only notify line referencing the orch channel', async () => {
+  it('copies config.toml and appends a signal-only Stop hook referencing the orch channel', async () => {
     const fs = new FakeFsService()
     await seedRealCodexHome(fs)
 
@@ -71,11 +71,14 @@ describe('codex().prepareAutoStop CODEX_HOME construction', () => {
 
     const config = await fs.readFile(path(`${runHome}/config.toml`))
     expect(config).toContain('model = "o3"')
-    expect(config).toContain('notify =')
+    expect(config).toContain('[[hooks.Stop]]')
+    expect(config).toContain('[[hooks.Stop.hooks]]')
+    expect(config).toContain('type = "command"')
     expect(config).toContain('$ORCH_SOCKET')
     expect(config).toContain('$ORCH_STOP_CHANNEL')
     expect(config).toContain('wait-for')
     expect(config).not.toMatch(/kill|exit/)
+    expect(config).not.toMatch(/^\s*notify\s*=/m)
   })
 
   it('never writes back to the real ~/.codex/config.toml', async () => {
@@ -87,7 +90,7 @@ describe('codex().prepareAutoStop CODEX_HOME construction', () => {
     expect(await fs.readFile(path('/home/u/.codex/config.toml'))).toBe('model = "o3"\n')
   })
 
-  it('does not append a second notify line when the user config already defines one (no duplicate-key TOML)', async () => {
+  it('preserves a user notify line while adding orch Stop hook config', async () => {
     const fs = new FakeFsService()
     await fs.mkdir(REAL_HOME, { recursive: true })
     await fs.writeFile(
@@ -99,11 +102,25 @@ describe('codex().prepareAutoStop CODEX_HOME construction', () => {
     const runHome = path(prep?.env.CODEX_HOME as string)
 
     const config = await fs.readFile(path(`${runHome}/config.toml`))
-    // Exactly one notify key survives — the user's. Ours is skipped to avoid a
-    // duplicate-key config that Codex would refuse to parse.
     expect(config.match(/^\s*notify\s*=/gm)?.length).toBe(1)
     expect(config).toContain('my-notifier')
-    expect(config).not.toContain('$ORCH_STOP_CHANNEL')
+    expect(config).toContain('[[hooks.Stop]]')
+    expect(config).toContain('$ORCH_STOP_CHANNEL')
+  })
+
+  it('does not append duplicate orch Stop hooks when the copied config already contains one', async () => {
+    const fs = new FakeFsService()
+    await fs.mkdir(REAL_HOME, { recursive: true })
+    await fs.writeFile(
+      path('/home/u/.codex/config.toml'),
+      'model = "o3"\n\n[[hooks.Stop]]\n[[hooks.Stop.hooks]]\ntype = "command"\ncommand = \'tmux -L "$ORCH_SOCKET" wait-for -S "$ORCH_STOP_CHANNEL"\'\n',
+    )
+
+    const prep = await makeCodex(fs).prepareAutoStop?.(ctx())
+    const runHome = path(prep?.env.CODEX_HOME as string)
+
+    const config = await fs.readFile(path(`${runHome}/config.toml`))
+    expect(config.match(/\$ORCH_STOP_CHANNEL/g)?.length).toBe(1)
   })
 })
 
