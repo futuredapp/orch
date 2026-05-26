@@ -33,6 +33,7 @@ import {
 } from './errors.ts'
 import { currentCwd, currentParallelDepth, executionContext } from './execution-context.ts'
 import type { ResumeRegistry } from './resume-registry.ts'
+import { type StepTimer, withStepLifecycle } from './step-lifecycle.ts'
 import { resolveView } from './view-registry.ts'
 
 // Re-export so existing imports from './workflow.ts' remain valid.
@@ -318,29 +319,9 @@ function validateSchemaOutput(config: AgentStepConfig, key: StepName, rawValue: 
   return parseResult.data
 }
 
-// ---------------------------------------------------------------------------
-// Lifecycle tee — fans step events through the host AND the session logger.
-// Host owns rendering; logger owns the structured trace. Single call site
-// keeps the two observers in lock-step — see plan § "Host-side vs executor-
-// side lifecycle".
-// ---------------------------------------------------------------------------
-
-// Step-scoped subset of `StepLifecycleEvent` — all variants that carry a
-// `stepName`. The block-scoped events (`step:parallel-start` /
-// `step:parallel-complete`) are emitted by `parallel()` directly and never
-// reach this helper.
-type StepScopedLifecycleEvent = Extract<StepLifecycleEvent, { stepName: StepName }>
-
-function emitStepLifecycle(
-  host: Host,
-  stepSpan: StepSpan | undefined,
-  event: StepScopedLifecycleEvent,
-): void {
-  host.onLifecycleEvent(event)
-  if (stepSpan === undefined) return
-  const { type, stepName: _name, ...rest } = event
-  void stepSpan.append('lifecycle', { type, ...(rest as JsonObject) }).catch(() => {})
-}
+// Step lifecycle emission (`step:start`/`step:complete`/`step:failed` plus the
+// parallel branch-update supplement) lives in `./step-lifecycle.ts`; every
+// per-kind executor below brackets its body with `withStepLifecycle`.
 
 function errorLogFields(err: unknown): JsonObject {
   const base: Record<string, unknown> = { error: String(err) }
@@ -460,24 +441,39 @@ async function runInteractiveStep(
     })
   }
 
+  return withStepLifecycle(
+    { host: deps.host, stepSpan, clock: deps.clock, key, mode: 'interactive', trackParallel: true },
+    (timer) =>
+      produceInteractiveStep(deps, captureLock, config, key, overrides, stepSpan, autoStop, timer),
+  )
+}
+
+// The run-and-produce body for an interactive step, lifted out of the
+// `withStepLifecycle` closure (mirrors `produceAgentStep`). `autoStop` is
+// resolved by the caller's fail-fast guard and passed in; everything else is
+// local. `timer.stamp` reports the session's own duration on the lifecycle
+// events rather than the envelope's wall-clock (which would also count capture
+// + buildCommand + logging).
+//
+// Over the cognitive-complexity budget (CLAUDE.md rule #5): the
+// onInteractive-vs-foreground-spawn fork, the pre-spawn session-id capture
+// window, and the auto-stop cleanup wiring are one indivisible sequence —
+// splitting further would hide the spawn ordering that the comments exist to
+// make legible.
+async function produceInteractiveStep(
+  deps: WorkflowDeps,
+  captureLock: CaptureLock,
+  config: AgentStepConfig,
+  key: StepName,
+  overrides: RunOverrides | undefined,
+  stepSpan: StepSpan | undefined,
+  autoStop: boolean,
+  timer: StepTimer,
+): Promise<{ value: InteractiveResult; entry: StepEntry }> {
   const orchSessionId = deps.generateSessionId?.() ?? randomUUID()
   const prompt = assemblePrompt(config.prompt, overrides)
   const startedAtStep = deps.clock.now()
   const cwd = currentCwd(deps.cwd)
-
-  emitStepLifecycle(deps.host, stepSpan, {
-    type: 'step:start',
-    stepName: key,
-    mode: 'interactive',
-  })
-  const inParallel = currentParallelDepth() > 0
-  if (inParallel) {
-    emitStepLifecycle(deps.host, stepSpan, {
-      type: 'step:parallel-branch-update',
-      stepName: key,
-      branchStatus: 'running',
-    })
-  }
 
   // If an onInteractive handler is provided, delegate to it (agent-native).
   // Otherwise, require a TTY and do foreground spawn.
@@ -546,8 +542,9 @@ async function runInteractiveStep(
     // Auto-stop preparation runs after buildCommand (it only needs ctx). Its
     // env additions (e.g. Codex's CODEX_HOME) ride the `extras` layer — below
     // `buildCtx.env` so a workflow author's step env still wins last. The
-    // cleanup handle is once-guarded: tmux can invoke it at its pane-safe point,
-    // and the executor finally still owns the register/plain-host failure paths.
+    // cleanup handle is once-guarded: tmux can invoke it at its pane-safe
+    // point, and the executor finally still owns the register/plain-host
+    // failure paths.
     const autoStopPrep = await prepareAutoStopForStep(config, buildCtx)
     const autoStopCleanup =
       autoStopPrep.onCleanup === undefined
@@ -583,6 +580,9 @@ async function runInteractiveStep(
     }
   }
 
+  // Stamped before the failure branch so success and failure agree on duration.
+  timer.stamp(durationMs)
+
   logInteractiveSpawn(stepSpan, {
     runnerName: config.agent.name,
     argv,
@@ -594,7 +594,6 @@ async function runInteractiveStep(
   })
 
   if (exitCode !== 0) {
-    emitStepFailure(deps.host, stepSpan, key, `exit ${exitCode}`, inParallel, durationMs)
     throw new StepError(key, exitCode, `interactive session exited ${exitCode}`)
   }
 
@@ -603,8 +602,6 @@ async function runInteractiveStep(
   // value schema honest — the top-level `entry.sessionId` is what drives
   // resume and IS omitted via the conditional below.
   const value: InteractiveResult = { exitCode, durationMs, sessionId: persistedSessionId }
-
-  emitStepSuccess(deps.host, stepSpan, key, inParallel, durationMs)
 
   const hasResumeSupport = typeof config.agent.resumeCommand === 'function'
   const persistsSessionId = hasResumeSupport && sessionIdCaptureError === undefined
@@ -644,47 +641,6 @@ async function runInteractiveStep(
   })
 
   return { value, entry }
-}
-
-// ---------------------------------------------------------------------------
-// Step lifecycle emitters — keep runAgentStep / runInteractiveStep terse.
-// ---------------------------------------------------------------------------
-
-function emitStepFailure(
-  host: Host,
-  stepSpan: StepSpan | undefined,
-  key: StepName,
-  error: unknown,
-  inParallel: boolean,
-  durationMs: number,
-): void {
-  emitStepLifecycle(host, stepSpan, { type: 'step:failed', stepName: key, error })
-  if (inParallel) {
-    emitStepLifecycle(host, stepSpan, {
-      type: 'step:parallel-branch-update',
-      stepName: key,
-      branchStatus: 'failed',
-      elapsedMs: durationMs,
-    })
-  }
-}
-
-function emitStepSuccess(
-  host: Host,
-  stepSpan: StepSpan | undefined,
-  key: StepName,
-  inParallel: boolean,
-  durationMs: number,
-): void {
-  emitStepLifecycle(host, stepSpan, { type: 'step:complete', stepName: key, durationMs })
-  if (inParallel) {
-    emitStepLifecycle(host, stepSpan, {
-      type: 'step:parallel-branch-update',
-      stepName: key,
-      branchStatus: 'completed',
-      elapsedMs: durationMs,
-    })
-  }
 }
 
 interface InteractiveSpawnRecord {
@@ -848,21 +804,26 @@ async function runAgentStep(
     kind: resolution.kind,
     ...(resolution.kind !== 'silent' ? { pane: resolution.pane } : {}),
   })
-  const inParallel = currentParallelDepth() > 0
 
-  emitStepLifecycle(deps.host, stepSpan, {
-    type: 'step:start',
-    stepName: key,
-    mode: 'autonomous',
-  })
-  if (inParallel) {
-    emitStepLifecycle(deps.host, stepSpan, {
-      type: 'step:parallel-branch-update',
-      stepName: key,
-      branchStatus: 'running',
-    })
-  }
+  return withStepLifecycle(
+    { host: deps.host, stepSpan, clock: deps.clock, key, mode: 'autonomous', trackParallel: true },
+    () => produceAgentStep(deps, config, key, overrides, stepSpan, isSilent),
+  )
+}
 
+// The run-and-produce body for an autonomous step, lifted out of the
+// `withStepLifecycle` closure so the envelope doesn't add a nesting level to an
+// already-branchy executor. Throws `StepError` / `ValidationError` /
+// `SchemaValidationError`; the envelope turns those into `step:failed`. Uses
+// wall-clock for the lifecycle duration (no `timer.stamp`).
+async function produceAgentStep(
+  deps: WorkflowDeps,
+  config: AgentStepConfig,
+  key: StepName,
+  overrides: RunOverrides | undefined,
+  stepSpan: StepSpan | undefined,
+  isSilent: boolean,
+): Promise<{ value: unknown; entry: StepEntry }> {
   const cwd = currentCwd(deps.cwd)
   const normalized = normalizeValidators(config.validate, key)
   const headSha = anyNeedsHeadSha(normalized) ? await safeHeadSha(deps.gitService, cwd) : undefined
@@ -911,7 +872,6 @@ async function runAgentStep(
       result.finalEvent.type === 'error'
         ? result.finalEvent.message
         : `runner exited ${result.exitCode}`
-    emitStepFailure(deps.host, stepSpan, key, msg, inParallel, durationMs)
     throw new StepError(key, result.exitCode, msg)
   }
 
@@ -930,8 +890,6 @@ async function runAgentStep(
   if (failures.length > 0) {
     throw new ValidationError(key, failures)
   }
-
-  emitStepSuccess(deps.host, stepSpan, key, inParallel, durationMs)
 
   const entry = buildAgentEntry({
     key,
@@ -1206,75 +1164,60 @@ async function runStepOnce(
       )
       break
     case 'ask': {
-      // Emit step:start so the row appears in the steps-view projection
-      // while the prompt is awaiting input — without this, the user can
-      // navigate away from the prompt pane (Enter on another row) and have
-      // no UI affordance to come back. See incident r-2026-05-22-212450-07.
-      const askStartedAt = deps.clock.now()
-      emitStepLifecycle(deps.host, stepSpan, {
-        type: 'step:start',
-        stepName: key,
-        mode: 'interactive',
-      })
-      try {
-        result = await runAskStep(
-          {
-            clock: deps.clock,
-            host: deps.host,
-            promptService: deps.promptService,
-            interactivity: deps.interactivity,
-          },
-          config,
+      // step:start makes the row appear in the steps-view projection while the
+      // prompt is awaiting input — without it the user can navigate away from
+      // the prompt pane (Enter on another row) with no affordance to come back.
+      // See incident r-2026-05-22-212450-07. `trackParallel: false`: ask throws
+      // AskParallelError before producing a branch, so it never branch-updates.
+      result = await withStepLifecycle(
+        {
+          host: deps.host,
+          stepSpan,
+          clock: deps.clock,
           key,
-          overrides,
-        )
-      } catch (err) {
-        emitStepLifecycle(deps.host, stepSpan, { type: 'step:failed', stepName: key, error: err })
-        throw err
-      }
-      emitStepLifecycle(deps.host, stepSpan, {
-        type: 'step:complete',
-        stepName: key,
-        durationMs: deps.clock.now() - askStartedAt,
-      })
+          mode: 'interactive',
+          trackParallel: false,
+        },
+        async () =>
+          runAskStep(
+            {
+              clock: deps.clock,
+              host: deps.host,
+              promptService: deps.promptService,
+              interactivity: deps.interactivity,
+            },
+            config,
+            key,
+            overrides,
+          ),
+      )
       break
     }
     case 'command': {
-      const inParallel = currentParallelDepth() > 0
-      const startedAt = deps.clock.now()
-      emitStepLifecycle(deps.host, stepSpan, {
-        type: 'step:start',
-        stepName: key,
-        mode: 'autonomous',
-      })
-      if (inParallel) {
-        emitStepLifecycle(deps.host, stepSpan, {
-          type: 'step:parallel-branch-update',
-          stepName: key,
-          branchStatus: 'running',
-        })
-      }
-      try {
-        result = await runCommandStep(
-          {
-            processService: deps.processService,
-            clock: deps.clock,
-            host: deps.host,
-            ...(deps.logger !== undefined ? { logger: deps.logger } : {}),
-            ...(stepSpan !== undefined ? { stepSpan } : {}),
-          },
-          config,
+      result = await withStepLifecycle(
+        {
+          host: deps.host,
+          stepSpan,
+          clock: deps.clock,
           key,
-          currentCwd(deps.cwd),
-          overrides,
-        )
-      } catch (err) {
-        const durationMs = deps.clock.now() - startedAt
-        emitStepFailure(deps.host, stepSpan, key, err, inParallel, durationMs)
-        throw err
-      }
-      const durationMs = deps.clock.now() - startedAt
-      emitStepSuccess(deps.host, stepSpan, key, inParallel, durationMs)
+          mode: 'autonomous',
+          trackParallel: true,
+        },
+        async () =>
+          runCommandStep(
+            {
+              processService: deps.processService,
+              clock: deps.clock,
+              host: deps.host,
+              ...(deps.logger !== undefined ? { logger: deps.logger } : {}),
+              ...(stepSpan !== undefined ? { stepSpan } : {}),
+            },
+            config,
+            key,
+            currentCwd(deps.cwd),
+            overrides,
+          ),
+      )
       break
     }
     default: {
