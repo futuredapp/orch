@@ -168,10 +168,18 @@ export const spawnOrch = async (opts: SpawnOrchOptions): Promise<OrchHandle> => 
   const stdoutCollector = collectLines(subprocess.stdout)
 
   let teardownCalled = false
+  // Set once the runId (and thus the socket) is known. teardown reaps the
+  // detached tmux server: orch boots `orch-<runId>` in two-pane mode, and when
+  // a lifecycle test kills the orch process (SIGKILL/SIGTERM) it never tears
+  // its own server down, so the server survives and accumulates until the
+  // stale-socket preload reaps it (>5min). Reaping here keeps the per-test
+  // server count at zero. Best-effort + idempotent.
+  let socketToReap: string | undefined
   const teardown = async (): Promise<void> => {
     if (teardownCalled) return
     teardownCalled = true
     await killSubprocess(subprocess)
+    if (socketToReap !== undefined) await reapTmuxServer(socketToReap)
     await stderrCollector.done.catch(() => undefined)
     await stdoutCollector.done.catch(() => undefined)
     // On resume, the original handle still owns the state base — let its
@@ -193,6 +201,7 @@ export const spawnOrch = async (opts: SpawnOrchOptions): Promise<OrchHandle> => 
   }
 
   const socket = `orch-${runId}` as Socket
+  socketToReap = socket
   const stateDir = toPath(`${stateBaseRaw}/${runId}`)
 
   const agent = (stepName: string): AgentControl => {
@@ -469,6 +478,23 @@ async function killSubprocess(subprocess: SpawnHandle): Promise<void> {
   await subprocess.wait().catch(() => undefined)
 }
 
+// Reap the detached tmux server orch booted for this run, plus its socket file.
+// Best-effort and idempotent: a non-zero `kill-server` exit just means the
+// server was already gone (orch tore it down itself, or a prior teardown did).
+// `Bun.spawn` mirrors the fixture's killServerQuietly — it avoids the noisy
+// TmuxCommandError RealTmuxService would throw on an already-dead socket.
+async function reapTmuxServer(socket: string): Promise<void> {
+  const proc = Bun.spawn(['tmux', '-L', socket, 'kill-server'], {
+    stdout: 'ignore',
+    stderr: 'ignore',
+  })
+  await proc.exited
+  const uid = process.getuid?.() ?? 0
+  for (const dir of [`/tmp/tmux-${uid}`, `/private/tmp/tmux-${uid}`]) {
+    await rm(`${dir}/${socket}`, { force: true }).catch(() => undefined)
+  }
+}
+
 export class RunIdParseError extends Error {
   constructor(message: string) {
     super(message)
@@ -668,7 +694,7 @@ async function parseFixtureWorkflows(
     let m: RegExpExecArray | null = re.exec(raw)
     while (m !== null) {
       const [, name, file] = m
-      if (name !== undefined && file !== undefined && file.endsWith('.ts')) {
+      if (name !== undefined && file?.endsWith('.ts') === true) {
         out[name] = nodePath.join(fixtureCwd, file)
       }
       m = re.exec(raw)

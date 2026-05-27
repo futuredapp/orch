@@ -34,6 +34,15 @@ concepts; use them exactly in code, plans, and reviews. Architecture-level terms
   snapshot rendered on the `_rollup` source during a parallel block.
 - **Banner** — a transient overlay message on the right pane (info/error), emitted
   through the controller; last-write-wins.
+- **Interactive completion wait (`awaitInteractivePaneExit`)** — how an
+  interactive step learns its pane has exited. Races the unbounded `pane-died`
+  hook channel against a slow `#{pane_dead}` liveness poll. The hook is the fast
+  path; the poll is a backstop for a lost/delayed hook signal under host
+  contention. Invariant: the poll **never fails a live pane** (a human may pause
+  the agent arbitrarily long), so it only short-circuits a pane that already
+  died. A backstop hit logs `interactive-wait-hook-missed`. Added 2026-05-26 to
+  kill the two-pane-sequential-runs flake (a lost hook used to hang until the
+  caller's timeout with no diagnosis).
 - **Lifecycle choreographer (`LifecycleChoreographer`)** — translates one step
   lifecycle event into the ordered right-pane side effects (tee open/write/close,
   source register/unregister, banners, rollup apply/reset). Owns the ordering

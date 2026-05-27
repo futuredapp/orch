@@ -18,6 +18,7 @@ import { render } from 'ink-testing-library'
 import type { StepsViewState } from '../../../../../src/hosts/two-pane/steps-view/index.ts'
 import { StepsView } from '../../../../../src/hosts/two-pane/steps-view/index.ts'
 import { stripAnsi } from '../../../../../src/observability/index.ts'
+import { waitForFrame } from '../../../../helpers/ink-frame.ts'
 
 const NOOP = (): void => {}
 const NOW = 5_000
@@ -161,10 +162,14 @@ describe('<StepsView> selection accent', () => {
       view: { mode: 'live' },
     }
     const ui = render(<StepsView state={state} onIntent={NOOP} now={() => NOW} />)
-    await tick()
     ui.stdin.write('\x1b[A') // preview cursor: work → plan (committed stays on live `work`)
-    await tick()
-    const frame = ui.lastFrame() ?? ''
+    // Poll the raw frame until the ↑ has re-rendered the chevron onto the
+    // `plan` line — a fixed sleep races Ink's async re-render. Keeps ANSI
+    // (no transform) because the assertions check escape sequences.
+    const frame = await waitForFrame(ui, (f) => {
+      const line = f.split('\n').find((l) => stripAnsi(l).includes('plan'))
+      return line?.includes('›') === true
+    })
     ui.unmount()
 
     const planLine = frame.split('\n').find((line) => line.includes('plan'))

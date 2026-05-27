@@ -18,6 +18,7 @@ import type {
 } from '../../../../../src/hosts/two-pane/steps-view/index.ts'
 import { StepsView } from '../../../../../src/hosts/two-pane/steps-view/index.ts'
 import { stripAnsi } from '../../../../../src/observability/index.ts'
+import { waitForFrame, waitForIntents } from '../../../../helpers/ink-frame.ts'
 
 const NOOP = (): void => {}
 const NOW = 5_000
@@ -27,10 +28,6 @@ const ENTER = '\r'
 // Committed row (= right pane) carries `▌`; the preview cursor carries `›`.
 const COMMITTED = '▌'
 const PREVIEW = '›'
-
-function tick(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 50))
-}
 
 function rowWith(frame: string, glyph: string, names: readonly string[]): string | undefined {
   for (const line of frame.split('\n')) {
@@ -80,12 +77,14 @@ describe('<StepsView> preview cursor (commit model, Issue 2)', () => {
         now={() => NOW}
       />,
     )
-    await tick()
 
     ui.stdin.write(ARROW_UP) // cursor: work → plan; committed stays on live `work`
-    await tick()
 
-    const frame = stripAnsi(ui.lastFrame() ?? '')
+    // Poll until the ↑ has actually re-rendered the preview cursor onto `plan`
+    // — reading lastFrame() after a fixed sleep races Ink's async re-render.
+    const frame = await waitForFrame(ui, (f) => rowWith(f, PREVIEW, NAMES) === 'plan', {
+      transform: stripAnsi,
+    })
 
     // Committed highlight is unmoved — still the live step the right pane shows.
     expect(rowWith(frame, COMMITTED, NAMES)).toBe('work')
@@ -101,12 +100,12 @@ describe('<StepsView> preview cursor (commit model, Issue 2)', () => {
     const ui = render(
       <StepsView state={liveState([STEP_PLAN, STEP_WORK])} onIntent={NOOP} now={() => NOW} />,
     )
-    await tick()
-
-    const frame = stripAnsi(ui.lastFrame() ?? '')
 
     // At rest the cursor tracks the committed row, so only the committed `▌`
     // marker shows — no redundant `›` chevron.
+    const frame = await waitForFrame(ui, (f) => rowWith(f, COMMITTED, NAMES) === 'work', {
+      transform: stripAnsi,
+    })
     expect(rowWith(frame, COMMITTED, NAMES)).toBe('work')
     expect(frame.includes(PREVIEW)).toBe(false)
 
@@ -122,15 +121,18 @@ describe('<StepsView> preview cursor (commit model, Issue 2)', () => {
         now={() => NOW}
       />,
     )
-    await tick()
-
+    // Wait for the preview cursor to land on `plan` before committing, so the
+    // ENTER acts on the browsed row rather than a not-yet-moved cursor.
     ui.stdin.write(ARROW_UP) // preview cursor: work → plan
-    await tick()
+    await waitForFrame(ui, (f) => rowWith(f, PREVIEW, NAMES) === 'plan', { transform: stripAnsi })
     ui.stdin.write(ENTER) // commit the browsed row
-    await tick()
 
     // Enter commits the PREVIEW cursor (`plan`), not the live committed row.
-    expect(intents).toEqual([{ type: 'enter', stepName: 'plan' }])
+    const seen = await waitForIntents(
+      () => intents,
+      (i) => i.length > 0,
+    )
+    expect(seen).toEqual([{ type: 'enter', stepName: 'plan' }])
 
     ui.unmount()
   })
@@ -144,19 +146,19 @@ describe('<StepsView> preview cursor (commit model, Issue 2)', () => {
         now={() => NOW}
       />,
     )
-    await tick()
-
     ui.stdin.write(ARROW_UP) // preview cursor moves off the committed row
-    await tick()
+    await waitForFrame(ui, (f) => rowWith(f, PREVIEW, NAMES) === 'plan', { transform: stripAnsi })
     ui.stdin.write('f') // snap-to-live
-    await tick()
-
-    const frame = stripAnsi(ui.lastFrame() ?? '')
 
     // Cursor rejoined the committed row, so the `›` chevron is gone.
+    const frame = await waitForFrame(ui, (f) => !f.includes(PREVIEW), { transform: stripAnsi })
     expect(frame.includes(PREVIEW)).toBe(false)
     expect(rowWith(frame, COMMITTED, NAMES)).toBe('work')
-    expect(intents).toEqual([{ type: 'follow-live' }])
+    const seen = await waitForIntents(
+      () => intents,
+      (i) => i.length > 0,
+    )
+    expect(seen).toEqual([{ type: 'follow-live' }])
 
     ui.unmount()
   })

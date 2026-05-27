@@ -9,7 +9,6 @@
 import { describe, expect, it } from 'bun:test'
 import { renderToString } from 'ink'
 import { render } from 'ink-testing-library'
-import React from 'react'
 import type {
   Banner,
   StepsViewIntent,
@@ -18,9 +17,15 @@ import type {
 } from '../../../../../src/hosts/two-pane/steps-view/index.ts'
 import { HelpOverlay, StepsView } from '../../../../../src/hosts/two-pane/steps-view/index.ts'
 import { stripAnsi } from '../../../../../src/observability/index.ts'
+import { waitForIntents } from '../../../../helpers/ink-frame.ts'
+import { createManualTimer } from '../../../../helpers/manual-timer.ts'
 
 const NOOP = (): void => {}
 const NOW = 5_000
+
+// Let Ink commit the render so the auto-dismiss useEffect has registered its
+// timer before the test advances the manual clock.
+const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0))
 
 function makeLive(overrides?: {
   readonly view?: ViewMode
@@ -146,9 +151,13 @@ describe('<StepsView> Esc precedence', () => {
     const ui = render(<StepsView state={state} onIntent={(i) => intents.push(i)} now={() => NOW} />)
     await tick()
     ui.stdin.write('') // Esc
-    await tick()
 
-    expect(intents.some((i) => i.type === 'dismiss-banner')).toBe(true)
+    // Poll for the intent — the keypress is processed asynchronously, so a
+    // fixed sleep races Ink's input handling.
+    await waitForIntents(
+      () => intents,
+      (seen) => seen.some((i) => i.type === 'dismiss-banner'),
+    )
 
     ui.unmount()
   })
@@ -189,15 +198,29 @@ describe('<StepsView> Esc precedence', () => {
 })
 
 describe('<StepsView> banner auto-dismiss', () => {
+  // These tests drive the auto-dismiss timer through an injected ManualTimer
+  // (the `scheduleDismiss` prop) instead of real wall-clock. `advance(ms)` is
+  // the only thing that fires the timer, so the assertions are deterministic
+  // regardless of React-scheduler latency — the fix for the 2026-05-26 flake.
+
   it('dispatches dismiss-banner for an info banner after ttlMs elapses', async () => {
     const intents: StepsViewIntent[] = []
+    const timer = createManualTimer()
     const state = makeLive({
       banner: { kind: 'info', text: 'running', ttlMs: 80, seq: 1 },
     })
 
-    const ui = render(<StepsView state={state} onIntent={(i) => intents.push(i)} now={() => NOW} />)
-    // Wait past the ttl.
-    await tick(150)
+    const ui = render(
+      <StepsView
+        state={state}
+        onIntent={(i) => intents.push(i)}
+        now={() => NOW}
+        scheduleDismiss={timer.schedule}
+      />,
+    )
+    await flush() // let the effect register the timer
+
+    timer.advance(80) // exactly the ttl
 
     expect(intents.some((i) => i.type === 'dismiss-banner')).toBe(true)
 
@@ -206,12 +229,22 @@ describe('<StepsView> banner auto-dismiss', () => {
 
   it('does NOT auto-dismiss an error banner regardless of ttlMs', async () => {
     const intents: StepsViewIntent[] = []
+    const timer = createManualTimer()
     const state = makeLive({
       banner: { kind: 'error', text: 'oops', ttlMs: 50, seq: 1 },
     })
 
-    const ui = render(<StepsView state={state} onIntent={(i) => intents.push(i)} now={() => NOW} />)
-    await tick(150)
+    const ui = render(
+      <StepsView
+        state={state}
+        onIntent={(i) => intents.push(i)}
+        now={() => NOW}
+        scheduleDismiss={timer.schedule}
+      />,
+    )
+    await flush()
+
+    timer.advance(10_000) // far past the ttl — error banners never schedule
 
     expect(intents.some((i) => i.type === 'dismiss-banner')).toBe(false)
 
@@ -220,38 +253,38 @@ describe('<StepsView> banner auto-dismiss', () => {
 
   it('restarts the auto-dismiss timer when seq bumps even with identical text', async () => {
     const intents: StepsViewIntent[] = []
+    const timer = createManualTimer()
     const initial = makeLive({
       banner: { kind: 'info', text: 'running', ttlMs: 150, seq: 1 },
     })
     const bumped = makeLive({
       banner: { kind: 'info', text: 'running', ttlMs: 150, seq: 2 },
     })
-
-    function Harness(): React.ReactElement {
-      const [s, setS] = React.useState<StepsViewState>(initial)
-      React.useEffect(() => {
-        // Halfway-ish through the first banner's ttl, swap to the bumped one.
-        const handle = setTimeout(() => setS(bumped), 60)
-        return () => clearTimeout(handle)
-      }, [])
-      return <StepsView state={s} onIntent={(i) => intents.push(i)} now={() => NOW} />
+    const props = {
+      onIntent: (i: StepsViewIntent) => intents.push(i),
+      now: () => NOW,
+      scheduleDismiss: timer.schedule,
     }
 
-    const ui = render(<Harness />)
+    const ui = render(<StepsView state={initial} {...props} />)
+    await flush()
 
-    // Wait long enough that, without the seq-keyed restart, the *first*
-    // banner's timer would have fired by now (it started at t=0 with ttl=150).
-    // The bumped emit at t=60 should reset the timer so dismiss only fires
-    // around t = 60 + 150 = 210ms. At t=180ms, no dismiss should have fired.
-    // The widened budget (was 80ms ttl / 40ms swap / 100ms check) survives
-    // React-scheduler latency on loaded test machines.
-    await tick(180)
-
+    // Partway through the first banner's ttl, no dismiss yet.
+    timer.advance(60)
     expect(intents.some((i) => i.type === 'dismiss-banner')).toBe(false)
 
-    // Now wait past the second banner's ttl to confirm the timer is in flight.
-    await tick(150)
+    // A bumped emit (same text, seq 2) re-keys the effect: the seq-1 timer is
+    // cancelled and a fresh ttl=150 timer is armed at the current time (t=60).
+    ui.rerender(<StepsView state={bumped} {...props} />)
+    await flush()
 
+    // Without the restart the seq-1 timer would fire at t=150; with it, the
+    // seq-2 timer fires at t=60+150=210. At t=209 nothing has fired.
+    timer.advance(149)
+    expect(intents.some((i) => i.type === 'dismiss-banner')).toBe(false)
+
+    // One more ms crosses the restarted deadline.
+    timer.advance(2)
     expect(intents.some((i) => i.type === 'dismiss-banner')).toBe(true)
 
     ui.unmount()

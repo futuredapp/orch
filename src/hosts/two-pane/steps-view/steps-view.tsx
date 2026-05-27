@@ -42,6 +42,15 @@ export { useAdaptiveColumns, useStepsScroll, useStepsSelection } from './steps-v
 // ---------------------------------------------------------------------------
 
 const DEFAULT_INFO_TTL_MS = 4000
+
+// Stable module-scope default so the auto-dismiss `useEffect` does not re-arm
+// the timer on every render (the effect lists `scheduleDismiss` in its deps).
+const defaultScheduleDismiss = (callback: () => void, ms: number): (() => void) => {
+  const handle = setTimeout(callback, ms)
+  return () => {
+    clearTimeout(handle)
+  }
+}
 const STEP_NAME_MAX = 30
 
 // ---------------------------------------------------------------------------
@@ -56,6 +65,14 @@ export interface StepsViewProps {
    * `Date.now`. Threading it through props keeps tests deterministic.
    */
   readonly now?: () => number
+  /**
+   * Schedules the info-banner auto-dismiss; returns a cancel fn. Defaults to
+   * `setTimeout`/`clearTimeout`. Threaded through props (like `now`) so tests
+   * can drive the timer deterministically instead of racing real wall-clock —
+   * the banner auto-dismiss flake, 2026-05-26. MUST be a stable reference
+   * across renders, or the keyed `useEffect` re-arms the timer every render.
+   */
+  readonly scheduleDismiss?: (callback: () => void, ms: number) => () => void
   /**
    * Optional diagnostic sink: invoked once per Ink keypress with a tagged
    * record. The runner wires this to an NDJSON IPC file so the parent can log
@@ -101,6 +118,7 @@ export function StepsView({
   state,
   onIntent,
   now = Date.now,
+  scheduleDismiss = defaultScheduleDismiss,
   onKey,
 }: StepsViewProps): React.ReactElement {
   const columns = useAdaptiveColumns()
@@ -224,13 +242,11 @@ export function StepsView({
   const banner = state.banner
   useEffect(() => {
     if (banner === undefined || banner.kind !== 'info') return
-    const handle = setTimeout(() => {
+    const cancel = scheduleDismiss(() => {
       onIntent({ type: 'dismiss-banner' })
     }, banner.ttlMs ?? DEFAULT_INFO_TTL_MS)
-    return () => {
-      clearTimeout(handle)
-    }
-  }, [banner, onIntent])
+    return cancel
+  }, [banner, onIntent, scheduleDismiss])
 
   const isTerminal = state.status !== 'live'
 

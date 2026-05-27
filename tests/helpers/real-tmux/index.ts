@@ -10,6 +10,8 @@ export {
   canRunRealTmux,
   canRunRealTmuxE2E,
   createRealTmuxFixture,
+  REAL_TMUX_ASSERT_TIMEOUT_MS,
+  REAL_TMUX_TEST_TIMEOUT_MS,
   type RealTmuxFixture,
 } from './fixture.ts'
 export { isNamedKey, type NamedKey, sendKeysToPane } from './keys.ts'

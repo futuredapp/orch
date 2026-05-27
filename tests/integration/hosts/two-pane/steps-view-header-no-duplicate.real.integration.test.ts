@@ -20,6 +20,7 @@ import {
   createRealTmuxFixture,
   type MountedHarness,
   mountTmuxHost,
+  REAL_TMUX_ASSERT_TIMEOUT_MS,
   type RealTmuxFixture,
 } from '../../../helpers/real-tmux/index.ts'
 
@@ -124,15 +125,16 @@ describe.skipIf(!tmuxAvailable)(
       // become visible above the wider frame.
       await drag([70, 50, 80, 60, 90])
 
-      // Settle, then capture the visible left pane.
-      await sleep(300)
-      const pane = await harness.left.capture()
-      const occurrences = countOccurrences(pane, 'orch · tic-tac-toe · ')
-
-      // The breadcrumb must appear exactly once. If the bug regresses,
-      // multiple stale copies stack up and this assertion fires with a
-      // count well above 1 (8+ in the reported reproduction).
-      expect(occurrences).toBe(1)
+      // Poll until the breadcrumb count settles to exactly one. The final
+      // wide-width SIGWINCH triggers an Ink repaint; under full-suite CPU
+      // contention that repaint can lag, briefly leaving a stale wrapped
+      // breadcrumb visible above the new frame. Polling distinguishes the two
+      // failure modes cleanly: transient repaint lag settles to 1 within the
+      // budget, while the regression (permanent stacking, 8+ copies) never
+      // settles and this assertion times out with the offending frame.
+      await harness.left.waitFor((pane) => countOccurrences(pane, 'orch · tic-tac-toe · ') === 1, {
+        timeoutMs: REAL_TMUX_ASSERT_TIMEOUT_MS,
+      })
     }, 30_000)
   },
 )

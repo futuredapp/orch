@@ -24,7 +24,7 @@ import {
   resumeOrchWorkflow,
   withinMs,
 } from '../../helpers/behavioral-dsl/index.ts'
-import { canRunRealTmux } from '../../helpers/real-tmux/fixture.ts'
+import { canRunRealTmux, REAL_TMUX_ASSERT_TIMEOUT_MS } from '../../helpers/real-tmux/fixture.ts'
 
 let firstHandle: OrchHandle | undefined
 let secondHandle: OrchHandle | undefined
@@ -46,13 +46,13 @@ describe.skipIf(!canRunRealTmux())('Tier 5 behavioral — orch resume replays ca
       script: { plan: puppet(), execute: puppet() },
     })
 
-    await awaitVisibleStep('left', 'plan', { timeoutMs: 10_000 })
+    await awaitVisibleStep('left', 'plan', { timeoutMs: REAL_TMUX_ASSERT_TIMEOUT_MS })
     await firstHandle.agent('plan').complete()
-    await awaitStepStatus('plan', 'completed', { timeoutMs: 5_000 })
+    await awaitStepStatus('plan', 'completed', { timeoutMs: REAL_TMUX_ASSERT_TIMEOUT_MS })
 
-    await awaitVisibleStep('left', 'execute', { timeoutMs: 10_000 })
+    await awaitVisibleStep('left', 'execute', { timeoutMs: REAL_TMUX_ASSERT_TIMEOUT_MS })
     await firstHandle.agent('execute').fail({ message: 'crash-pre-resume' })
-    await awaitRunStatus('failed', { timeoutMs: 10_000 })
+    await awaitRunStatus('failed', { timeoutMs: REAL_TMUX_ASSERT_TIMEOUT_MS })
 
     // Wait for the first orch process to finish exiting before resuming —
     // resume reads state.json + lifecycle.ndjson, both written during the
@@ -67,11 +67,11 @@ describe.skipIf(!canRunRealTmux())('Tier 5 behavioral — orch resume replays ca
     })
 
     await secondHandle.agent('execute').complete()
-    await awaitStepStatus('execute', 'completed', { timeoutMs: 15_000 })
-    await awaitRunStatus('completed', { timeoutMs: 10_000 })
+    await awaitStepStatus('execute', 'completed', { timeoutMs: REAL_TMUX_ASSERT_TIMEOUT_MS })
+    await awaitRunStatus('completed', { timeoutMs: REAL_TMUX_ASSERT_TIMEOUT_MS })
 
     await assertPersistedState(
-      withinMs(5_000),
+      withinMs(REAL_TMUX_ASSERT_TIMEOUT_MS),
       hasRunStatus('completed'),
       hasStepCompleted('plan'),
       hasStepCompleted('execute'),

@@ -32,7 +32,12 @@ This is the question to ask before writing a new test, and the question the audi
 ## Writing a Tier 1 test — 5-line skeleton
 
 ```ts
-import { canRunRealTmux, createRealTmuxFixture, mountTmuxHost } from '../../../../helpers/real-tmux/index.ts'
+import {
+  canRunRealTmux,
+  createRealTmuxFixture,
+  mountTmuxHost,
+  REAL_TMUX_TEST_TIMEOUT_MS,
+} from '../../../../helpers/real-tmux/index.ts'
 import { FakeRunner } from '../../../../../src/runners/index.ts'
 import { FakeProcessService } from '../../../../../src/services/process/fake-process-service.ts'
 
@@ -52,11 +57,34 @@ describe.skipIf(!canRunRealTmux())('Tier 1 — <bug class>', () => {
     } finally {
       await fixture.dispose()
     }
-  }, 15_000)
+  }, REAL_TMUX_TEST_TIMEOUT_MS)
 })
 ```
 
 The harness is the same shape Tier 4 uses — promotion is just swapping the agent slot and adjusting the env-gate predicate.
+
+## Predictability rules for real-tmux tests
+
+Real-tmux tiers (1, 4, 5) boot a tmux server and round-trip a `pane-died` hook, so they are the only place flakiness can enter. These rules keep them deterministic — they were hardened after the two-pane-sequential-runs flake (2026-05-26, see below):
+
+1. **Always go through `createRealTmuxFixture` — never hand-roll the host lifecycle.** The fixture allocates a UNIQUE socket per run (`orch-<generated-runId>`), wires the SIGINT/SIGTERM stale-socket reaper, asserts you are not nested inside tmux, and removes its socket file on `dispose()`. Hand-rolled tests with hardcoded runIds share a fixed socket name and collide ("duplicate session: orch") under the suite's parallel-file load. The only sanctioned exception is a test that genuinely spawns the CLI as a subprocess (it cannot use the in-process mount) — and it must still reap the sockets its subprocesses create.
+2. **Always pass `REAL_TMUX_TEST_TIMEOUT_MS` as the `it()` timeout.** Bun's 5s default is too tight for "boot tmux + spawn pane + hook round-trip" under load; inheriting it was the proximate cause of the flake (a generic "timed out after 5000ms" with no diagnosis). The budget lives in one constant so it is tuned in one place.
+3. **Never use a real CLI in Tiers 1/5.** The agent slot is a `FakeRunner` (deterministic, `FakeProcessService`-backed) or a `true(1)`-style runner for interactive panes. Real Claude/Codex belongs only in env-gated Tier 4.
+4. **Interactive completion is hook-signal + liveness backstop, not a bare wait.** `runInteractive` waits on the unbounded `pane-died` hook channel raced against a slow `#{pane_dead}` poll (`awaitInteractivePaneExit`). The poll never fails a live pane (preserving the human-pause contract) but short-circuits a pane that died with a lost/delayed hook — so a missed hook resolves in ~1s instead of hanging to the test timeout. A backstop hit is logged as `interactive-wait-hook-missed` in `lifecycle.ndjson`.
+5. **Reap the tmux server, not just the process.** A test that spawns the orch CLI as a subprocess (Tier 5 behavioral DSL) boots a *detached* `orch-<runId>` server; killing the orch process does NOT kill that server. Teardown must `tmux -L <socket> kill-server` and remove the socket file (the DSL's `subprocess.ts` teardown and `createRealTmuxFixture.dispose()` both do this). Without it, servers accumulate across the suite until the per-uid limit — the leak the stale-socket preload only papers over after 5 minutes.
+
+## UI (Ink) test predictability
+
+`<StepsView>` and `useStepsSelection` tests drive Ink via `ink-testing-library`, whose render + `useInput` subscription + keypress handling are all async. Never read `lastFrame()` after a fixed `setTimeout` — use the shared helpers in `tests/helpers/ink-frame.ts`:
+
+- **`waitForFrame(ui, predicate, { transform })`** — poll `lastFrame()` until the expected content renders (use after a state change you can observe in the frame).
+- **`pressUntilFrame(ui, key, predicate)`** — resend an *idempotent* key (boundary nav, snap-to-live) until the frame reflects it. Defeats the dropped-first-keypress race (`useInput` subscribes on a mount effect with no frame-observable signal).
+- **`waitForIntents(read, predicate)`** — poll a growing intent log after a keypress that should fire one.
+- For component timers (the banner auto-dismiss), inject a controllable timer via the `scheduleDismiss` prop and drive it with `tests/helpers/manual-timer.ts`'s `createManualTimer()` — never race a real `setTimeout(ttlMs)`.
+
+## Known residual
+
+Under *peak* full-suite parallelism (`bun test tests/unit tests/integration`, ~137 integration files at once), a single Tier-5 behavioral test can still occasionally flake on a timing budget — it passes 4/4 when the `tests/integration/lifecycle/` directory runs on its own. This is a contention ceiling, not a per-test bug; the lead to pull next is reduced concurrency for the real-tmux tiers (a serialized real-tmux test script) rather than widening individual budgets.
 
 ## Writing a Tier 2 test — 5-line skeleton
 

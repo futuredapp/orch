@@ -80,6 +80,7 @@ export class FakeTmuxService implements TmuxService {
   readonly #splitPaneErrors: Error[] = []
   readonly #createSessionErrors: Error[] = []
   readonly #displayResults: string[] = []
+  #waitForHolds = 0
   readonly #captureResults: string[] = []
   readonly #listPanesResults: (readonly string[])[] = []
   readonly #newWindowResults: NewWindowResult[] = []
@@ -166,6 +167,17 @@ export class FakeTmuxService implements TmuxService {
   /** Script the next `displayMessage` return value. Queue, consumed FIFO. */
   setDisplayResult(value: string): void {
     this.#displayResults.push(value)
+  }
+
+  /**
+   * Make the next `count` `waitFor` calls hang forever (never resolve),
+   * mimicking a `pane-died` hook signal that is lost or arrives so late the
+   * caller's backstop must observe the exit another way. Consumed FIFO — each
+   * held call decrements the budget. Use with `FakeClock` so the racing poll
+   * can win deterministically via `advance()`.
+   */
+  holdNextWaitFor(count = 1): void {
+    this.#waitForHolds += count
   }
 
   /** Script the next `capturePane` return value. Queue, consumed FIFO. */
@@ -266,6 +278,12 @@ export class FakeTmuxService implements TmuxService {
   async waitFor(opts: WaitForOptions): Promise<void> {
     this.#calls.push({ method: 'waitFor', opts })
     this.#failIfSocketLost('wait-for')
+    if (this.#waitForHolds > 0) {
+      this.#waitForHolds -= 1
+      // Never resolves — the caller must observe completion via another path
+      // (e.g. a liveness poll). Modelled as the lost-hook-signal case.
+      await new Promise<never>(() => {})
+    }
   }
 
   async signalChannel(opts: SignalChannelOptions): Promise<void> {

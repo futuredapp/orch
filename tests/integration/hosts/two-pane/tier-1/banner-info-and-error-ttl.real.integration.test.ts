@@ -20,6 +20,8 @@ import {
   createRealTmuxFixture,
   type MountedHarness,
   mountTmuxHost,
+  REAL_TMUX_ASSERT_TIMEOUT_MS,
+  REAL_TMUX_TEST_TIMEOUT_MS,
   type RealTmuxFixture,
 } from '../../../../helpers/real-tmux/index.ts'
 
@@ -38,28 +40,34 @@ afterEach(async () => {
 describe.skipIf(!tmuxAvailable)(
   'Tier 1 — error banner surfaces step failure in the left pane',
   () => {
-    it("step:failed renders 'step plan failed' in the steps-view left pane", async () => {
-      const fixture = await createRealTmuxFixture({ env: {} })
-      fixturesToDispose.push(fixture)
-      const agentProcessService = new FakeProcessService()
-      const harness = await mountTmuxHost(fixture, {
-        disableStepsView: false,
-        agentProcessService,
-      })
-      harnessesToTeardown.push(harness)
+    it(
+      "step:failed renders 'step plan failed' in the steps-view left pane",
+      async () => {
+        const fixture = await createRealTmuxFixture({ env: {} })
+        fixturesToDispose.push(fixture)
+        const agentProcessService = new FakeProcessService()
+        const harness = await mountTmuxHost(fixture, {
+          disableStepsView: false,
+          agentProcessService,
+        })
+        harnessesToTeardown.push(harness)
 
-      const agent = new FakeRunner(agentProcessService)
-      agent.script({
-        failWith: { message: 'simulated agent failure', exitCode: 1 },
-      })
+        const agent = new FakeRunner(agentProcessService)
+        agent.script({
+          failWith: { message: 'simulated agent failure', exitCode: 1 },
+        })
 
-      // Workflow throws on step failure — `completed: false` is expected.
-      const run = await harness.runWorkflow([{ name: 'plan', agent }])
-      expect(run.completed).toBe(false)
+        // Workflow throws on step failure — `completed: false` is expected.
+        const run = await harness.runWorkflow([{ name: 'plan', agent }])
+        expect(run.completed).toBe(false)
 
-      await harness.left.waitForText('step plan failed', { timeoutMs: 5000 })
-      const frame = await harness.left.capture()
-      expect(frame).toContain('step plan failed')
-    }, 20_000)
+        await harness.left.waitForText('step plan failed', {
+          timeoutMs: REAL_TMUX_ASSERT_TIMEOUT_MS,
+        })
+        const frame = await harness.left.capture()
+        expect(frame).toContain('step plan failed')
+      },
+      REAL_TMUX_TEST_TIMEOUT_MS,
+    )
   },
 )

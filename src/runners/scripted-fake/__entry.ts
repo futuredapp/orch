@@ -38,6 +38,34 @@ const DEFAULT_GATE_POLL_INTERVAL_MS = 50
 
 const ORCH_LIFECYCLE_STEP_NAME_ENV = 'ORCH_LIFECYCLE_STEP_NAME'
 
+// The orch parent that spawned us. The blocking scripts (`puppet`,
+// `emit-then-hang`, `wait-for-file`) are designed to run until the parent
+// kills them by signal. But the behavioral harness tears orch down with
+// SIGKILL, which is uncatchable — orch dies without reaping its children, so
+// a hanging __entry would reparent to init and poll forever. Left unchecked
+// these orphans accumulate across runs and starve the CPU, which is what
+// slows the suite ~8× and turns real-tmux timing budgets into flakes.
+//
+// We capture the spawn-time parent pid and probe its liveness, rather than
+// reading `process.ppid` each tick: Bun caches `process.ppid` at startup, so
+// it keeps reporting orch's pid even after we reparent to init. `kill(pid, 0)`
+// sends no signal — it just succeeds if the pid exists and throws ESRCH once
+// orch is gone. Reading process.ppid here is a pure read — no import-time side
+// effect.
+const SPAWN_PARENT_PID = process.ppid
+
+/** True once orch (our spawner) has exited, so a blocking script can self-reap. */
+function parentExited(): boolean {
+  try {
+    process.kill(SPAWN_PARENT_PID, 0)
+    return false
+  } catch {
+    // ESRCH — the original parent is gone. (EPERM cannot happen: orch is our
+    // own child-of-the-same-user spawner.)
+    return true
+  }
+}
+
 function writeEvent(event: RunnerEvent): void {
   process.stdout.write(`${JSON.stringify(event)}\n`)
 }
@@ -70,6 +98,7 @@ async function runWaitForFile(script: WaitForFileScript): Promise<number> {
   const gate = path(script.gatePath)
 
   while (true) {
+    if (parentExited()) return 0
     if (await fs.exists(gate)) break
     await new Promise((res) => setTimeout(res, interval))
   }
@@ -81,11 +110,13 @@ async function runWaitForFile(script: WaitForFileScript): Promise<number> {
 
 async function runEmitThenHang(script: EmitThenHangScript): Promise<number> {
   for (const evt of script.events) writeEvent(evt)
-  // Block forever — parent will kill via signal. We do NOT emit a terminal
-  // event; the script's contract is that orch observes the hang.
-  await new Promise<void>(() => {
-    /* never resolves */
-  })
+  // Block until the parent kills us (the script's contract is that orch
+  // observes the hang) — but bail out if orch dies first so we never become a
+  // forever-polling orphan. We do NOT emit a terminal event; the hang itself
+  // is the observable.
+  while (!parentExited()) {
+    await new Promise((res) => setTimeout(res, DEFAULT_GATE_POLL_INTERVAL_MS))
+  }
   return 0
 }
 
@@ -152,6 +183,7 @@ async function runPuppet(script: PuppetScript): Promise<number> {
 
   const state: PuppetReaderState = { cursor: 0, lineCounter: 0, buffer: '' }
   for (;;) {
+    if (parentExited()) return 0
     let raw: string
     try {
       raw = await fs.readFile(path(controlPath))

@@ -34,6 +34,40 @@ import { assertNoNestedTmux } from './socket.ts'
 const DEFAULT_WIDTH = 200
 const DEFAULT_HEIGHT = 50
 
+/**
+ * Per-test timeout for real-tmux tiers (Tier 1 / Tier 5). Real-tmux tests boot
+ * a tmux server, spawn a pane, and round-trip a `pane-died` hook — work that
+ * routinely overruns Bun's 5s default `it()` timeout under the parallel-file
+ * load of the full suite. That overrun was the proximate cause of the
+ * two-pane-sequential-runs flake (2026-05-26): a generic "timed out after
+ * 5000ms" with no diagnosis. Every real-tmux `it()` should pass this constant
+ * as its timeout rather than a magic number, so the budget lives in one place.
+ */
+export const REAL_TMUX_TEST_TIMEOUT_MS = 30_000
+
+/**
+ * Budget for an *internal* polling assertion inside a real-tmux test — a
+ * `waitForText` / `waitFor` / `withinMs(...)` / `await*Step` call that polls
+ * the live pane or persisted state until it matches.
+ *
+ * This is deliberately distinct from (and smaller than) REAL_TMUX_TEST_TIMEOUT_MS:
+ * the `it()` ceiling guards the whole test, while this guards a single repaint
+ * round-trip. The two failure modes look identical from the outside ("timed
+ * out") but the diagnosis differs, so they get separate knobs.
+ *
+ * Why 15s and not the 5s these calls used to hard-code: every real-tmux test
+ * boots its own tmux server plus a detached steps-view daemon that renders Ink
+ * asynchronously. The polling main thread competes with that daemon for CPU.
+ * In isolation a repaint lands in well under a second, so a 5s budget looks
+ * generous — but late in the full ~10-minute suite the machine is saturated
+ * and a repaint can lag past 5s. Because the poll loop returns on the first
+ * match, a larger budget costs nothing on the fast path; it only buys headroom
+ * for the contended worst case. Caught the 2026-05-26 batch of "passes in
+ * isolation, flakes in the full suite" failures (footer/banner/glyph/resume/
+ * help-overlay).
+ */
+export const REAL_TMUX_ASSERT_TIMEOUT_MS = 15_000
+
 // Module-level registry of live sockets. The Ctrl-C / SIGTERM handler walks
 // this set so a test runner interrupted mid-suite cleans up its tmux servers
 // before exiting. Without this, every interrupted run leaks a server per
@@ -201,4 +235,25 @@ async function killServerQuietly(socket: SocketName): Promise<void> {
     stderr: 'ignore',
   })
   await proc.exited
+  // `kill-server` terminates the server but leaves the socket FILE on disk.
+  // Remove it so a disposed fixture leaves nothing behind — otherwise dead
+  // socket files accumulate until the stale-socket preload reaps them (>5min).
+  for (const file of socketFilePaths(socket)) {
+    await rm(file, { force: true }).catch(() => {})
+  }
+}
+
+// Candidate on-disk paths for a tmux socket. tmux resolves its socket dir from
+// `$TMUX_TMPDIR/tmux-<uid>` falling back to `/tmp/tmux-<uid>`; macOS surfaces
+// the latter as `/private/tmp/...`. Mirrors `tests/setup/cleanup-stale-tmux.ts`.
+function socketFilePaths(socket: SocketName): readonly string[] {
+  const uid = process.getuid?.() ?? 0
+  const dirs = new Set<string>()
+  const tmuxTmpdir = process.env.TMUX_TMPDIR
+  if (typeof tmuxTmpdir === 'string' && tmuxTmpdir.length > 0) {
+    dirs.add(join(tmuxTmpdir, `tmux-${uid}`))
+  }
+  dirs.add(`/tmp/tmux-${uid}`)
+  dirs.add(`/private/tmp/tmux-${uid}`)
+  return [...dirs].map((dir) => join(dir, String(socket)))
 }

@@ -9,7 +9,7 @@
 // view daemon owns the left pane and command output never lands there.
 
 import { describe, expect, it } from 'bun:test'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { Writable } from 'node:stream'
 import { stepName } from '../../../src/core/types.ts'
@@ -101,10 +101,6 @@ async function makeHarness(): Promise<Harness> {
       await logger.close()
     },
   }
-}
-
-async function rmTemp(tempDir: string): Promise<void> {
-  await rm(tempDir, { recursive: true, force: true }).catch(() => {})
 }
 
 function paneWrites(tmux: FakeTmuxService, target: ReturnType<typeof paneId>): string[] {

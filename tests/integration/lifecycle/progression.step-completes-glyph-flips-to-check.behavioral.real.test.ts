@@ -15,7 +15,7 @@ import {
   showsStep,
   withinMs,
 } from '../../helpers/behavioral-dsl/index.ts'
-import { canRunRealTmux } from '../../helpers/real-tmux/fixture.ts'
+import { canRunRealTmux, REAL_TMUX_ASSERT_TIMEOUT_MS } from '../../helpers/real-tmux/fixture.ts'
 
 let handle: OrchHandle | undefined
 
@@ -33,12 +33,12 @@ describe.skipIf(!canRunRealTmux())('Tier 5 behavioral — step glyph flips on co
       script: { plan: puppet(), execute: puppet(), finalize: puppet() },
     })
 
-    await awaitVisibleStep('left', 'plan', { timeoutMs: 10_000 })
-    await assertLeftPane(withinMs(5_000), showsStep('plan', 'running'))
+    await awaitVisibleStep('left', 'plan', { timeoutMs: REAL_TMUX_ASSERT_TIMEOUT_MS })
+    await assertLeftPane(withinMs(REAL_TMUX_ASSERT_TIMEOUT_MS), showsStep('plan', 'running'))
 
     await handle.agent('plan').complete()
 
-    await assertLeftPane(withinMs(10_000), showsStep('plan', 'completed'))
-    await assertPersistedState(withinMs(5_000), hasStepCompleted('plan'))
-  }, 30_000)
+    await assertLeftPane(withinMs(REAL_TMUX_ASSERT_TIMEOUT_MS), showsStep('plan', 'completed'))
+    await assertPersistedState(withinMs(REAL_TMUX_ASSERT_TIMEOUT_MS), hasStepCompleted('plan'))
+  }, 60_000)
 })

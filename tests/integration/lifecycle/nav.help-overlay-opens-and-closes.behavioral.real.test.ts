@@ -18,7 +18,7 @@ import {
   userAction,
   withinMs,
 } from '../../helpers/behavioral-dsl/index.ts'
-import { canRunRealTmux } from '../../helpers/real-tmux/fixture.ts'
+import { canRunRealTmux, REAL_TMUX_ASSERT_TIMEOUT_MS } from '../../helpers/real-tmux/fixture.ts'
 
 let handle: OrchHandle | undefined
 
@@ -36,17 +36,21 @@ describe.skipIf(!canRunRealTmux())('Tier 5 behavioral — help overlay toggle', 
       script: { plan: puppet(), execute: puppet(), finalize: puppet() },
     })
 
-    await awaitVisibleStep('left', 'plan', { timeoutMs: 10_000 })
+    await awaitVisibleStep('left', 'plan', { timeoutMs: REAL_TMUX_ASSERT_TIMEOUT_MS })
 
     await userAction(openHelp())
-    await assertLeftPane(withinMs(5_000), showsHelpOverlay())
+    await assertLeftPane(withinMs(REAL_TMUX_ASSERT_TIMEOUT_MS), showsHelpOverlay())
 
     await userAction(closeHelp())
     await assertLeftPane(
-      withinMs(5_000),
+      withinMs(REAL_TMUX_ASSERT_TIMEOUT_MS),
       showsStep('plan'),
       // The viewing footer should not be present after closing help.
       doesNotContain('viewing plan'),
     )
-  }, 30_000)
+    // 60s `it()` ceiling (matches the other behavioral.real cells): leaves
+    // room for the three sequential 15s polling assertions above to each play
+    // out under contention so the *internal* budget — which names what it
+    // waited for — is the binding constraint, not the generic `it()` timeout.
+  }, 60_000)
 })

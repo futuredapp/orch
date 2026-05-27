@@ -143,6 +143,101 @@ async function terminateOnAutoStop(
   }
 }
 
+// Backstop poll cadence for the interactive completion wait. The primary
+// signal is the `pane-died` hook channel, which is unbounded ON PURPOSE — a
+// human may pause the agent for arbitrarily long, so orch MUST NOT impose a
+// hard timeout on an interactive wait (see WaitForOptions.timeoutMs docs).
+//
+// But the hook is a four-hop indirect signal (process exits → remain-on-exit
+// holds the pane → global `pane-died` hook → `run-shell` does
+// `wait-for -S pane-exit-<id>`). Under host contention the final signal can be
+// lost or arrive long after the pane is already dead, leaving the wait parked
+// until the *caller's* timeout fires with no diagnosis — the
+// two-pane-sequential-runs flake (2026-05-26), where it surfaced as a generic
+// 5s Bun test timeout. This poll closes the gap by observing pane death
+// directly via `#{pane_dead}`. It NEVER fails a live pane: a still-running
+// pane just keeps the wait parked, preserving the human-pause contract. A slow
+// cadence keeps the cost negligible (one `display-message` per second) even
+// across a multi-minute human pause.
+const PANE_LIVENESS_POLL_MS = 1000
+
+interface PaneExitOutcome {
+  /** Which signal observed the exit first. */
+  readonly via: 'hook' | 'liveness-poll'
+  /** `#{pane_dead_status}` (the pane's exit code) when the poll read it. */
+  readonly deadStatus?: string
+}
+
+/**
+ * Non-throwing probe of the interactive pane's liveness. Returns the dead
+ * status when tmux reports the pane dead, `'alive'` when it is still running,
+ * and `'gone'` when the pane (or its server) has vanished — all three are data
+ * so the poll loop never treats a probe as an error. `display-message` throws
+ * on empty output (pane gone) or a dead socket; both mean "no longer running".
+ */
+async function probePaneExit(
+  tmux: TmuxService,
+  socket: SocketName,
+  paneId: PaneId,
+): Promise<{ readonly dead: true; readonly status: string } | 'alive' | 'gone'> {
+  try {
+    const out = await tmux.displayMessage({
+      socket,
+      target: paneId,
+      format: '#{pane_dead},#{pane_dead_status}',
+    })
+    const [deadFlag, status = ''] = out.trim().split(',')
+    return deadFlag === '1' ? { dead: true, status } : 'alive'
+  } catch {
+    return 'gone'
+  }
+}
+
+/**
+ * Wait for the interactive pane to exit. Races the unbounded `pane-died` hook
+ * channel against a slow liveness poll. The hook is the fast path; the poll is
+ * a backstop for a lost/delayed hook signal under contention. The poll never
+ * fails a live pane, so a human pause keeps the wait parked indefinitely —
+ * identical observable behaviour to the bare `waitFor` it replaces, minus the
+ * silent hang. When the poll wins, the parked hook `wait-for` client is
+ * released via `signalChannel` so it cannot linger as an orphan tmux process.
+ *
+ * Exported for unit testing against `FakeTmuxService` + `FakeClock`.
+ */
+export async function awaitInteractivePaneExit(
+  tmux: TmuxService,
+  socket: SocketName,
+  paneId: PaneId,
+  channel: string,
+  clock: Clock,
+  pollMs: number = PANE_LIVENESS_POLL_MS,
+): Promise<PaneExitOutcome> {
+  let settled = false
+
+  const hook = tmux.waitFor({ socket, channel }).then((): PaneExitOutcome => ({ via: 'hook' }))
+  hook.catch(() => {})
+
+  const poll = (async (): Promise<PaneExitOutcome> => {
+    for (;;) {
+      await clock.sleep(pollMs)
+      // Hook already won the race — abandon quietly (caught below) instead of
+      // issuing one more probe.
+      if (settled) throw new Error('pane-exit wait superseded by hook')
+      const probe = await probePaneExit(tmux, socket, paneId)
+      if (probe === 'alive') continue
+      return { via: 'liveness-poll', deadStatus: probe === 'gone' ? undefined : probe.status }
+    }
+  })()
+  poll.catch(() => {})
+
+  const outcome = await Promise.race([hook, poll])
+  settled = true
+  if (outcome.via === 'liveness-poll') {
+    await tmux.signalChannel({ socket, channel }).catch(() => {})
+  }
+  return outcome
+}
+
 // tmux's `(No such file or directory)` / `no server running` / `session not
 // found` / `can't find session` stderr patterns all share one meaning: the
 // tmux session (or the whole server) the host was talking to is gone, and
@@ -1070,8 +1165,29 @@ function buildHost(deps: BuildHostDeps): Host {
       // unchanged); a stop signal triggers an external termination (clean EOF
       // first, kill-session teardown as the bounded fallback).
       const paneExitChannel = `pane-exit-${hiddenPaneId}`
+      let paneExitVia: PaneExitOutcome['via'] | undefined
       if (autoStopChannel === undefined) {
-        await deps.tmux.waitFor({ socket: deps.socket, channel: paneExitChannel })
+        const outcome = await awaitInteractivePaneExit(
+          deps.tmux,
+          deps.socket,
+          hiddenPaneId,
+          paneExitChannel,
+          deps.clock,
+        )
+        paneExitVia = outcome.via
+        if (outcome.via === 'liveness-poll') {
+          // The hook signal was lost/delayed; the poll observed the dead pane
+          // and short-circuited the wait. Log it so a recurring backstop hit
+          // is visible in lifecycle.ndjson rather than silently absorbed.
+          appendLifecycleSoon({
+            type: 'interactive-wait-hook-missed',
+            stepName: spawn.stepName,
+            pane: paneRole,
+            paneId: hiddenPaneId,
+            channel: paneExitChannel,
+            deadStatus: outcome.deadStatus ?? null,
+          })
+        }
       } else {
         appendLifecycleSoon({
           type: 'interactive-auto-stop-armed',
@@ -1115,6 +1231,7 @@ function buildHost(deps: BuildHostDeps): Host {
         channel: `pane-exit-${hiddenPaneId}`,
         durationMs: deps.clock.now() - startedAt,
         exitCodeKnown: false,
+        via: paneExitVia ?? null,
       })
     } catch (err) {
       // Same dual-path classification as the register-failed catch above:

@@ -5,6 +5,12 @@
 //   1. ↑ moves selection up; ↓ moves it down.
 //   2. `f` snaps back to the live step (and clears `isUserDriven`).
 //   3. The hook auto-tracks the live step until the user moves.
+//
+// Keypress delivery is racy under ink-testing-library: `useInput` subscribes on
+// a mount effect, so a write before that lands is silently dropped, and there
+// is no frame-observable signal for the subscription. `pressUntilFrame`
+// resends the (idempotent boundary) key until the frame reflects it, which is
+// deterministic where a fixed sleep was not (the steps-view flake, 2026-05-26).
 
 import { describe, expect, it } from 'bun:test'
 import { Box, Text, useInput } from 'ink'
@@ -15,15 +21,10 @@ import {
   type StepsSelection,
   useStepsSelection,
 } from '../../../../../src/hosts/two-pane/steps-view/index.ts'
+import { pressUntilFrame, waitForFrame } from '../../../../helpers/ink-frame.ts'
 
-const ARROW_UP = '[A'
-const ARROW_DOWN = '[B'
-
-// Tick budget mirrors ink-app.test.tsx — Ink's reconciler + useInput
-// re-subscribe needs ~30ms to settle on the keypress path.
-function tick(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 30))
-}
+const ARROW_UP = '\x1b[A'
+const ARROW_DOWN = '\x1b[B'
 
 const STEPS: readonly StepRow[] = [
   {
@@ -70,10 +71,10 @@ describe('useStepsSelection', () => {
   it('auto-tracks the live step on first render with isUserDriven=false', async () => {
     let captured: StepsSelection | undefined
     const ui = render(<Harness steps={STEPS} expose={(s) => (captured = s)} />)
-    await tick()
+    const frame = await waitForFrame(ui, (f) => f.includes('selected=work'))
 
-    expect(ui.lastFrame()).toContain('selected=work')
-    expect(ui.lastFrame()).toContain('userDriven=false')
+    expect(frame).toContain('selected=work')
+    expect(frame).toContain('userDriven=false')
     expect(captured?.isUserDriven).toBe(false)
 
     ui.unmount()
@@ -81,41 +82,41 @@ describe('useStepsSelection', () => {
 
   it('moves selection up when the user presses arrow-up and flips isUserDriven=true', async () => {
     const ui = render(<Harness steps={STEPS} expose={() => {}} />)
-    await tick()
 
-    ui.stdin.write(ARROW_UP)
-    await tick()
+    // `plan` is the top row, so resending ↑ is idempotent once it lands.
+    const frame = await pressUntilFrame(ui, ARROW_UP, (f) => f.includes('selected=plan'))
 
-    expect(ui.lastFrame()).toContain('selected=plan')
-    expect(ui.lastFrame()).toContain('userDriven=true')
+    expect(frame).toContain('selected=plan')
+    expect(frame).toContain('userDriven=true')
 
     ui.unmount()
   })
 
   it('moves selection down when the user presses arrow-down', async () => {
     const ui = render(<Harness steps={STEPS} expose={() => {}} />)
-    await tick()
 
-    ui.stdin.write(ARROW_DOWN)
-    await tick()
+    // `next` is the bottom row, so resending ↓ is idempotent once it lands.
+    const frame = await pressUntilFrame(ui, ARROW_DOWN, (f) => f.includes('selected=next'))
 
-    expect(ui.lastFrame()).toContain('selected=next')
+    expect(frame).toContain('selected=next')
 
     ui.unmount()
   })
 
   it('snaps back to live and clears isUserDriven when the user presses f', async () => {
     const ui = render(<Harness steps={STEPS} expose={() => {}} />)
-    await tick()
-    ui.stdin.write(ARROW_UP)
-    await tick()
-    expect(ui.lastFrame()).toContain('userDriven=true')
 
-    ui.stdin.write('f')
-    await tick()
+    await pressUntilFrame(ui, ARROW_UP, (f) => f.includes('userDriven=true'))
 
-    expect(ui.lastFrame()).toContain('selected=work')
-    expect(ui.lastFrame()).toContain('userDriven=false')
+    // `f` snaps to the live step; resending it is idempotent (stays on live).
+    const frame = await pressUntilFrame(
+      ui,
+      'f',
+      (f) => f.includes('selected=work') && f.includes('userDriven=false'),
+    )
+
+    expect(frame).toContain('selected=work')
+    expect(frame).toContain('userDriven=false')
 
     ui.unmount()
   })
