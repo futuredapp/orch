@@ -2,14 +2,23 @@ import { describe, expect, it } from 'bun:test'
 import { codex } from '../../../../src/runners/codex/index.ts'
 import type { RunnerContext } from '../../../../src/runners/index.ts'
 import { FakeFsService, FakeProcessService } from '../../../../src/services/index.ts'
-import { type Path, path } from '../../../../src/services/types.ts'
+import { path } from '../../../../src/services/types.ts'
 
 const REAL_HOME = path('/home/u/.codex')
+const ORCH_HOME = path('/home/u/.codex-orch')
+
+const PLANNOTATOR_HOOKS_JSON = JSON.stringify({
+  hooks: {
+    Stop: [
+      { hooks: [{ type: 'command', command: '/usr/local/bin/plannotator', timeout: 345600 }] },
+    ],
+  },
+})
 
 async function seedRealCodexHome(fs: FakeFsService): Promise<void> {
   await fs.mkdir(REAL_HOME, { recursive: true })
   await fs.mkdir(path('/home/u/.codex/sessions'), { recursive: true })
-  await fs.writeFile(path('/home/u/.codex/config.toml'), 'model = "o3"\n')
+  await fs.writeFile(path('/home/u/.codex/config.toml'), 'model = "o3"\n[features]\nhooks = true\n')
   await fs.writeFile(path('/home/u/.codex/auth.json'), '{"token":"secret"}')
 }
 
@@ -28,113 +37,194 @@ function makeCodex(fs: FakeFsService) {
   return codex({}, { fs, ps: new FakeProcessService() })
 }
 
-describe('codex().prepareAutoStop CODEX_HOME construction', () => {
-  it('returns CODEX_HOME pointing at a fresh temp dir, not the real home', async () => {
+describe('codex().prepareAutoStop reuses a stable CODEX_HOME', () => {
+  it('points CODEX_HOME at a stable sibling of the real home, not a fresh temp dir', async () => {
     const fs = new FakeFsService()
     await seedRealCodexHome(fs)
 
     const prep = await makeCodex(fs).prepareAutoStop?.(ctx())
 
-    expect(prep?.env.CODEX_HOME).toBeDefined()
-    expect(prep?.env.CODEX_HOME).not.toBe(REAL_HOME as string)
+    expect(prep?.env.CODEX_HOME).toBe(ORCH_HOME as string)
   })
 
-  it('symlinks every real-home entry except config.toml', async () => {
+  it('returns the same home on a second run so Codex trusts the hook only once', async () => {
+    const fs = new FakeFsService()
+    await seedRealCodexHome(fs)
+    const runner = makeCodex(fs)
+
+    const first = await runner.prepareAutoStop?.(ctx())
+    const second = await runner.prepareAutoStop?.(ctx())
+
+    expect(second?.env.CODEX_HOME).toBe(first?.env.CODEX_HOME)
+  })
+
+  it('does not throw on the second run when the inherited symlinks already exist', async () => {
+    const fs = new FakeFsService()
+    await seedRealCodexHome(fs)
+    const runner = makeCodex(fs)
+
+    await runner.prepareAutoStop?.(ctx())
+
+    expect(runner.prepareAutoStop?.(ctx())).resolves.toBeDefined()
+  })
+
+  it('keeps the orch home in place after cleanup so trust state survives', async () => {
     const fs = new FakeFsService()
     await seedRealCodexHome(fs)
 
     const prep = await makeCodex(fs).prepareAutoStop?.(ctx())
-    const runHome = path(prep?.env.CODEX_HOME as string)
+    await prep?.cleanup()
 
-    const entries = (await fs.readDir(runHome)).map((e) => e as string)
+    expect(await fs.exists(ORCH_HOME)).toBe(true)
+  })
+})
+
+describe('codex().prepareAutoStop inherits the real home without copying credentials', () => {
+  it('symlinks every real-home entry except config.toml and hooks.json', async () => {
+    const fs = new FakeFsService()
+    await seedRealCodexHome(fs)
+    await fs.writeFile(path('/home/u/.codex/hooks.json'), PLANNOTATOR_HOOKS_JSON)
+
+    await makeCodex(fs).prepareAutoStop?.(ctx())
+
+    const entries = (await fs.readDir(ORCH_HOME)).map((e) => e as string)
     expect(entries).toContain('auth.json')
     expect(entries).toContain('sessions')
     expect(entries).toContain('config.toml')
+    expect(entries).toContain('hooks.json')
   })
 
   it('inherits auth.json as a symlink that resolves to the real credentials', async () => {
     const fs = new FakeFsService()
     await seedRealCodexHome(fs)
 
-    const prep = await makeCodex(fs).prepareAutoStop?.(ctx())
-    const runHome = path(prep?.env.CODEX_HOME as string)
+    await makeCodex(fs).prepareAutoStop?.(ctx())
 
-    expect(await fs.readFile(path(`${runHome}/auth.json`))).toBe('{"token":"secret"}')
+    expect(await fs.readFile(path(`${ORCH_HOME}/auth.json`))).toBe('{"token":"secret"}')
   })
+})
 
-  it('copies config.toml and appends a signal-only Stop hook referencing the orch channel', async () => {
-    const fs = new FakeFsService()
-    await seedRealCodexHome(fs)
-
-    const prep = await makeCodex(fs).prepareAutoStop?.(ctx())
-    const runHome = path(prep?.env.CODEX_HOME as string)
-
-    const config = await fs.readFile(path(`${runHome}/config.toml`))
-    expect(config).toContain('model = "o3"')
-    expect(config).toContain('[[hooks.Stop]]')
-    expect(config).toContain('[[hooks.Stop.hooks]]')
-    expect(config).toContain('type = "command"')
-    expect(config).toContain('$ORCH_SOCKET')
-    expect(config).toContain('$ORCH_STOP_CHANNEL')
-    expect(config).toContain('wait-for')
-    expect(config).not.toMatch(/kill|exit/)
-    expect(config).not.toMatch(/^\s*notify\s*=/m)
-  })
-
-  it('never writes back to the real ~/.codex/config.toml', async () => {
+describe('codex().prepareAutoStop writes the Stop hook as a single representation', () => {
+  it('registers the signal-only Stop hook in hooks.json, not config.toml', async () => {
     const fs = new FakeFsService()
     await seedRealCodexHome(fs)
 
     await makeCodex(fs).prepareAutoStop?.(ctx())
 
-    expect(await fs.readFile(path('/home/u/.codex/config.toml'))).toBe('model = "o3"\n')
+    const hooks = await fs.readFile(path(`${ORCH_HOME}/hooks.json`))
+    expect(hooks).toContain('$ORCH_SOCKET')
+    expect(hooks).toContain('$ORCH_STOP_CHANNEL')
+    expect(hooks).toContain('wait-for')
+    expect(hooks).not.toMatch(/kill|exit/)
   })
 
-  it('preserves a user notify line while adding orch Stop hook config', async () => {
-    const fs = new FakeFsService()
-    await fs.mkdir(REAL_HOME, { recursive: true })
-    await fs.writeFile(
-      path('/home/u/.codex/config.toml'),
-      'notify = ["my-notifier"]\nmodel = "o3"\n',
-    )
-
-    const prep = await makeCodex(fs).prepareAutoStop?.(ctx())
-    const runHome = path(prep?.env.CODEX_HOME as string)
-
-    const config = await fs.readFile(path(`${runHome}/config.toml`))
-    expect(config.match(/^\s*notify\s*=/gm)?.length).toBe(1)
-    expect(config).toContain('my-notifier')
-    expect(config).toContain('[[hooks.Stop]]')
-    expect(config).toContain('$ORCH_STOP_CHANNEL')
-  })
-
-  it('does not append duplicate orch Stop hooks when the copied config already contains one', async () => {
-    const fs = new FakeFsService()
-    await fs.mkdir(REAL_HOME, { recursive: true })
-    await fs.writeFile(
-      path('/home/u/.codex/config.toml'),
-      'model = "o3"\n\n[[hooks.Stop]]\n[[hooks.Stop.hooks]]\ntype = "command"\ncommand = \'tmux -L "$ORCH_SOCKET" wait-for -S "$ORCH_STOP_CHANNEL"\'\n',
-    )
-
-    const prep = await makeCodex(fs).prepareAutoStop?.(ctx())
-    const runHome = path(prep?.env.CODEX_HOME as string)
-
-    const config = await fs.readFile(path(`${runHome}/config.toml`))
-    expect(config.match(/\$ORCH_STOP_CHANNEL/g)?.length).toBe(1)
-  })
-})
-
-describe('codex().prepareAutoStop cleanup', () => {
-  it('removes the temp home and only the temp home — the real entries remain', async () => {
+  it('leaves the orch config.toml free of any inline hook block so Codex loads hooks one way', async () => {
     const fs = new FakeFsService()
     await seedRealCodexHome(fs)
 
-    const prep = await makeCodex(fs).prepareAutoStop?.(ctx())
-    const runHome: Path = path(prep?.env.CODEX_HOME as string)
-    await prep?.cleanup()
+    await makeCodex(fs).prepareAutoStop?.(ctx())
 
-    expect(await fs.exists(runHome)).toBe(false)
-    expect(await fs.readFile(path('/home/u/.codex/config.toml'))).toBe('model = "o3"\n')
-    expect(await fs.readFile(path('/home/u/.codex/auth.json'))).toBe('{"token":"secret"}')
+    const config = await fs.readFile(path(`${ORCH_HOME}/config.toml`))
+    expect(config).not.toContain('[[hooks.Stop]]')
+    expect(config).not.toContain('$ORCH_STOP_CHANNEL')
+  })
+
+  it("folds the user's existing hooks.json hooks alongside the orch hook", async () => {
+    const fs = new FakeFsService()
+    await seedRealCodexHome(fs)
+    await fs.writeFile(path('/home/u/.codex/hooks.json'), PLANNOTATOR_HOOKS_JSON)
+
+    await makeCodex(fs).prepareAutoStop?.(ctx())
+
+    const hooks = await fs.readFile(path(`${ORCH_HOME}/hooks.json`))
+    expect(hooks).toContain('plannotator')
+    expect(hooks).toContain('$ORCH_STOP_CHANNEL')
+  })
+
+  it('refreshes the orch hook every run so an updated command propagates', async () => {
+    const fs = new FakeFsService()
+    await seedRealCodexHome(fs)
+    // A prior orch version left a stale hook command in the reused home.
+    await fs.mkdir(ORCH_HOME, { recursive: true })
+    await fs.writeFile(
+      path(`${ORCH_HOME}/hooks.json`),
+      JSON.stringify({
+        hooks: { Stop: [{ hooks: [{ type: 'command', command: 'OLD_ORCH_COMMAND' }] }] },
+      }),
+    )
+
+    await makeCodex(fs).prepareAutoStop?.(ctx())
+
+    const hooks = await fs.readFile(path(`${ORCH_HOME}/hooks.json`))
+    expect(hooks).not.toContain('OLD_ORCH_COMMAND')
+    expect(hooks).toContain('$ORCH_STOP_CHANNEL')
+  })
+
+  it('does not duplicate the orch hook when the real hooks.json already declares it', async () => {
+    const fs = new FakeFsService()
+    await seedRealCodexHome(fs)
+    await fs.writeFile(
+      path('/home/u/.codex/hooks.json'),
+      JSON.stringify({
+        hooks: {
+          Stop: [
+            {
+              hooks: [
+                {
+                  type: 'command',
+                  command: 'tmux -L "$ORCH_SOCKET" wait-for -S "$ORCH_STOP_CHANNEL"',
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    )
+
+    await makeCodex(fs).prepareAutoStop?.(ctx())
+
+    const hooks = await fs.readFile(path(`${ORCH_HOME}/hooks.json`))
+    expect(hooks.match(/\$ORCH_STOP_CHANNEL/g)?.length).toBe(1)
+  })
+})
+
+describe('codex().prepareAutoStop config.toml handling', () => {
+  it('enables the hooks feature and disables the startup update check', async () => {
+    const fs = new FakeFsService()
+    await fs.mkdir(REAL_HOME, { recursive: true })
+    await fs.writeFile(path('/home/u/.codex/config.toml'), 'model = "o3"\n')
+
+    await makeCodex(fs).prepareAutoStop?.(ctx())
+
+    const config = await fs.readFile(path(`${ORCH_HOME}/config.toml`))
+    expect(config).toMatch(/^\s*check_for_update_on_startup\s*=\s*false/m)
+    expect(config).toMatch(/^\s*hooks\s*=\s*true/m)
+  })
+
+  it('never writes back to the real ~/.codex config.toml or hooks.json', async () => {
+    const fs = new FakeFsService()
+    await seedRealCodexHome(fs)
+    await fs.writeFile(path('/home/u/.codex/hooks.json'), PLANNOTATOR_HOOKS_JSON)
+
+    await makeCodex(fs).prepareAutoStop?.(ctx())
+
+    expect(await fs.readFile(path('/home/u/.codex/config.toml'))).toBe(
+      'model = "o3"\n[features]\nhooks = true\n',
+    )
+    expect(await fs.readFile(path('/home/u/.codex/hooks.json'))).toBe(PLANNOTATOR_HOOKS_JSON)
+  })
+
+  it('preserves an existing orch config.toml so Codex-written trust state is not clobbered', async () => {
+    const fs = new FakeFsService()
+    await seedRealCodexHome(fs)
+    // Simulate a prior run where Codex recorded hook-trust into the orch config.
+    const trusted =
+      'model = "o3"\n[features]\nhooks = true\n[hooks.state]\n[hooks.state."x:stop:0:0"]\n'
+    await fs.mkdir(ORCH_HOME, { recursive: true })
+    await fs.writeFile(path(`${ORCH_HOME}/config.toml`), trusted)
+
+    await makeCodex(fs).prepareAutoStop?.(ctx())
+
+    expect(await fs.readFile(path(`${ORCH_HOME}/config.toml`))).toBe(trusted)
   })
 })

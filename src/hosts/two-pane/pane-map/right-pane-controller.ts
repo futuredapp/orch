@@ -763,25 +763,36 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
     return false
   }
 
-  const followLive = async (): Promise<void> => {
-    if (stopped) return
+  const swapToNewestLivePane = async (): Promise<boolean> => {
     const rollupKey: SourceKey = { type: 'rollup' }
     const rollupSkey = sourceKeyToString(rollupKey)
     await invalidateSourceIfSessionGone(rollupSkey)
     if (panes.has(rollupSkey)) {
       await showSource(rollupKey)
-      return
+      return true
     }
     // Prefer a truly-live source. dispatchEnter on a past interactive step
     // re-registers `interactive:<step>` and registerSource pushes both `live`
     // and `interactive` keys onto liveSources; without this preference, `f`
     // after entering a past interactive step short-circuits on the replay key.
-    if (await showNewestLiveSource((key) => key.type === 'live')) return
+    if (await showNewestLiveSource((key) => key.type === 'live')) return true
     // No truly-live source. Fall back to most-recent still-alive source so
     // workflows with only interactive steps still respond to `f`.
-    if (await showNewestLiveSource(() => true)) return
+    if (await showNewestLiveSource(() => true)) return true
     const placeholderKey: SourceKey = { type: 'placeholder' }
-    if (panes.has(sourceKeyToString(placeholderKey))) await showSource(placeholderKey)
+    if (panes.has(sourceKeyToString(placeholderKey))) {
+      await showSource(placeholderKey)
+      return true
+    }
+    return false
+  }
+
+  const followLive = async (): Promise<void> => {
+    if (stopped) return
+    // `f` ("snap to live") must restore BOTH the right-pane source and the
+    // left-pane footer mode. Swapping the pane without flipping the view mode
+    // leaves the footer stuck on `⏸ viewing <step>` (findings P-1).
+    if (await swapToNewestLivePane()) await setViewMode({ mode: 'live' })
   }
 
   /**
@@ -896,6 +907,33 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
     }
   }
 
+  /**
+   * Swap to a replay source, recovering from a warm-cached pane that died
+   * out-of-band. remain-on-exit keeps the pane's session ALIVE, so the
+   * session guard can't drop it and the swap fails with "can't find pane".
+   * Forget the stale source, re-register a fresh one, and retry once. Any
+   * other failure propagates to dispatchEnter's banner (r-2026-05-25-171216-nu).
+   */
+  const showReplaySourceWithStaleRefresh = async (
+    step: StepRow,
+    replayKey: SourceKey,
+  ): Promise<void> => {
+    try {
+      await showSource(replayKey)
+    } catch (err) {
+      if (!isStalePaneError(err)) throw err
+      const replaySkey = sourceKeyToString(replayKey)
+      forgetSource(replaySkey)
+      logLifecycle({
+        type: 'replay-pane-stale-refresh',
+        stepName: step.name,
+        sourceKey: replaySkey,
+      })
+      await registerSource(replayKey, await resolveReplaySpec(opts, step))
+      await showSource(replayKey)
+    }
+  }
+
   const dispatchEnter = async (stepName: string): Promise<void> => {
     if (stopped) return
 
@@ -906,10 +944,16 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
     // the tmux client — bleeding over the live TUI (r-2026-05-25-171216-nu).
     // Every failure must surface as a banner, never escape.
     try {
-      if (await showCachedRunningSource(stepName)) return
-
       const step = await lookupStep(stepName)
       if (step === undefined) {
+        // Not persisted → the step is in-flight (lookupStep projects with an
+        // empty overlay, so any persisted hit is a completed/past step). Only
+        // an in-flight step may tune into its cached live/interactive source.
+        // A completed step's leftover remain-on-exit pane must NOT short-circuit
+        // here: that flips the footer to `{ mode: 'live' }`, jumping the left
+        // pane's committed highlight to the last step while the right pane shows
+        // the stale pane (run r-2026-05-27-154145-nk). It replays below instead.
+        if (await showCachedRunningSource(stepName)) return
         logLifecycle({ type: 'replay-lookup-miss', stepName })
         return
       }
@@ -941,7 +985,7 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
         const spec = await resolveReplaySpec(opts, step)
         await registerSource(replayKey, spec)
       }
-      await showSource(replayKey)
+      await showReplaySourceWithStaleRefresh(step, replayKey)
       await setViewMode({ mode: 'replay', stepName: step.name })
       logLifecycle({
         type: 'replay-pane-opened',

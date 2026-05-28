@@ -373,4 +373,45 @@ describe('right-pane-controller onIntent("enter")', () => {
 
     await controller.stop()
   })
+
+  it('re-entering a completed interactive step stays in replay, not live (run r-2026-05-27-154145-nk)', async () => {
+    // The first Enter on an interactive agent step registers its replay source
+    // under the `interactive:<step>` key (replayKeyFor). That key is also the
+    // one `showCachedRunningSource` reads as its "step is live" signal, so the
+    // SECOND Enter used to be misclassified as live: it flipped the footer to
+    // `{ mode: 'live' }`, which makes the left pane's committed highlight jump
+    // to the last step while the right pane shows the stale leftover pane.
+    // A completed step (persisted, hence found by lookupStep) must always
+    // replay, pinned — never masquerade as live.
+    const captured = capturingLogger()
+    const { tmux, controller } = await makeController({
+      tempDir,
+      steps: {
+        draft: makeStep({ name: 'draft', mode: 'interactive', value: null }),
+      },
+      logger: captured.logger,
+    })
+
+    tmux.nextCreateSessionPaneId(paneId('%80'))
+    controller.onIntent({ type: 'enter', stepName: 'draft' })
+    await flush()
+    controller.onIntent({ type: 'enter', stepName: 'draft' })
+    await flush()
+
+    const views = captured.entries
+      .filter((e) => e.category === 'lifecycle')
+      .map(
+        (e) => e.record as { readonly type?: string; readonly view?: { readonly mode?: string } },
+      )
+      .filter((r) => r.type === 'view-mode-changed')
+    expect(views.at(-1)?.view?.mode).toBe('replay')
+
+    const liveOpens = captured.entries
+      .filter((e) => e.category === 'lifecycle')
+      .map((e) => e.record as { readonly type?: string })
+      .filter((r) => r.type === 'live-pane-opened')
+    expect(liveOpens).toHaveLength(0)
+
+    await controller.stop()
+  })
 })

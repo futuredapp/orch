@@ -9,7 +9,7 @@ import { z } from 'zod'
 import type { FsService } from '../../services/fs/fs-service.ts'
 import { mergeEnv } from '../../services/index.ts'
 import type { ProcessService } from '../../services/process/process-service.ts'
-import { path } from '../../services/types.ts'
+import { type Path, path } from '../../services/types.ts'
 import type {
   AutoStopPreparation,
   CaptureHandle,
@@ -288,33 +288,118 @@ async function buildAutonomousArgv(
 }
 
 // ---------------------------------------------------------------------------
-// Auto-stop injection via per-run CODEX_HOME (R3–R5, R7, R9)
+// Auto-stop injection via a STABLE per-home CODEX_HOME (R3–R5, R7, R9)
 // ---------------------------------------------------------------------------
 //
-// Codex reads lifecycle hooks from `hooks.json` or inline `[hooks]` tables
-// inside `CODEX_HOME/config.toml`. We build a throwaway `CODEX_HOME` that
-// symlinks every real `~/.codex` entry (so auth and sessions are inherited
-// untouched) EXCEPT `config.toml`, which we copy and append a single
-// signal-only `Stop` hook to. `CODEX_HOME` is an env var, not the denylisted
-// `-c`/`--config`, so it passes the Codex flag denylist.
+// Codex stores per-hook trust in `CODEX_HOME/config.toml` under `[hooks.state]`,
+// keyed by the hook's *source path*. A fresh temp `CODEX_HOME` each run gives
+// every hook a brand-new path, so Codex re-shows its startup trust prompt on
+// every launch. We instead reuse one stable home — `<realCodexHome>-orch` — that
+// symlinks the real `~/.codex` entries (so auth/sessions are inherited) and
+// carries orch's signal-only `Stop` hook. Stable paths ⇒ Codex prompts once,
+// then remembers. `CODEX_HOME` is an env var, not the denylisted `-c`/`--config`.
+//
+// The hook lives in `hooks.json` ONLY (a single representation) — never inline
+// in `config.toml` as well — so Codex never warns "loading hooks from both …".
+// The user's own `hooks.json` is folded into the same file rather than symlinked,
+// keeping one source of hooks while preserving their hooks.
 
-/** Signal-only Stop hook: pings orch's wait-for channel on turn completion.
- *  No termination, no state mutation. Single-quoted TOML leaves the shell's
- *  `$ORCH_*` expansion intact. The socket selector is `-L <name>` (orch's
- *  server is `tmux -L orch-<runId>`); `-S <path>` would reach the wrong server.
- *  The `-S` after `wait-for` is the separate signal-channel flag. */
-const CODEX_STOP_HOOK_BLOCK = [
-  '[[hooks.Stop]]',
-  '[[hooks.Stop.hooks]]',
-  'type = "command"',
-  'command = \'tmux -L "$ORCH_SOCKET" wait-for -S "$ORCH_STOP_CHANNEL"\'',
-  'timeout = 30',
-].join('\n')
+/** Signal-only Stop hook command: pings orch's wait-for channel on turn
+ *  completion. No termination, no state mutation — orch owns the pane. The
+ *  socket selector is `-L <name>` (orch's server is `tmux -L orch-<runId>`);
+ *  `-S <path>` would reach the wrong server. The `-S` after `wait-for` is the
+ *  separate signal-channel flag. `$ORCH_*` are expanded by the hook's shell. */
+const CODEX_STOP_HOOK_COMMAND = 'tmux -L "$ORCH_SOCKET" wait-for -S "$ORCH_STOP_CHANNEL"'
 
 const CONFIG_TOML = path('config.toml')
+const HOOKS_JSON = path('hooks.json')
 
-function hasOrchStopHook(config: string): boolean {
-  return config.includes('$ORCH_STOP_CHANNEL')
+/** Suppresses codex's "✨ Update available!" startup prompt — in auto-stop mode
+ *  it steals the interactive pane and clutters the captured transcript. Bare
+ *  top-level key, so it is prepended ahead of any table header to stay valid
+ *  TOML. The real ~/.codex config is never touched. */
+const CODEX_DISABLE_UPDATE_CHECK_LINE = 'check_for_update_on_startup = false'
+
+/** Codex only loads `hooks.json` when the hooks feature is enabled. Appended as
+ *  a fresh table when the inherited config doesn't already turn it on. */
+const CODEX_ENABLE_HOOKS_BLOCK = '[features]\nhooks = true'
+
+interface CodexHookCommand {
+  readonly type: 'command'
+  readonly command: string
+  readonly timeout?: number
+}
+interface CodexHookEntry {
+  readonly hooks?: readonly CodexHookCommand[]
+}
+interface CodexHooksFile {
+  readonly hooks?: Readonly<Record<string, readonly CodexHookEntry[]>>
+}
+
+function hasUpdateCheckSetting(config: string): boolean {
+  return /^\s*check_for_update_on_startup\s*=/m.test(config)
+}
+
+function hasHooksFeature(config: string): boolean {
+  return /^\s*hooks\s*=\s*true/m.test(config)
+}
+
+/** Parse the real `hooks.json` (tolerating absent/malformed input as "no prior
+ *  hooks") and append orch's signal-only Stop hook to the `Stop` array, unless
+ *  an identical command is already declared. Rebuilt from the REAL file every
+ *  run, so an updated orch command propagates and stale copies are discarded. */
+function buildOrchHooksJson(realHooksJson: string): string {
+  let parsed: CodexHooksFile = {}
+  try {
+    const candidate = JSON.parse(realHooksJson) as unknown
+    if (typeof candidate === 'object' && candidate !== null && !Array.isArray(candidate)) {
+      parsed = candidate as CodexHooksFile
+    }
+  } catch {
+    // Malformed real hooks.json — start from an empty hook set so injection still
+    // succeeds. (The real file is never modified.)
+  }
+
+  const priorHooks = parsed.hooks ?? {}
+  const priorStop = Array.isArray(priorHooks.Stop) ? priorHooks.Stop : []
+  const alreadyDeclared = priorStop.some((entry) =>
+    entry.hooks?.some((h: CodexHookCommand) => h.command === CODEX_STOP_HOOK_COMMAND),
+  )
+  const orchEntry: CodexHookEntry = {
+    hooks: [{ type: 'command', command: CODEX_STOP_HOOK_COMMAND, timeout: 30 }],
+  }
+  const nextStop = alreadyDeclared ? priorStop : [...priorStop, orchEntry]
+  return `${JSON.stringify({ ...parsed, hooks: { ...priorHooks, Stop: nextStop } }, null, 2)}\n`
+}
+
+/** Re-sync the orch home's inherited symlinks against the real home. Idempotent:
+ *  skips entries already linked so re-running across launches never throws
+ *  EEXIST. `config.toml` and `hooks.json` are orch-owned (written below), not
+ *  inherited, so they are excluded. */
+async function syncInheritedSymlinks(fs: FsService, realHome: Path, orchHome: Path): Promise<void> {
+  const entries = (await fs.exists(realHome)) ? await fs.readDir(realHome) : []
+  for (const entry of entries) {
+    if (entry === CONFIG_TOML || entry === HOOKS_JSON) continue
+    const link = path(`${orchHome}/${entry}`)
+    if (await fs.exists(link)) continue
+    await fs.symlink(path(`${realHome}/${entry}`), link)
+  }
+}
+
+/** Write the orch home's `config.toml` on first use only. Codex records hook
+ *  trust into this file's `[hooks.state]`; rewriting it each run would wipe that
+ *  and resurrect the prompt, so once it exists we leave it alone. (Delete the
+ *  orch home to pick up later changes to the real config.) */
+async function ensureOrchConfigToml(fs: FsService, realHome: Path, orchHome: Path): Promise<void> {
+  const orchConfig = path(`${orchHome}/config.toml`)
+  if (await fs.exists(orchConfig)) return
+
+  const realConfig = path(`${realHome}/config.toml`)
+  const existing = (await fs.exists(realConfig)) ? await fs.readFile(realConfig) : ''
+  const header = hasUpdateCheckSetting(existing) ? '' : `${CODEX_DISABLE_UPDATE_CHECK_LINE}\n`
+  const base = existing === '' || existing.endsWith('\n') ? existing : `${existing}\n`
+  const features = hasHooksFeature(existing) ? '' : `\n${CODEX_ENABLE_HOOKS_BLOCK}\n`
+  await fs.writeFile(orchConfig, `${header}${base}${features}`)
 }
 
 async function prepareCodexAutoStop(
@@ -325,30 +410,25 @@ async function prepareCodexAutoStop(
   // from the process env (or the default) — not ctx.env. ctx.env is checked
   // first only for forward-compat with a future caller that threads it.
   const realCodexHome = path(ctx.env.CODEX_HOME ?? process.env.CODEX_HOME ?? `${homedir()}/.codex`)
-  const runCodexHome = await fs.tempDir('orch-codex')
+  const orchCodexHome = path(`${realCodexHome}-orch`)
+  await fs.mkdir(orchCodexHome, { recursive: true })
 
-  // Symlink every real-home entry except config.toml so auth.json, sessions/,
-  // etc. are inherited without copying. readDir yields basenames.
-  const entries = (await fs.exists(realCodexHome)) ? await fs.readDir(realCodexHome) : []
-  for (const entry of entries) {
-    if (entry === CONFIG_TOML) continue
-    await fs.symlink(path(`${realCodexHome}/${entry}`), path(`${runCodexHome}/${entry}`))
-  }
+  await syncInheritedSymlinks(fs, realCodexHome, orchCodexHome)
+  await ensureOrchConfigToml(fs, realCodexHome, orchCodexHome)
 
-  // Copy config.toml (if any) and append the Stop hook. Never writes back to
-  // the real home — only the throwaway copy gets the hook.
-  const realConfig = path(`${realCodexHome}/config.toml`)
-  const existing = (await fs.exists(realConfig)) ? await fs.readFile(realConfig) : ''
-  const base = existing === '' || existing.endsWith('\n') ? existing : `${existing}\n`
-  const body = hasOrchStopHook(existing) ? base : `${base}${CODEX_STOP_HOOK_BLOCK}\n`
-  await fs.writeFile(path(`${runCodexHome}/config.toml`), body)
+  // hooks.json is rebuilt from the real file every run — the single source of
+  // hooks — so updates to the orch command propagate without disturbing the
+  // config.toml trust state.
+  const realHooks = path(`${realCodexHome}/hooks.json`)
+  const realHooksJson = (await fs.exists(realHooks)) ? await fs.readFile(realHooks) : ''
+  await fs.writeFile(path(`${orchCodexHome}/hooks.json`), buildOrchHooksJson(realHooksJson))
 
   const cleanup = async (): Promise<void> => {
-    // Removes the temp dir — drops only symlinks + the copied config. The real
-    // ~/.codex entries the links point at are untouched.
-    await fs.remove(runCodexHome)
+    // Intentionally persistent: Codex's per-source-path hook trust lives in this
+    // home's config.toml, so reusing it across runs is what makes the trust
+    // prompt appear once instead of every launch. Nothing to remove.
   }
-  return { env: { CODEX_HOME: runCodexHome }, cleanup }
+  return { env: { CODEX_HOME: orchCodexHome }, cleanup }
 }
 
 // ---------------------------------------------------------------------------

@@ -391,10 +391,11 @@ describe('right-pane-controller pane-map: revisiting an interactive step whose r
     // The real production condition: tmux runs with `remain-on-exit on`, so when
     // the interactive resume pty exits, its pane lingers dead inside a session
     // that `hasSession` still reports as ALIVE. The session-granular guard
-    // cannot drop it, so the short-circuit swap is attempted and tmux answers
-    // "can't find pane". The controller must catch that, forget the stale
-    // source, and re-register a fresh one — surfacing the step content, not a
-    // crash and not an error banner.
+    // cannot drop it, so the swap is attempted and tmux answers "can't find
+    // pane". The controller must catch that, forget the stale source, and
+    // re-register a fresh one — surfacing the step content, not a crash and not
+    // an error banner. `move-1-9-codex` is a completed (persisted) step, so the
+    // recovery now lives on the replay path (`replay-pane-stale-refresh`).
     const captured = capturingLogger()
     const tmux = new FakeTmuxService()
     const tempDir = await mkdtemp('/tmp/orch-remain-on-exit-')
@@ -453,7 +454,7 @@ describe('right-pane-controller pane-map: revisiting an interactive step whose r
     const refresh = captured.entries
       .filter((e) => e.category === 'lifecycle')
       .map((e) => e.record as { readonly type?: string })
-      .find((r) => r.type === 'live-pane-stale-refresh')
+      .find((r) => r.type === 'replay-pane-stale-refresh')
     expect(refresh).toBeDefined()
 
     // A fresh source was re-registered.
