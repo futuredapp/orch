@@ -44,3 +44,10 @@ The full phased roadmap lives at [`docs/plans/implementation-phases.md`](docs/pl
 - Read [`docs/testing-strategy.md`](docs/testing-strategy.md) for the four-tier model and the triage rule.
 - Default to Tier 2 (Ink projection) or Tier 1 (real-tmux + FakeRunner). The harness lives at [`tests/helpers/real-tmux/`](tests/helpers/real-tmux/README.md).
 - Triage rule: *"Would this test still pass if the visible pane were empty / wrong / unformatted? If yes, demote or delete."*
+
+## How to update user docs
+
+- User-facing docs live under [`docs/public/`](docs/public/) and are published as a VitePress site. Everything else under `docs/` (brainstorms, plans, adr, findings, issues, solutions, logging.md, testing-strategy.md) is internal — never link the public site into it, and never publish it.
+- Load the `doc-writer` skill before editing — it codifies the conventions (one concept per page, runnable examples with imports shown, reference signatures quoted from `src/`, no forward references in the numbered guide).
+- After any change to the public barrels (`src/index.ts` and the module barrels it re-exports), reconcile `docs/public/reference/api.md` and `docs/public/reference/runners.md` so the signatures still match.
+- `bun run docs:build` is the docs gate — it fails on dead internal links. Run it before pushing doc changes. `bun run docs:dev` is the local preview.

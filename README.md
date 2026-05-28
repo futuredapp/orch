@@ -68,9 +68,21 @@ RUN_REAL_E2E=1    bun run test:e2e
 
 ## Documentation
 
+User-facing documentation lives under [`docs/public/`](docs/public/) and is published as a VitePress site — guide pages, how-to recipes, an API/CLI/config reference, and an indexed tour of [`examples/`](examples/). Build it locally:
+
+```bash
+bun run docs:dev      # local dev server with hot reload
+bun run docs:build    # production build — fails on any dead internal link
+bun run docs:preview  # serve the built site
+```
+
+`bun run docs:build` is the docs correctness gate (dead-link detection). When editing or adding pages, load the **`doc-writer`** skill — it codifies the conventions (one concept per page, runnable examples with imports shown, reference signatures quoted from `src/`).
+
+Internal documentation (not published):
+
 - [`docs/plans/implementation-phases.md`](docs/plans/implementation-phases.md) — the phased roadmap (Phase 0 → Phase 16).
 - [`docs/brainstorms/2026-04-08-claude-orchestrator-brainstorm.md`](docs/brainstorms/2026-04-08-claude-orchestrator-brainstorm.md) — the original design brainstorm with audited CLI recipes and architectural decisions.
-- [`docs/getting-started.md`](docs/getting-started.md) — user-facing walkthrough of the planned API (decision review, not a manual).
+- [`docs/getting-started.md`](docs/getting-started.md) — older walkthrough of the planned API (decision review, superseded by `docs/public/`).
 - [`CLAUDE.md`](CLAUDE.md) — non-negotiable project rules.
 
 ## Contributing
@@ -80,6 +92,7 @@ Before writing code, load the relevant skill from `.claude/skills/`:
 - **`phase-implementer`** — how to pick up and land a phase from the plan.
 - **`testing-strategy`** — three-layer testing (unit / integration / e2e) and the "mock only at the edge" rule.
 - **`runner-author`** — how to add a new `Runner` adapter for a new CLI.
+- **`doc-writer`** — how to maintain the user docs under `docs/public/`.
 
 Every PR must pass `bun run check` before landing.
 

@@ -20,7 +20,10 @@
     "test:unit": "bun test tests/unit",
     "test:int": "bun test tests/integration",
     "test:e2e": "RUN_REAL_E2E=1 bun test tests/e2e",
-    "test:watch": "bun test --watch tests/unit"
+    "test:watch": "bun test --watch tests/unit",
+    "docs:dev": "vitepress dev docs/public",
+    "docs:build": "vitepress build docs/public",
+    "docs:preview": "vitepress preview docs/public"
   },
   "dependencies": {
     "ink": "^7.0.1",
@@ -34,7 +37,8 @@
     "@types/bun": "latest",
     "@types/react": "^19.2.0",
     "ink-testing-library": "^4.0.0",
-    "typescript": "^5.6.0"
+    "typescript": "^5.6.0",
+    "vitepress": "^1.6.4"
   },
   "engines": {
     "bun": ">=1.2.0"

@@ -41,3 +41,7 @@ Thumbs.db
 *.log
 npm-debug.log*
 .gstack/
+
+# vitepress docs site
+docs/public/.vitepress/cache/
+docs/public/.vitepress/dist/
