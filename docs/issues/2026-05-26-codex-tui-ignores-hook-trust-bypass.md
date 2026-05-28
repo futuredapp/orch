@@ -1,12 +1,30 @@
 ---
 date: 2026-05-26
-status: open
+status: mitigated
 area: src/runners/codex
-severity: medium
-blocked-on: upstream Codex release (PR #24317)
+severity: low
+blocked-on: upstream Codex release (PR #24317) — only for the bypass *flag*; the prompt itself is sidestepped
 ---
 
 # Codex interactive TUI ignores `--dangerously-bypass-hook-trust` (auto-stop hook prompt)
+
+## Resolution (2026-05-27) — orch-side, independent of the upstream flag
+
+`prepareCodexAutoStop` no longer mints a fresh temp `CODEX_HOME` per run. It now
+reuses one **stable** home, `<realCodexHome>-orch` (e.g. `~/.codex-orch`), with a
+**no-op `cleanup`** so it persists. Because Codex keys per-hook trust by source
+path under `config.toml`'s `[hooks.state]`, stable paths mean **the trust prompt
+appears once, then is remembered** — no longer every launch. This does not depend
+on PR #24317; the `--dangerously-bypass-hook-trust` flag stays wired so the first
+run is also silent once a fixed Codex release ships.
+
+The **"loading hooks from both hooks.json and config.toml"** warning is also gone:
+orch's signal-only Stop hook is now written **only** into `hooks.json` (a single
+representation), with the user's own `hooks.json` folded into the same file rather
+than symlinked. `config.toml` carries no inline hook block — only
+`check_for_update_on_startup = false` and `[features] hooks = true`, written
+**once** so Codex's accumulated `[hooks.state]` is never clobbered (delete the orch
+home to refresh inherited config). See `tests/unit/runners/codex/codex-auto-stop.test.ts`.
 
 ## Symptom
 
