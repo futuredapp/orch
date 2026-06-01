@@ -137,6 +137,16 @@ export function applyEvent(
   if (event.type === 'step:parallel-start' || event.type === 'step:parallel-complete') {
     return
   }
+  // U6 — subworkflow boundary events and host-error records carry no
+  // `stepName` and do not affect the per-step status rollup. The two-pane
+  // host consumes them via its own choreographer / steps-view model.
+  if (
+    event.type === 'subworkflow:enter' ||
+    event.type === 'subworkflow:exit' ||
+    event.type === 'host-error'
+  ) {
+    return
+  }
   const name = event.stepName
   const previous = live.get(name)
 

@@ -180,6 +180,40 @@ export type StepLifecycleEvent =
       readonly type: 'step:parallel-complete'
       readonly blockId: number
     }
+  | {
+      /** Fired by `runWorkflow` immediately before invoking the sub body
+       *  (R14). `depth` is the new sub-frame depth (parent depth + 1).
+       *  `insideParallel` piggybacks the ALS signal so the plain host's
+       *  divider suppression rule (R16) does not need to consult ALS. */
+      readonly type: 'subworkflow:enter'
+      readonly name: string
+      readonly depth: number
+      readonly insideParallel?: true
+    }
+  | {
+      /** Fired by `runWorkflow` after the sub body resolves OR rejects (R14).
+       *  `outcome: 'failed'` is set when the sub threw; the original error
+       *  is rethrown to the parent body AFTER this event fires (R10). */
+      readonly type: 'subworkflow:exit'
+      readonly name: string
+      readonly depth: number
+      readonly durationMs: number
+      readonly outcome: 'completed' | 'failed'
+      readonly insideParallel?: true
+    }
+  | {
+      /** Synthesized when the host's `onLifecycleEvent` throws on a
+       *  `subworkflow:enter` or `subworkflow:exit` event. Enter-throws
+       *  propagate (so the sub does not run); exit-throws are SUPPRESSED
+       *  by `runWorkflow` and recorded here so the post-hoc trace exists
+       *  (resolves the 2026-05-31 R10 observability gap). Promoted to a
+       *  typed variant so TS exhaustiveness checks cover every consumer. */
+      readonly type: 'host-error'
+      readonly source: 'subworkflow:enter' | 'subworkflow:exit'
+      readonly name: string
+      readonly depth: number
+      readonly message: string
+    }
 
 // ---------------------------------------------------------------------------
 // InteractiveContext — passed to onInteractive handler

@@ -127,7 +127,13 @@ export function createPlainHost(opts: PlainHostOptions): Host {
       writeJsonLine(jsonLifecycle(event))
       return
     }
-    opts.stdout.write(`[orch] ${textLifecycle(event)}\n`)
+    // U6 R16 — `textLifecycle` returns the empty string for sub events that
+    // should be suppressed in the active rendering mode (parallel-branch
+    // divider suppression). Skip the line in that case rather than writing
+    // a bare `[orch] ` row.
+    const line = textLifecycle(event)
+    if (line === '') return
+    opts.stdout.write(`[orch] ${line}\n`)
     // Story 1.5 frame follows the step:failed line on stderr so TTY users see
     // the copy-paste resume/logs hints immediately. JSON consumers get the
     // same info via the structured `ev: step.failed` envelope.
@@ -225,6 +231,19 @@ function textLifecycle(event: StepLifecycleEvent): string {
     case 'step:parallel-start':
     case 'step:parallel-complete':
       return `${event.type} [block ${event.blockId}]`
+    case 'subworkflow:enter':
+      // U6 R16 — suppress the divider inside parallel composition. Sequential
+      // composition renders a one-line boundary so the user can see where the
+      // sub starts and ends.
+      if (event.insideParallel === true) return ''
+      return `── ▶ subworkflow: ${event.name} ──`
+    case 'subworkflow:exit': {
+      if (event.insideParallel === true) return ''
+      const tag = event.outcome === 'completed' ? '◀' : '✗'
+      return `── ${tag} subworkflow: ${event.name} (${event.durationMs}ms) ──`
+    }
+    case 'host-error':
+      return `── ! host-error on ${event.source} for ${event.name}: ${event.message} ──`
   }
 }
 
@@ -250,6 +269,24 @@ function jsonLifecycle(event: StepLifecycleEvent): Record<string, unknown> {
       return { ev: 'step.parallel-start', blockId: event.blockId }
     case 'step:parallel-complete':
       return { ev: 'step.parallel-complete', blockId: event.blockId }
+    case 'subworkflow:enter':
+      return { ev: 'subworkflow.enter', name: event.name, depth: event.depth }
+    case 'subworkflow:exit':
+      return {
+        ev: 'subworkflow.exit',
+        name: event.name,
+        depth: event.depth,
+        durationMs: event.durationMs,
+        outcome: event.outcome,
+      }
+    case 'host-error':
+      return {
+        ev: 'host-error',
+        source: event.source,
+        name: event.name,
+        depth: event.depth,
+        message: event.message,
+      }
   }
 }
 

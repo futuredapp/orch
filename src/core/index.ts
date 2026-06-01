@@ -59,6 +59,7 @@ export {
   resolveRunMode,
   SINGLE_PANE_DEFERRED_MESSAGE,
 } from './run-mode.ts'
+export { runWorkflow } from './run-workflow.ts'
 export type { SchemaWrapper } from './schema.ts'
 export { SchemaValidationError, schema } from './schema.ts'
 export type {
