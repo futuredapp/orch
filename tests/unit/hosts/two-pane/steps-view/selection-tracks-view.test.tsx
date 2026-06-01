@@ -15,7 +15,6 @@
 
 import { describe, expect, it } from 'bun:test'
 import { render } from 'ink-testing-library'
-import React from 'react'
 import type { StepRow, StepsViewState } from '../../../../../src/hosts/two-pane/steps-view/index.ts'
 import { StepsView } from '../../../../../src/hosts/two-pane/steps-view/index.ts'
 import { stripAnsi } from '../../../../../src/observability/index.ts'

@@ -1,3 +1,5 @@
+import { runCodegen } from '../../codegen/index.ts'
+import { ConfigLoadError, loadConfig, resolvePromptsConfig } from '../../config/index.ts'
 import {
   createResumeRegistry,
   ParallelError,
@@ -22,6 +24,40 @@ import { isLoadError, loadWorkflow } from './load-workflow.ts'
 import { relativeRunDir } from './relative-run-dir.ts'
 
 const PROMPT_PREVIEW_MAX = 80
+
+// Exported for direct unit-testing of the three runtime branches (silent
+// ConfigLoadError, ORCH_QUIET suppression, error reporting). Other modules
+// must keep invoking the prepass via `runCmd`.
+export async function runCodegenPrepass(deps: CliDeps): Promise<void> {
+  let loaded: Awaited<ReturnType<typeof loadConfig>>
+  try {
+    loaded = await loadConfig(deps.cwd)
+  } catch (err) {
+    if (err instanceof ConfigLoadError) {
+      // Config-missing or invalid — the workflow loader will surface the
+      // proper user-facing error below. Skip the prepass silently.
+      return
+    }
+    throw err
+  }
+
+  const { include, exclude } = resolvePromptsConfig(loaded.config)
+  const result = await runCodegen(
+    { fs: deps.fsService },
+    { configDir: loaded.configDir, include, exclude },
+  )
+
+  if (result.errors.length > 0) {
+    process.stderr.write(`Warning: prompt-file sidecar codegen reported errors:\n`)
+    for (const err of result.errors) {
+      process.stderr.write(`  ! ${err.path}: ${err.message}\n`)
+    }
+  }
+
+  if (result.written.length > 0 && process.env.ORCH_QUIET !== '1') {
+    process.stderr.write(`Generated ${result.written.length} prompt-file type sidecar(s).\n`)
+  }
+}
 
 function formatPromptPreview(prompt: string): string {
   const normalized = prompt.replace(/\s+/g, ' ').trim()
@@ -101,6 +137,13 @@ export async function runCmd(
     process.stderr.write('Usage: orch run <name> [prompt]\n')
     return EXIT.CONFIG_ERROR
   }
+
+  // Sidecar-codegen pre-pass. Idempotent on a warm tree; on a cold clone it
+  // emits the `.d.ts` augmentations under `PromptFileRegistry` so the next
+  // `bun run check` / IDE session sees the typed contract. Failures here
+  // never abort the run — runtime substitution in `assemblePrompt` still
+  // enforces var correctness.
+  await runCodegenPrepass(deps)
 
   const result = await loadWorkflow(deps.cwd, name)
   if (isLoadError(result)) return result.code

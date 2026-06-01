@@ -95,6 +95,57 @@ const assertNoNullByteArgv = (entries: readonly string[], prefix: string): void 
   }
 }
 
+// Build the `tmux new-window` argv. Reuses appendEnvFlags for `-e KEY=VAL`
+// validation; extracted from newWindow to keep that method under the rule-5
+// cognitive-complexity budget.
+const buildNewWindowArgv = (opts: NewWindowOptions): string[] => {
+  const argv: string[] = [
+    'tmux',
+    '-L',
+    opts.socket,
+    'new-window',
+    '-d',
+    '-a',
+    '-t',
+    opts.session,
+    '-n',
+    opts.name,
+    '-c',
+    opts.cwd,
+    '-P',
+    '-F',
+    '#{window_id}\t#{pane_id}',
+  ]
+  if (opts.env !== undefined) appendEnvFlags(argv, opts.env, 'newWindow')
+  if (opts.argv !== undefined && opts.argv.length > 0) {
+    argv.push(...opts.argv)
+  } else {
+    argv.push('cat')
+  }
+  return argv
+}
+
+// Parse the `#{window_id}\t#{pane_id}` line from new-window's -P output.
+// Throws TmuxCommandError on missing/garbled ids.
+const parseNewWindowResult = (
+  stdout: string,
+  stderr: string,
+  exitCode: number,
+): NewWindowResult => {
+  const first = stdout.split('\n').find((l) => l.trim().length > 0) ?? ''
+  const parts = first.split('\t')
+  const wid = parts[0]?.trim() ?? ''
+  const pid = parts[1]?.trim() ?? ''
+  if (wid.length === 0 || pid.length === 0) {
+    throw new TmuxCommandError(
+      exitCode,
+      truncateStderr(stderr),
+      `tmux new-window returned unexpected output: ${JSON.stringify(first)}`,
+    )
+  }
+  return { windowId: windowId(wid), paneId: paneId(pid) }
+}
+
 // ---------------------------------------------------------------------------
 // RealTmuxService
 // ---------------------------------------------------------------------------
@@ -459,52 +510,12 @@ export class RealTmuxService implements TmuxService {
   }
 
   async newWindow(opts: NewWindowOptions): Promise<NewWindowResult> {
-    const argv: string[] = [
-      'tmux',
-      '-L',
-      opts.socket,
-      'new-window',
-      '-d',
-      '-a',
-      '-t',
-      opts.session,
-      '-n',
-      opts.name,
-      '-c',
-      opts.cwd,
-      '-P',
-      '-F',
-      '#{window_id}\t#{pane_id}',
-    ]
-    if (opts.env !== undefined) {
-      for (const [k, v] of Object.entries(opts.env)) {
-        if (k.includes('=') || k.includes('\n')) {
-          throw new Error(`newWindow: env key ${JSON.stringify(k)} contains '=' or newline`)
-        }
-        argv.push('-e', `${k}=${v}`)
-      }
-    }
-    if (opts.argv !== undefined && opts.argv.length > 0) {
-      argv.push(...opts.argv)
-    } else {
-      argv.push('cat')
-    }
+    const argv = buildNewWindowArgv(opts)
 
     const { stdout, stderr, exitCode } = await this.#run(argv)
     if (exitCode !== 0) throw fail(exitCode, stderr, 'tmux new-window failed')
 
-    const first = stdout.split('\n').find((l) => l.trim().length > 0) ?? ''
-    const parts = first.split('\t')
-    const wid = parts[0]?.trim() ?? ''
-    const pid = parts[1]?.trim() ?? ''
-    if (wid.length === 0 || pid.length === 0) {
-      throw new TmuxCommandError(
-        exitCode,
-        truncateStderr(stderr),
-        `tmux new-window returned unexpected output: ${JSON.stringify(first)}`,
-      )
-    }
-    const result: NewWindowResult = { windowId: windowId(wid), paneId: paneId(pid) }
+    const result = parseNewWindowResult(stdout, stderr, exitCode)
     // Pin `automatic-rename off` belt-and-braces against OSC sequences in the
     // replay payload re-enabling it. Failure here is non-fatal — log via stderr
     // path? — actually just bubble up; this is internal-only argv, the callsite

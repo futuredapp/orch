@@ -24,4 +24,20 @@ describe('orch public barrel', () => {
     expect(typeof orch.step).toBe('object')
     expect(typeof orch.step.define).toBe('function')
   })
+
+  it('re-exports loadPrompt and PromptFileError so workflow authors can compose prompt fragments', () => {
+    expect(typeof orch.loadPrompt).toBe('function')
+    expect(typeof orch.PromptFileError).toBe('function')
+    // PromptFileError extends Error — instances are Error instances.
+    expect(new orch.PromptFileError('x', { cause: 'mutex' })).toBeInstanceOf(Error)
+  })
+
+  it('does not leak the internal prompt-file helpers into the public surface', () => {
+    const keys = Object.keys(orch)
+    expect(keys).not.toContain('callerDir')
+    expect(keys).not.toContain('resolvePromptPath')
+    expect(keys).not.toContain('substitute')
+    expect(keys).not.toContain('FakePromptFileReader')
+    expect(keys).not.toContain('__setPromptFileReader')
+  })
 })

@@ -92,7 +92,14 @@ export class FakeFsService implements FsService {
     return this.#files.has(p) || this.#dirs.has(p) || this.#links.has(p)
   }
 
-  async *glob(pattern: string, opts?: { readonly cwd?: Path }): AsyncIterable<Path> {
+  // The fake intentionally ignores the `dot` flag — its in-memory matcher has
+  // no concept of directory traversal, so dotfiles match the same as anything
+  // else. Real-fs behavior lives in BunFsService and is covered by the
+  // codegen integration test.
+  async *glob(
+    pattern: string,
+    opts?: { readonly cwd?: Path; readonly dot?: boolean },
+  ): AsyncIterable<Path> {
     const cwd = opts?.cwd ?? path('/')
     const regex = globToRegex(pattern)
 

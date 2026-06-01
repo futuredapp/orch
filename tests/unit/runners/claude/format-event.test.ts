@@ -21,8 +21,9 @@ function userWithContent(content: ReadonlyArray<Record<string, unknown>>): InfoE
 }
 
 describe('toClaudeTranscriptLines — system init', () => {
-  it('renders system init as one line with model, tool count, and mcp server count', () => {
-    const evt = info('system', {
+  it('renders the synthesized session-started event as one line with model, tool count, and mcp server count', () => {
+    const evt = info('session-started', {
+      sessionId: 'sess-1',
       type: 'system',
       subtype: 'init',
       model: 'claude-opus-4-7[1m]',
@@ -41,11 +42,53 @@ describe('toClaudeTranscriptLines — system init', () => {
     ])
   })
 
-  it('renders system init with missing fields as model=? / 0 tools / 0 mcp servers', () => {
-    const lines = toClaudeTranscriptLines(info('system', { type: 'system' }))
+  it('renders a raw system-init event that bypassed the parser as the init line', () => {
+    const evt = info('system', {
+      type: 'system',
+      subtype: 'init',
+      model: 'claude-opus-4-7[1m]',
+      tools: ['Read'],
+      mcp_servers: [],
+    })
+
+    const lines = toClaudeTranscriptLines(evt)
 
     expect(lines).toEqual([
-      { kind: 'line', category: 'system', body: 'system: model=?, 0 tools, 0 mcp servers' },
+      {
+        kind: 'line',
+        category: 'system',
+        body: 'system: model=claude-opus-4-7[1m], 1 tools, 0 mcp servers',
+      },
+    ])
+  })
+})
+
+describe('toClaudeTranscriptLines — non-init system events', () => {
+  it('suppresses high-frequency task_progress system events emitted by background workflows', () => {
+    const evt = info('system', { type: 'system', subtype: 'task_progress', taskId: 'wa9h5dr4w' })
+
+    expect(toClaudeTranscriptLines(evt)).toEqual([])
+  })
+
+  it('suppresses thinking_tokens system events', () => {
+    const evt = info('system', { type: 'system', subtype: 'thinking_tokens', tokens: 42 })
+
+    expect(toClaudeTranscriptLines(evt)).toEqual([])
+  })
+
+  it('renders a lifecycle system subtype as one compact line rather than a bogus init summary', () => {
+    const evt = info('system', { type: 'system', subtype: 'task_started', taskId: 'wa9h5dr4w' })
+
+    expect(toClaudeTranscriptLines(evt)).toEqual([
+      { kind: 'line', category: 'system', body: '· task_started' },
+    ])
+  })
+
+  it('renders a system event with no subtype as a bare system marker, never a fake init line', () => {
+    const evt = info('system', { type: 'system' })
+
+    expect(toClaudeTranscriptLines(evt)).toEqual([
+      { kind: 'line', category: 'system', body: '· system' },
     ])
   })
 })

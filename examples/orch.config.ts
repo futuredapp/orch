@@ -12,5 +12,6 @@ export default defineConfig({
     'ask-demo': 'ask-demo/index.ts',
     'command-tick-demo': 'command-tick-demo/index.ts',
     'command-lazygit': 'command-lazygit/index.ts',
+    'file-prompts-demo': 'file-prompts-demo/index.ts',
   },
 })

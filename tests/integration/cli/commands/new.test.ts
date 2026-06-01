@@ -29,6 +29,7 @@ const DEFAULT_OPTS: CliOpts = {
   latest: false,
   step: undefined,
   follow: false,
+  watch: false,
 }
 
 interface DepsOverrides {

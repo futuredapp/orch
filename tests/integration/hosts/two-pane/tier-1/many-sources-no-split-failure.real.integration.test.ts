@@ -81,13 +81,13 @@ describe.skipIf(!tmuxAvailable)(
       const run = await harness.runWorkflow(steps)
       expect(run.completed).toBe(true)
 
-      // The user is on live mode at workflow start. After each step
-      // completes (`live → replay` transform + view-mode flip), the next
-      // step starts as a hidden live source — registerSource sees
-      // mode==='replay' and does not auto-swap. So the visible right pane
-      // ends up showing whichever live source was most recently registered
-      // while the user was still on live — which is `s1` (the first step).
-      await harness.right.waitForText('step-1-marker', { timeoutMs: 5000 })
+      // The user never navigates away, so they track the live edge the whole
+      // run: each step that starts auto-advances the visible right pane. The
+      // pane therefore ends on the last step `s6`. We assert s6's
+      // `[<step>] starting…` choreographer marker (only s6's per-source pane
+      // tails it) rather than its transcript text, which races teardown under
+      // instant FakeRunners.
+      await harness.right.waitForText('[s6] starting', { timeoutMs: 5000 })
 
       // Per-source session invariant: every step's session exists on the
       // socket and owns exactly one pane (no split-window ever runs).

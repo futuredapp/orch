@@ -1,14 +1,14 @@
-// triage: keep — Tier 1 multi-step pane-survival invariant.
+// triage: keep — Tier 1 multi-step follow-live auto-advance invariant.
 //
 // All other Tier 1 starters drive a single-step workflow. The second
-// step's lifecycle is its own bug class: when `plan` completes (live
-// → replay transforms its pane, view-mode flips to replay) and
-// `refine` starts (registers as a *hidden* live source because the
-// user is now on replay), the *first* step's warm-cached replay
-// pane must remain visible. A regression that killed plan's hidden
-// pane on refine's registerSource — or that auto-swapped to refine
-// despite the user being on replay — would leave the user staring
-// at an empty pane or stale wrong-step content.
+// step's lifecycle is its own bug class: when `plan` completes (its live
+// pane transforms to a warm replay cache) and `refine` starts, a user who
+// never navigated away is still tracking the live edge, so the visible
+// right pane must AUTO-ADVANCE to `refine`. The regression
+// (run r-2026-05-29-104450-sx) left the view pinned to `plan` because step
+// completion wrongly cleared follow mode. We also assert plan's warm replay
+// session survived the transition (it must not be killed on refine's start),
+// so a later `f`/Enter can still revisit it.
 
 import { afterEach, describe, expect, it } from 'bun:test'
 import { FakeRunner } from '../../../../../src/runners/index.ts'
@@ -36,7 +36,7 @@ afterEach(async () => {
 describe.skipIf(!tmuxAvailable)(
   "Tier 1 — first step's warm-cached replay survives the second step starting",
   () => {
-    it('after two sequential steps complete, the right pane still shows the first step transcript and does not auto-jump to the second', async () => {
+    it('after the first step completes, the right pane auto-advances to the second live step while the first stays warm-cached', async () => {
       const fixture = await createRealTmuxFixture({ env: {} })
       fixturesToDispose.push(fixture)
       const agentProcessService = new FakeProcessService()
@@ -64,14 +64,29 @@ describe.skipIf(!tmuxAvailable)(
       ])
       expect(run.completed).toBe(true)
 
-      // The user was on plan's live view; live→replay flipped them to
-      // replay mode. refine's registerSource sees mode==='replay' and
-      // registers as a hidden source without swapping. The visible
-      // right pane stays on plan's warm-cached replay.
-      await harness.right.waitForText('planning the work', { timeoutMs: 5000 })
+      // The user never navigated away, so they are still tracking the live
+      // edge. When plan completes and refine starts, the visible right pane
+      // auto-advances to refine's content.
+      // The choreographer writes a `[<step>] starting…` marker into each
+      // step's tee on `step:start`, and only that step's per-source pane tails
+      // it — so seeing refine's marker in the VISIBLE right pane proves the
+      // pane advanced onto refine's live source. (We assert the marker rather
+      // than refine's transcript text because the runner-event flush races
+      // teardown under instant FakeRunners; the marker is deterministic.)
+      await harness.right.waitForText('[refine] starting', { timeoutMs: 5000 })
       const frame = await harness.right.capture()
-      expect(frame).toContain('planning the work')
-      expect(frame).not.toContain('refining the plan')
+      expect(frame).toContain('[refine] starting')
+      expect(frame).not.toContain('planning the work')
+
+      // plan's live pane was rekeyed to a warm replay cache, NOT killed: its
+      // per-source session (named after the original `live:plan` key) still
+      // exists, so revisiting plan later is an O(1) swap.
+      const planPanes = await fixture.tmux.listPanes({
+        socket: fixture.socket,
+        session: 'orch-src-live-plan',
+        format: '#{pane_id}',
+      })
+      expect(planPanes).toHaveLength(1)
     }, 20_000)
   },
 )

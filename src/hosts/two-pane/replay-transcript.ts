@@ -47,32 +47,44 @@ export async function renderTranscriptToString(opts: RenderTranscriptOptions): P
   const renderer = opts.toTranscriptLines ?? defaultRenderer
   const header = opts.header ?? `── replay ${opts.stepName} ──`
   const out: string[] = [`${header}\r\n`]
+  const prefix = `[${opts.stepName}] `
 
   for (const rawLine of raw.split('\n')) {
-    const line = rawLine.trim()
-    if (line.length === 0) continue
-    let event: RunnerEvent
-    try {
-      event = JSON.parse(line) as RunnerEvent
-    } catch {
-      // Skip malformed lines silently — same posture as tail-ndjson.
-      continue
-    }
+    const event = parseEventLine(rawLine)
+    if (event === null) continue
     const rendered = renderer(event)
     if (rendered.length === 0) continue
-    const prefix = `[${opts.stepName}] `
-    for (const tl of rendered) {
-      const lines = renderTranscriptLine(tl, {
-        color: true,
-        prefix: tl.kind === 'line' ? prefix : '',
-      })
-      for (const r of lines) out.push(`${r}\r\n`)
-    }
+    pushRendered(out, rendered, prefix)
   }
 
   if (out.length === 1) out.push('(no events)\r\n')
 
   return out.join('')
+}
+
+// Parse one NDJSON line into a RunnerEvent, or null for blank/malformed lines.
+// Extracted from renderTranscriptToString to keep it under the rule-5 budget.
+function parseEventLine(rawLine: string): RunnerEvent | null {
+  const line = rawLine.trim()
+  if (line.length === 0) return null
+  try {
+    return JSON.parse(line) as RunnerEvent
+  } catch {
+    // Skip malformed lines silently — same posture as tail-ndjson.
+    return null
+  }
+}
+
+// Render one event's transcript lines into the CRLF-terminated output buffer.
+// Only `line`-kind entries get the step prefix, matching the original inline loop.
+function pushRendered(out: string[], rendered: readonly TranscriptLine[], prefix: string): void {
+  for (const tl of rendered) {
+    const lines = renderTranscriptLine(tl, {
+      color: true,
+      prefix: tl.kind === 'line' ? prefix : '',
+    })
+    for (const r of lines) out.push(`${r}\r\n`)
+  }
 }
 
 const defaultRenderer: TranscriptRenderer = (event) => {

@@ -90,6 +90,7 @@ const DEFAULT_OPTS: CliOpts = {
   latest: false,
   step: undefined,
   follow: false,
+  watch: false,
 }
 
 describe('runCmd forwards a live ResumeRegistry', () => {

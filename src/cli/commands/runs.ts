@@ -20,6 +20,7 @@ export async function runsCmd(
     latest: false,
     step: undefined,
     follow: false,
+    watch: false,
   },
 ): Promise<number> {
   const allRuns = await deps.registry.listRuns()

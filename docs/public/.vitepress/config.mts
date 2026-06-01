@@ -43,8 +43,10 @@ export default defineConfig({
         text: 'Guides',
         items: [
           { text: 'Chain two agents', link: '/guides/chain-two-agents' },
+          { text: 'File-based prompts', link: '/guides/file-based-prompts' },
           { text: 'Interactive steps', link: '/guides/interactive-steps' },
           { text: 'Parallel work', link: '/guides/parallel-work' },
+          { text: 'Typed prompt vars', link: '/guides/typed-prompt-vars' },
           { text: 'Typed returns', link: '/guides/typed-returns' },
           { text: 'Validators', link: '/guides/validators' },
           { text: 'Worktrees and commits', link: '/guides/worktrees-and-commits' },

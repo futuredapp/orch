@@ -374,6 +374,57 @@ describe('right-pane-controller onIntent("enter")', () => {
     await controller.stop()
   })
 
+  it('stops following the live edge after the user opens an earlier step — a later step does not swap in', async () => {
+    // Counterpart to the auto-advance rule: once the user deliberately
+    // navigates back to a finished step, newly-started steps must NOT yank
+    // the visible pane away. They register as hidden sources and only emit a
+    // "press f to follow" banner (run r-2026-05-29-104450-sx).
+    const { tmux, controller } = await makeController({
+      tempDir,
+      steps: {
+        plan: makeStep({ name: 'plan', mode: 'autonomous', value: null }),
+      },
+    })
+
+    // plan runs and is followed into the visible slot, then completes.
+    tmux.nextCreateSessionPaneId(paneId('%100'))
+    await controller.registerSource(
+      { type: 'live', stepName: stepName('plan') } satisfies SourceKey,
+      { kind: 'file-tail', path: toPath(`${tempDir}/plan.ansi`) },
+    )
+    await controller.unregisterSource({ type: 'live', stepName: stepName('plan') })
+
+    // refine starts and auto-advances (still following the live edge).
+    tmux.nextCreateSessionPaneId(paneId('%200'))
+    await controller.registerSource(
+      { type: 'live', stepName: stepName('refine') } satisfies SourceKey,
+      { kind: 'file-tail', path: toPath(`${tempDir}/refine.ansi`) },
+    )
+
+    // User opens plan's finished transcript — this detaches from the live edge.
+    controller.onIntent({ type: 'enter', stepName: 'plan' })
+    await flush()
+
+    const swapsAfterNav = tmux.recordedCalls.filter((c) => c.method === 'swapPane').length
+
+    // summarize starts. Because the user is no longer following, it must NOT
+    // swap into view.
+    tmux.nextCreateSessionPaneId(paneId('%300'))
+    await controller.registerSource(
+      { type: 'live', stepName: stepName('summarize') } satisfies SourceKey,
+      { kind: 'file-tail', path: toPath(`${tempDir}/summarize.ansi`) },
+    )
+
+    const swapsAfterSummarize = tmux.recordedCalls.filter((c) => c.method === 'swapPane').length
+    expect(swapsAfterSummarize).toBe(swapsAfterNav)
+    const swappedToSummarize = tmux.recordedCalls.some(
+      (c) => c.method === 'swapPane' && c.opts.src === paneId('%300'),
+    )
+    expect(swappedToSummarize).toBe(false)
+
+    await controller.stop()
+  })
+
   it('re-entering a completed interactive step stays in replay, not live (run r-2026-05-27-154145-nk)', async () => {
     // The first Enter on an interactive agent step registers its replay source
     // under the `interactive:<step>` key (replayKeyFor). That key is also the

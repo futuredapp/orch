@@ -36,6 +36,24 @@ const PLAN = step.define('plan', {
 })
 ```
 
+**File-based form** (`promptFile:`, recommended for prompts > 3 sentences):
+
+```ts
+const PLAN = step.define('plan', {
+  agent: claude({ bare: false, flags: ['--permission-mode', 'bypassPermissions'] }),
+  promptFile: 'plan.md',          // sibling .md, relative to this workflow file's directory
+  // returns / validate as above
+})
+// Vars live on the call site so the same step can be reused with different inputs.
+await run(PLAN, { vars: { sessionsDir, slug } })
+```
+
+Path rules: a bare path resolves against the workflow file's directory; a path starting with `@/` resolves against the **orch project root** (the directory holding `orch.config.ts` or `.orch/orch.config.ts`). Paths escaping the project root are rejected. `vars` accepts only `string | number | boolean`. Substitution is strict in both directions — a missing key or an unused key throws `PromptFileError` at `run()` time (before the runner starts). Optional placeholders use `{{name?}}`.
+
+Mutual exclusion: `prompt:` and `promptFile:` cannot be set together. `vars:` on `step.define` is a definition-time error (`cause: 'vars-on-define'`) — move it to `run(STEP, { vars: ... })`.
+
+**Typed contract via codegen.** `bunx orch types` generates a `.d.ts` sidecar next to each prompt file that augments orch's `PromptFileRegistry`. With the sidecar in place, `step.define({ promptFile: '@/.orch/prompts/x.md' })` recovers the typed `vars` shape and TypeScript flags missing/extra/wrong keys at every `run()` call site. `orch run` runs the same generator at startup, so cold clones work without setup. See [Typed prompt vars](../../../docs/public/guides/typed-prompt-vars.md).
+
 **Interactive form** (`mode: 'interactive'`, no `returns:` allowed):
 
 ```ts
@@ -49,6 +67,24 @@ const BRAINSTORM = step.define('brainstorm', {
 Interactive returns `InteractiveResult = { exitCode, durationMs, sessionId }` — the human drove the session, the workflow waits.
 
 **Reserved name prefixes are forbidden** (`commit:`, `worktree:`, `ask:`, `command:`). Use the matching factory instead.
+
+## `loadPrompt(path, vars)`
+
+Sync helper for composing prompt fragments inline. Same path resolution and strict `{{var}}` substitution as `promptFile:`, returns a `string`.
+
+```ts
+import { loadPrompt } from 'orch'
+
+const intro = loadPrompt('intro.md', { topic })
+const ctx   = loadPrompt('@/.orch/prompts/session-context.md', { sessionsDir })
+
+const RESEARCH = step.define('research', {
+  agent: AUTONOMOUS,
+  prompt: `${intro}\n\n${ctx}`,
+})
+```
+
+Use `loadPrompt` when you need to glue two or more fragments. For a single file, prefer `promptFile:` directly on `step.define()` — it carries the same semantics with less ceremony.
 
 ## `await run(STEP, overrides?)`
 
@@ -225,6 +261,7 @@ All exported from `src/core/index.ts`:
 - `ResumeError` / `RunNotFoundError` — `orch resume` errors.
 - `ParallelError` — at least one parallel branch failed; `.settled` carries every result.
 - `PostCreateExecError` — sugar `postCreate` line exited non-zero.
+- `PromptFileError` — `promptFile:` / `loadPrompt(...)` failed: mutex (both `prompt` and `promptFile` set), vars-on-define (`vars:` belongs on `run(STEP, { vars })`, not on `step.define`), missing-placeholder, extra-key, unsupported-type (`vars` value isn't `string | number | boolean`), read-failed, or traversal. The `cause` field discriminates.
 
 Usually you let these propagate; the executor surfaces them via the host. Catch only when you have a real recovery path (e.g. a `command()` you expect might fail).
 

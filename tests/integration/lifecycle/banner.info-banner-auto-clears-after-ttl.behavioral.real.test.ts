@@ -3,12 +3,13 @@
  * in src/hosts/two-pane/steps-view/steps-view.tsx:154). The cell asserts
  * the banner is visible shortly after emit and is gone after the TTL.
  *
- * Trigger chain: completing `plan` flips the controller into replay mode +
- * emits `step plan complete` (right-pane-controller.ts:408). When `execute`
- * then starts, its registerSource path (still replay mode) emits the
- * `step execute running — press f to follow` info banner — that is the
- * banner we assert against, since the prior one was overwritten by the
- * second emit within ~ms (last-write-wins).
+ * Trigger chain: while the user is tracking the live edge, completing the
+ * watched step emits a `step <name> complete` info banner (ttl 4000) — and
+ * because follow stays engaged, the next step auto-advances WITHOUT emitting
+ * its own banner, so the completion banner is the last write and persists
+ * until its TTL. We complete `plan` (banner emitted, view auto-advances to
+ * `execute`) and leave `execute` running so nothing overwrites the banner
+ * before the TTL elapses.
  */
 
 import { afterEach, beforeEach, describe, it } from 'bun:test'
@@ -37,23 +38,24 @@ afterEach(async () => {
 })
 
 describe.skipIf(!canRunRealTmux())('Tier 5 behavioral — info banner auto-clears after TTL', () => {
-  it('the "press f to follow" info banner is visible briefly then disappears', async () => {
+  it('the "step complete" info banner is visible briefly then disappears', async () => {
     handle = await launchOrchWorkflow('three-step-linear', {
       script: { plan: puppet(), execute: puppet(), finalize: puppet() },
     })
 
     await awaitVisibleStep('left', 'plan', { timeoutMs: 10_000 })
 
-    // Completing plan flips view to replay + emits the first info banner;
-    // execute then starts and emits the durable replay-mode info banner.
+    // Completing the watched step emits a `step plan complete` info banner;
+    // follow stays engaged so execute auto-advances without its own banner,
+    // leaving the completion banner as the durable last write.
     await handle.agent('plan').complete()
 
-    await assertLeftPane(withinMs(5_000), showsInfoBanner('press f to follow'))
+    await assertLeftPane(withinMs(5_000), showsInfoBanner('plan complete'))
 
-    // Wait past the 4000ms TTL; the banner should be gone. We do not
-    // complete `execute` so no follow-up emit replaces the banner.
+    // Wait past the 4000ms TTL; the banner should be gone. We do not complete
+    // `execute` so no follow-up emit replaces the banner.
     await userAction(wait(4_500))
 
-    await assertLeftPane(withinMs(2_000), doesNotContain('press f to follow'))
+    await assertLeftPane(withinMs(2_000), doesNotContain('plan complete'))
   }, 30_000)
 })

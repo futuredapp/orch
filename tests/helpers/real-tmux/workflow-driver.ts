@@ -239,24 +239,30 @@ function silentStream(): NodeJS.WritableStream {
   }) as unknown as NodeJS.WritableStream
 }
 
-function buildWorkflowBody(
-  steps: readonly HarnessStep[],
-): (run: Parameters<Parameters<typeof workflow>[1]>[0]) => Promise<void> {
+type WorkflowRun = Parameters<Parameters<typeof workflow>[1]>[0]
+
+// Define and run one harness step, forwarding only the overrides that are set.
+// Extracted from buildWorkflowBody's closure to keep it under the rule-5 budget.
+async function runHarnessStep(run: WorkflowRun, harnessStep: HarnessStep): Promise<void> {
+  const overrides: RunOverrides = {
+    ...(harnessStep.prompt !== undefined ? { prompt: harnessStep.prompt } : {}),
+    ...(harnessStep.mode !== undefined ? { mode: harnessStep.mode } : {}),
+  }
+  await run(
+    step.define(harnessStep.name, {
+      agent: harnessStep.agent,
+      ...(harnessStep.prompt !== undefined ? { prompt: harnessStep.prompt } : {}),
+      ...(harnessStep.mode !== undefined ? { mode: harnessStep.mode } : {}),
+      ...(harnessStep.autoStop !== undefined ? { autoStop: harnessStep.autoStop } : {}),
+    } as Parameters<typeof step.define>[1]),
+    overrides,
+  )
+}
+
+function buildWorkflowBody(steps: readonly HarnessStep[]): (run: WorkflowRun) => Promise<void> {
   return async (run) => {
     for (const harnessStep of steps) {
-      const overrides: RunOverrides = {
-        ...(harnessStep.prompt !== undefined ? { prompt: harnessStep.prompt } : {}),
-        ...(harnessStep.mode !== undefined ? { mode: harnessStep.mode } : {}),
-      }
-      await run(
-        step.define(harnessStep.name, {
-          agent: harnessStep.agent,
-          ...(harnessStep.prompt !== undefined ? { prompt: harnessStep.prompt } : {}),
-          ...(harnessStep.mode !== undefined ? { mode: harnessStep.mode } : {}),
-          ...(harnessStep.autoStop !== undefined ? { autoStop: harnessStep.autoStop } : {}),
-        } as Parameters<typeof step.define>[1]),
-        overrides,
-      )
+      await runHarnessStep(run, harnessStep)
     }
   }
 }

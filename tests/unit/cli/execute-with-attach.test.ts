@@ -234,27 +234,51 @@ describe('executeWithAttach (unit)', () => {
     expect(text).not.toContain('re-attach with')
   })
 
-  it('re-throws when mapError returns undefined and writes no summary', async () => {
+  it('renders a crash summary and exits STEP_FAILURE when mapError returns undefined (never re-throws into the silent backstop)', async () => {
     const host = fakeHost()
     const stderr = bufferStream()
-    const surprise = new Error('unmapped')
+    // A plain Error a workflow body throws before any step runs — e.g. an
+    // arg-validation guard. mapError has no domain mapping for it. Before the
+    // fix this re-threw, became an unhandled rejection, and the tmux host's
+    // backstop swallowed it to lifecycle.ndjson — the user saw nothing.
+    const surprise = new Error('file-prompts-demo requires a prompt')
 
-    let caught: unknown
-    try {
-      await executeWithAttach({
-        host: host.host,
-        workflow: Promise.reject(surprise),
-        runId: 'r-2026-04-29-143052-7k',
-        stderr: stderr.stream,
-        mapError: () => undefined,
-        summary: { workflowName: 'demo', runDir: '.orch/state/r-2026-04-29-143052-7k' },
-      })
-    } catch (err) {
-      caught = err
-    }
+    const code = await executeWithAttach({
+      host: host.host,
+      workflow: Promise.reject(surprise),
+      runId: 'r-2026-04-29-143052-7k',
+      stderr: stderr.stream,
+      mapError: () => undefined,
+      summary: { workflowName: 'demo', runDir: '.orch/state/r-2026-04-29-143052-7k' },
+    })
 
-    expect(caught).toBe(surprise)
-    expect(stderr.text()).toBe('')
+    expect(code).toBe(EXIT.STEP_FAILURE)
+    expect(stderr.text()).toBe(
+      'Workflow "demo" crashed: file-prompts-demo requires a prompt\n' +
+        '  data: .orch/state/r-2026-04-29-143052-7k/\n',
+    )
+    expect(host.teardownCalls).toBe(1)
+  })
+
+  it('crash summary uses String(reason) when a non-Error is thrown', async () => {
+    const host = fakeHost()
+    const stderr = bufferStream()
+
+    const code = await executeWithAttach({
+      host: host.host,
+      // eslint-disable-next-line @typescript-eslint/no-throw-literal
+      workflow: Promise.reject('bare string boom'),
+      runId: 'r-2026-04-29-143052-7k',
+      stderr: stderr.stream,
+      mapError: () => undefined,
+      summary: { workflowName: 'demo', runDir: '.orch/state/r-2026-04-29-143052-7k' },
+    })
+
+    expect(code).toBe(EXIT.STEP_FAILURE)
+    expect(stderr.text()).toBe(
+      'Workflow "demo" crashed: bare string boom\n' +
+        '  data: .orch/state/r-2026-04-29-143052-7k/\n',
+    )
     expect(host.teardownCalls).toBe(1)
   })
 })

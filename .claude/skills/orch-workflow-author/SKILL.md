@@ -73,6 +73,12 @@ new-feature(prompt)
 
 The suggested prompts should follow the best-practice rules in [`references/prompt-patterns.md`](references/prompt-patterns.md): explicit file paths, hard constraints, verification instructions, and a clear stop condition. Keep them ~3–8 sentences each.
 
+For each suggested prompt, also note **where the prompt text will live**:
+
+- One-liner / one-paragraph prompts → inline backticked string in `step.define({ prompt: ... })`.
+- Anything longer than ~3 sentences → sibling `.md` file referenced via `promptFile:`. Default to file-based unless the prompt is genuinely trivial. ([prompt-patterns §0](references/prompt-patterns.md#0-where-prompt-text-lives--file-based-by-default))
+- Prose that appears in two or more workflows → shared fragment under `.orch/prompts/<name>.md`, referenced via `@/.orch/prompts/<name>.md`.
+
 End the proposal with: *"Want me to write it as-is, or change anything first?"* — and stop. Do not start writing the file.
 
 ---
@@ -102,12 +108,16 @@ Default to `.orch/workflows/<name>/index.ts` (where `<name>` matches the workflo
  *   1. <step-name>   <mode>, <runner>   <what it produces>
  *   …
  *
+ * Prompt files (sibling .md, default location for prompts > 3 sentences):
+ *   - <step-name>.md
+ *   - shared: @/.orch/prompts/<shared>.md
+ *
  * Usage:
  *   bunx orch run <name> "<prompt>"
  */
 
-// Host project (.orch/workflows/<name>.ts in a downstream repo):
-import { claude, schema, step, workflow, z } from 'orch'
+// Host project (.orch/workflows/<name>/index.ts in a downstream repo):
+import { claude, loadPrompt, schema, step, workflow, z } from 'orch'
 import type { Runner } from 'orch'
 // Inside this repo (workflows/<name>/index.ts in the orch source repo) use
 // relative paths instead: `from '../../src/core/index.ts'` etc., and
@@ -134,13 +144,23 @@ function claudeFor(sessionName: string): Runner {
 }
 
 // --- step definitions -------------------------------------------------------
+//
+// Default to `promptFile:` + a sibling `.md` for anything longer than ~3
+// sentences. Use inline `prompt:` only for trivial prompts. See
+// references/prompt-patterns.md §0.
 
 const STEP_ONE = step.define('step-one', {
   agent: claude({ bare: false, flags: ['--permission-mode', 'bypassPermissions'] }),
-  prompt: `<the actual prompt — see references/prompt-patterns.md>`,
-  // returns: schema(SLUG_SCHEMA),      // only when downstream branches on the value
-  // validate: fileProduced('foo.md'),  // when there's a checkable side effect
+  promptFile: 'step-one.md',         // sibling file; `{{userPrompt}}` substituted at run() time
+  // returns: schema(SLUG_SCHEMA),    // only when downstream branches on the value
+  // validate: fileProduced('foo.md'),// when there's a checkable side effect
 })
+// At the call site, supply vars per run(): `await run(STEP_ONE, { vars: { userPrompt } })`.
+
+// Composition example (delete if not needed):
+//   const intro = loadPrompt('intro.md', { topic })
+//   const ctx   = loadPrompt('@/.orch/prompts/session-context.md', { sessionsDir })
+//   const COMPOSED = step.define('composed', { agent, prompt: `${intro}\n\n${ctx}` })
 
 // --- workflow body ----------------------------------------------------------
 
@@ -150,7 +170,17 @@ export default workflow('<name>', async (run, args) => {
   }
   const userPrompt = args.prompt.trim()
 
-  await run(STEP_ONE)
+  // Vars live on `run()` so the same step can be reused with different
+  // inputs. Define the step once at module scope, then bind args per call:
+  //
+  //   const SLUG = step.define('slug', {
+  //     agent: claude({ model: HAIKU_MODEL, bare: false }),
+  //     promptFile: 'slug.md',
+  //     returns: schema(SLUG_SCHEMA),
+  //   })
+  //   const { slug } = await run(SLUG, { vars: { userPrompt } })
+
+  await run(STEP_ONE, { vars: { userPrompt } })
   // …
 })
 ```
@@ -165,6 +195,8 @@ export default workflow('<name>', async (run, args) => {
 6. **TypeScript strict, no `any`, no `!`.** This is enforced by `bun run check`.
 7. **Interactive steps cannot have `returns:`.** Schema output only flows out of autonomous steps.
 8. **`createWorktree({ enter: true })` inside `parallel()` only works with the homogeneous form** (`parallel(items, fn)`), not the heterogeneous tuple form.
+9. **`promptFile:` and inline `prompt:` are mutually exclusive.** Setting both throws. Use one or the other per step. For composition (concatenating fragments), use `loadPrompt()` and pass the result via `prompt:`.
+10. **`vars:` is forbidden on `step.define`.** It belongs on the `run(STEP, { vars: ... })` call site. The old form is a definition-time error (`cause: 'vars-on-define'`) — see [Typed prompt vars](../../docs/public/guides/typed-prompt-vars.md).
 
 ### Common patterns
 
@@ -204,7 +236,9 @@ The full cheatsheet with signatures and minimal examples lives at [`references/a
 | Primitive | What it is |
 |---|---|
 | `workflow(name, fn)` | declares the workflow; gives you `run` and `args` |
-| `step.define(name, config)` | autonomous or interactive agent step |
+| `step.define(name, config)` | autonomous or interactive agent step; supports `promptFile:` with run-time `vars` on `run()` |
+| `loadPrompt(path, vars)` | sync helper for composing prompt fragments inline |
+| `orch types [--watch]` | generate `.d.ts` sidecars so `promptFile:` paths get typed `vars` contracts |
 | `ask({ name, question, fields, buttons, defaultWhenNoninteractive })` | typed prompt step |
 | `command(name, { argv, onFailure })` | shell command step; streams stdout/stderr to the host pane |
 | `commit(message)` | `git add . && git commit -m message` as a memoized step |

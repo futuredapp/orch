@@ -281,6 +281,15 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
   // ---------------------------------------------------------------------------
 
   let currentView: ViewMode = { mode: 'live' }
+  // The user's INTENT to track the live edge. Decoupled from `currentView.mode`
+  // (which also encodes the frozen-transcript "viewing <step>" footer shown
+  // between steps and at end-of-run). A live step *completing* is not a
+  // navigation, so it must NOT clear this — otherwise the next step's
+  // `registerSource` sees a non-live view and strands the user on the finished
+  // step (run r-2026-05-29-104450-sx). Only `dispatchEnter` onto a past step
+  // clears it; tuning into a running source, `f`, or following a new live edge
+  // restore it.
+  let isFollowingLive = true
   let currentBanner: Banner | undefined
   let bannerSeq = 0
 
@@ -429,13 +438,15 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
       })
       logLifecycle({ type: 'pane-spawned', sourceKey: skey, paneId: entry.paneId })
       // U5/U7: auto-swap-or-banner for live + rollup sources. If the user is
-      // on live mode, swap the new source in (most-recent-live wins; rollup
-      // takes the visible slot on registration just like a fresh live source).
-      // If the user is on replay, leave them there but surface a transient
-      // info banner so they know the new source is available behind `f`.
+      // tracking the live edge, swap the new source in (most-recent-live wins;
+      // rollup takes the visible slot on registration just like a fresh live
+      // source) and restore the live footer. If the user has navigated to a
+      // past step, leave them there but surface a transient info banner so they
+      // know the new source is available behind `f`.
       if (key.type === 'live' || key.type === 'rollup') {
-        if (currentView.mode === 'live') {
+        if (isFollowingLive) {
           await showSource(key)
+          await setViewMode({ mode: 'live' })
         } else {
           const text =
             key.type === 'live'
@@ -668,10 +679,13 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
       // revisits are O(1).
       const wasCurrent = currentKey !== undefined && sourceKeyToString(currentKey) === skey
       transformLiveToReplay(key, skey, entry)
-      // U5: if the user was watching this live source, surface the frozen-
-      // transcript cue — view-mode flip is always correct; the info banner is
-      // skipped on the failure path so its durable error banner is the
-      // user-visible message instead of a misleading "step X complete" toast.
+      // U5: if the user was watching this live source, freeze the footer onto
+      // its now-static transcript. This is the resting display for the gap
+      // before the next step starts (and for the final step at end-of-run) —
+      // it does NOT clear `followLive`, so a subsequent `step:start` still
+      // auto-advances the visible pane forward (run r-2026-05-29-104450-sx).
+      // The info banner is skipped on the failure path so its durable error
+      // banner is the user-visible message instead of a misleading toast.
       if (wasCurrent) {
         await setViewMode({ mode: 'replay', stepName: key.stepName })
         if (options?.suppressCompletionBanner !== true) {
@@ -791,8 +805,12 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
     if (stopped) return
     // `f` ("snap to live") must restore BOTH the right-pane source and the
     // left-pane footer mode. Swapping the pane without flipping the view mode
-    // leaves the footer stuck on `⏸ viewing <step>` (findings P-1).
-    if (await swapToNewestLivePane()) await setViewMode({ mode: 'live' })
+    // leaves the footer stuck on `⏸ viewing <step>` (findings P-1). It also
+    // re-arms `followLive` so subsequent steps auto-advance again.
+    if (await swapToNewestLivePane()) {
+      isFollowingLive = true
+      await setViewMode({ mode: 'live' })
+    }
   }
 
   /**
@@ -892,6 +910,9 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
     const key = liveExists ? liveKey : interactiveKey
     try {
       await showSource(key)
+      // Tuning into a still-running source puts the user back on the live edge,
+      // so re-arm follow: the next step that starts should auto-advance.
+      isFollowingLive = true
       await setViewMode({ mode: 'live' })
       logLifecycle({ type: 'live-pane-opened', stepName, sourceKey: sourceKeyToString(key) })
       return true
@@ -986,6 +1007,10 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
         await registerSource(replayKey, spec)
       }
       await showReplaySourceWithStaleRefresh(step, replayKey)
+      // The user deliberately navigated to a past step — stop tracking the
+      // live edge so newly-started steps do not yank the view away. `f`
+      // re-arms it (run r-2026-05-29-104450-sx).
+      isFollowingLive = false
       await setViewMode({ mode: 'replay', stepName: step.name })
       logLifecycle({
         type: 'replay-pane-opened',

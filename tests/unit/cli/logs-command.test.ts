@@ -59,6 +59,7 @@ const DEFAULT_OPTS: CliOpts = {
   latest: false,
   step: undefined,
   follow: false,
+  watch: false,
 }
 
 const opts = (overrides: Partial<CliOpts> = {}): CliOpts => ({ ...DEFAULT_OPTS, ...overrides })

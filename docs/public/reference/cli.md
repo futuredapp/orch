@@ -14,6 +14,7 @@ Run orch with `bunx orch <command> [options]` (or `orch ...` when installed).
 | `orch status <id>` | Show the status of a run. |
 | `orch logs <runId>` | Stream the per-step transcript for a run. |
 | `orch dry-run <name> [prompt]` | Preflight check + first-step peek (no execution). |
+| `orch types [--watch]` | Generate `.d.ts` sidecars for `.md`/`.txt` prompt files. |
 
 ### run
 
@@ -46,6 +47,25 @@ orch logs --latest --follow --step work-auth
 
 Streams a run's transcript. `--latest` resolves to the most recent run. `--step <name>` prints only that step; `--follow` (`-f`) tails it until the run reaches a terminal status or you Ctrl-C (requires `--step`).
 
+### types
+
+```bash
+orch types
+orch types --watch
+```
+
+Generates a `.d.ts` sidecar next to every prompt file matched by `orch.config.ts`'s `prompts.{include,exclude}` (defaults: `.orch/workflows/**/*.{md,txt}` and `.orch/prompts/**/*.{md,txt}`). Each sidecar augments orch's [`PromptFileRegistry`](./api#promptfileregistry), so `step.define({ promptFile: '@/...' })` recovers a typed `vars` contract that the TypeScript checker can validate at every `run()` call site.
+
+The one-shot form exits when codegen finishes. `--watch` keeps a regen loop alive — save a `.md` file, the matching sidecar refreshes within ~250 ms, Ctrl-C exits cleanly. `orch run` also runs the same generator at startup, so cold clones work without a separate setup step. See [Typed prompt vars](../guides/typed-prompt-vars).
+
+**Exit codes for `orch types`:**
+
+| Code | When |
+| --- | --- |
+| `0` (OK) | Codegen completed; every source produced a sidecar (or matched the existing one). |
+| `1` (STEP_FAILURE) | One or more sources reported a codegen error (read failure, malformed template). One-shot only; watch mode keeps running. |
+| `2` (CONFIG_ERROR) | `orch.config.ts` could not be loaded. |
+
 ## Options
 
 | Flag | Applies to | Description |
@@ -76,6 +96,14 @@ A run mode decides where views render. orch wires `plain` and `two-pane`; `singl
 ::: tip Running two-pane on a headless box
 Pair `--mode=two-pane --no-attach`: orch creates the tmux session and prints an attach hint without taking the TTY. Running orch from *inside* an existing tmux session fails fast — start it from a plain terminal or use `--mode=plain`.
 :::
+
+## Environment variables
+
+| Variable | Effect |
+| --- | --- |
+| `ORCH_DEBUG=1` | Same as `--debug`: turn on heavy session logs (agent stdout/stderr, tmux pipe-pane, subprocess spawns). |
+| `ORCH_NONINTERACTIVE=1` | Same as `--noninteractive`: `ask()` steps resolve declared defaults instead of prompting. |
+| `ORCH_QUIET=1` | Suppress non-essential output. `orch run` skips the codegen-prepass preamble; `orch types` suppresses the summary line on a clean idempotent pass. Errors still print. |
 
 ## Exit codes
 

@@ -338,5 +338,6 @@ function defaultOpts(): CliOpts {
     latest: false,
     step: undefined,
     follow: false,
+    watch: false,
   }
 }

@@ -65,6 +65,23 @@ export function projectStepsView(args: ProjectArgs): StepsViewState {
   const view = args.view ?? DEFAULT_VIEW
   const bannerSlot = args.banner !== undefined ? { banner: args.banner } : {}
   const runStatus = run?.status ?? 'running'
+  return finalizeView({ runStatus, run, header, steps, view, bannerSlot })
+}
+
+interface FinalizeArgs {
+  readonly runStatus: RunState['status']
+  readonly run: RunState | undefined
+  readonly header: RunHeader
+  readonly steps: StepRow[]
+  readonly view: ViewMode
+  readonly bannerSlot: { readonly banner?: Banner }
+}
+
+// Maps the resolved run status to the terminal StepsViewState shape. Extracted
+// from projectStepsView to keep that function under the rule-5 budget; running
+// runs skip the summarize() pass.
+function finalizeView(args: FinalizeArgs): StepsViewState {
+  const { runStatus, run, header, steps, view, bannerSlot } = args
   if (runStatus === 'running') {
     return { status: 'live', run: header, steps, view, ...bannerSlot }
   }
@@ -102,7 +119,7 @@ function buildRow(
   const status: StepStatus = live?.status ?? 'completed'
   const startedAt = live?.startedAt ?? persisted?.startedAt
   const endedAt = live?.endedAt ?? persisted?.endedAt
-  const base = {
+  const base: RowBase = {
     name,
     status,
     ...(startedAt !== undefined ? { startedAt } : {}),
@@ -113,6 +130,34 @@ function buildRow(
   if (name.startsWith('ask:')) return { kind: 'ask', value, ...base }
   if (name.startsWith('command:')) return { kind: 'command', ...base }
   const mode = live?.mode ?? persistedMode ?? 'autonomous'
+  return buildAgentRow({ base, mode, sessionId, transcriptPath, resumeHints })
+}
+
+interface RowBase {
+  readonly name: string
+  readonly status: StepStatus
+  readonly startedAt?: number
+  readonly endedAt?: number
+}
+
+interface AgentRowArgs {
+  readonly base: RowBase
+  readonly mode: 'interactive' | 'autonomous'
+  readonly sessionId: string | undefined
+  readonly transcriptPath: string | undefined
+  readonly resumeHints:
+    | {
+        readonly runnerName?: string
+        readonly sessionIdCaptureError?: 'ambiguous' | 'empty' | 'error'
+      }
+    | undefined
+}
+
+// Builds the interactive/autonomous agent row, attaching only the fields that
+// are present. Extracted from buildRow to keep it under the rule-5 budget; the
+// two modes carry different optional fields (resume hints vs transcript path).
+function buildAgentRow(args: AgentRowArgs): StepRow {
+  const { base, mode, sessionId, transcriptPath, resumeHints } = args
   if (mode === 'interactive') {
     return {
       kind: 'agent',

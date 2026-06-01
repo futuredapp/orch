@@ -213,13 +213,7 @@ export async function executeWithAttach(opts: ExecuteWithAttachOpts): Promise<nu
       await foregroundShutdown
     }
   } catch (err) {
-    const mapped = opts.mapError(err)
-    await opts.host.teardown()
-    if (mapped !== undefined) {
-      writeFailureSummary(opts.stderr, opts.summary, mapped.reason)
-      return mapped.code
-    }
-    throw err
+    return await resolveCaughtError(opts, err)
   } finally {
     process.off('SIGINT', sigintHandler)
     process.off('SIGTERM', sigtermHandler)
@@ -229,6 +223,26 @@ export async function executeWithAttach(opts: ExecuteWithAttachOpts): Promise<nu
   await opts.host.teardown()
   writeSuccessSummary(opts.stderr, opts.summary)
   return EXIT.OK
+}
+
+// Tear the host down and turn a caught error into an exit code + user-facing
+// summary. A domain error `mapError` recognizes gets the `failed:` summary;
+// anything else (workflow-author bug, or a plain Error the workflow body threw
+// before any step — e.g. an arg-validation guard) gets the `crashed:` summary.
+// The unmapped branch used to re-throw, which surfaced as an unhandled
+// rejection that the tmux host's `unhandledRejection` backstop silently
+// swallowed to lifecycle.ndjson — the user saw nothing. Rendering a summary
+// here keeps the message visible; the full stack still lives in
+// `<runDir>/logs/lifecycle.ndjson`.
+async function resolveCaughtError(opts: ExecuteWithAttachOpts, err: unknown): Promise<number> {
+  const mapped = opts.mapError(err)
+  await opts.host.teardown()
+  if (mapped !== undefined) {
+    writeFailureSummary(opts.stderr, opts.summary, mapped.reason)
+    return mapped.code
+  }
+  writeCrashSummary(opts.stderr, opts.summary, err)
+  return EXIT.STEP_FAILURE
 }
 
 function writeSuccessSummary(stderr: NodeJS.WritableStream, summary: RunSummaryDescriptor): void {
@@ -241,4 +255,15 @@ function writeFailureSummary(
   reason: string,
 ): void {
   stderr.write(`Workflow "${summary.workflowName}" failed: ${reason}\n  data: ${summary.runDir}/\n`)
+}
+
+function writeCrashSummary(
+  stderr: NodeJS.WritableStream,
+  summary: RunSummaryDescriptor,
+  err: unknown,
+): void {
+  const reason = err instanceof Error ? err.message : String(err)
+  stderr.write(
+    `Workflow "${summary.workflowName}" crashed: ${reason}\n  data: ${summary.runDir}/\n`,
+  )
 }

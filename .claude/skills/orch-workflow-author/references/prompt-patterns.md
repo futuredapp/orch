@@ -4,6 +4,106 @@ A workflow's quality is bounded by the prompts in each `step.define(...)`. The a
 
 Distilled from [Claude Code best practices](https://code.claude.com/docs/en/best-practices) and the prompts that actually shipped in `workflows/new-feature/index.ts` and `examples/compound/index.ts`.
 
+## 0. Where prompt text lives — file-based by default
+
+For any step whose prompt is longer than ~3 sentences, put the prompt in a **sibling `.md` file** and reference it via `promptFile:`. Inline backticked strings are reserved for trivial prompts (one-liners and slug judges).
+
+```ts
+// Inline — fine for trivial prompts only.
+const SLUG = step.define('slug', {
+  agent: claude({ model: 'claude-haiku-4-5-20251001', bare: false }),
+  prompt: 'Return a 2-4 word kebab-case slug for the idea below.',
+  returns: schema(SLUG_SCHEMA),
+})
+
+// File-based — default for anything longer. Vars live on `run()`, not on
+// `step.define` — so the same step can be reused with different inputs.
+const RESEARCH = step.define('research', {
+  agent: AUTONOMOUS,
+  promptFile: 'research.md',           // sibling file next to this workflow .ts
+})
+await run(RESEARCH, { vars: { slug, sessionsDir } })   // {{slug}} and {{sessionsDir}} substituted
+```
+
+**Why default to files?** Markdown tooling (preview, spellcheck, link-check) runs on `.md` files but not on TypeScript template literals. Workflow shape stays readable when prose lives elsewhere. And shared prose moves into its own files instead of being copy-pasted between steps.
+
+### The five rules of file-based prompts
+
+1. **Path resolution.** A bare path (`'research.md'`) resolves relative to the workflow `.ts` file's directory. The sentinel `@/...` resolves to the **orch project root** — the directory containing your `orch.config.ts` (or `.orch/orch.config.ts`).
+2. **Shared fragments live in `.orch/prompts/`.** When a fragment is referenced from more than one workflow, put it under `.orch/prompts/` at your project root and use `@/.orch/prompts/<name>.md`. This is the canonical location — adopt it from day one even if you only have one fragment.
+3. **Vars live on `run()`, not on `step.define`.** `step.define({ promptFile, vars })` is a definition-time error (`cause: 'vars-on-define'`). Move the vars to the call site: `run(STEP, { vars: { ... } })`. This is what lets the same step be reused with different inputs.
+4. **`{{var}}` substitution is strict in both directions.** A placeholder with no matching `vars` key errors at `run()` time (before the runner starts), and an unused `vars` key also errors. The error message names both names so typos surface immediately (`userPrompt` vs `user_prompt`). Use `{{name?}}` for optional placeholders — missing optionals substitute to the empty string.
+5. **`vars` accepts only `string | number | boolean`.** No arrays, objects, or `undefined`. For richer composition — concatenating two fragments — use `loadPrompt()`:
+
+   ```ts
+   const intro = loadPrompt('intro.md', { topic })
+   const ctx   = loadPrompt('@/.orch/prompts/session-context.md', { sessionsDir })
+   const STEP = step.define('research', {
+     agent: AUTONOMOUS,
+     prompt: `${intro}\n\n${ctx}`,
+   })
+   ```
+
+   `loadPrompt(path, vars)` returns a `string` — same path resolution, same strict substitution, but composed at the call site.
+
+### Where `.md` prompt files live
+
+```
+.orch/                              ← orch isolation folder at the project root
+  orch.config.ts
+  workflows/
+    feature-loop/
+      index.ts                      ← `import { step, workflow } from 'orch'`
+      brainstorm.md                 ← `promptFile: 'brainstorm.md'`
+      plan.md
+      work.md
+  prompts/
+    session-context.md              ← `@/.orch/prompts/session-context.md` from any workflow
+    research-preamble.md
+```
+
+The worked example for every surface — `promptFile`, run-time `vars`, `loadPrompt`, the `@/` sentinel, `.orch/prompts/` — is `examples/file-prompts-demo/`. For the compile-time contract (TypeScript catching missing/extra/wrong vars at every `run()` site), run `bunx orch types` to generate the sidecars; the [Typed prompt vars](../../../docs/public/guides/typed-prompt-vars.md) guide walks through it end-to-end.
+
+### Reusable steps with typed vars
+
+The same step.define can be reused across multiple `run()` calls with different inputs. Three contract sources keep TypeScript on your side:
+
+1. **Inline literal** — `prompt: 'Hi {{name}}'` infers `{ name: string | number | boolean }` via TypeScript's template-literal types. The contract flows through `Step<TResult, TVars>` into `run(STEP, { vars: ... })`.
+2. **Sidecar lookup** — `promptFile: '@/.orch/prompts/brainstorm.md'` looks up the contract in the generated `.d.ts` sidecar (produced by `orch types`). Same compile-time guarantees as the inline form.
+3. **Explicit `RunOverrides.vars`** — when you want to bypass substitution (`run(STEP, { prompt: 'replaced', vars: { name: 'x' } })`), the `vars` field stays typed but is silently ignored at runtime.
+
+Migration recipe (factory function → typed reusable step):
+
+```ts
+// Before — factory rebuilds the step per call site.
+function makeBrainstorm(topic: string) {
+  return step.define(`brainstorm-${topic}`, {
+    agent,
+    prompt: `Brainstorm angles on ${topic}.`,
+  })
+}
+await run(makeBrainstorm('crows'))
+await run(makeBrainstorm('magpies'))
+
+// After — define once, vary vars per run() call.
+const BRAINSTORM = step.define('brainstorm', {
+  agent,
+  prompt: 'Brainstorm angles on {{topic}}.',
+})
+await run(BRAINSTORM, { vars: { topic: 'crows' } })
+await run(BRAINSTORM, { vars: { topic: 'magpies' } })
+```
+
+Two `run()` calls with different `vars` produce distinct cache entries; the same vars on a second call hits the cache. Setting `as:` explicitly overrides the cache name (no vars hash appended) when you want to control checkpointing yourself.
+
+### When to keep an inline `prompt:`
+
+- One-sentence and one-paragraph prompts where the prose is the only thing on screen anyway.
+- Prompts that are pure computed strings (`/skillname ${userPrompt}`) and have no static prose worth extracting.
+- Quick spikes you expect to throw away in the same session.
+
+Otherwise: file. The cost of a one-line `.md` file is essentially zero; the cost of a 30-line backticked string blocking readers from seeing the pipeline shape is real.
+
 ## 1. Give the agent a way to verify its own work
 
 This is the single highest-leverage thing you can do. If a step's prompt cannot end with "and then check that X is true," consider whether the step belongs in the workflow at all.

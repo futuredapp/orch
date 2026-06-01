@@ -23,7 +23,6 @@ import { stripAnsi } from '../../../../../src/observability/index.ts'
 chalk.level = 3
 
 const PAGE_UP = '\x1b[5~'
-const PAGE_DOWN = '\x1b[6~'
 const HOME = '\x1b[H'
 const END = '\x1b[F'
 

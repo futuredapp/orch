@@ -58,9 +58,12 @@ export class BunFsService implements FsService {
     )
   }
 
-  async *glob(pattern: string, opts?: { readonly cwd?: Path }): AsyncIterable<Path> {
+  async *glob(
+    pattern: string,
+    opts?: { readonly cwd?: Path; readonly dot?: boolean },
+  ): AsyncIterable<Path> {
     const cwd = opts?.cwd ?? path(process.cwd())
-    const scanner = new Bun.Glob(pattern).scan({ cwd })
+    const scanner = new Bun.Glob(pattern).scan({ cwd, dot: opts?.dot ?? false })
     for await (const match of scanner) {
       yield path(match)
     }

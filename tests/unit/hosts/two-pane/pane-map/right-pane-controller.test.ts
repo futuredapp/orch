@@ -407,6 +407,44 @@ describe('right-pane-controller pane-map: unregisterSource', () => {
   })
 })
 
+// The user's complaint (run r-2026-05-29-104450-sx): a sequential workflow
+// stayed pinned to its FIRST step's pane while later steps ran. The desired
+// rule: while the user is tracking the live edge, completing the watched step
+// must carry the view forward to the next step that starts. Completion is not
+// a navigation, so it must not drop the user out of follow-live.
+describe('right-pane-controller pane-map: follow-live auto-advance', () => {
+  it('auto-advances the visible pane to the next live step when the current live step completes', async () => {
+    const { tmux, controller, tempDir } = await makeController()
+
+    tmux.nextCreateSessionPaneId(paneId('%100'))
+    const plan: SourceKey = { type: 'live', stepName: stepName('plan') }
+    await controller.registerSource(plan, {
+      kind: 'file-tail',
+      path: toPath(`${tempDir}/plan.ansi`),
+    })
+    await controller.unregisterSource(plan)
+
+    tmux.nextCreateSessionPaneId(paneId('%200'))
+    const refine: SourceKey = { type: 'live', stepName: stepName('refine') }
+    await controller.registerSource(refine, {
+      kind: 'file-tail',
+      path: toPath(`${tempDir}/refine.ansi`),
+    })
+
+    // Swap 1: plan into the visible right pane on registration. Swap 2: refine
+    // follows the live edge once plan completes — the regression left this
+    // second swap absent (refine only emitted a "press f" banner).
+    const swaps = tmux.recordedCalls.filter((c) => c.method === 'swapPane')
+    expect(swaps).toHaveLength(2)
+    const last = swaps[1]
+    if (last?.method !== 'swapPane') throw new Error('expected swapPane')
+    expect(last.opts.src).toBe(paneId('%200'))
+
+    await controller.stop()
+    await cleanup(tempDir)
+  })
+})
+
 describe('right-pane-controller pane-map: teardownSessions', () => {
   it('issues one killSession per registered source and clears the map', async () => {
     const { tmux, controller, tempDir } = await makeController()

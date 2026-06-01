@@ -20,6 +20,7 @@ export async function statusCmd(
     latest: false,
     step: undefined,
     follow: false,
+    watch: false,
   },
 ): Promise<number> {
   if (!idArg) {

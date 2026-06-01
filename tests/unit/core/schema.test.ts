@@ -178,6 +178,15 @@ const SCALAR = step.define('scalar', {
 })
 type _3 = Expect<Equal<typeof SCALAR, Step<string>>>
 
+// Regression: explicit single-generic `Step<T>` literals must remain
+// indistinguishable from the two-generic form with the default sentinel
+// (`Record<string, never>`). If someone widens the default, this row catches
+// it before downstream `Step<T>` literals (12 in src/, 2 in tests/) start to
+// fail typecheck.
+type _4 = Expect<Equal<Step<{ a: string }>, Step<{ a: string }, Record<string, never>>>>
+type _5 = Expect<Equal<Step<unknown>, Step<unknown, Record<string, never>>>>
+type _6 = Expect<Equal<Step<string>, Step<string, Record<string, never>>>>
+
 describe('step.define generic inference', () => {
   it('step with returns: schema(z.object) infers Step<{ a: string }>', () => {
     const { config } = TYPED

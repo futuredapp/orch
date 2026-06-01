@@ -27,6 +27,7 @@ export async function dryRunCmd(
     latest: false,
     step: undefined,
     follow: false,
+    watch: false,
   },
 ): Promise<number> {
   if (!name) {

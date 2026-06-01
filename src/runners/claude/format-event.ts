@@ -32,12 +32,17 @@ export function toClaudeTranscriptLines(event: RunnerEvent): readonly Transcript
 
 function formatInfo(event: InfoEvent): readonly TranscriptLine[] {
   switch (event.type) {
-    case 'system':
     case 'session-started':
       // `session-started` is the synthesized type the runner emits for the
-      // system-init line (see parseClaudeLine). Render through the same
-      // formatter so transcripts stay visually identical pre/post-Phase 3.
+      // system-init line (see parseClaudeLine), so it always carries the
+      // init payload (model/tools/mcp_servers).
       return formatSystemInit(event)
+    case 'system':
+      // Every non-init `type:"system"` event keeps `type:"system"` after the
+      // parser. Only `subtype:"init"` should render the init summary; the rest
+      // (task_progress, thinking_tokens, lifecycle pings from background
+      // workflows) must NOT be stamped out as bogus `model=?` init lines.
+      return formatSystemEvent(event)
     case 'assistant':
       return formatAssistantMessage(event)
     case 'user':
@@ -47,6 +52,20 @@ function formatInfo(event: InfoEvent): readonly TranscriptLine[] {
     default:
       return [{ kind: 'line', category: 'system', body: `· ${event.type}` }]
   }
+}
+
+// Subtypes that arrive at high frequency and carry no transcript value —
+// dropped outright (like rate_limit_event) to keep the pane readable. The
+// 50 task_progress + 10 thinking_tokens pings from a background sub-workflow
+// were what flooded the transcript with `model=?` lines.
+const SUPPRESSED_SYSTEM_SUBTYPES = new Set(['task_progress', 'thinking_tokens'])
+
+function formatSystemEvent(event: InfoEvent): readonly TranscriptLine[] {
+  const payload = event.payload ?? {}
+  const subtype = readString(payload, 'subtype')
+  if (subtype === 'init') return formatSystemInit(event)
+  if (subtype !== undefined && SUPPRESSED_SYSTEM_SUBTYPES.has(subtype)) return []
+  return [{ kind: 'line', category: 'system', body: `· ${subtype ?? 'system'}` }]
 }
 
 function formatSystemInit(event: InfoEvent): readonly TranscriptLine[] {

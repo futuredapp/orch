@@ -16,6 +16,22 @@ export interface LiveOverlay {
   readonly endedAt?: number
 }
 
+// step:complete and step:failed are structurally identical bar the status:
+// both carry over the prior mode/startedAt and stamp endedAt. Extracted to
+// keep applyLifecycleEvent under the rule-5 cognitive-complexity budget.
+function terminalOverlay(
+  status: 'completed' | 'failed',
+  previous: LiveOverlay | undefined,
+  now: number,
+): LiveOverlay {
+  return {
+    status,
+    ...(previous?.mode !== undefined ? { mode: previous.mode } : {}),
+    ...(previous?.startedAt !== undefined ? { startedAt: previous.startedAt } : {}),
+    endedAt: now,
+  }
+}
+
 export function applyLifecycleEvent(
   overlay: Map<string, LiveOverlay>,
   event: { readonly type: string; readonly stepName?: string; readonly mode?: string },
@@ -35,31 +51,18 @@ export function applyLifecycleEvent(
       })
       return
     }
-    case 'step:complete': {
-      overlay.set(name, {
-        status: 'completed',
-        ...(previous?.mode !== undefined ? { mode: previous.mode } : {}),
-        ...(previous?.startedAt !== undefined ? { startedAt: previous.startedAt } : {}),
-        endedAt: now,
-      })
+    case 'step:complete':
+      overlay.set(name, terminalOverlay('completed', previous, now))
       return
-    }
-    case 'step:failed': {
-      overlay.set(name, {
-        status: 'failed',
-        ...(previous?.mode !== undefined ? { mode: previous.mode } : {}),
-        ...(previous?.startedAt !== undefined ? { startedAt: previous.startedAt } : {}),
-        endedAt: now,
-      })
+    case 'step:failed':
+      overlay.set(name, terminalOverlay('failed', previous, now))
       return
-    }
-    case 'step:cached': {
+    case 'step:cached':
       overlay.set(name, {
         status: 'cached',
         ...(previous?.mode !== undefined ? { mode: previous.mode } : {}),
       })
       return
-    }
     default:
       return
   }

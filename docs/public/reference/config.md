@@ -29,6 +29,7 @@ export const config = defineConfig({
 | --- | --- | --- |
 | `workflows` | `Record<string, string>` | Required. Maps a workflow name to its file path. Relative paths resolve against the config's directory. Absolute paths are used as-is. Paths containing `..` are rejected. |
 | `defaultMode` | `'plain' \| 'single-pane' \| 'two-pane'` | Optional fallback when mode autodetection can't pick a host. `single-pane` is resolved later and exits with the deferral message. |
+| `prompts` | `{ include: string[]; exclude: string[] }` | Optional. Glob patterns the [`orch types`](/reference/cli#types) codegen scans for `.md`/`.txt` prompt files. Defaults to `.orch/workflows/**/*.{md,txt}` and `.orch/prompts/**/*.{md,txt}`. Explicit configuration replaces the defaults — it does not merge. |
 
 The config is validated at load time; an invalid shape exits with `CONFIG_ERROR` (code 2) and a message naming the offending field.
 

@@ -52,6 +52,24 @@ function formatWorktree(value: unknown): string {
   return `${lines.join('\r\n')}\r\n`
 }
 
+// Top-level ask keys that carry their own formatting, so the generic
+// field-dumper must skip them when printing the remaining fields.
+const ASK_META_KEYS: ReadonlySet<string> = new Set(['cancelled', 'button'])
+
+// Append `  key: value` for every string-valued entry, skipping `skip` keys.
+// Shared by both formatAsk branches; extracted to keep formatAsk under the
+// rule-5 cognitive-complexity budget.
+function pushStringFields(
+  lines: string[],
+  obj: Record<string, unknown>,
+  skip?: ReadonlySet<string>,
+): void {
+  for (const [k, val] of Object.entries(obj)) {
+    if (skip?.has(k) === true) continue
+    if (typeof val === 'string') lines.push(`  ${k}: ${val}`)
+  }
+}
+
 function formatAsk(value: unknown): string {
   if (typeof value !== 'object' || value === null) return '(missing ask value)\r\n'
   const v = value as Record<string, unknown>
@@ -59,16 +77,11 @@ function formatAsk(value: unknown): string {
   if (v.cancelled === true) {
     lines.push('cancelled')
     if (typeof v.fields === 'object' && v.fields !== null) {
-      for (const [k, val] of Object.entries(v.fields)) {
-        if (typeof val === 'string') lines.push(`  ${k}: ${val}`)
-      }
+      pushStringFields(lines, v.fields as Record<string, unknown>)
     }
   } else {
     if (typeof v.button === 'string') lines.push(`button: ${v.button}`)
-    for (const [k, val] of Object.entries(v)) {
-      if (k === 'cancelled' || k === 'button') continue
-      if (typeof val === 'string') lines.push(`  ${k}: ${val}`)
-    }
+    pushStringFields(lines, v, ASK_META_KEYS)
   }
   if (lines.length === 0) lines.push('(missing ask fields)')
   return `${lines.join('\r\n')}\r\n`

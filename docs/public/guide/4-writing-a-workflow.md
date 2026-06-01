@@ -48,6 +48,23 @@ export default workflow('feature', async (run, args) => {
 
 `extraPrompt` appends text to the step's default prompt for this one call (see the [overrides table](/guide/3-core-concepts#the-run-primitive)). The brainstorm step now sees both its standing instruction and the user's request.
 
+## Moving long prompts into `.md` files
+
+A two-paragraph backticked string buries the pipeline shape. orch lets each step point at a sibling Markdown file with `promptFile:`. The file's `{{var}}` placeholders are filled in at `run()` time so the same step can be reused with different inputs:
+
+```ts
+const BRAINSTORM = step.define('brainstorm', {
+  agent: claude(),
+  promptFile: 'brainstorm.md',           // sibling file next to this workflow .ts
+})
+
+await run(BRAINSTORM, { vars: { request: args.prompt } })   // {{request}} substituted here
+```
+
+Substitution is strict in both directions — a missing key or an unused key throws before the runner starts, so typos surface immediately. For prose shared by more than one workflow, drop it under `.orch/prompts/` at your project root and reference it with the `@/` sentinel (`promptFile: '@/.orch/prompts/session-context.md'`).
+
+For compile-time safety on the `vars` contract — TypeScript catching missing/extra/wrong vars at every `run()` site — see [Typed prompt vars](/guides/typed-prompt-vars). The [File-based prompts](/guides/file-based-prompts) guide covers the rest of the surface, including the `loadPrompt()` helper for composing fragments.
+
 ## Passing a typed result into the next step
 
 A step can return structured data instead of only writing files. Declare what it returns with `returns: schema(...)`, where `schema` wraps a [Zod](https://zod.dev) schema. orch re-exports Zod as `z`, so you don't add it to your own dependencies:

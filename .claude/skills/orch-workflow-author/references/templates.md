@@ -392,6 +392,113 @@ export default workflow('iterate-with-feedback', async (run, args) => {
 
 ---
 
+## Template F — File-based prompts (default for non-trivial prompts)
+
+Same shape as Template A, but every prompt longer than ~3 sentences lives in a sibling `.md` file. This is the recommended layout for any workflow with substantive prompt prose. The corresponding worked example in this repo is [`examples/file-prompts-demo/`](../../../examples/file-prompts-demo/).
+
+```ts
+/**
+ * file-spec — linear pipeline, prompts in sibling .md files.
+ *
+ * Prompt files (sibling to this index.ts):
+ *   - slug.md        ({{userPrompt}})
+ *   - research.md    ({{slug}}, {{sessionsDir}})
+ *   - summarize.md   ({{sessionsDir}})
+ * Shared (under .orch/prompts/ at project root):
+ *   - @/.orch/prompts/session-context.md   ({{sessionsDir}})
+ *
+ * Usage:
+ *   bunx orch run file-spec "<idea>"
+ */
+
+import { mkdir } from 'node:fs/promises'
+import * as nodePath from 'node:path'
+import { z } from 'zod'
+import { loadPrompt, schema, step, workflow } from '../../src/core/index.ts'
+import { claude } from '../../src/runners/index.ts'
+
+const HAIKU = 'claude-haiku-4-5-20251001'
+
+const SLUG_SCHEMA = z.object({
+  slug: z.string().min(2).max(30).regex(/^[a-z][a-z0-9-]*[a-z0-9]$/),
+})
+
+const AUTONOMOUS = claude({
+  bare: false,
+  flags: ['--permission-mode', 'bypassPermissions'],
+})
+
+export default workflow('file-spec', async (run, args) => {
+  if (args.prompt === undefined || args.prompt.trim() === '') {
+    throw new Error('file-spec requires a prompt. Usage: orch run file-spec "<idea>"')
+  }
+  const userPrompt = args.prompt.trim()
+
+  // promptFile — workflow-local sibling file. Vars live on `run()`.
+  const SLUG = step.define('slug', {
+    agent: claude({ model: HAIKU, bare: false }),
+    promptFile: 'slug.md',
+    returns: schema(SLUG_SCHEMA),
+  })
+  const { slug } = await run(SLUG, { vars: { userPrompt } })
+
+  const sessionsDir = nodePath.join('docs', 'sessions', slug)
+  await mkdir(sessionsDir, { recursive: true })
+
+  // loadPrompt composition — glue a workflow-local fragment with a shared
+  // fragment from the project-rooted .orch/prompts/ folder, then feed via
+  // the existing `prompt:` field.
+  const researchBody = loadPrompt('research.md', { slug, sessionsDir })
+  const sessionCtx   = loadPrompt('@/.orch/prompts/session-context.md', { sessionsDir })
+  const RESEARCH = step.define('research', {
+    agent: AUTONOMOUS,
+    prompt: `${researchBody}\n\n${sessionCtx}`,
+  })
+  await run(RESEARCH)
+
+  // promptFile again — vars supplied per-call.
+  const SUMMARIZE = step.define('summarize', {
+    agent: AUTONOMOUS,
+    promptFile: 'summarize.md',
+  })
+  await run(SUMMARIZE, { vars: { sessionsDir } })
+})
+```
+
+The matching `.md` files (sibling to `index.ts`) look like:
+
+```md
+<!-- slug.md -->
+Return a 2-4 word kebab-case slug for the idea below. Lowercase a-z, digits, and hyphens only.
+
+Idea:
+
+{{userPrompt}}
+```
+
+```md
+<!-- research.md -->
+Research the feature idea slugged "{{slug}}" and write `{{sessionsDir}}/findings.md`.
+Skim the working directory to identify 3–6 concrete points relevant to the feature, then
+write one short paragraph per point. Write only the file.
+```
+
+```md
+<!-- summarize.md -->
+Read `{{sessionsDir}}/findings.md` and write `{{sessionsDir}}/summary.md` — 3–6 short
+bullets and a one-sentence closing about the most important next step. Write only the file.
+```
+
+```md
+<!-- @/.orch/prompts/session-context.md -->
+Session management:
+
+Every artefact this workflow produces lives under `{{sessionsDir}}/`. The directory already
+exists. Use stable filenames so later steps can find them. Do not commit, push, or switch branches.
+```
+
+---
+
 ## How to pick a template
 
 | Shape you described | Start from |
@@ -401,5 +508,6 @@ export default workflow('iterate-with-feedback', async (run, args) => {
 | Compare multiple options or run multiple reviews | C |
 | Full compound-engineering flow with an interactive turn | D |
 | Iterative work with a human checkpoint between passes | E |
+| Anything where prompts are long enough to live in `.md` files (most non-trivial workflows) | F |
 
-When in doubt, start from A and add complexity only when the user's workflow shape actually demands it. A 60-line linear workflow beats a 300-line "framework."
+When in doubt, start from A and add complexity only when the user's workflow shape actually demands it. A 60-line linear workflow beats a 300-line "framework." For prompt prose longer than ~3 sentences per step, prefer F — file-based prompts make the workflow shape readable without scrolling past walls of backticked text.

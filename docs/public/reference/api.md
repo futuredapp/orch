@@ -35,16 +35,17 @@ export default workflow('feature', async (run, args) => {
 
 ```ts
 interface RunFn {
-  <T>(step: Step<T>, overrides: RunOverrides & { mode: 'interactive' }): Promise<InteractiveResult>
-  <T>(step: Step<T>, overrides?: RunOverrides): Promise<T>
+  <T, V>(step: Step<T, V>, overrides: RunOverrides<V> & { mode: 'interactive' }): Promise<InteractiveResult>
+  <T, V>(step: Step<T, V>, overrides?: RunOverrides<V>): Promise<T>
 }
 
-interface RunOverrides {
-  readonly as?: string          // memoize under a different name
-  readonly prompt?: string      // replace the step's default prompt
-  readonly extraContext?: JsonValue  // JSON appended to the prompt (serialized)
-  readonly extraPrompt?: string // text appended after the prompt
+type RunOverrides<V = PromptVars> = {
+  readonly as?: string              // memoize under a different name
+  readonly prompt?: string          // replace the step's default prompt (bypasses substitution)
+  readonly extraContext?: JsonValue // JSON appended to the prompt (serialized)
+  readonly extraPrompt?: string     // text appended after the prompt
   readonly mode?: 'interactive' | 'autonomous'
+  readonly vars: V                  // required when V has required keys; optional otherwise
 }
 ```
 
@@ -52,17 +53,40 @@ interface RunOverrides {
 const plan = await run(PLAN, { prompt: 'Plan the auth refactor' })
 await run(WORK, { as: 'work-auth', prompt: 'Implement auth' })
 await run(WORK, { as: 'work-api', prompt: 'Implement the API' })
+
+// Typed vars: the same step reused with different inputs.
+const GREET = step.define('greet', { agent, prompt: 'Hi {{name}}' })
+await run(GREET, { vars: { name: 'Ada'   } })
+await run(GREET, { vars: { name: 'Boris' } })
 ```
+
+Two `run()` calls with different `vars` produce distinct cache entries; the same vars on a second call hits the cache. Setting `as:` explicitly overrides the cache name (no vars hash is appended). See [Typed prompt vars](../guides/typed-prompt-vars) for the full compile-time contract.
 
 Forcing `mode: 'interactive'` changes the return type to `InteractiveResult` (`{ exitCode, durationMs, sessionId }`).
 
 ## step.define
 
 ```ts
-step.define(name: string, config: AgentStepConfig): Step
+// Inline literal prompt — TVars inferred from the `{{placeholder}}` tokens.
+step.define(name, { agent, prompt: 'Hi {{name}}' }): Step<…, { name: string | number | boolean }>
+
+// Prompt file — TVars looked up from PromptFileRegistry (populated by `orch types`).
+step.define(name, { agent, promptFile: '@/.orch/prompts/x.md' }): Step<…, PromptFileRegistry['@/.orch/prompts/x.md']>
+
+// No placeholders — defaults to the no-vars sentinel `Record<string, never>`,
+// which rejects any `vars` at the call site.
+step.define(name, { agent, prompt: 'no placeholders' }): Step<…, Record<string, never>>
 ```
 
-Declares a reusable **agent step**. `name` is the memoization key.
+Declares a reusable **agent step**. `name` is the memoization key. `TVars` is **inferred** — do not pass it explicitly. Three paths:
+
+- inline `prompt: 'Hi {{name}}'` literals — extracted via TypeScript's template-literal types (the `<const T>` modifier preserves the literal without `as const`)
+- `promptFile: '@/...'` paths — looked up in the [`PromptFileRegistry`](#promptfileregistry) augmentation `orch types` writes per file
+- no placeholders — `Record<string, never>` sentinel, which rejects extra `vars` at the call site
+
+::: warning
+Do not pass `TVars` explicitly: `step.define<…, { x: string }>(…)` short-circuits the inference and silently widens to whatever you wrote. Let the compiler derive it from the prompt or `PromptFileRegistry` lookup.
+:::
 
 ```ts
 import { step, claude, schema, z, fileProduced } from 'orch'
@@ -80,7 +104,8 @@ const PLAN = step.define('plan', {
 | Field | Type | Notes |
 | --- | --- | --- |
 | `agent` | `Runner` | Required. From `claude()`, `codex()`, or `defineRunner(...)`. |
-| `prompt` | `string` | Default prompt; overridable per call. |
+| `prompt` | `string` | Default prompt; overridable per call. Mutually exclusive with `promptFile`. |
+| `promptFile` | `string` | Path to a sibling `.md` file holding the prompt text. Resolves against the declaring workflow's directory, or against the orch project root if it starts with `@/`. The file is read at `step.define` time; substitution happens per `run()` call. See [File-based prompts](../guides/file-based-prompts). |
 | `returns` | `SchemaWrapper<T>` | A `schema(zod)` for structured output. Enables `--json-schema` and Zod validation. Not allowed on interactive steps. |
 | `validate` | `Validator \| Validator[]` | Post-run assertions; all must pass. See [Validators](#validators). |
 | `mode` | `'interactive' \| 'autonomous'` | Default `'autonomous'`. |
@@ -92,6 +117,63 @@ const PLAN = step.define('plan', {
 ::: tip Interactive steps cannot declare `returns`
 Structured output is unavailable in interactive mode — `step.define` throws at definition time if you combine `mode: 'interactive'` with `returns`.
 :::
+
+## PromptFileRegistry
+
+```ts
+interface PromptFileRegistry {}
+```
+
+An intentionally empty interface declared in orch. Generated `.d.ts` sidecars (one per discovered prompt file) augment it via `declare module 'orch'` so `step.define({ promptFile: '@/...' })` recovers a typed `vars` contract:
+
+```ts
+// AUTO-GENERATED by `orch types` — do not edit.
+declare module 'orch' {
+  interface PromptFileRegistry {
+    '@/.orch/prompts/brainstorm.md': {
+      topic: string | number | boolean
+      depth?: string | number | boolean
+    }
+  }
+}
+export {}
+```
+
+Sidecars are generated by the `orch types` command (one-shot) or `orch types --watch` (regen-on-save). `orch run` runs the same generator at startup so cold clones work without setup. See [Typed prompt vars](../guides/typed-prompt-vars) for the end-to-end flow.
+
+## VarsOf
+
+```ts
+type VarsOf<T extends string>
+```
+
+Type-level extractor that produces the inferred `vars` contract for a literal prompt string. Authors rarely use it directly — `step.define` returns the right `Step<TResult, TVars>` automatically — but it's exported from `'orch'` for downstream helpers and generic utilities.
+
+## loadPrompt
+
+```ts
+function loadPrompt(path: string, vars?: Readonly<Record<string, string | number | boolean>>): string
+```
+
+Synchronously read a prompt fragment, substitute `{{var}}` placeholders, and return the result as a string. Use it to compose two or more fragments into the existing `prompt:` field.
+
+```ts
+import { loadPrompt, step } from 'orch'
+
+const intro = loadPrompt('intro.md', { topic: 'auth' })
+const ctx   = loadPrompt('@/.orch/prompts/session-context.md', { sessionsDir })
+
+const RESEARCH = step.define('research', {
+  agent: AUTONOMOUS,
+  prompt: `${intro}\n\n${ctx}`,
+})
+```
+
+Path resolution and substitution semantics are identical to `promptFile:` on `step.define`. A path starting with `@/` resolves against the orch project root (the directory containing `orch.config.ts` or `.orch/orch.config.ts`); any other path resolves against the workflow file's directory. Paths escaping the project root are rejected.
+
+Throws `PromptFileError` synchronously at the call site for traversal, missing file, missing placeholder, unused key, or unsupported `vars` type.
+
+For a single file with no composition, prefer `promptFile:` directly — it carries the same semantics with less ceremony.
 
 ## ask
 

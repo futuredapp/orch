@@ -27,6 +27,7 @@ import { resumeCmd } from './commands/resume.ts'
 import { runCmd } from './commands/run.ts'
 import { runsCmd } from './commands/runs.ts'
 import { statusCmd } from './commands/status.ts'
+import { typesCmd } from './commands/types.ts'
 import { createDeps } from './deps.ts'
 import { meetsMinimumTmuxVersion, probeTmuxVersion } from './detect-tmux.ts'
 
@@ -95,6 +96,11 @@ export interface CliOpts {
    * or SIGINT. Requires `--step`.
    */
   readonly follow: boolean
+  /**
+   * `--watch` — `orch types` only. Keep the codegen loop alive and
+   * regenerate sidecars on every prompt-file change. SIGINT exits cleanly.
+   */
+  readonly watch: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -121,6 +127,7 @@ Commands:
   logs <runId>             Stream the per-step transcript for a run
   logs --latest            Stream the most recent run's transcript
   dry-run <name> [prompt]  Preflight check + first-step peek
+  types [--watch]          Generate .d.ts sidecars for prompt files (--watch keeps a regen loop alive)
 
 Options:
   -h, --help               Show this help message
@@ -136,6 +143,9 @@ Logs options (orch logs):
   --latest                 Resolve <runId> to the most recent run (snapshot at command time)
   --step <name>            Print only the named step's transcript (exact match)
   -f, --follow             Tail the named step until completed/failed/cancelled or SIGINT (requires --step)
+
+Types options (orch types):
+  --watch                  Keep a regen loop alive that refreshes sidecars on prompt-file change (Ctrl-C to exit)
 `
 
 // ---------------------------------------------------------------------------
@@ -155,6 +165,7 @@ export function parseArgv(argv: string[]): {
   latest: boolean
   step: string | undefined
   follow: boolean
+  watch: boolean
 } {
   const { values, positionals } = parseArgs({
     args: argv,
@@ -174,6 +185,8 @@ export function parseArgv(argv: string[]): {
       latest: { type: 'boolean', default: false },
       step: { type: 'string' },
       follow: { type: 'boolean', short: 'f', default: false },
+      // `orch types --watch` — keep the sidecar codegen loop alive.
+      watch: { type: 'boolean', default: false },
     },
     strict: false,
     allowPositionals: true,
@@ -223,6 +236,7 @@ export function parseArgv(argv: string[]): {
     latest: values.latest === true,
     step: typeof values.step === 'string' ? values.step : undefined,
     follow: values.follow === true,
+    watch: values.watch === true,
   }
 }
 
@@ -379,6 +393,7 @@ const COMMANDS: Record<
   'dry-run': commandWithoutHost(dryRunCmd),
   init: commandWithoutHost(initCmd),
   new: commandWithoutHost(newCmd),
+  types: commandWithoutHost(typesCmd),
 }
 
 // Commands that do not read `orch.config.ts`, do not pick a run mode, and
@@ -453,6 +468,7 @@ async function main(): Promise<never> {
       latest: false,
       step: undefined,
       follow: false,
+      watch: false,
     }
     const forbiddenHostFactory: HostFactory = async () => {
       throw new Error(
@@ -489,6 +505,7 @@ async function main(): Promise<never> {
     latest: parsed.latest,
     step: parsed.step,
     follow: parsed.follow,
+    watch: parsed.watch,
   }
   const hostFactory = pickHostFactory(
     resolution.mode,

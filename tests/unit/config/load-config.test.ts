@@ -4,6 +4,8 @@ import {
   defineConfig,
   findConfigPath,
   type OrchestratorConfig,
+  PROMPTS_DISCOVERY_DEFAULTS,
+  resolvePromptsConfig,
   resolveWorkflow,
 } from '../../../src/config/index.ts'
 import { type Path, path } from '../../../src/services/index.ts'
@@ -152,5 +154,31 @@ describe('loadConfig', () => {
     expect(err.name).toBe('ConfigLoadError')
     expect(err.configPath).toBe(path('/foo/orch.config.ts'))
     expect(err.message).toBe('test')
+  })
+})
+
+describe('resolvePromptsConfig', () => {
+  it('returns the documented defaults when prompts is omitted', () => {
+    const config: OrchestratorConfig = { workflows: {} }
+
+    expect(resolvePromptsConfig(config)).toBe(PROMPTS_DISCOVERY_DEFAULTS)
+  })
+
+  it('returns explicit user config verbatim when prompts is set', () => {
+    const config: OrchestratorConfig = {
+      workflows: {},
+      prompts: { include: ['custom/**/*.md'], exclude: ['custom/skip.md'] },
+    }
+
+    expect(resolvePromptsConfig(config)).toEqual({
+      include: ['custom/**/*.md'],
+      exclude: ['custom/skip.md'],
+    })
+  })
+
+  it('defaults cover the recommended on-disk layout', () => {
+    expect(PROMPTS_DISCOVERY_DEFAULTS.include).toContain('.orch/workflows/**/*.md')
+    expect(PROMPTS_DISCOVERY_DEFAULTS.include).toContain('.orch/prompts/**/*.md')
+    expect(PROMPTS_DISCOVERY_DEFAULTS.exclude).toEqual([])
   })
 })

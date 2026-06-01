@@ -10,7 +10,15 @@ export interface FsService {
   rename(from: Path, to: Path): Promise<void>
   mkdir(path: Path, opts?: { readonly recursive?: boolean }): Promise<void>
   exists(path: Path): Promise<boolean>
-  glob(pattern: string, opts?: { readonly cwd?: Path }): AsyncIterable<Path>
+  /**
+   * Expand `pattern` against the filesystem starting at `cwd`.
+   *
+   * `dot: true` causes the matcher to descend into directories whose name
+   * starts with `.` (matches Bun.Glob's `dot` option). The codegen uses this
+   * to discover prompt files under `.orch/...`; the default (`dot: false`)
+   * preserves existing validator behavior.
+   */
+  glob(pattern: string, opts?: { readonly cwd?: Path; readonly dot?: boolean }): AsyncIterable<Path>
   readDir(path: Path): Promise<readonly Path[]>
   stat(path: Path): Promise<{ readonly size: number; readonly mtimeMs: number }>
   remove(path: Path): Promise<void>

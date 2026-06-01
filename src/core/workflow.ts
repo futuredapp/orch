@@ -40,6 +40,13 @@ import { resolveView } from './view-registry.ts'
 export { InteractiveParallelError, ResumeError, RunNotFoundError, RunnerCapabilityError, StepError }
 
 import { ParallelError } from './parallel.ts'
+import { stableHashHex } from './prompt-file/cache-key.ts'
+import {
+  assertPromptVars,
+  type PromptVars,
+  type PromptVarsBound,
+  substitute,
+} from './prompt-file/substitute.ts'
 import { SchemaValidationError } from './schema.ts'
 import { type AgentStepConfig, type CommitStepConfig, onCacheHit, type Step } from './step.ts'
 import {
@@ -78,13 +85,40 @@ export interface WorkflowArgs {
 // RunOverrides — per-call overrides for run()
 // ---------------------------------------------------------------------------
 
-export interface RunOverrides {
+interface RunOverridesBase {
   readonly as?: string
   readonly prompt?: string
   readonly extraContext?: JsonValue
   readonly extraPrompt?: string
   readonly mode?: StepMode
 }
+
+// `vars` is REQUIRED when the step's typed contract has required keys;
+// OPTIONAL otherwise. The split is driven by `Record<string, never> extends V`:
+// the no-vars sentinel is assignable to V only when V has no required keys
+// (e.g. `Record<string, never>`, `{ a?: string }`, or the widened
+// `PromptVarsBound`).
+type IsEmptyOrAllOptional<V> = Record<string, never> extends V ? true : false
+
+type VarsField<V extends PromptVarsBound> =
+  IsEmptyOrAllOptional<V> extends true ? { readonly vars?: V } : { readonly vars: V }
+
+/**
+ * Per-call overrides for `run(STEP, …)`.
+ *
+ * The generic `V` carries the step's inferred `vars` contract from
+ * `Step<TResult, TVars>`. When `V` has required keys, the `vars` field is
+ * required at the call site; when it has only optional keys (or none), it is
+ * optional. The widened default `V = PromptVars` keeps existing call sites
+ * that never specified the generic working unchanged.
+ *
+ * `prompt:` set as an override bypasses substitution entirely (R10) — vars
+ * are silently ignored at runtime in that case. The compile-time contract
+ * still demands `vars` be supplied when V has required keys, so the standard
+ * "bypass" recipe is to also supply a valid `vars` object that will be
+ * ignored, or to weaken the step's V via a cast.
+ */
+export type RunOverrides<V extends PromptVarsBound = PromptVars> = RunOverridesBase & VarsField<V>
 
 // ---------------------------------------------------------------------------
 // StepLifecycleEvent — fans out through `host.onLifecycleEvent` for every
@@ -233,11 +267,11 @@ export type WorkflowFn = (run: RunFn, args: WorkflowArgs) => Promise<void>
 
 /** Override with `mode: 'interactive'` always yields InteractiveResult. */
 export interface RunFn {
-  <T>(
-    step: Step<T>,
-    overrides: RunOverrides & { readonly mode: 'interactive' },
+  <T, V extends PromptVarsBound>(
+    step: Step<T, V>,
+    overrides: RunOverrides<V> & { readonly mode: 'interactive' },
   ): Promise<InteractiveResult>
-  <T>(step: Step<T>, overrides?: RunOverrides): Promise<T>
+  <T, V extends PromptVarsBound>(step: Step<T, V>, overrides?: RunOverrides<V>): Promise<T>
 }
 
 // ---------------------------------------------------------------------------
@@ -261,14 +295,68 @@ export interface WorkflowExecutor {
 function assemblePrompt(
   defaultPrompt: string | undefined,
   overrides: RunOverrides | undefined,
+  stepNameForCtx?: string,
 ): string {
+  const usingReplacement = overrides?.prompt !== undefined
   const base = overrides?.prompt ?? defaultPrompt ?? ''
-  const parts = [base]
+  // R10: overrides.prompt is a full replacement — skip substitution. The vars
+  // field is silently ignored in that case (caller chose to bypass the
+  // template).
+  const vars = overrides?.vars
+  const substituted =
+    !usingReplacement && (templateHasPlaceholders(base) || hasNonEmptyVars(vars))
+      ? substitute(base, vars ?? {}, stepNameForCtx ? { stepName: stepNameForCtx } : {})
+      : base
+  const parts = [substituted]
   if (overrides?.extraContext !== undefined) {
     parts.push(JSON.stringify(overrides.extraContext, null, 2))
   }
   if (overrides?.extraPrompt) parts.push(overrides.extraPrompt)
   return parts.filter(Boolean).join('\n\n')
+}
+
+// Cheap pre-check so a static-prompt step with no vars short-circuits the
+// strict both-directions substitute() validation (which would otherwise throw
+// extra-key when a static step receives `vars: {}` — that's fine, but also when
+// the same step is reached without overrides at all).
+// Matches `{{name}}` and the optional form `{{name?}}` (kept in sync with
+// PLACEHOLDER_RE in `src/core/prompt-file/substitute.ts`). Missing the `?`
+// here would silently take static-prompt short-circuit on `{{name?}}` and
+// emit the raw token to the runner.
+const PLACEHOLDER_PROBE = /\{\{\s*[a-zA-Z_][a-zA-Z0-9_]*\s*\??\s*\}\}/
+function templateHasPlaceholders(template: string): boolean {
+  return PLACEHOLDER_PROBE.test(template)
+}
+
+function hasNonEmptyVars(vars: PromptVars | undefined): boolean {
+  return vars !== undefined && Object.keys(vars).length > 0
+}
+
+// ---------------------------------------------------------------------------
+// deriveStepKey — fold `overrides.vars` into the cache key
+// ---------------------------------------------------------------------------
+//
+// Caller's explicit `as:` wins (no vars-hash appended). Otherwise, when
+// `overrides.vars` is non-empty, append `:vars=<16-hex>` to the step name so
+// two `run(STEP, { vars: ... })` calls with different vars populate distinct
+// cache entries. Empty vars (or no overrides) leave the key unchanged for
+// back-compat with workflows that don't use the new contract.
+
+function deriveStepKey(name: StepName, overrides: RunOverrides | undefined): string {
+  if (overrides?.as !== undefined) return overrides.as
+  // Defense-in-depth: validate vars shape before folding into the cache key
+  // so an invalid value (e.g. a typed cast slipping through compile-time)
+  // cannot poison the on-disk cache with an entry that runtime substitute()
+  // would later reject. The assertion is a no-op for the common empty case.
+  const vars = overrides?.vars ?? {}
+  if (Object.keys(vars).length > 0) assertPromptVars(vars, { stepName: name })
+  const hash = stableHashHex(vars)
+  if (hash === '') return name as string
+  // Suffix is `:vars-<hex>` — the colon and dash are both legal mid-string in
+  // STEP_NAME_PATTERN and the hex output of `stableHashHex` is `[a-f0-9]`. The
+  // literal "vars" marker stays in the key so logs and `orch state` readers can
+  // see at a glance why the key is longer than the step name.
+  return `${name as string}:vars-${hash}`
 }
 
 // ---------------------------------------------------------------------------
@@ -471,7 +559,7 @@ async function produceInteractiveStep(
   timer: StepTimer,
 ): Promise<{ value: InteractiveResult; entry: StepEntry }> {
   const orchSessionId = deps.generateSessionId?.() ?? randomUUID()
-  const prompt = assemblePrompt(config.prompt, overrides)
+  const prompt = assemblePrompt(config.prompt, overrides, key)
   const startedAtStep = deps.clock.now()
   const cwd = currentCwd(deps.cwd)
 
@@ -830,7 +918,7 @@ async function produceAgentStep(
   const preRunSnapshot = headSha !== undefined ? { headSha } : undefined
 
   const startedAt = deps.clock.now()
-  const prompt = assemblePrompt(config.prompt, overrides)
+  const prompt = assemblePrompt(config.prompt, overrides, key)
   // Sidecar captures every RunnerEvent (silent steps included — `orch logs`
   // needs the trace even when the host renders nothing). Errors are logged
   // to stderr but do not abort the step; transcript loss is recoverable,
@@ -1091,13 +1179,19 @@ async function runCommitStep(
 // runStepOnce — thin dispatcher with exhaustive switch
 // ---------------------------------------------------------------------------
 
+// `AnyStep` — the existential shape `runStepOnce` consumes. The dispatcher
+// never reads `TResult` or `TVars` at runtime (they exist purely for the
+// `RunFn` compile-time contract), so the dispatch surface uses one named
+// alias instead of the prior `s as unknown as Step<T>` double-cast.
+type AnyStep = Step<unknown, PromptVarsBound>
+
 async function runStepOnce(
   deps: WorkflowDeps,
   captureLock: CaptureLock,
-  s: Step,
+  s: AnyStep,
   overrides: RunOverrides | undefined,
 ): Promise<unknown> {
-  const key = stepName(overrides?.as ?? s.name)
+  const key = stepName(deriveStepKey(s.name, overrides))
 
   // Register the runner for resume lookup before any short-circuit. Cache hits
   // on `orch resume` populate the registry progressively so the right pane
@@ -1242,8 +1336,18 @@ async function executeWorkflowFn(fn: WorkflowFn, deps: WorkflowDeps): Promise<vo
   // — and different test fixtures — each get their own factory instance.
   const captureLock = createCaptureLock()
 
-  const run: RunFn = <T>(s: Step<T>, overrides?: RunOverrides): Promise<T> =>
-    runStepOnce(deps, captureLock, s, overrides) as Promise<T>
+  const run: RunFn = <T, V extends PromptVarsBound>(
+    s: Step<T, V>,
+    overrides?: RunOverrides<V>,
+  ): Promise<T> =>
+    runStepOnce(
+      deps,
+      captureLock,
+      // Cast away the V generic — runStepOnce treats every step uniformly at
+      // runtime and the cache-key fold uses `overrides.vars` directly.
+      s as AnyStep,
+      overrides as RunOverrides | undefined,
+    ) as Promise<T>
 
   const startedAt = deps.clock.now()
   try {

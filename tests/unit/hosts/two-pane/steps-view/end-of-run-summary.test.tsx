@@ -12,7 +12,6 @@
 import { describe, expect, it } from 'bun:test'
 import { renderToString } from 'ink'
 import { render } from 'ink-testing-library'
-import React from 'react'
 import {
   EndOfRunFooter,
   EndOfRunSummary,

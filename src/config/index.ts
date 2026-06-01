@@ -17,7 +17,35 @@ export interface OrchestratorConfig {
    * deferral message.
    */
   readonly defaultMode?: RunMode
+  /**
+   * Prompt-file discovery for `orch types` codegen. `include` / `exclude` are
+   * glob patterns relative to the config directory. When the field is omitted
+   * orch uses sensible defaults that scan the recommended on-disk layout
+   * (`.orch/workflows/` and `.orch/prompts/`); see `PROMPTS_DISCOVERY_DEFAULTS`.
+   */
+  readonly prompts?: PromptsDiscoveryConfig
 }
+
+export interface PromptsDiscoveryConfig {
+  readonly include: readonly string[]
+  readonly exclude: readonly string[]
+}
+
+/**
+ * Defaults applied when `prompts` is omitted from `orch.config.ts`. When the
+ * user *does* set `prompts`, they own the full list — defaults are NOT merged
+ * in. This mirrors how Vite treats `optimizeDeps.include` and how Vitest
+ * treats `test.include`: explicit configuration replaces, never extends.
+ */
+export const PROMPTS_DISCOVERY_DEFAULTS: PromptsDiscoveryConfig = Object.freeze({
+  include: Object.freeze([
+    '.orch/workflows/**/*.md',
+    '.orch/workflows/**/*.txt',
+    '.orch/prompts/**/*.md',
+    '.orch/prompts/**/*.txt',
+  ]),
+  exclude: Object.freeze([]),
+})
 
 // ---------------------------------------------------------------------------
 // defineConfig — typed identity helper (Vite-style)
@@ -33,9 +61,15 @@ export function defineConfig(config: OrchestratorConfig): OrchestratorConfig {
 
 const RunModeSchema: z.ZodType<RunMode> = z.enum(RUN_MODES)
 
+const PromptsSchema = z.object({
+  include: z.array(z.string().min(1)),
+  exclude: z.array(z.string().min(1)),
+})
+
 const ConfigSchema = z.object({
   workflows: z.record(z.string().min(1), z.string().min(1)),
   defaultMode: RunModeSchema.optional(),
+  prompts: PromptsSchema.optional(),
 })
 
 // ---------------------------------------------------------------------------
@@ -162,6 +196,15 @@ export async function loadConfig(cwd: Path): Promise<LoadedConfig> {
 //   { workflows: { work: 'work.ts' } }
 // pointing at the workflow next to the config regardless of where the user
 // invoked orch from.
+
+/**
+ * Resolve the effective prompts discovery config: explicit user value when
+ * set, otherwise the documented defaults. Centralised so every reader (CLI,
+ * codegen, tests) sees the same fallback policy.
+ */
+export function resolvePromptsConfig(config: OrchestratorConfig): PromptsDiscoveryConfig {
+  return config.prompts ?? PROMPTS_DISCOVERY_DEFAULTS
+}
 
 export function resolveWorkflow(config: OrchestratorConfig, name: string, baseDir: Path): Path {
   const entry = config.workflows[name]

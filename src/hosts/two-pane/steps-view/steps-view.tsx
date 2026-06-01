@@ -535,6 +535,17 @@ interface KeyInfo {
   readonly end?: boolean
 }
 
+// Plain single-character keys map straight through; pulled out of classifyKey
+// to keep its cognitive-complexity under the rule-5 budget. The special-key
+// (key.*) checks below still run first and take precedence.
+const CHAR_KEYS: Record<string, StepsViewKeyEvent['key']> = {
+  j: 'j',
+  k: 'k',
+  f: 'f',
+  q: 'q',
+  '?': '?',
+}
+
 function classifyKey(input: string, key: KeyInfo): StepsViewKeyEvent['key'] {
   if (key.pageUp === true) return 'pageUp'
   if (key.pageDown === true) return 'pageDown'
@@ -545,12 +556,7 @@ function classifyKey(input: string, key: KeyInfo): StepsViewKeyEvent['key'] {
   if (key.return === true) return 'return'
   if (key.escape === true) return 'esc'
   if (key.ctrl === true && (input === 'c' || input === 'C')) return 'ctrl-c'
-  if (input === 'j') return 'j'
-  if (input === 'k') return 'k'
-  if (input === 'f') return 'f'
-  if (input === 'q') return 'q'
-  if (input === '?') return '?'
-  return 'other'
+  return CHAR_KEYS[input] ?? 'other'
 }
 
 // Hook implementations live in `steps-view-hooks.ts`. Re-exported above for

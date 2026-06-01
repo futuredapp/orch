@@ -16,6 +16,7 @@ The repo ships runnable example workflows under `examples/`. Most can be run wit
 | `codex-and-claude/` | The smallest two-runner workflow — a Codex step and a Claude step chained through a shared file, both interactive with `autoStop`. |
 | `compound/` | A full compound-engineering cycle: brainstorm → plan → deepen → phase-by-phase execution. |
 | `feature-loop/` | A loop-with-feedback pattern driven by an `ask()` step (continue / retry / abort). |
+| `file-prompts-demo/` | The full file-based prompts surface — `promptFile:` with run-time `vars:`, the `@/.orch/prompts/` shared-fragment pattern, and `loadPrompt()` composition. Pair with [Typed prompt vars](/guides/typed-prompt-vars) for the compile-time contract. |
 | `worktree-demo/` | `createWorktree()` with a `postCreate` hook. |
 
 ## Step kinds

@@ -99,6 +99,7 @@ const DEFAULT_OPTS: CliOpts = {
   latest: false,
   step: undefined,
   follow: false,
+  watch: false,
 }
 const NO_ATTACH_OPTS: CliOpts = {
   mode: 'two-pane',
@@ -109,6 +110,7 @@ const NO_ATTACH_OPTS: CliOpts = {
   latest: false,
   step: undefined,
   follow: false,
+  watch: false,
 }
 
 describe('runCmd auto-attach — argv shape', () => {

@@ -51,6 +51,7 @@ const DEFAULT_OPTS: CliOpts = {
   latest: false,
   step: undefined,
   follow: false,
+  watch: false,
 }
 
 const DEFAULT_HOST_FACTORY: HostFactory = async (args) =>

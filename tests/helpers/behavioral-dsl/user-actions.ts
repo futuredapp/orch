@@ -165,8 +165,21 @@ export const closeOrchStdin = (): UserAction => {
 
 const KEY_INTERVAL_MS = 60
 
-export const snapToLive = (): UserAction => {
-  return async (_handle, probe) => probe.pressKeyInPane({ pane: 'left', key: 'f' })
+// Canonical regex lives at `tests/helpers/behavioral-dsl/pane-matchers.ts:37`
+// (`INK_STATE_PATTERNS.live`). Inlined here to keep `snapToLive` self-contained
+// and avoid a cycle with `pane-matchers.ts`.
+const LIVE_INDICATOR_PATTERN = /▶\s*live/i
+
+export const snapToLive = (maxAttempts = 20): UserAction => {
+  return async (_handle, probe) => {
+    for (let i = 0; i < maxAttempts; i += 1) {
+      const text = await probe.capturePaneText('left')
+      if (LIVE_INDICATOR_PATTERN.test(text)) return
+      await probe.pressKeyInPane({ pane: 'left', key: 'f' })
+      await new Promise((r) => setTimeout(r, KEY_INTERVAL_MS))
+    }
+    throw new Error(`snapToLive(): pane did not enter live state within ${maxAttempts} attempts`)
+  }
 }
 
 export const openHelp = (): UserAction => {
@@ -196,7 +209,7 @@ export const scrollRightPane = (direction: 'up' | 'down', amount = 1): UserActio
  * left pane capture between keystrokes to detect highlight position. Bounded
  * by `maxAttempts` to avoid runaway loops when the row is not present.
  */
-export const selectStep = (stepName: string, maxAttempts = 20): UserAction => {
+export const selectStep = (stepName: string, maxAttempts = 60): UserAction => {
   return async (_handle, probe) => {
     for (let i = 0; i < maxAttempts; i += 1) {
       const text = await probe.capturePaneText('left')
@@ -240,14 +253,17 @@ function findStepLineIndex(paneText: string, stepName: string): number | undefin
 }
 
 function findSelectedLineIndex(paneText: string): number | undefined {
-  // The Ink steps view renders selection as `▌` on the row, but only when
-  // `isUserDriven` is true. On initial render no cursor is visible — we kick
-  // selection into user-driven mode by pressing Down then Up before testing.
-  const HIGHLIGHT_MARKERS = ['▌']
+  // The Ink steps view marks the COMMITTED row (the step the right pane shows)
+  // with `▌`, and once the user moves the cursor with ↑/↓ it marks the PREVIEW
+  // row with `›` (steps-view.tsx: `selected ? '▌' : preview ? '›' : ' '`).
+  // Arrow keys move the preview cursor, so prefer `›` when present; fall back
+  // to the committed `▌` when no preview is shown (selection == committed).
   const lines = paneText.split('\n')
+  let committedIdx: number | undefined
   for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i] ?? ''
-    if (HIGHLIGHT_MARKERS.some((m) => line.includes(m))) return i
+    if (line.includes('›')) return i
+    if (committedIdx === undefined && line.includes('▌')) committedIdx = i
   }
-  return undefined
+  return committedIdx
 }
