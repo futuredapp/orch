@@ -282,6 +282,34 @@ describe('checkCodexVersion (via buildCommand)', () => {
 
     expect(spawnCount).toBe(1)
   })
+
+  // Regression: the public `codex({...})` one-argument call form (mirroring
+  // `claude({...})`) must self-provide its services. Before the fix, omitting
+  // `deps` captured `undefined` and buildCommand threw a TypeError
+  // ("undefined is not an object (evaluating 'deps.ps')") the first time it
+  // ran — which surfaced only deep into a workflow, at the codex review step.
+  it('reaches the version check instead of throwing on undefined deps when constructed with only options', async () => {
+    const runner = codex({ sandbox: 'workspace-write' })
+
+    // Empty PATH makes the spawned `codex --version` fail fast (ENOENT) so the
+    // self-provided ProcessService never runs a real subprocess. We assert only
+    // that the failure is NOT the old `deps`-undefined TypeError — i.e. the one-
+    // arg form now self-provides its services and reaches real version-check code.
+    const savedPath = process.env.PATH
+    process.env.PATH = ''
+    let caught: unknown
+    try {
+      await runner.buildCommand(ctxFor('review the diff'))
+    } catch (err) {
+      caught = err
+    } finally {
+      process.env.PATH = savedPath
+    }
+
+    expect(caught).toBeInstanceOf(Error)
+    expect(caught).not.toBeInstanceOf(TypeError)
+    expect(String(caught)).not.toContain('deps')
+  })
 })
 
 describe('buildCommand interactive mode', () => {

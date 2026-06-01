@@ -7,7 +7,7 @@
 import { homedir } from 'node:os'
 import { z } from 'zod'
 import type { FsService } from '../../services/fs/fs-service.ts'
-import { mergeEnv } from '../../services/index.ts'
+import { BunFsService, BunProcessService, mergeEnv } from '../../services/index.ts'
 import type { ProcessService } from '../../services/process/process-service.ts'
 import { type Path, path } from '../../services/types.ts'
 import type {
@@ -437,13 +437,18 @@ async function prepareCodexAutoStop(
 
 export function codex(
   opts: CodexOptions,
-  deps: { readonly fs: FsService; readonly ps: ProcessService },
+  deps: { readonly fs?: FsService; readonly ps?: ProcessService } = {},
 ): Readonly<
   import('../types.ts').Runner & {
     buildCommand(ctx: RunnerContext): Promise<RunnerCommand>
   }
 > {
   const { model, sandbox = 'full-auto', flags } = opts
+  // Services are defaulted so the public `codex({...})` call form stays intact
+  // (mirroring `claude({...})`); tests inject fakes. Without this, the one-arg
+  // form captured `undefined` deps and buildCommand threw at first use.
+  const fs = deps.fs ?? new BunFsService()
+  const ps = deps.ps ?? new BunProcessService()
 
   let versionChecked = false
   let lastAgentMessage: string | undefined
@@ -468,7 +473,7 @@ export function codex(
       }
 
       if (!versionChecked) {
-        await checkCodexVersion(deps.ps)
+        await checkCodexVersion(ps)
         versionChecked = true
       }
 
@@ -483,7 +488,7 @@ export function codex(
         }
       }
 
-      const argv = await buildAutonomousArgv(ctx, { model, sandbox, flags, fs: deps.fs })
+      const argv = await buildAutonomousArgv(ctx, { model, sandbox, flags, fs })
       // Env: passthrough by default (see mergeEnv contract). Codex has no
       // mode-specific extras today, so the middle layer is `{}`. `ctx.env`
       // wins last on conflict — the workflow YAML is the override surface.
@@ -560,7 +565,7 @@ export function codex(
     },
 
     prepareAutoStop(ctx: RunnerContext): Promise<AutoStopPreparation> {
-      return prepareCodexAutoStop(deps.fs, ctx)
+      return prepareCodexAutoStop(fs, ctx)
     },
   })
 }
