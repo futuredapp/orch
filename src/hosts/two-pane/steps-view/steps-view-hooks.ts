@@ -92,7 +92,10 @@ export function useStepsSelection(
     if (steps.length === 0) return
     const currentIdx =
       selectedName === undefined ? -1 : steps.findIndex((s) => s.name === selectedName)
-    const nextIdx = clamp(currentIdx + delta, 0, steps.length - 1)
+    // Scan past boundary rows in the requested direction (R24); if no
+    // selectable row exists, stay put (no-op delta).
+    const nextIdx = nextSelectableIndex(steps, currentIdx, delta)
+    if (nextIdx === currentIdx) return
     const target = steps[nextIdx]
     if (target === undefined) return
     setSelectedName(target.name)
@@ -114,14 +117,60 @@ export function useStepsSelection(
 
 function committedFromView(steps: readonly StepRow[], view: ViewMode): string | undefined {
   if (view.mode === 'replay') return view.stepName
-  return findLive(steps) ?? steps[steps.length - 1]?.name
+  return findLive(steps) ?? lastSelectableName(steps)
 }
 
 function findLive(steps: readonly StepRow[]): string | undefined {
   for (const s of steps) {
+    if (!isSelectable(s)) continue
     if (s.status === 'running' || s.status === 'interactive') return s.name
   }
   return undefined
+}
+
+// R24: the committed cursor must always point at a SELECTABLE row. Without
+// this scan, the cursor lands on a `▼`/`✓`/`✗` boundary row whenever the
+// projected list ends in one (e.g. a sub fired enter but no child step has
+// started yet — `[parent-A, ▼ sub]`), violating the contract that what the
+// left pane highlights is what the right pane shows.
+function lastSelectableName(steps: readonly StepRow[]): string | undefined {
+  for (let i = steps.length - 1; i >= 0; i--) {
+    const row = steps[i]
+    if (row !== undefined && isSelectable(row)) return row.name
+  }
+  return undefined
+}
+
+type SelectableStepRow = Exclude<StepRow, { kind: 'subworkflow-enter' | 'subworkflow-exit' }>
+
+function isSelectable(row: StepRow): row is SelectableStepRow {
+  return row.kind !== 'subworkflow-enter' && row.kind !== 'subworkflow-exit'
+}
+
+// Returns the next index in `delta`'s direction whose row is selectable. When
+// no selectable row exists in the requested direction, returns `currentIdx`
+// (no-op delta — the cursor stays put). When `currentIdx === -1` (no current
+// selection — the cursor hasn't been initialised yet), the first ↑ or ↓
+// keystroke seeds to the first selectable row in EITHER direction — matching
+// the legacy `clamp(-2, 0, max) === 0` behaviour the preview-cursor tests
+// expect from a freshly-rendered pane.
+function nextSelectableIndex(steps: readonly StepRow[], currentIdx: number, delta: number): number {
+  if (delta === 0) return currentIdx
+  if (currentIdx === -1) {
+    for (let i = 0; i < steps.length; i++) {
+      const row = steps[i]
+      if (row !== undefined && isSelectable(row)) return i
+    }
+    return -1
+  }
+  const step = delta > 0 ? 1 : -1
+  let i = currentIdx
+  for (;;) {
+    i += step
+    if (i < 0 || i >= steps.length) return currentIdx
+    const row = steps[i]
+    if (row !== undefined && isSelectable(row)) return i
+  }
 }
 
 function clamp(value: number, min: number, max: number): number {

@@ -53,6 +53,51 @@ const defaultScheduleDismiss = (callback: () => void, ms: number): (() => void) 
 }
 const STEP_NAME_MAX = 30
 
+// U9: gutter-aware truncation budget for step rows. `effectiveDepth` is the
+// row's effective depth after R23 parallel-suppression collapse (a step inside
+// a parallel branch already carries `depth: 0` from the projector, so we just
+// read `step.depth`). Each `│ ` is 2 chars; floored at 12 so very deep nesting
+// doesn't squash the name column to nothing.
+function stepNameBudget(depth: number): number {
+  return Math.max(12, STEP_NAME_MAX - 2 * depth)
+}
+
+// U9: same budget logic for boundary rows. A depth-d boundary aligns at the
+// depth-(d-1) gutter, then `▼ ` / `✓ ` / `✗ ` adds 2 chars before the name —
+// total cost works out to `2 * d`, identical to the step-row budget at depth
+// d. Pulled out for readability.
+function boundaryNameBudget(depth: number): number {
+  return Math.max(12, STEP_NAME_MAX - 2 * depth)
+}
+
+// Stacked gutter token, one `│ ` per depth column. The narrow-pane collapse
+// path (U9) substitutes a single `│N ` token; see `gutterFor`.
+function stackedGutter(depth: number): string {
+  if (depth <= 0) return ''
+  return '│ '.repeat(depth)
+}
+
+// Step rows persist their FULL cache key (e.g. `simple-feature>plan`); the
+// visible label strips the sub prefix so the rendered name is just `plan`.
+// Used by both step rows and the renderer-side display layer.
+function displayName(name: string): string {
+  const idx = name.lastIndexOf('>')
+  return idx === -1 ? name : name.slice(idx + 1)
+}
+
+// Boundary rows and step rows can share a stable `name` (a sub `simple` and
+// some step `simple` are distinct in R20 but indistinguishable by name alone),
+// so React keys mix kind + depth + name.
+function rowKey(step: StepRowData): string {
+  if (step.kind === 'subworkflow-enter') return `enter:${step.depth}:${step.name}`
+  if (step.kind === 'subworkflow-exit') return `exit:${step.depth}:${step.name}`
+  return step.name
+}
+
+function isSelectableRow(step: StepRowData): boolean {
+  return step.kind !== 'subworkflow-enter' && step.kind !== 'subworkflow-exit'
+}
+
 // ---------------------------------------------------------------------------
 // Public component
 // ---------------------------------------------------------------------------
@@ -207,7 +252,15 @@ export function StepsView({
     }
     if (key.return) {
       if (selectedName !== undefined) {
-        onIntent({ type: 'enter', stepName: selectedName })
+        // R24 defensive guard: selection-skip should already prevent the
+        // preview cursor from landing on a boundary row, but a fixture or
+        // scroll-window cut could still expose one. Enter on a boundary is a
+        // no-op — no intent, no info banner (the brainstorm's AE10 "optionally"
+        // wording was dropped so two implementers cannot diverge).
+        const target = state.steps.find((s) => s.name === selectedName)
+        if (target !== undefined && isSelectableRow(target)) {
+          onIntent({ type: 'enter', stepName: selectedName })
+        }
       }
       return
     }
@@ -273,16 +326,21 @@ export function StepsView({
           borderRight={false}
           borderColor="gray"
         >
-          {visibleSlice(state.steps, scroll.scrollOffset, visibleCount).map((step) => (
-            <StepRow
-              key={step.name}
-              step={step}
-              columns={columns}
-              now={now()}
-              selected={step.name === committedName}
-              preview={isUserDriven && step.name === selectedName && step.name !== committedName}
-            />
-          ))}
+          {visibleSlice(state.steps, scroll.scrollOffset, visibleCount).map((step) =>
+            step.kind === 'subworkflow-enter' || step.kind === 'subworkflow-exit' ? (
+              <SubBoundaryRow key={rowKey(step)} row={step} paneCols={paneCols} />
+            ) : (
+              <StepRow
+                key={rowKey(step)}
+                step={step}
+                columns={columns}
+                now={now()}
+                selected={step.name === committedName}
+                preview={isUserDriven && step.name === selectedName && step.name !== committedName}
+                paneCols={paneCols}
+              />
+            ),
+          )}
         </Box>
       )}
       {isTerminal ? <EndOfRunFooter status={state.status} /> : null}
@@ -337,14 +395,18 @@ function bannerText(banner: Banner): string {
 // <StepRow> — single-step line, memo'd with threshold-bucketed props.
 // ---------------------------------------------------------------------------
 
+type SelectableRow = Exclude<StepRowData, { kind: 'subworkflow-enter' | 'subworkflow-exit' }>
+
 interface StepRowProps {
-  readonly step: StepRowData
+  readonly step: SelectableRow
   readonly columns: ColumnSet
   readonly now: number
   /** Committed selection — the row the right pane shows. Drawn `▌` + bold + cyan. */
   readonly selected: boolean
   /** `↑/↓` preview cursor (only when it differs from `selected`). Drawn bold `›`. */
   readonly preview: boolean
+  /** Current pane column count — drives U9's depth-overflow collapse rule. */
+  readonly paneCols: number
 }
 
 const StepRow = memo(
@@ -354,21 +416,18 @@ const StepRow = memo(
     now,
     selected,
     preview,
+    paneCols,
   }: StepRowProps): React.ReactElement {
     // `▌` marks the committed row (= right pane); `›` is the preview cursor the
     // user is browsing with `↑/↓` before committing with `Enter`. They never
     // coincide — the call site suppresses `preview` on the committed row.
     const cursor = selected ? '▌' : preview ? '›' : ' '
     const view = stepGlyphView(step.status)
-    const name = stripAnsi(step.name)
+    const depth = rowDepth(step)
+    const gutter = gutterFor(depth, paneCols)
+    const name = truncate(displayName(stripAnsi(step.name)), stepNameBudget(depth))
     const elapsed = formatElapsedFor(step, now)
     const showElapsed = columns.elapsed && elapsed.length > 0
-    // Multi-segment <Text>: produces the same byte sequence as the previous
-    // `parts.join('  ')` output (cursor · space · name · two-space · glyph
-    // [· two-space · elapsed]), with style spans around cursor, name, and
-    // glyph. The committed row accents cursor + name cyan; the preview cursor
-    // is bold (no color) so the eye follows it without claiming "this is shown".
-    // The glyph keeps its semantic color from `stepGlyphView`.
     const accent = selected ? 'cyan' : undefined
     const emphasised = selected || preview
     return (
@@ -377,6 +436,7 @@ const StepRow = memo(
           {cursor}
         </Text>
         <Text> </Text>
+        {gutter.length > 0 ? <Text dimColor>{gutter}</Text> : null}
         <Text bold={emphasised} color={accent}>
           {name}
         </Text>
@@ -392,24 +452,88 @@ const StepRow = memo(
     if (prev.selected !== next.selected) return false
     if (prev.preview !== next.preview) return false
     if (prev.columns.elapsed !== next.columns.elapsed) return false
+    if (prev.paneCols !== next.paneCols) return false
     if (prev.step.name !== next.step.name) return false
     if (prev.step.status !== next.step.status) return false
     if (prev.step.kind !== next.step.kind) return false
     if (prev.step.startedAt !== next.step.startedAt) return false
     if (prev.step.endedAt !== next.step.endedAt) return false
+    if (rowDepth(prev.step) !== rowDepth(next.step)) return false
     // Bucket elapsed to 1s so a tick that doesn't cross a second boundary
     // doesn't re-render the row.
     return bucketSeconds(prev.now, prev.step) === bucketSeconds(next.now, next.step)
   },
 )
 
-function bucketSeconds(now: number, step: StepRowData): number {
+// ---------------------------------------------------------------------------
+// <SubBoundaryRow> — the `▼ <name>` enter / `✓ <name>` / `✗ <name>` exit row.
+// ---------------------------------------------------------------------------
+//
+// Lives only in the projected state — never persisted, never selectable, never
+// the right-pane focus. Renders the gutter at depth-(d-1) so the row aligns
+// visually one column to the left of its child steps, matching the brainstorm's
+// `▼ outer / │ child / ✓ outer` nesting illustration.
+
+interface SubBoundaryRowProps {
+  readonly row: Extract<StepRowData, { kind: 'subworkflow-enter' | 'subworkflow-exit' }>
+  readonly paneCols: number
+}
+
+function SubBoundaryRow({ row, paneCols }: SubBoundaryRowProps): React.ReactElement {
+  const gutterDepth = Math.max(0, row.depth - 1)
+  const gutter = gutterForRow(row.depth, gutterDepth, paneCols)
+  const name = truncate(displayName(stripAnsi(row.name)), boundaryNameBudget(row.depth))
+  // Failure color: `✗` glyph is the primary signal. Red is additive — NO_COLOR
+  // / color-blind terminals fall back to the glyph alone.
+  const isFailure = row.kind === 'subworkflow-exit' && row.glyph === '✗'
+  const trailing =
+    row.kind === 'subworkflow-exit' && row.durationMs !== undefined
+      ? formatElapsed(row.durationMs)
+      : '…'
+  return (
+    <Text>
+      <Text> </Text>
+      <Text> </Text>
+      {gutter.length > 0 ? <Text dimColor>{gutter}</Text> : null}
+      <Text color={isFailure ? 'red' : undefined}>{row.glyph}</Text>
+      <Text> </Text>
+      <Text dimColor>{name}</Text>
+      <Text>{'  '}</Text>
+      <Text dimColor>{trailing}</Text>
+    </Text>
+  )
+}
+
+// Effective depth for memo equality + gutter selection. Reads through the
+// optional `depth` field on every variant; absent ⇔ 0 (root).
+function rowDepth(step: StepRowData): number {
+  if (step.kind === 'subworkflow-enter' || step.kind === 'subworkflow-exit') return step.depth
+  return step.depth ?? 0
+}
+
+// U9 collapse: when the row's LOGICAL depth >= 4 AND paneCols < 60, render the
+// compact `│N ` token (e.g. `│4 ` for a depth-4 step, `│3 ` for the matching
+// boundary row of a depth-4 sub). The boundary-row case passes `triggerDepth`
+// = sub's depth and `renderDepth` = sub's depth - 1 so the boundary aligns at
+// one gutter column less than its children — matching the brainstorm rule that
+// `▼`/`✓` rows render with (d-1) gutter columns. Step rows pass them equal.
+function gutterFor(depth: number, paneCols: number): string {
+  return gutterForRow(depth, depth, paneCols)
+}
+
+function gutterForRow(triggerDepth: number, renderDepth: number, paneCols: number): string {
+  if (renderDepth <= 0) return ''
+  if (triggerDepth >= 4 && paneCols < 60) return `│${renderDepth} `
+  return stackedGutter(renderDepth)
+}
+
+function bucketSeconds(now: number, step: SelectableRow): number {
   if (step.startedAt === undefined) return 0
   const end = step.endedAt ?? now
   return Math.round((end - step.startedAt) / 1000)
 }
 
-function formatElapsedFor(step: StepRowData, now: number): string {
+function formatElapsedFor(step: SelectableRow, now: number): string {
   if (step.startedAt === undefined) return ''
   const end = step.endedAt ?? now
   return formatElapsed(end - step.startedAt)

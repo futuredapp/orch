@@ -26,12 +26,14 @@ export type {
   StepStatus,
   StepsViewModel,
   StepsViewState,
+  SubworkflowOverlay,
   TuiOverlay,
   TuiOverlaySnapshot,
   ViewMode,
 } from './steps-view-model.ts'
 export {
   applyLifecycleEvent,
+  applySubworkflowEvent,
   createStepsViewModel,
   DEFAULT_TUI_OVERLAY,
   parseTuiOverlayLine,

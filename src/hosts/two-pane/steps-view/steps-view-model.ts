@@ -16,7 +16,12 @@ import type { FsService } from '../../../services/fs/index.ts'
 import type { Path } from '../../../services/types.ts'
 import { path as toPath } from '../../../services/types.ts'
 import type { RunId, RunState, StateStore } from '../../../state/index.ts'
-import { applyLifecycleEvent, type LiveOverlay } from './live-overlay.ts'
+import {
+  applyLifecycleEvent,
+  applySubworkflowEvent,
+  type LiveOverlay,
+  type SubworkflowOverlay,
+} from './live-overlay.ts'
 import { projectStepsView } from './project-steps-view.ts'
 import type { StepsViewState } from './step-types.ts'
 import { type TailNdjsonHandle, tailNdjson } from './tail-ndjson.ts'
@@ -46,6 +51,7 @@ export interface StepsViewModel {
 export function createStepsViewModel(opts: CreateStepsViewModelOptions): StepsViewModel {
   const emitter = new EventEmitter()
   const overlay = new Map<string, LiveOverlay>()
+  const subOverlay = new Map<string, SubworkflowOverlay>()
   let tuiOverlay: TuiOverlay = DEFAULT_TUI_OVERLAY
   let latest: StepsViewState | undefined
   let currentRun: RunState | undefined
@@ -59,6 +65,7 @@ export function createStepsViewModel(opts: CreateStepsViewModelOptions): StepsVi
     const next = projectStepsView({
       run: currentRun,
       overlay,
+      subOverlay,
       workflowName: opts.workflowName,
       runIdFallback: opts.runId,
       view: tuiOverlay.view,
@@ -95,12 +102,30 @@ export function createStepsViewModel(opts: CreateStepsViewModelOptions): StepsVi
             readonly type?: string
             readonly stepName?: string
             readonly mode?: string
+            readonly name?: string
+            readonly depth?: number
+            readonly durationMs?: number
+            readonly outcome?: 'completed' | 'failed'
+            readonly insideParallel?: true
           }
           if (typeof parsed.type !== 'string') return
+          const now = opts.clock.now()
           applyLifecycleEvent(
             overlay,
             { type: parsed.type, stepName: parsed.stepName, mode: parsed.mode },
-            opts.clock.now(),
+            now,
+          )
+          applySubworkflowEvent(
+            subOverlay,
+            {
+              type: parsed.type,
+              name: parsed.name,
+              depth: parsed.depth,
+              durationMs: parsed.durationMs,
+              outcome: parsed.outcome,
+              insideParallel: parsed.insideParallel,
+            },
+            now,
           )
           reproject()
         } catch {
@@ -146,10 +171,10 @@ export function createStepsViewModel(opts: CreateStepsViewModelOptions): StepsVi
   }
 }
 
-export type { LiveOverlay } from './live-overlay.ts'
+export type { LiveOverlay, SubworkflowOverlay } from './live-overlay.ts'
 // Public re-exports — callers import from the barrel which re-exports from
 // here, so existing imports stay source-compatible after the split.
-export { applyLifecycleEvent } from './live-overlay.ts'
+export { applyLifecycleEvent, applySubworkflowEvent } from './live-overlay.ts'
 export type { ProjectArgs } from './project-steps-view.ts'
 export { projectStepsView } from './project-steps-view.ts'
 export type {

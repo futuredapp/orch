@@ -39,9 +39,11 @@ describe('projectStepsView', () => {
     expect(state.steps).toHaveLength(1)
     const row = state.steps[0]
     expect(row?.name).toBe('work')
-    expect(row?.status).toBe('running')
     expect(row?.kind).toBe('agent')
-    if (row?.kind === 'agent') expect(row.mode).toBe('autonomous')
+    if (row?.kind === 'agent') {
+      expect(row.status).toBe('running')
+      expect(row.mode).toBe('autonomous')
+    }
   })
 
   it('renders a completed agent step persisted in state.json with no live overlay entry', () => {
@@ -58,8 +60,8 @@ describe('projectStepsView', () => {
     expect(state.steps).toHaveLength(1)
     const row = state.steps[0]
     expect(row?.name).toBe('plan')
-    expect(row?.status).toBe('completed')
     expect(row?.kind).toBe('agent')
+    if (row?.kind === 'agent') expect(row.status).toBe('completed')
   })
 
   it('marks a step as failed when the live overlay says so', () => {
@@ -73,7 +75,8 @@ describe('projectStepsView', () => {
     const state = projectStepsView({ run, overlay, ...HEADER })
 
     const row = state.steps[0]
-    expect(row?.status).toBe('failed')
+    expect(row?.kind).toBe('agent')
+    if (row?.kind === 'agent') expect(row.status).toBe('failed')
   })
 
   it('routes prefixed names to the correct kind (commit / worktree / ask / command) and bare names to agent', () => {

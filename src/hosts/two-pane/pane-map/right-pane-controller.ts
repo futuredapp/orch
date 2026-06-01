@@ -71,6 +71,14 @@ import {
 // mid-run does not break the follow.
 const TAIL_BACKFILL_LINES = '5000'
 
+// Boundary rows (sub enter/exit) are projected-only and never persist a
+// transcript; everything in this module operates on selectable rows only.
+type SelectableStepRow = Exclude<StepRow, { kind: 'subworkflow-enter' | 'subworkflow-exit' }>
+
+function isSelectableStepRow(row: StepRow): row is SelectableStepRow {
+  return row.kind !== 'subworkflow-enter' && row.kind !== 'subworkflow-exit'
+}
+
 export interface RightPaneControllerOptions {
   readonly tmux: TmuxService
   readonly socket: SocketName
@@ -864,7 +872,7 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
   // `controller.showSource(...)`.
   // ---------------------------------------------------------------------------
 
-  const lookupStep = async (stepName: string): Promise<StepRow | undefined> => {
+  const lookupStep = async (stepName: string): Promise<SelectableStepRow | undefined> => {
     const run = await opts.stateStore.loadRun(opts.runId)
     const entry: StepEntry | undefined = run?.steps[stepName]
     const projected = projectStepsView({
@@ -873,13 +881,15 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
       workflowName: '',
       runIdFallback: opts.runId,
     })
-    const fromProjection = projected.steps.find((s) => s.name === stepName)
-    if (fromProjection !== undefined) return fromProjection
+    const fromProjection = projected.steps.find(
+      (s) => s.name === stepName && isSelectableStepRow(s),
+    )
+    if (fromProjection !== undefined && isSelectableStepRow(fromProjection)) return fromProjection
     if (entry === undefined) return undefined
     return undefined
   }
 
-  const replayKeyFor = (step: StepRow): SourceKey => {
+  const replayKeyFor = (step: SelectableStepRow): SourceKey => {
     if (step.kind === 'agent' && step.mode === 'interactive') {
       return { type: 'interactive', stepName: step.name as StepName }
     }
@@ -936,7 +946,7 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
    * other failure propagates to dispatchEnter's banner (r-2026-05-25-171216-nu).
    */
   const showReplaySourceWithStaleRefresh = async (
-    step: StepRow,
+    step: SelectableStepRow,
     replayKey: SourceKey,
   ): Promise<void> => {
     try {
@@ -1102,7 +1112,7 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
 
 async function resolveReplaySpec(
   opts: RightPaneControllerOptions,
-  step: StepRow,
+  step: SelectableStepRow,
 ): Promise<PaneSpec> {
   if (step.kind === 'agent') {
     if (step.mode === 'interactive') {

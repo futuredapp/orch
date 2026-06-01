@@ -4,9 +4,15 @@
 //
 // No I/O, no React. The composing factory in `steps-view-model.ts` calls this
 // every time the underlying state.json or lifecycle.ndjson changes.
+//
+// Sub-workflow boundary rows (`▼` enter / `✓` / `✗` exit) live ONLY here in the
+// projected state — they are never persisted. The projector derives them from
+// `StepEntry.subPath` transitions across persisted steps, with the live
+// `subOverlay` filling in in-flight stepless subs and providing `durationMs`
+// for completed exits before they're persisted.
 
-import type { RunState } from '../../../state/index.ts'
-import type { LiveOverlay } from './live-overlay.ts'
+import type { RunState, StepEntry } from '../../../state/index.ts'
+import type { LiveOverlay, SubworkflowOverlay } from './live-overlay.ts'
 import type {
   Banner,
   EndOfRunSummary,
@@ -20,6 +26,12 @@ import type {
 export interface ProjectArgs {
   readonly run: RunState | undefined
   readonly overlay: ReadonlyMap<string, LiveOverlay>
+  /**
+   * Per-sub overlay derived from `subworkflow:enter` / `subworkflow:exit`
+   * events. Optional so callers that don't tail lifecycle events (older
+   * tests, direct invocations) keep working — absent ⇔ empty map.
+   */
+  readonly subOverlay?: ReadonlyMap<string, SubworkflowOverlay>
   readonly workflowName: string
   readonly runIdFallback: string
   /** Persistent footer indicator. Default `{mode:'live'}` when omitted. */
@@ -29,33 +41,21 @@ export interface ProjectArgs {
 }
 
 const DEFAULT_VIEW: ViewMode = { mode: 'live' }
+const EMPTY_SUB_OVERLAY: ReadonlyMap<string, SubworkflowOverlay> = new Map()
 
 export function projectStepsView(args: ProjectArgs): StepsViewState {
   const run = args.run
-  const stepNames = new Set<string>()
-  const steps: StepRow[] = []
-  const persisted = run?.steps ?? {}
+  const subOverlay = args.subOverlay ?? EMPTY_SUB_OVERLAY
+  const records = collectRecords(run, args.overlay)
+  const suppressed = collectSuppressedSubs(records, subOverlay)
+  const runStatus = run?.status ?? 'running'
 
-  for (const name of Object.keys(persisted)) {
-    if (stepNames.has(name)) continue
-    stepNames.add(name)
-    const entry = persisted[name]
-    if (entry === undefined) continue
-    const live = args.overlay.get(name)
-    steps.push(
-      buildRow(name, entry.value, entry.mode, entry.transcriptPath, entry.sessionId, live, entry, {
-        runnerName: entry.runnerName,
-        sessionIdCaptureError: entry.sessionIdCaptureError,
-      }),
-    )
-  }
-  for (const [name, live] of args.overlay) {
-    if (stepNames.has(name)) continue
-    stepNames.add(name)
-    steps.push(
-      buildRow(name, undefined, live.mode, undefined, undefined, live, undefined, undefined),
-    )
-  }
+  const steps = buildRows({
+    records,
+    subOverlay,
+    suppressed,
+    terminal: runStatus !== 'running',
+  })
 
   const header: RunHeader = {
     runId: run?.id ?? args.runIdFallback,
@@ -64,8 +64,181 @@ export function projectStepsView(args: ProjectArgs): StepsViewState {
   }
   const view = args.view ?? DEFAULT_VIEW
   const bannerSlot = args.banner !== undefined ? { banner: args.banner } : {}
-  const runStatus = run?.status ?? 'running'
   return finalizeView({ runStatus, run, header, steps, view, bannerSlot })
+}
+
+// ---------------------------------------------------------------------------
+// Record assembly — flatten persisted + overlay-only steps into one ordered
+// list. Insertion order on `run.steps` reflects chronological order; overlay-
+// only steps (running with no persisted entry yet) tail after persisted ones.
+// ---------------------------------------------------------------------------
+
+interface StepRecord {
+  readonly name: string
+  readonly entry: StepEntry | undefined
+  readonly live: LiveOverlay | undefined
+  readonly subPath: readonly string[]
+  readonly insideParallel: boolean
+}
+
+function collectRecords(
+  run: RunState | undefined,
+  overlay: ReadonlyMap<string, LiveOverlay>,
+): readonly StepRecord[] {
+  const seen = new Set<string>()
+  const records: StepRecord[] = []
+  const persisted = run?.steps ?? {}
+  for (const name of Object.keys(persisted)) {
+    if (seen.has(name)) continue
+    seen.add(name)
+    const entry = persisted[name]
+    if (entry === undefined) continue
+    records.push({
+      name,
+      entry,
+      live: overlay.get(name),
+      subPath: entry.subPath ?? [],
+      insideParallel: entry.insideParallel === true,
+    })
+  }
+  for (const [name, live] of overlay) {
+    if (seen.has(name)) continue
+    seen.add(name)
+    records.push({ name, entry: undefined, live, subPath: [], insideParallel: false })
+  }
+  return records
+}
+
+// ---------------------------------------------------------------------------
+// R23 parallel suppression — a sub is suppressed iff any step under it has
+// `insideParallel: true`, OR its own subOverlay entry carries the flag.
+// Suppression is uniform across the whole subtree (the propagation comes from
+// `parallel()`'s branchStore setting `insideParallel: true` for every step
+// inside a parallel branch, transitively into nested subs).
+// ---------------------------------------------------------------------------
+
+function collectSuppressedSubs(
+  records: readonly StepRecord[],
+  subOverlay: ReadonlyMap<string, SubworkflowOverlay>,
+): ReadonlySet<string> {
+  const suppressed = new Set<string>()
+  for (const rec of records) {
+    if (!rec.insideParallel) continue
+    for (const name of rec.subPath) suppressed.add(name)
+  }
+  for (const [name, sub] of subOverlay) {
+    if (sub.insideParallel === true) suppressed.add(name)
+  }
+  return suppressed
+}
+
+// ---------------------------------------------------------------------------
+// Row emission — walk records emitting boundary rows on subPath transitions
+// and step rows for each record; finalize trailing open subs at end.
+// ---------------------------------------------------------------------------
+
+interface BuildRowsArgs {
+  readonly records: readonly StepRecord[]
+  readonly subOverlay: ReadonlyMap<string, SubworkflowOverlay>
+  readonly suppressed: ReadonlySet<string>
+  readonly terminal: boolean
+}
+
+function buildRows(args: BuildRowsArgs): StepRow[] {
+  const rows: StepRow[] = []
+  const renderedSubs = new Set<string>()
+  let currentPath: readonly string[] = []
+
+  for (const rec of args.records) {
+    const newPath = rec.subPath
+    const k = commonPrefixLength(currentPath, newPath)
+
+    // Close subs we are leaving (deepest first).
+    for (let i = currentPath.length - 1; i >= k; i--) {
+      const name = currentPath[i]
+      if (name === undefined) continue
+      const exit = buildExitRow(name, i + 1, args.subOverlay, args.suppressed)
+      if (exit !== undefined) rows.push(exit)
+    }
+
+    // Open subs we are entering (shallowest first).
+    for (let i = k; i < newPath.length; i++) {
+      const name = newPath[i]
+      if (name === undefined) continue
+      if (renderedSubs.has(name)) continue
+      const enter = buildEnterRow(name, i + 1, args.suppressed)
+      if (enter !== undefined) rows.push(enter)
+      renderedSubs.add(name)
+    }
+
+    rows.push(buildStepRow(rec))
+    currentPath = newPath
+  }
+
+  // Close any subs still open at the tail. While the run is live, only close
+  // subs that the overlay has marked terminal — others stay "in-flight" and
+  // their `▼` row remains visible without a matching exit. At terminal status
+  // every open sub gets a closing row (using the overlay's status when
+  // available, otherwise a synthesized `✗` with no `durationMs`).
+  for (let i = currentPath.length - 1; i >= 0; i--) {
+    const name = currentPath[i]
+    if (name === undefined) continue
+    if (!args.terminal && args.subOverlay.get(name)?.status === 'running') continue
+    const exit = buildExitRow(name, i + 1, args.subOverlay, args.suppressed)
+    if (exit !== undefined) rows.push(exit)
+  }
+
+  // In-flight stepless subs: any sub in the overlay we haven't rendered yet
+  // (no child step ever materialised). Append in `startedAt` order so the
+  // tail reflects chronology.
+  const stepless: readonly [string, SubworkflowOverlay][] = [...args.subOverlay]
+    .filter(([name]) => !renderedSubs.has(name))
+    .sort((a, b) => a[1].startedAt - b[1].startedAt)
+  for (const [name, sub] of stepless) {
+    const enter = buildEnterRow(name, sub.depth, args.suppressed)
+    if (enter !== undefined) rows.push(enter)
+    renderedSubs.add(name)
+    if (sub.status !== 'running' || args.terminal) {
+      const exit = buildExitRow(name, sub.depth, args.subOverlay, args.suppressed)
+      if (exit !== undefined) rows.push(exit)
+    }
+  }
+
+  return rows
+}
+
+function commonPrefixLength(a: readonly string[], b: readonly string[]): number {
+  const max = Math.min(a.length, b.length)
+  let i = 0
+  while (i < max && a[i] === b[i]) i++
+  return i
+}
+
+function buildEnterRow(
+  name: string,
+  depth: number,
+  suppressed: ReadonlySet<string>,
+): StepRow | undefined {
+  if (suppressed.has(name)) return undefined
+  return { kind: 'subworkflow-enter', name, depth, glyph: '▼' }
+}
+
+function buildExitRow(
+  name: string,
+  depth: number,
+  subOverlay: ReadonlyMap<string, SubworkflowOverlay>,
+  suppressed: ReadonlySet<string>,
+): StepRow | undefined {
+  if (suppressed.has(name)) return undefined
+  const sub = subOverlay.get(name)
+  const glyph: '✓' | '✗' = sub?.status === 'completed' ? '✓' : '✗'
+  return {
+    kind: 'subworkflow-exit',
+    name,
+    depth,
+    glyph,
+    durationMs: sub?.durationMs,
+  }
 }
 
 interface FinalizeArgs {
@@ -96,41 +269,43 @@ function finalizeView(args: FinalizeArgs): StepsViewState {
   return { status: 'completed', run: header, steps, summary, view, ...bannerSlot }
 }
 
-interface PersistedHints {
-  readonly startedAt?: number
-  readonly endedAt?: number
-}
+// ---------------------------------------------------------------------------
+// Step-row construction
+// ---------------------------------------------------------------------------
 
-function buildRow(
-  name: string,
-  value: unknown,
-  persistedMode: 'interactive' | 'autonomous' | undefined,
-  transcriptPath: string | undefined,
-  sessionId: string | undefined,
-  live: LiveOverlay | undefined,
-  persisted: PersistedHints | undefined,
-  resumeHints:
-    | {
-        readonly runnerName?: string
-        readonly sessionIdCaptureError?: 'ambiguous' | 'empty' | 'error'
-      }
-    | undefined,
-): StepRow {
+function buildStepRow(rec: StepRecord): StepRow {
+  const entry = rec.entry
+  const live = rec.live
   const status: StepStatus = live?.status ?? 'completed'
-  const startedAt = live?.startedAt ?? persisted?.startedAt
-  const endedAt = live?.endedAt ?? persisted?.endedAt
+  const startedAt = live?.startedAt ?? entry?.startedAt
+  const endedAt = live?.endedAt ?? entry?.endedAt
+  // R23: a step inside a parallel branch renders flat (no sub gutter) even
+  // when its subPath is non-empty — the parallel rollup is the visual frame
+  // for these rows, not the sub gutter.
+  const depth = rec.insideParallel ? 0 : rec.subPath.length
   const base: RowBase = {
-    name,
+    name: rec.name,
     status,
     ...(startedAt !== undefined ? { startedAt } : {}),
     ...(endedAt !== undefined ? { endedAt } : {}),
+    ...(depth > 0 ? { depth } : {}),
   }
-  if (name.startsWith('commit:')) return { kind: 'commit', value, ...base }
-  if (name.startsWith('worktree:')) return { kind: 'worktree', value, ...base }
-  if (name.startsWith('ask:')) return { kind: 'ask', value, ...base }
-  if (name.startsWith('command:')) return { kind: 'command', ...base }
-  const mode = live?.mode ?? persistedMode ?? 'autonomous'
-  return buildAgentRow({ base, mode, sessionId, transcriptPath, resumeHints })
+  const value = entry?.value
+  if (rec.name.startsWith('commit:')) return { kind: 'commit', value, ...base }
+  if (rec.name.startsWith('worktree:')) return { kind: 'worktree', value, ...base }
+  if (rec.name.startsWith('ask:')) return { kind: 'ask', value, ...base }
+  if (rec.name.startsWith('command:')) return { kind: 'command', ...base }
+  const mode = live?.mode ?? entry?.mode ?? 'autonomous'
+  return buildAgentRow({
+    base,
+    mode,
+    sessionId: entry?.sessionId,
+    transcriptPath: entry?.transcriptPath,
+    resumeHints: {
+      runnerName: entry?.runnerName,
+      sessionIdCaptureError: entry?.sessionIdCaptureError,
+    },
+  })
 }
 
 interface RowBase {
@@ -138,6 +313,7 @@ interface RowBase {
   readonly status: StepStatus
   readonly startedAt?: number
   readonly endedAt?: number
+  readonly depth?: number
 }
 
 interface AgentRowArgs {
@@ -145,12 +321,10 @@ interface AgentRowArgs {
   readonly mode: 'interactive' | 'autonomous'
   readonly sessionId: string | undefined
   readonly transcriptPath: string | undefined
-  readonly resumeHints:
-    | {
-        readonly runnerName?: string
-        readonly sessionIdCaptureError?: 'ambiguous' | 'empty' | 'error'
-      }
-    | undefined
+  readonly resumeHints: {
+    readonly runnerName?: string
+    readonly sessionIdCaptureError?: 'ambiguous' | 'empty' | 'error'
+  }
 }
 
 // Builds the interactive/autonomous agent row, attaching only the fields that
@@ -164,8 +338,8 @@ function buildAgentRow(args: AgentRowArgs): StepRow {
       mode: 'interactive',
       ...base,
       ...(sessionId !== undefined ? { sessionId } : {}),
-      ...(resumeHints?.runnerName !== undefined ? { runnerName: resumeHints.runnerName } : {}),
-      ...(resumeHints?.sessionIdCaptureError !== undefined
+      ...(resumeHints.runnerName !== undefined ? { runnerName: resumeHints.runnerName } : {}),
+      ...(resumeHints.sessionIdCaptureError !== undefined
         ? { sessionIdCaptureError: resumeHints.sessionIdCaptureError }
         : {}),
     }
@@ -178,15 +352,23 @@ function buildAgentRow(args: AgentRowArgs): StepRow {
   }
 }
 
+type SelectableRow = Exclude<StepRow, { kind: 'subworkflow-enter' | 'subworkflow-exit' }>
+
+function isStepRow(s: StepRow): s is SelectableRow {
+  return s.kind !== 'subworkflow-enter' && s.kind !== 'subworkflow-exit'
+}
+
 function summarize(run: RunState | undefined, steps: readonly StepRow[]): EndOfRunSummary {
   const startedAt = run?.startedAt ?? 0
   const endedAt = run?.endedAt ?? startedAt
-  const completed = steps.filter((s) => s.status === 'completed').length
-  const failed = steps.filter((s) => s.status === 'failed').length
+  // Boundary rows are excluded from totals — they're not persisted "steps".
+  const stepRows = steps.filter(isStepRow)
+  const completed = stepRows.filter((s) => s.status === 'completed').length
+  const failed = stepRows.filter((s) => s.status === 'failed').length
   return {
     endedAt,
     durationMs: Math.max(0, endedAt - startedAt),
-    stepsTotal: steps.length,
+    stepsTotal: stepRows.length,
     stepsCompleted: completed,
     stepsFailed: failed,
   }
