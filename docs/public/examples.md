@@ -36,6 +36,20 @@ The repo ships runnable example workflows under `examples/`. Most can be run wit
 | `riddle-solver-proper/` | The CLI-loadable variant (exports a default workflow). |
 | `codex-riddle-solver/` | The same shape driven by the Codex runner. |
 
+## Subworkflows
+
+These seven examples pair with the [Subworkflows guide](/guides/subworkflows).
+
+| Example | Demonstrates |
+| --- | --- |
+| `feature/` | Parent dispatches to one of two subs (`simple-feature` or `complex-feature`) based on a typed `decide` step. |
+| `simple-feature/` | Typed `Args = { prompt: string }` sub. Runnable both via `orch run simple-feature "..."` and as a sub of `feature`. |
+| `complex-feature/` | Contrast pair with a longer step chain — same `Args` shape. |
+| `parent/` | Cwd-isolation parent — chains a step → `runWorkflow(branch-isolated, args)` → step and shows the parent's cwd is unchanged after the sub returns. |
+| `branch-isolated/` | Sub that uses `createWorktree({ enter: true })` — the cwd change stays bounded to the sub-frame. |
+| `ship-many/` | Homogeneous parallel of two distinct subs (`ship-a`, `ship-b`). The canonical parallel-of-subs shape under v1's single-invocation rule. |
+| `ship-one/` | The lightest single-step sub. |
+
 ## Where to go next
 
 - [Getting started](/guide/2-getting-started) — run your own first workflow.

@@ -321,6 +321,62 @@ Each branch gets a stable memoization key, so a parallel block is individually r
 `parallel()` is for genuinely independent work. Sequential, dependent steps belong in a plain `for` loop.
 :::
 
+## runWorkflow
+
+```ts
+function runWorkflow<Args extends WorkflowArgs>(
+  executor: WorkflowExecutor<Args>,
+  args: Args,
+): Promise<void>
+```
+
+Invokes a subworkflow's body inline, sharing the parent's `runId`, state store, log directory, and captureLock. Pushes a fresh sub-frame so the sub's `setWorkflowCwd(...)` / `createWorktree({ enter: true })` cannot leak back to the parent. Emits `subworkflow:enter` before the sub body runs and `subworkflow:exit` (with `outcome: 'completed' | 'failed'`) after it resolves or rejects.
+
+```ts
+import { runWorkflow, workflow } from 'orch'
+import simpleFeature from '../simple-feature/index.ts'
+
+export default workflow('feature', async (_run, args) => {
+  await runWorkflow(simpleFeature, { prompt: args.prompt ?? '' })
+})
+```
+
+Sub-internal step names are persisted under a namespaced cache key (`<sub>>name`) so two subs with overlapping step names can run from the same parent without colliding.
+
+::: warning v1 — single invocation per sub per run
+A sub can be invoked at most once per parent run. A second invocation throws `StepNameCollisionError`. For "the same sequence N times", use N distinct subs (see [Subworkflows guide](/guides/subworkflows#single-invocation-limit-v1)).
+:::
+
+Depth-bound: chains over `WorkflowDeps.maxSubworkflowDepth` (default `8`) throw `SubworkflowDepthError` before invoking the sub. Override per execution by setting `maxSubworkflowDepth` on the deps object.
+
+## workflow (generic Args)
+
+`workflow(...)` is generic over the body's `Args` type, constrained to extend `WorkflowArgs`:
+
+```ts
+function workflow<Args extends WorkflowArgs = WorkflowArgs>(
+  name: string,
+  fn: WorkflowFn<Args>,
+): WorkflowExecutor<Args>
+
+interface WorkflowArgs {
+  readonly prompt?: string
+}
+```
+
+```ts
+interface ReviewArgs extends WorkflowArgs {
+  readonly prompt: string
+  readonly lens: 'security' | 'performance' | 'design'
+}
+
+export default workflow<ReviewArgs>('review', async (run, args) => {
+  await run(REVIEW, { vars: { lens: args.lens, prompt: args.prompt } })
+})
+```
+
+The default `Args = WorkflowArgs` keeps every existing top-level workflow source-compatible.
+
 ## schema
 
 ```ts

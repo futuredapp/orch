@@ -3,7 +3,7 @@ date: 2026-05-28
 sequence: 003
 type: feat
 slug: subworkflows
-status: active
+status: completed
 origin: docs/brainstorms/2026-05-28-feat-subworkflows-requirements.md
 depth: deep
 ---

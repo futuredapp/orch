@@ -46,6 +46,7 @@ export default defineConfig({
           { text: 'File-based prompts', link: '/guides/file-based-prompts' },
           { text: 'Interactive steps', link: '/guides/interactive-steps' },
           { text: 'Parallel work', link: '/guides/parallel-work' },
+          { text: 'Subworkflows', link: '/guides/subworkflows' },
           { text: 'Typed prompt vars', link: '/guides/typed-prompt-vars' },
           { text: 'Typed returns', link: '/guides/typed-returns' },
           { text: 'Validators', link: '/guides/validators' },
