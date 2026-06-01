@@ -257,9 +257,14 @@ export interface WorkflowDeps {
 // ---------------------------------------------------------------------------
 // WorkflowFn — the function a workflow author writes. `args` is optional
 // in the signature so legacy `async (run) => ...` callbacks still compile.
+// Generic Args carries the typed argument contract for the body. Defaulting
+// Args to WorkflowArgs keeps every existing call site source-compatible.
 // ---------------------------------------------------------------------------
 
-export type WorkflowFn = (run: RunFn, args: WorkflowArgs) => Promise<void>
+export type WorkflowFn<Args extends WorkflowArgs = WorkflowArgs> = (
+  run: RunFn,
+  args: Args,
+) => Promise<void>
 
 // ---------------------------------------------------------------------------
 // RunFn — the signature of the `run` closure passed to workflow functions
@@ -277,8 +282,17 @@ export interface RunFn {
 // ---------------------------------------------------------------------------
 // WorkflowExecutor — returned by workflow()
 // ---------------------------------------------------------------------------
+//
+// `bodyHandle` is a module-private symbol used by `runWorkflow` to invoke a
+// sub's body inline. The symbol is NOT exported from `src/core/index.ts`; the
+// only legitimate reader imports it directly from `src/core/workflow.ts`.
+// Symbol-keyed members are hidden from `Object.keys`, `for...in`, and IDE
+// autocomplete, so the external surface (`name`, `execute`, `resume`) is
+// unchanged for consumers.
 
-export interface WorkflowExecutor {
+export const bodyHandle: unique symbol = Symbol('orch.workflow.body')
+
+export interface WorkflowExecutor<Args extends WorkflowArgs = WorkflowArgs> {
   readonly name: string
   execute(deps: WorkflowDeps): Promise<void>
   /** Resume a crashed or stuck run. Accepts 'crashed' or 'running' status.
@@ -286,6 +300,10 @@ export interface WorkflowExecutor {
    *  Throws ResumeError if the run is already completed.
    *  Single-process only — no cross-process locking. */
   resume(deps: WorkflowDeps): Promise<void>
+  /** Module-private body handle. Read only by `runWorkflow` via direct symbol
+   *  import. Not enumerable and not part of the public `src/core/index.ts`
+   *  barrel. */
+  readonly [bodyHandle]: WorkflowFn<Args>
 }
 
 // ---------------------------------------------------------------------------
@@ -1411,16 +1429,34 @@ async function executeWorkflowFn(fn: WorkflowFn, deps: WorkflowDeps): Promise<vo
   }
 }
 
-export function workflow(name: string, fn: WorkflowFn): WorkflowExecutor {
+// Workflow names share the cache-key alphabet so a sub name embedded into a
+// step cache key like `simple-feature>plan` cannot collide with an existing
+// step name. The pattern matches existing names in `examples/` (e.g.
+// `simple-feature`, `ask-demo`) and rejects `>` (sub-path separator) and `:`
+// (vars-hash separator).
+const WORKFLOW_NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/
+
+export function workflow<Args extends WorkflowArgs = WorkflowArgs>(
+  name: string,
+  fn: WorkflowFn<Args>,
+): WorkflowExecutor<Args> {
+  if (!WORKFLOW_NAME_PATTERN.test(name)) {
+    throw new Error(`workflow name must match /^[a-z0-9][a-z0-9-]*$/; got: ${JSON.stringify(name)}`)
+  }
   return {
     name,
+    [bodyHandle]: fn,
     async execute(deps: WorkflowDeps): Promise<void> {
       await deps.stateStore.initRun(deps.runId, {
         workflowName: deps.workflowName,
         startedAt: deps.clock.now(),
         ...(deps.args !== undefined ? { args: deps.args } : {}),
       })
-      await executeWorkflowFn(fn, deps)
+      // The CLI cannot type the args at startup; treat the body's Args as
+      // assignable from WorkflowArgs at the call boundary. The dual-role
+      // limit (Args requiring non-prompt fields is sub-only) is documented
+      // in the public guide.
+      await executeWorkflowFn(fn as unknown as WorkflowFn, deps)
     },
     async resume(deps: WorkflowDeps): Promise<void> {
       // Skip initRun() — resume validates existence and resets status directly.
@@ -1429,7 +1465,7 @@ export function workflow(name: string, fn: WorkflowFn): WorkflowExecutor {
       if (state === undefined) throw new RunNotFoundError(deps.runId)
       if (state.status === 'completed') throw new ResumeError(deps.runId, state.status)
       await deps.stateStore.setStatus(deps.runId, 'running')
-      await executeWorkflowFn(fn, deps)
+      await executeWorkflowFn(fn as unknown as WorkflowFn, deps)
     },
   }
 }
