@@ -78,7 +78,7 @@ These terms recur across the plan; pin meanings before the unit list to avoid th
 | R17 lifecycle.ndjson records | U6 | `runWorkflow` itself appends; not the step emitter. |
 | R18 sub doesn't know it's a sub | U2, U5 | Body handle is opaque to the author; the `WorkflowFn` signature is unchanged. |
 | R19 same `WorkflowExecutor` shape | U2 | Symbol-keyed module-private body field is invisible to consumers. |
-| R20 `StepNameCollisionError` at `saveStep` | U4 | Detected in `runStepOnce` before `saveStep` so the colliding step's result is not persisted. |
+| R20 `StepNameCollisionError` before `saveStep` | U4 | Detected in `runStepOnce` before `saveStep` (moved from origin's `saveStep` location per KTD §6 to avoid ALS threading through the state-store port) so the colliding step's result is not persisted. |
 | R21 `SubworkflowDepthError` | U5 | Default `maxDepth = 8`; override via `runWorkflow.config.maxDepth`. |
 | R22–R26 two-pane gutter | U7, U8, U9 | Boundary rows + selection skip + nested stacking + depth-≥4 collapse + gutter-aware truncation. |
 | AE1, AE2, AE3, AE4, AE5 | U5, U4, U2 | Behavioral integration tests + `expect-type` tests. |
@@ -294,7 +294,9 @@ The tree is a scope declaration; the implementer may adjust if implementation re
 
 **Files:**
 - `src/core/execution-context.ts` (modify lines 27–80)
+- `src/core/parallel.ts` (modify `branchStore` construction at lines 168–180 — propagate the five new fields into each branch's store; see Approach)
 - `tests/unit/core/execution-context.test.ts` (modify)
+- `tests/unit/core/parallel-inherits-subworkflow-fields.test.ts` (new — assert a `runWorkflow` invocation inside a parallel branch sees the parent's `subworkflowPath` and `runFnRef`)
 
 **Approach:**
 - Add five new readonly fields to `ExecutionContext`:
@@ -306,6 +308,7 @@ The tree is a scope declaration; the implementer may adjust if implementation re
 - Add small reader helpers: `currentSubworkflowDepth()`, `currentSubworkflowPath()`, `isInsideParallel()` (mirroring `currentParallelDepth()` at `src/core/execution-context.ts:48-50`).
 - `setWorkflowCwd`'s guard at lines 71–80 is unchanged — `parallelDepth` and `homogeneousBranch` still flow through inheritance.
 - Root-frame construction (`workflow.ts:1361-1370`) extends the existing `executionContext.run({...})` literal to populate `runFnRef` and `loggerRef`. The lift is one-line; both fields are required for U5 to typecheck without `!` non-null assertions (CLAUDE.md rule 6).
+- **`parallel()` `branchStore` propagation (adversarial review).** `src/core/parallel.ts:168-180` constructs each branch's `ExecutionContext` by enumerating fields, NOT by spreading `...outer`. Extend the constructor to also copy `runFnRef`, `loggerRef`, `subworkflowDepth`, `subworkflowPath`, and to derive `insideParallel: true` (always true inside a parallel branch, by definition). Without this, a `runWorkflow` invocation inside a parallel branch reads `parent.runFnRef === undefined` (trips U5's outside-scope guard) and `currentSubworkflowPath() === []` (breaks the sub-aware cache key — sibling parallel branches' sub-internal steps with shared names would collide on the wrong cache key). AE6 (rewritten), AE7, AE13, and the `ship-many` example all depend on this propagation.
 
 **Execution note:** none.
 
@@ -330,17 +333,20 @@ The tree is a scope declaration; the implementer may adjust if implementation re
 
 **Files:**
 - `src/core/workflow.ts` (modify lines 345–360, `runStepOnce` around lines 1188–1326)
-- `src/state/state-store.ts` (no schema change required; the existing `steps[entry.name]` keying naturally absorbs longer keys)
+- `src/core/types.ts` (modify — widen `STEP_NAME_PATTERN` to permit `>`; raise `MAX_STEP_NAME_LENGTH` to 512)
+- `src/state/state-store.ts` (modify — add `readonly subCallId?: string` to `StepEntry` for R20 detection per below; the existing `steps[entry.name]` keying naturally absorbs longer keys)
 - `tests/unit/core/derive-step-key.test.ts` (new or modify)
 - `tests/unit/core/run-step-once-collision.test.ts` (new)
+- `tests/unit/core/types-step-name-pattern.test.ts` (new — regression that the widened pattern still rejects legacy-illegal chars and accepts `>`)
 
 **Approach:**
+- **Brand-validator update (adversarial review).** `STEP_NAME_PATTERN` at `src/core/types.ts:36` is widened from `/^[a-z0-9][a-z0-9:-]*$/` to `/^[a-z0-9][a-z0-9:>-]*$/` so cache keys like `simple-feature>plan` pass `stepName()` validation. `MAX_STEP_NAME_LENGTH` rises from 128 to 512 so realistic sub names at `maxDepth = 8` (e.g. `simple-feature > complex-feature > … > plan:vars-<hash>`) do not bust the cap. Add a regression test that a depth-8 chain with average 15-char sub names plus a vars hash validates.
 - `deriveStepKey(name, overrides, subPath)` becomes the new signature. Order of folds:
   1. `overrides.as` wins (unchanged — explicit author override is sub-agnostic).
   2. If `subPath.length > 0`, prepend `${subPath.join('>')}/` to `name`.
   3. Append `:vars-<hash>` when vars non-empty (unchanged).
 - `runStepOnce` reads `currentSubworkflowPath()` at entry and passes it to `deriveStepKey`. The `as`-override path explicitly bypasses sub-folding so authors can opt into the legacy cross-sub key by declaring `as:` (documented limitation).
-- R20 collision detection happens after `deriveStepKey` and before `saveStep`: if `state.steps[key]` exists AND the existing entry's `subPath` differs from the current sub-path (i.e., the prior write came from a different scope and was not a cache hit replay), throw `StepNameCollisionError`. This handles the "same sub invoked twice in one run" case the brainstorm names. The colliding step's result is NOT persisted; the sub's prior steps remain on disk.
+- **R20 collision detection via sub-call-id (revised per adversarial review).** Each `runWorkflow` invocation mints a unique `subCallId` (a short opaque token; persisted on the sub frame's ALS store) and `runStepOnce` reads it from ALS at entry. At first write, `subCallId` is stored on `StepEntry`. On a subsequent write to the same key in the same execution, throw `StepNameCollisionError` when EITHER (a) `existing.subPath` differs from the current sub-path (the original different-scope case) OR (b) `existing.subPath` matches the current sub-path AND `existing.subCallId` differs from the current ALS sub-call-id AND this is NOT a resume (deps already discriminates execute vs resume). Case (b) is the "same sub invoked twice in one run" case the brainstorm names — the predicate `subPath !== subPath` alone misses it because both invocations share the same sub-path. The colliding step's result is NOT persisted; the sub's prior steps remain on disk.
 - Cache-hit path is unchanged: the cache key now disambiguates by sub, so a step in `simple-feature` and a step of the same name in `complex-feature` populate distinct entries.
 
 **Execution note:** Add a regression test BEFORE writing the cache-key change for the "decide-cached, reroute to different sub" hazard the 2026-05-31 review surfaced. The test fixes today's hazard contract so the cache-key change cannot silently reintroduce it.
@@ -354,8 +360,10 @@ The tree is a scope declaration; the implementer may adjust if implementation re
 - Given `as: 'override'` inside any sub, the cache key is `override` (explicit author override bypasses sub-folding).
 - Given vars non-empty inside a sub, the cache key is `outer>plan:vars-<hash>`.
 - Covers AE4. Given a parent's `decide` step cached as `'simple'` and `simple-feature` previously completed `plan` and `implement`, resume replays the cached `simple-feature>plan` and `simple-feature>implement` from disk without reinvoking the runner.
-- Given the same sub invoked twice in a single run (second call would write `simple-feature>plan` again with the same sub-path), `runStepOnce` throws `StepNameCollisionError` with both sub-paths in the message; the second step's result is NOT in `state.steps`.
+- Given the same sub invoked twice in a single run (second call would write `simple-feature>plan` again with the same sub-path), `runStepOnce` throws `StepNameCollisionError` — case (b) of the detection predicate, distinguished by `subCallId` even though `subPath` matches; the second step's result is NOT in `state.steps`.
 - Regression: editing a parent body to reroute a cached `decide` value from `simple-feature` to `complex-feature` (where both have a `plan` step) does NOT replay `simple-feature>plan`'s value into `complex-feature>plan` — they are distinct keys.
+- Brand-validator regression: `stepName('simple-feature>plan')` validates without throwing; `stepName('outer>inner>plan:vars-deadbeef')` validates; a name with a newline still throws (the widened pattern still constrains the alphabet).
+- Length regression: a depth-8 chain of 15-char sub names + a 10-char step name + a `:vars-<16-hex>` suffix produces a key under 512 chars and passes `stepName()`.
 
 **Verification:** All existing executor tests pass; new collision + sub-key tests pass.
 
@@ -367,7 +375,7 @@ The tree is a scope declaration; the implementer may adjust if implementation re
 
 **Requirements:** R1, R2, R3, R7, R8, R10, R11, R12, R13, R14, R15, R17, R18, R19, R21.
 
-**Dependencies:** U1, U2, U3.
+**Dependencies:** U1, U2, U3, U4.
 
 **Files:**
 - `src/core/run-workflow.ts` (new)
@@ -384,14 +392,14 @@ The tree is a scope declaration; the implementer may adjust if implementation re
     args: Args,
   ): Promise<void>
 
-  // Mutable config slot — module-level object, no side effects at import time
-  // (default set at declaration, per CLAUDE.md rule 8).
-  export namespace runWorkflow {
-    export const config: { maxDepth: number } = { maxDepth: 8 }
-  }
+  // Unexported default. The per-execution override travels via WorkflowDeps
+  // (see below), NOT via a mutable module-level slot — keeps tests isolated
+  // and lets concurrent in-process executions carry different bounds.
+  const DEFAULT_MAX_DEPTH = 8
   ```
+- **Per-execution `maxDepth` (revised per cross-persona review).** `WorkflowDeps` gains `readonly maxSubworkflowDepth?: number`. `executeWorkflowFn` snapshots `deps.maxSubworkflowDepth ?? DEFAULT_MAX_DEPTH` into an ALS field at workflow-root construction (alongside `runFnRef` / `loggerRef`); `runWorkflow`'s depth guard reads the snapshot, never a process-global. This makes the override per-execution (no test pollution, no concurrent-execution race) and removes the mid-run mutation hazard. The `runWorkflow.config.maxDepth` mutable namespace slot from the earlier draft is dropped.
 - **Outside-scope guard (R2):** read `executionContext` store; if absent throw a clear `Error('runWorkflow() called outside an active workflow execution')`. Mirrors `setWorkflowCwd`'s guard.
-- **Depth guard (R21):** read `currentSubworkflowDepth()`. Throw `SubworkflowDepthError` if `+1 > runWorkflow.config.maxDepth`. Throws *before* the enter event fires, so the parent's failure classification sees `SubworkflowDepthError` (which classifies as `'crashed'` per U1's deliberate omission from `isStepLevelFailure`).
+- **Depth guard (R21):** read `currentSubworkflowDepth()`. Throw `SubworkflowDepthError` if `+1 > snapshot.maxSubworkflowDepth`. Throws *before* the enter event fires, so the parent's failure classification sees `SubworkflowDepthError` (which classifies as `'crashed'` per U1's deliberate omission from `isStepLevelFailure`).
 - **Sub frame construction (R8, R11, R12, R13, R15, R23):**
   ```
   const parent = executionContext.getStore()!
@@ -452,7 +460,7 @@ The tree is a scope declaration; the implementer may adjust if implementation re
 - `tests/unit/observability/status-loop-subworkflow.test.ts` (new)
 
 **Approach:**
-- Union additions:
+- Union additions (three new variants — `host-error` promoted to typed per adversarial review):
   ```
   | { readonly type: 'subworkflow:enter'; readonly name: string; readonly depth: number }
   | {
@@ -462,7 +470,15 @@ The tree is a scope declaration; the implementer may adjust if implementation re
       readonly durationMs: number
       readonly outcome: 'completed' | 'failed'
     }
+  | {
+      readonly type: 'host-error'
+      readonly source: 'subworkflow:enter' | 'subworkflow:exit'
+      readonly name: string
+      readonly depth: number
+      readonly message: string
+    }
   ```
+  Promoting `host-error` to a typed variant rather than an untyped append forces the TS exhaustiveness check across every consumer (`textLifecycle`, `jsonLifecycle`, `applyEvent`, choreographer, steps-view model tail), eliminating the silent-fallthrough hazard that the earlier draft's "documented JSON shape in docs/logging.md" approach reintroduces. The shape is also reconciled into `docs/public/reference/` for external `orch logs` consumers.
 - Plain host text printer:
   - Sequential composition (when the event's `insideParallel` is not true — derived by reading `executionContext.getStore()?.insideParallel` at emit time AND piggybacking it on the event via an optional `insideParallel?: true` discriminator). Decision: pass `insideParallel` ON the event (cheap, eliminates ALS coupling in host code).
   - Renders `── ▶ subworkflow: <name> ──` on enter and `── ◀ subworkflow: <name> (<elapsed>) ──` on exit when `insideParallel !== true`.
@@ -470,7 +486,7 @@ The tree is a scope declaration; the implementer may adjust if implementation re
 - Plain host JSON printer emits both events unchanged (no rendering decision; just structured output).
 - `applyEvent` in `status-loop.ts`: sub events have no `stepName`; early-return at the entry guard (around line 138 where `stepName` is destructured). Add an explicit arm for clarity rather than relying on the early-return; the TS exhaustiveness check requires it.
 - Choreographer: route `subworkflow:enter`/`subworkflow:exit` to the existing emitter mechanism so the steps-view model picks them up via `lifecycle.ndjson` tailing. The projection-layer rendering rules live in U8/U9.
-- `lifecycle.ndjson` records: `runWorkflow` already appends the events in U5. The new `host-error` record type is an untyped append (no `StepLifecycleEvent` variant — it's a diagnostic record); add it as a documented JSON shape in `docs/logging.md` (internal docs).
+- `lifecycle.ndjson` records: `runWorkflow` already appends the events in U5. `host-error` is now a typed variant on `StepLifecycleEvent` (see Union additions above); plain-host text printer renders it as a diagnostic line (e.g. `── ! host-error on subworkflow:<phase> for <name>: <message> ──`) and JSON printer emits it as a structured record. Reconcile the new shape into `docs/public/reference/` and update `docs/logging.md` (internal) to point at the typed contract.
 
 **Execution note:** none.
 
@@ -548,8 +564,12 @@ The tree is a scope declaration; the implementer may adjust if implementation re
 - **Replay-window policy (2026-05-31 design-lens decision):** during cache-hit replay, the executor synchronously emits all enter/exit events. The projector renders both rows in the first frame after replay; no partial state is observable.
 - **Failure color (2026-05-31 design-lens decision):** `✗` glyph is the primary signal. Red is additive. NO_COLOR / color-blind terminals render the row with `✗` only.
 - Selection skip (R24): `useStepsSelection.move(delta)` re-scans through boundary rows after each delta until it lands on a row whose `kind` is NOT `subworkflow-enter`/`subworkflow-exit`. `findLive`'s committed cursor uses the same skip predicate.
+- **Selection-skip terminal conditions (design-lens review).** When the scan finds no selectable row in the requested direction (e.g. ↑ from the first selectable row when all rows above it are boundary rows), the cursor stays at its current position — a no-op delta. When `steps` contains no selectable rows at all (only boundary rows), `selectedName` is `undefined`. `findLive` uses the same skip predicate: `s.kind !== 'subworkflow-enter' && s.kind !== 'subworkflow-exit'`.
+- **`committedFromView` fallback skip (design-lens review).** The existing fallback `steps[steps.length - 1]?.name` must also skip boundary rows — scan backwards from the last element and return the first row whose `kind` is neither `subworkflow-enter` nor `subworkflow-exit`. Without this, the committed cursor lands on a non-selectable row whenever the projected list ends in a boundary row (a sub that has fired enter but no child step has started yet), violating the invariant that the committed cursor always tracks a selectable row.
 - Follow-live committed cursor (2026-05-31 design-lens decision): the cursor always points to the most recently active *selectable* row (child step rows only). While a sub is active and no child step has started yet, the committed cursor remains on the most recent pre-sub step.
 - **`computeVisibleCount` policy (2026-05-31 design-lens decision):** boundary rows count as ordinary rows in the vertical budget. The depth bound (R21 = 8) caps the worst-case squeeze at 16 rows of boundaries.
+- **Scroll-window cut behavior (design-lens review).** Boundary rows are NOT sticky in the scroll window. Slicing the visible list mid-sub is acceptable; the partial sub renders with whatever rows fit (an orphaned `▼` enter row at the top edge or an orphaned `✓`/`✗` exit row at the bottom edge is the documented behavior). No keepalive logic for boundary rows.
+- **Empty-sub / interrupted-sub rendering (design-lens review).** An enter row whose matching exit row never fires (e.g. the sub was interrupted by `SubworkflowDepthError` thrown at depth N+1, which fires N enter events but no exit) stays as `▼ <name>` until the run terminates. At terminal status the projector synthesizes a `✗ <name>` exit row (with `durationMs` unknown — omit or render as `—`) so every enter row has a visible bound. An enter row with zero child step rows between it and its exit row renders adjacent to the exit row (the empty-sub case is visually compact, not blank).
 - Enter on a boundary row is a no-op: no intent emitted, no right-pane change. No info banner — the no-op behavior is the contract; the brainstorm's AE10 "optionally" wording is dropped (commit to the no-op without an info banner so two implementers cannot independently render different UX).
 
 **Execution note:** Pane-snapshot tests (AE8, AE11) fit the existing behavioral-DSL `snapshot.test.ts` shape; write them as RED tests against the projector before implementing the boundary insertion logic.
@@ -562,6 +582,10 @@ The tree is a scope declaration; the implementer may adjust if implementation re
 - Covers AE10. Cursor `↓` from `child-2` lands on `parent-B`, skipping the `✓ sub` exit boundary; `↑` from `parent-B` lands on `child-2`; `⏎` while the cursor is forced to a boundary row emits no intent.
 - Follow-live: while a sub is active and no child step has started, the committed cursor remains on the most recent pre-sub step.
 - Boundary rows are visible under the live overlay before the corresponding step rows arrive (the enter event fires before any sub `step:start`).
+- Selection-skip terminal: given the projected list `[▼ outer, ▼ inner, leaf, ✓ inner, ✓ outer]`, ↑ from `leaf` skips both enter rows and stays on `leaf` (no selectable row above); ↓ from `leaf` skips both exit rows and stays on `leaf` (no selectable row below). `selectedName === 'leaf'`.
+- Selection-skip empty: given the projected list `[▼ outer, ✓ outer]` (empty sub), `selectedName` is `undefined`; ↑/↓/⏎ are all no-ops.
+- `committedFromView` fallback: given the projected list `[parent-A, ▼ sub]` (sub fired enter, no child started), the committed cursor lands on `parent-A`, not on `▼ sub`.
+- Empty-sub render: given an interrupted sub (enter fired, no children, no exit), the projector renders `▼ <name>` while running; at terminal status renders an adjacent synthesized `✗ <name>` row.
 
 **Verification:** All AE8, AE10, AE11 pane-snapshot/keystroke tests pass.
 
@@ -585,7 +609,12 @@ The tree is a scope declaration; the implementer may adjust if implementation re
 **Approach:**
 - **R23 parallel suppression:** the brainstorm's adversarial flag (ALS `parallelBlockIdRef` reads truthy for any descendant) is RESOLVED by persisting `insideParallel: true` on `StepEntry` when the step ran inside a parallel branch (or transitively inside a sub-of-a-sub-inside-parallel). The projector reads `entry.insideParallel` to suppress boundary rendering uniformly across the whole sub subtree. This matches the brainstorm's "Suppression is uniform across the whole sub subtree" rule and AE13's requirement that sub-of-sub-inside-parallel renders flat.
 - **R26 collapse rule:** when effective `depth >= 4` AND `paneCols < 60`, the prefix becomes the literal token `│N ` where N is the depth digit. Boundary rows for a depth-`d` sub render with the depth-`(d-1)` compact form (`│{d-1} ▼ <name>`) — matching their children at depth `d` (`│{d} step`). This is the AE12 contract.
-- **Gutter-aware truncation (2026-05-31 design-lens decision):** `STEP_NAME_MAX = 30` minus the gutter cost, floored at 12. Stacked form costs `2 * effectiveDepth` characters; compact form costs 3 (`│N `).
+- **Gutter-aware truncation (2026-05-31 design-lens decision; per-row-kind clarification per design-lens review).** `STEP_NAME_MAX = 30` minus the gutter cost, floored at 12. Gutter cost is per-row-kind:
+  - Step rows, stacked form: `2 * effectiveDepth` (each `│ ` is 2 chars).
+  - Step rows, compact form: 3 (`│N `).
+  - Boundary rows, stacked form: `2 * effectiveDepth + 2` (the trailing `▼ ` or `✓ ` adds 2 chars after the gutter, before the name).
+  - Boundary rows, compact form: 5 (`│N ▼ ` / `│N ✓ ` — 3 for the compact gutter + 2 for the glyph and space).
+  Two implementers must converge on identical widths; the per-row-kind formula prevents one from applying the step-row cost to a boundary row and rendering a slightly different width.
 - **AE13 (new, sub-of-sub-inside-parallel):** Given `parallel(['a'], (t) => runWorkflow(outer, args))` where `outer` calls `runWorkflow(inner, args)` and `inner` declares step `plan`, all of outer's and inner's boundary rows are suppressed; `plan` renders flat at the parent's gutter level.
 
 **Execution note:** none.
@@ -800,3 +829,18 @@ These survive into implementation but do NOT block the plan. Listed for the impl
 ---
 
 *Origin: [`docs/brainstorms/2026-05-28-feat-subworkflows-requirements.md`](../brainstorms/2026-05-28-feat-subworkflows-requirements.md). The four scope decisions made before planning (defer `stepPrefix`, ship R22–R26, keep R21, sub-aware cache) and the technical decisions in §Key Technical Decisions are the load-bearing differences between this plan and the origin's earlier framings.*
+
+---
+
+## Deferred / Open Questions
+
+### From 2026-06-01 review
+
+Items the doc-review surfaced that need a human decision before implementation. They do not block reading the plan but each affects scope or premise; resolve in PR review or before kicking off the work.
+
+- **Reuse force demoted without strategic acknowledgment** *(product-lens, P1).* The brainstorm framed Reuse as Force #1; v1's collision contract forced AE6 and the `ship-many` example to be rewritten with two different subs, and the public guide will document the single-invocation limit as fine print. Either elevate `{ stepPrefix }` into v1 scope so the canonical parallel-of-subs pattern works as users will reach for it, or reframe the Problem Frame so v1 clearly serves file-size + CLI-composability without leaning on Reuse imagery. Currently the primitive ships the rendering infrastructure (U6–U9) for a use case it cannot yet serve.
+- **`runFnRef` / `loggerRef` on `ExecutionContext` vs. closure capture** *(scope-guardian, P1).* U3 stores the parent's `run` closure and `SessionLogger` on the ALS interface, which has exactly one consumer (U5). The brainstorm listed three candidates; option (a) is documented as adopted but the rationale for rejecting option (c) — pass `run` as a parameter to `runWorkflow`, captured in a closure built by `executeWorkflowFn` — is not recorded. Refusing (c) ties two implementation-internal closures to a public interface every host reads. If kept, KTD §2 should record why; if reversed, U3 drops the two fields and U5 takes `run` as a parameter (the defensive guard in U5 also dissolves).
+- **U8 / U9 ship despite the origin's deferral candidate** *(scope-guardian, P1).* U8+U9 = 6 modified files + 5 new test files + a second schema change (`StepEntry.insideParallel`) for AE13. The brainstorm's 2026-05-31 review proposed shipping v1 with the plain-host divider only and letting the gutter return when real composition usage motivates it ("pane-only requirements do not block the core primitive"). The plan's Scope Boundaries lists R22–R26 as in-scope without rationale. Deferring U8/U9 cuts ~40% of v1 implementation files and removes the `StepEntry.insideParallel` schema field.
+- **Rename "subworkflow" before the wire format ships** *(product-lens, P2).* Users from Airflow/Temporal/Prefect read "subworkflow" as isolated child execution; the actual contract is inline composition. `subworkflow:enter` baked into `lifecycle.ndjson` makes rename cost grow from one event type to every JSON consumer, every plain-host snapshot test, and every docs example. Decide before U6 lands: rename boundary events to contract-accurate (`composition:enter` / `compose:enter`) now, or commit in U11 to "subworkflow = inline composition" in orch's vocabulary so the mental-model mismatch is paid at adoption.
+- **`ship-many` example models a deferred pattern** *(scope-guardian, P2).* `ship-many` is the canonical parallel example in U10; using `shipA` + `shipB` to dodge the collision teaches a pattern that becomes wrong the moment `{ stepPrefix }` ships. If the first deferred item above (elevate `{ stepPrefix }`) is rejected: rename `ship-many` to `parallel-distinct-subs`, add a prominent code comment that multi-invocation reuse requires the deferred overload, and update U11 accordingly. If `{ stepPrefix }` is elevated, the example becomes natural again.
+- **AE13's `StepEntry.insideParallel` schema field** *(scope-guardian, P2).* AE13 was added during review and forced U9 to persist `insideParallel: true` on `StepEntry`. The origin R23 proposed live ALS-signal detection (`parallelBlockIdRef`), not a persisted field — that approach keeps the projector test surface entirely in-memory and avoids a second disk-format change. If U8/U9 are deferred (third item above) this dissolves; if U8/U9 ship, decide whether AE13 is worth a schema field or whether ALS-signal detection at projection time is acceptable.
