@@ -1,8 +1,9 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
+import type { SessionLogger } from '../observability/index.ts'
 import type { Path } from './types.ts'
 // Type-only import — `workflow.ts` already depends on this file at runtime,
 // so a value-level import would create a runtime cycle. Erased after compile.
-import type { StepLifecycleEvent } from './workflow.ts'
+import type { RunFn, StepLifecycleEvent } from './workflow.ts'
 
 // ---------------------------------------------------------------------------
 // ExecutionContext — AsyncLocalStorage for workflow execution state
@@ -37,6 +38,28 @@ export interface ExecutionContext {
   readonly homogeneousBranch?: true
   readonly emitLifecycle?: (event: StepLifecycleEvent) => void
   readonly parallelBlockIdRef?: ParallelBlockIdRef
+  // Subworkflow frame fields (U3). Undefined at the root frame, populated
+  // on each `runWorkflow` entry. `subworkflowDepth` defaults to 0 (root);
+  // `subworkflowPath` defaults to [] (root); `insideParallel` is set when
+  // a sub is entered from a parent frame inside a `parallel()` branch and
+  // propagates to all descendants (R23 — uniform suppression across the
+  // sub-of-sub subtree).
+  readonly subworkflowDepth?: number
+  readonly subworkflowPath?: readonly string[]
+  readonly insideParallel?: true
+  // Populated at workflow-root construction in `executeWorkflowFn`. Read by
+  // `runWorkflow` to pass the parent's `run` closure into the sub body (R7
+  // inline-equivalence) and to append `subworkflow:enter`/`subworkflow:exit`
+  // records to `lifecycle.ndjson` (R17). Both fields are optional so the
+  // root frame can populate them in one literal alongside the existing
+  // fields without breaking sites that construct an ExecutionContext
+  // directly in tests.
+  readonly runFnRef?: RunFn
+  readonly loggerRef?: SessionLogger
+  // Snapshot of `WorkflowDeps.maxSubworkflowDepth` taken at workflow-root
+  // construction so `runWorkflow`'s depth guard is per-execution (no
+  // process-globals, no test pollution, no concurrent-execution race).
+  readonly maxSubworkflowDepth?: number
 }
 
 export const executionContext = new AsyncLocalStorage<ExecutionContext>()
@@ -47,6 +70,36 @@ export const executionContext = new AsyncLocalStorage<ExecutionContext>()
  */
 export function currentParallelDepth(): number {
   return executionContext.getStore()?.parallelDepth ?? 0
+}
+
+/**
+ * Returns the current subworkflow depth (0 = at the workflow root, not inside
+ * any `runWorkflow` frame). Safe to call outside any context — returns 0.
+ */
+export function currentSubworkflowDepth(): number {
+  return executionContext.getStore()?.subworkflowDepth ?? 0
+}
+
+/**
+ * Returns the current sub-path: the chain of sub names enclosing the active
+ * step, deepest last. Empty at the root. Safe to call outside any context —
+ * returns the empty array.
+ */
+export function currentSubworkflowPath(): readonly string[] {
+  return executionContext.getStore()?.subworkflowPath ?? []
+}
+
+/**
+ * Returns true when the active frame is inside a `parallel()` branch OR is a
+ * descendant of a sub entered from inside a parallel branch. The latter
+ * propagation is required for R23/AE13 — boundary rendering is suppressed
+ * uniformly across the whole sub-of-sub subtree, not just the first level
+ * below the parallel block.
+ */
+export function isInsideParallel(): boolean {
+  const store = executionContext.getStore()
+  if (store === undefined) return false
+  return store.insideParallel === true || store.parallelDepth > 0
 }
 
 /**

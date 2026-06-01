@@ -252,7 +252,21 @@ export interface WorkflowDeps {
    * refusal path.
    */
   readonly resumeRegistry?: ResumeRegistry
+  /**
+   * Maximum nesting depth for `runWorkflow` invocations (R21). Defaults to 8.
+   * The snapshot is taken at workflow-root construction and stashed on the
+   * ALS frame; `runWorkflow`'s depth guard reads the snapshot, never a
+   * process-global. Per-execution rather than a module-level slot keeps
+   * tests isolated and lets concurrent in-process executions carry
+   * different bounds.
+   */
+  readonly maxSubworkflowDepth?: number
 }
+
+/** R21 default — chains deeper than 8 typically signal accidental
+ *  recursion. Override via `WorkflowDeps.maxSubworkflowDepth` when nesting
+ *  is intentional. */
+export const DEFAULT_MAX_SUBWORKFLOW_DEPTH = 8
 
 // ---------------------------------------------------------------------------
 // WorkflowFn — the function a workflow author writes. `args` is optional
@@ -1377,12 +1391,19 @@ async function executeWorkflowFn(fn: WorkflowFn, deps: WorkflowDeps): Promise<vo
     // narrow seam to fire `step:parallel-start` / `step:parallel-complete`
     // without depending on the host or WorkflowDeps.
     const emitLifecycle = (event: StepLifecycleEvent): void => deps.host.onLifecycleEvent(event)
+    // U3: populate `runFnRef`, `loggerRef`, and `maxSubworkflowDepth` at the
+    // root frame so `runWorkflow` reads them via ALS without taking
+    // WorkflowDeps directly. The snapshot makes the depth bound
+    // per-execution (no process-globals, no test pollution).
     await executionContext.run(
       {
         parallelDepth: 0,
         workflowCwd: undefined,
         emitLifecycle,
         parallelBlockIdRef: { current: 0 },
+        runFnRef: run,
+        ...(deps.logger !== undefined ? { loggerRef: deps.logger } : {}),
+        maxSubworkflowDepth: deps.maxSubworkflowDepth ?? DEFAULT_MAX_SUBWORKFLOW_DEPTH,
       },
       () => fn(run, deps.args ?? {}),
     )

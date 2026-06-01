@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'bun:test'
 import {
   currentCwd,
+  currentSubworkflowDepth,
+  currentSubworkflowPath,
   executionContext,
+  isInsideParallel,
   setWorkflowCwd,
 } from '../../../src/core/execution-context.ts'
 import { parallel } from '../../../src/core/parallel.ts'
@@ -116,5 +119,80 @@ describe('setWorkflowCwd', () => {
     })
 
     expect(observed).toEqual([A, A])
+  })
+})
+
+describe('currentSubworkflowDepth', () => {
+  it('returns 0 outside any ALS scope', () => {
+    expect(currentSubworkflowDepth()).toBe(0)
+  })
+
+  it('returns 0 inside an ALS scope that does not set the field', async () => {
+    let observed: number | undefined
+    await executionContext.run({ parallelDepth: 0 }, () => {
+      observed = currentSubworkflowDepth()
+    })
+    expect(observed).toBe(0)
+  })
+
+  it('returns the field when the ALS scope sets it', async () => {
+    let observed: number | undefined
+    await executionContext.run({ parallelDepth: 0, subworkflowDepth: 2 }, () => {
+      observed = currentSubworkflowDepth()
+    })
+    expect(observed).toBe(2)
+  })
+})
+
+describe('currentSubworkflowPath', () => {
+  it('returns the empty array outside any ALS scope', () => {
+    expect(currentSubworkflowPath()).toEqual([])
+  })
+
+  it('returns the empty array inside an ALS scope that does not set the field', async () => {
+    let observed: readonly string[] | undefined
+    await executionContext.run({ parallelDepth: 0 }, () => {
+      observed = currentSubworkflowPath()
+    })
+    expect(observed).toEqual([])
+  })
+
+  it('returns the chain when the ALS scope sets it', async () => {
+    let observed: readonly string[] | undefined
+    await executionContext.run({ parallelDepth: 0, subworkflowPath: ['outer', 'inner'] }, () => {
+      observed = currentSubworkflowPath()
+    })
+    expect(observed).toEqual(['outer', 'inner'])
+  })
+})
+
+describe('isInsideParallel', () => {
+  it('returns false outside any ALS scope', () => {
+    expect(isInsideParallel()).toBe(false)
+  })
+
+  it('returns false at the workflow root (parallelDepth = 0, no insideParallel)', async () => {
+    let observed: boolean | undefined
+    await executionContext.run({ parallelDepth: 0 }, () => {
+      observed = isInsideParallel()
+    })
+    expect(observed).toBe(false)
+  })
+
+  it('returns true when parallelDepth > 0 even if insideParallel is not yet set', async () => {
+    // Mirrors the "parent frame inside parallel, sub not yet entered" case.
+    let observed: boolean | undefined
+    await executionContext.run({ parallelDepth: 1 }, () => {
+      observed = isInsideParallel()
+    })
+    expect(observed).toBe(true)
+  })
+
+  it('returns true when insideParallel is set (descendant of sub-of-sub-inside-parallel)', async () => {
+    let observed: boolean | undefined
+    await executionContext.run({ parallelDepth: 0, insideParallel: true }, () => {
+      observed = isInsideParallel()
+    })
+    expect(observed).toBe(true)
   })
 })

@@ -167,13 +167,30 @@ async function parallelHomogeneous<I, R>(
     // `parallel()` calls inside a branch still fire block-lifecycle events.
     const wrappedFn = (item: I): Promise<R> => {
       const outer = executionContext.getStore()
+      // U3: propagate the subworkflow frame fields (`runFnRef`, `loggerRef`,
+      // `subworkflowDepth`, `subworkflowPath`, `maxSubworkflowDepth`) so a
+      // `runWorkflow` invocation inside a parallel branch sees the parent's
+      // `run` closure (R7) and emits sub events through the parent's logger
+      // (R17). `insideParallel` is always true inside a parallel branch by
+      // definition — the sub frame entered from here will inherit it and
+      // propagate to its descendants for R23 uniform suppression.
       const branchStore: ExecutionContext = {
         parallelDepth: depth,
         homogeneousBranch: true,
+        insideParallel: true,
         ...(outer?.workflowCwd !== undefined ? { workflowCwd: outer.workflowCwd } : {}),
         ...(outer?.emitLifecycle !== undefined ? { emitLifecycle: outer.emitLifecycle } : {}),
         ...(outer?.parallelBlockIdRef !== undefined
           ? { parallelBlockIdRef: outer.parallelBlockIdRef }
+          : {}),
+        ...(outer?.runFnRef !== undefined ? { runFnRef: outer.runFnRef } : {}),
+        ...(outer?.loggerRef !== undefined ? { loggerRef: outer.loggerRef } : {}),
+        ...(outer?.subworkflowDepth !== undefined
+          ? { subworkflowDepth: outer.subworkflowDepth }
+          : {}),
+        ...(outer?.subworkflowPath !== undefined ? { subworkflowPath: outer.subworkflowPath } : {}),
+        ...(outer?.maxSubworkflowDepth !== undefined
+          ? { maxSubworkflowDepth: outer.maxSubworkflowDepth }
           : {}),
       }
       return executionContext.run(branchStore, () => fn(item))
