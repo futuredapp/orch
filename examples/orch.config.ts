@@ -6,6 +6,7 @@ export default defineConfig({
     'riddle-solver-proper': 'riddle-solver-proper/index.ts',
     'codex-riddle-solver': 'codex-riddle-solver/index.ts',
     'codex-and-claude': 'codex-and-claude/index.ts',
+    'math-duel': 'math-duel/index.ts',
     'hello-file': 'hello-file/index.ts',
     compound: 'compound/index.ts',
     'feature-loop': 'feature-loop/index.ts',
