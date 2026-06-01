@@ -97,6 +97,59 @@ export class AskParallelError extends Error {
  * suggestion from the actual config (button list + field keys) — turns a
  * "go read the docs" error into an actionable one.
  */
+/**
+ * Thrown by `runStepOnce` when a step name is about to be written to
+ * `RunState.steps` under a key that another sub-frame already owns, OR when
+ * the SAME sub-path is entered twice in one run (distinguished by sub-call-id
+ * because the sub-path alone matches). Names BOTH call sites in the message
+ * so the author can locate the collision without reading the stack — the
+ * sub-call-id mismatch (case b) renders as two identical sub-paths plus a
+ * "same sub invoked twice" hint.
+ */
+export class StepNameCollisionError extends Error {
+  constructor(
+    readonly stepName: StepName,
+    readonly priorSubPath: readonly string[],
+    readonly attemptedSubPath: readonly string[],
+  ) {
+    const renderPath = (p: readonly string[]) => (p.length === 0 ? '<root>' : p.join(' > '))
+    const sameScope =
+      priorSubPath.length === attemptedSubPath.length &&
+      priorSubPath.every((seg, i) => seg === attemptedSubPath[i])
+    const scopeHint = sameScope
+      ? `The same workflow was invoked twice in one run; multi-invocation reuse is not supported in v1.`
+      : `Two different sub-paths produced the same step name; rename one step or invoke the sub through a different parent.`
+    super(
+      `Step "${stepName}" collides across sub-paths: ` +
+        `prior=[${renderPath(priorSubPath)}], attempted=[${renderPath(attemptedSubPath)}]. ` +
+        scopeHint,
+    )
+    this.name = 'StepNameCollisionError'
+  }
+}
+
+/**
+ * Thrown by `runWorkflow` when a sub would push the active sub-frame past the
+ * configured `maxSubworkflowDepth` bound (default 8). Names the chain so the
+ * author can locate the recursion and the bound so they can override it via
+ * `WorkflowDeps.maxSubworkflowDepth` when there is a real reason.
+ */
+export class SubworkflowDepthError extends Error {
+  constructor(
+    readonly depth: number,
+    readonly maxDepth: number,
+    readonly subPath: readonly string[],
+  ) {
+    const chain = subPath.length === 0 ? '<root>' : subPath.join(' → ')
+    super(
+      `runWorkflow depth ${depth} exceeds max ${maxDepth}. ` +
+        `Chain: ${chain}. ` +
+        `Override via WorkflowDeps.maxSubworkflowDepth when nesting is intentional.`,
+    )
+    this.name = 'SubworkflowDepthError'
+  }
+}
+
 export class AskNoDefaultError extends Error {
   constructor(
     readonly stepName: StepName,

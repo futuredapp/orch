@@ -24,6 +24,8 @@ export {
   RunNotFoundError,
   RunnerCapabilityError,
   StepError,
+  StepNameCollisionError,
+  SubworkflowDepthError,
 } from './errors.ts'
 export {
   currentCwd,
