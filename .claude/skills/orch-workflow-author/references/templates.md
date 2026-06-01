@@ -28,9 +28,8 @@ process.env.IS_SANDBOX = '1'
 
 const HAIKU = 'claude-haiku-4-5-20251001'
 
-const SLUG_SCHEMA = z.object({
-  slug: z.string().min(2).max(40).regex(/^[a-z][a-z0-9-]*$/, 'lowercase kebab-case'),
-})
+// Structural only — the kebab-case rule lives in the prompt below, not here.
+const SLUG_SCHEMA = z.object({ slug: z.string() })
 
 const AUTONOMOUS = claude({
   bare: false,
@@ -107,7 +106,7 @@ const MAX_ITERATIONS = 5
 
 const PHASE_DONE_SCHEMA = z.object({
   done: z.boolean(),
-  reason: z.string().min(1).max(500),
+  reason: z.string(),
 })
 
 const AUTONOMOUS = claude({
@@ -168,10 +167,11 @@ import { claude } from '../../src/runners/index.ts'
 
 const LENSES = ['security', 'performance', 'design'] as const
 
+// Structural only: the "at most ~20 issues" cap is expressed in the prompt.
 const REVIEW_SCHEMA = z.object({
   lens: z.string(),
   passed: z.boolean(),
-  issues: z.array(z.string()).max(20),
+  issues: z.array(z.string()),
 })
 
 const AUTONOMOUS = claude({ bare: false, flags: ['--permission-mode', 'bypassPermissions'] })
@@ -247,12 +247,10 @@ process.env.IS_SANDBOX = '1'
 const HAIKU = 'claude-haiku-4-5-20251001'
 const MAX_WORK_ITERATIONS = 5
 
-const SLUG_SCHEMA = z.object({
-  slug: z.string().min(2).max(40).regex(/^[a-z][a-z0-9-]*$/),
-})
+const SLUG_SCHEMA = z.object({ slug: z.string() })
 const PHASE_DONE_SCHEMA = z.object({
   done: z.boolean(),
-  reason: z.string().min(1).max(500),
+  reason: z.string(),
 })
 
 function claudeFor(sessionName: string): Runner {
@@ -419,9 +417,7 @@ import { claude } from '../../src/runners/index.ts'
 
 const HAIKU = 'claude-haiku-4-5-20251001'
 
-const SLUG_SCHEMA = z.object({
-  slug: z.string().min(2).max(30).regex(/^[a-z][a-z0-9-]*[a-z0-9]$/),
-})
+const SLUG_SCHEMA = z.object({ slug: z.string() })
 
 const AUTONOMOUS = claude({
   bare: false,

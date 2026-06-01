@@ -132,8 +132,10 @@ import type { Runner } from 'orch'
 const MAX_ITERATIONS = 5
 const HAIKU_MODEL = 'claude-haiku-4-5-20251001'
 
-// Schemas, if any:
-const SLUG_SCHEMA = z.object({ slug: z.string().regex(/^[a-z][a-z0-9-]*$/) })
+// Schemas, if any. Keep them structural — shape and types only. The
+// kebab-case rule for the slug lives in the prompt, NOT in the schema.
+// See "Keep schemas structural" below.
+const SLUG_SCHEMA = z.object({ slug: z.string() })
 
 // Optional helper to keep step.define calls short:
 function claudeFor(sessionName: string): Runner {
@@ -197,6 +199,23 @@ export default workflow('<name>', async (run, args) => {
 8. **`createWorktree({ enter: true })` inside `parallel()` only works with the homogeneous form** (`parallel(items, fn)`), not the heterogeneous tuple form.
 9. **`promptFile:` and inline `prompt:` are mutually exclusive.** Setting both throws. Use one or the other per step. For composition (concatenating fragments), use `loadPrompt()` and pass the result via `prompt:`.
 10. **`vars:` is forbidden on `step.define`.** It belongs on the `run(STEP, { vars: ... })` call site. The old form is a definition-time error (`cause: 'vars-on-define'`) — see [Typed prompt vars](../../docs/public/guides/typed-prompt-vars.md).
+11. **Schemas are structural, not validators.** A `returns:` schema declares shape and types only — `z.object`, `z.array`, `z.enum`, `z.boolean`, `z.number()` / `z.number().int()`. Never put length/format/range gates (`.min()`, `.max()`, `.length()`, `.regex()`, `.email()`, `.url()`) on a `returns:` field — those belong in the prompt. See [Keep schemas structural](#keep-schemas-structural--value-rules-go-in-the-prompt).
+
+### Keep schemas structural — value rules go in the prompt
+
+A `returns:` schema is converted to JSON Schema and handed to the model as the structured-output tool's `input_schema` (Claude: `--json-schema`; Codex: `--output-schema`). The model **does** see it, and Claude Code validates the model's output against it and retries *inside the CLI* before returning to orch. Constraints are not ignored — which is exactly why over-tight ones hurt:
+
+- A hard length cap like `z.string().max(2000)` on a free-text field makes the model count characters and self-truncate, then trips Claude Code's internal reject-and-retry when it miscounts (models count characters poorly). Best case it burns an internal turn; worst case a genuinely good answer keeps failing the cap and the step stalls or fails out to the host's retry/skip/abort prompt.
+- `.regex()`, `.email()`, `.url()`, and `.min()/.max()` ranges share that failure mode: they turn a formatting *preference* into a hard gate the model can trip over.
+
+**Rule: the schema declares SHAPE; the prompt declares VALUE rules.**
+
+- **Keep in the schema** — structure and types: object fields, `z.array(...)`, nesting, `z.boolean()`, `z.enum([...])`, `z.number()` / `z.number().int()`. Enums are especially worth keeping: a closed set is a real structural constraint the model should respect, and it rarely causes a retry.
+- **Move to the prompt** — anything about magnitude or format: "a 2–4 word lowercase kebab-case slug", "one concise paragraph (~150 words)", "at most ~20 bullets". The model follows prose guidance without the brittle hard-gate, and an over-run becomes a soft miss instead of a hard failure.
+
+So a slug schema is just `z.object({ slug: z.string() })` with the kebab-case rule stated in `slug.md` — never `z.string().min(2).max(40).regex(...)`.
+
+**Version footgun:** import `z` from `'orch'` (or, inside this repo, from `'zod'` — which is **v3**). zod **v4** makes `zod-to-json-schema` emit an empty `{ "$schema": … }` with no `type`, which orch hard-rejects at workflow load (`assertNonEmptyJsonSchema`). If a `returns:` step fails to load with an empty-schema error, a v4 `z` is the cause.
 
 ### Common patterns
 

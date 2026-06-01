@@ -27,7 +27,7 @@ Defines a reusable agent step. The name is the memoization key — make it stabl
 const PLAN = step.define('plan', {
   agent: claude({ bare: false, flags: ['--permission-mode', 'bypassPermissions'] }),
   prompt: 'Read docs/sessions/<slug>/brainstorm.md and produce a phased plan…',
-  returns: schema(z.object({ phases: z.number().int().min(1).max(30) })),  // optional
+  returns: schema(z.object({ phases: z.number().int() })),  // optional; "1–30" goes in the prompt
   // validate: fileProduced('docs/plans/*.md'),                            // optional
   // mode: 'autonomous',                                                   // default
   // view: 'transcript',                                                   // 'transcript' | 'silent' (rare)
@@ -199,12 +199,13 @@ const reviews = await parallel(
 
 Wraps a Zod schema into the shape `step.define({ returns: … })` expects. The runner is invoked with `--json-schema` (Claude) / `--output-schema` (Codex) and the value is Zod-validated before `run()` returns.
 
+Keep the schema **structural** — shape and types only (`z.object`, `z.array`, `z.enum`, `z.boolean`, `z.number().int()`). The constraints reach the model (they become the structured-output tool's `input_schema`), so a tight `.min()/.max()/.regex()` on a free-text field makes the model self-truncate and triggers Claude Code's internal reject-and-retry. Put length/format rules in the prompt instead. See the SKILL "Keep schemas structural" section.
+
 ```ts
 import { z } from 'zod'
 
-const SLUG_SCHEMA = z.object({
-  slug: z.string().regex(/^[a-z][a-z0-9-]*$/, 'lowercase kebab-case'),
-})
+// Structural only — the kebab-case rule belongs in the prompt, not here.
+const SLUG_SCHEMA = z.object({ slug: z.string() })
 
 const SLUG = step.define('slug', {
   agent: claude({ model: 'claude-haiku-4-5-20251001', bare: false }),
