@@ -67,6 +67,30 @@ export interface StepEntry {
    * ran; absent on autonomous steps and runners without `captureSessionId`.
    */
   readonly sessionIdCaptureError?: 'ambiguous' | 'empty' | 'error'
+  /**
+   * The sub-path this step ran under, deepest last. Empty (or absent —
+   * absent treated as []) when the step ran at the workflow root. Persisted
+   * so the projector can group rows by sub on resume without re-reading
+   * `lifecycle.ndjson`. (U7)
+   */
+  readonly subPath?: readonly string[]
+  /**
+   * Opaque per-invocation token minted by `runWorkflow` and stashed on the
+   * sub frame's ALS store. Used by `runStepOnce` (U4) to detect the
+   * "same sub invoked twice in one run" collision case: when a step name
+   * is about to be written under a key whose existing entry has the SAME
+   * sub-path but a DIFFERENT subCallId, the second write is rejected with
+   * `StepNameCollisionError`. Absent on root-frame steps and on legacy
+   * state files. (U4 — R20 case b)
+   */
+  readonly subCallId?: string
+  /**
+   * Marks a step that ran inside (or transitively inside) a `parallel()`
+   * branch. The projector reads this to suppress boundary-row rendering
+   * uniformly across the entire sub-of-sub subtree (R23 / AE13). Absent on
+   * steps that ran outside any parallel block. (U9)
+   */
+  readonly insideParallel?: true
 }
 
 /** Mirrors `WorkflowArgs` from `src/core/workflow.ts`. Kept structural here
@@ -159,6 +183,12 @@ export const StepEntrySchema = z.object({
   // on interactive agent steps only. Old state files load with both undefined.
   runnerName: z.string().min(1).optional(),
   sessionIdCaptureError: z.enum(['ambiguous', 'empty', 'error']).optional(),
+  // Subworkflows (U4, U7, U9) — additive, no schemaVersion bump. Old state
+  // files load with all three undefined; the projector treats `subPath`
+  // undefined as the empty path.
+  subPath: z.array(z.string()).optional(),
+  subCallId: z.string().min(1).optional(),
+  insideParallel: z.literal(true).optional(),
 })
 
 const PersistedWorkflowArgsSchema = z.object({
@@ -206,6 +236,9 @@ function rebuildSteps(
       ...(s.sessionIdCaptureError !== undefined
         ? { sessionIdCaptureError: s.sessionIdCaptureError }
         : {}),
+      ...(s.subPath !== undefined ? { subPath: s.subPath } : {}),
+      ...(s.subCallId !== undefined ? { subCallId: s.subCallId } : {}),
+      ...(s.insideParallel !== undefined ? { insideParallel: s.insideParallel } : {}),
     }
   }
   return steps

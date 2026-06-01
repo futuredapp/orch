@@ -47,6 +47,12 @@ export interface ExecutionContext {
   readonly subworkflowDepth?: number
   readonly subworkflowPath?: readonly string[]
   readonly insideParallel?: true
+  // Opaque per-invocation token minted by `runWorkflow`. Two distinct
+  // `runWorkflow` calls (even of the same sub) produce different ids; U4's
+  // R20 collision detector compares this against the existing entry's
+  // `subCallId` to catch the "same sub invoked twice" case where the
+  // sub-path alone matches.
+  readonly subCallId?: string
   // Populated at workflow-root construction in `executeWorkflowFn`. Read by
   // `runWorkflow` to pass the parent's `run` closure into the sub body (R7
   // inline-equivalence) and to append `subworkflow:enter`/`subworkflow:exit`

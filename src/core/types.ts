@@ -33,9 +33,14 @@ export const InteractiveResultSchema = z.object({
 
 export type StepName = string & { readonly __brand: 'StepName' }
 
-const STEP_NAME_PATTERN = /^[a-z0-9][a-z0-9:-]*$/
+// The cache-key alphabet includes `:` (vars-hash separator) and, since U4,
+// `>` (sub-path separator). Both are illegal as the first character so the
+// brand still distinguishes user-authored step names from internal keys.
+// The length bound rose from 128 → 512 to accommodate realistic sub names
+// at maxDepth = 8: e.g. `simple-feature > complex-feature > … > plan:vars-<16hex>`.
+const STEP_NAME_PATTERN = /^[a-z0-9][a-z0-9:>-]*$/
 
-const MAX_STEP_NAME_LENGTH = 128
+const MAX_STEP_NAME_LENGTH = 512
 
 export function stepName(s: string): StepName {
   if (s.length === 0) {

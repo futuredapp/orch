@@ -30,8 +30,15 @@ import {
   RunNotFoundError,
   RunnerCapabilityError,
   StepError,
+  StepNameCollisionError,
 } from './errors.ts'
-import { currentCwd, currentParallelDepth, executionContext } from './execution-context.ts'
+import {
+  currentCwd,
+  currentParallelDepth,
+  currentSubworkflowPath,
+  executionContext,
+  isInsideParallel,
+} from './execution-context.ts'
 import type { ResumeRegistry } from './resume-registry.ts'
 import { type StepTimer, withStepLifecycle } from './step-lifecycle.ts'
 import { resolveView } from './view-registry.ts'
@@ -374,7 +381,14 @@ function hasNonEmptyVars(vars: PromptVars | undefined): boolean {
 // cache entries. Empty vars (or no overrides) leave the key unchanged for
 // back-compat with workflows that don't use the new contract.
 
-function deriveStepKey(name: StepName, overrides: RunOverrides | undefined): string {
+export function deriveStepKey(
+  name: StepName,
+  overrides: RunOverrides | undefined,
+  subPath: readonly string[] = [],
+): string {
+  // U4: explicit `as:` override wins and bypasses sub-folding. Authors who
+  // declare `as: 'override'` keep the legacy flat key (documented limitation
+  // so they can opt back into pre-sub-aware behavior).
   if (overrides?.as !== undefined) return overrides.as
   // Defense-in-depth: validate vars shape before folding into the cache key
   // so an invalid value (e.g. a typed cast slipping through compile-time)
@@ -383,12 +397,14 @@ function deriveStepKey(name: StepName, overrides: RunOverrides | undefined): str
   const vars = overrides?.vars ?? {}
   if (Object.keys(vars).length > 0) assertPromptVars(vars, { stepName: name })
   const hash = stableHashHex(vars)
-  if (hash === '') return name as string
-  // Suffix is `:vars-<hex>` — the colon and dash are both legal mid-string in
-  // STEP_NAME_PATTERN and the hex output of `stableHashHex` is `[a-f0-9]`. The
-  // literal "vars" marker stays in the key so logs and `orch state` readers can
-  // see at a glance why the key is longer than the step name.
-  return `${name as string}:vars-${hash}`
+  // Sub-path is folded BEFORE the vars suffix so a sub-internal step with vars
+  // produces a single contiguous key like `outer>plan:vars-<hex>` (legal in
+  // STEP_NAME_PATTERN). The `>` separator is illegal as a first character and
+  // the workflow-name validator rejects `>` in names, so the new key shape
+  // cannot collide with a hand-written step name.
+  const base = subPath.length === 0 ? (name as string) : `${subPath.join('>')}>${name as string}`
+  if (hash === '') return base
+  return `${base}:vars-${hash}`
 }
 
 // ---------------------------------------------------------------------------
@@ -1220,10 +1236,17 @@ type AnyStep = Step<unknown, PromptVarsBound>
 async function runStepOnce(
   deps: WorkflowDeps,
   captureLock: CaptureLock,
+  keysWrittenThisExecution: Set<string>,
   s: AnyStep,
   overrides: RunOverrides | undefined,
 ): Promise<unknown> {
-  const key = stepName(deriveStepKey(s.name, overrides))
+  // U4: fold the active sub-path into the cache key. The `as:` override in
+  // `deriveStepKey` bypasses sub-folding (documented authoring opt-out).
+  const subPath = currentSubworkflowPath()
+  const key = stepName(deriveStepKey(s.name, overrides, subPath))
+  const subStore = executionContext.getStore()
+  const subCallId = subStore?.subCallId
+  const insideParallel = isInsideParallel()
 
   // Register the runner for resume lookup before any short-circuit. Cache hits
   // on `orch resume` populate the registry progressively so the right pane
@@ -1236,6 +1259,20 @@ async function runStepOnce(
 
   const state = await deps.stateStore.loadRun(deps.runId)
   const cached = state?.steps[key]
+  // U4 R20 case-b — same-execution second write with a different sub-call-id
+  // must throw BEFORE the cache short-circuit, otherwise the second
+  // invocation silently replays the first's value instead of being flagged.
+  // We compare against `keysWrittenThisExecution` so resume (which loads
+  // entries written in a prior execution) does not falsely flag.
+  if (cached !== undefined && keysWrittenThisExecution.has(key)) {
+    const priorPath = cached.subPath ?? []
+    const samePath =
+      priorPath.length === subPath.length && priorPath.every((seg, i) => seg === subPath[i])
+    const priorSubCall = cached.subCallId
+    if (!samePath || (subCallId !== undefined && priorSubCall !== subCallId)) {
+      throw new StepNameCollisionError(s.name, priorPath, subPath)
+    }
+  }
   if (cached !== undefined) {
     // Ask cache may be stale if the step's buttons or field keys changed
     // between runs. Predicate-based detection (NOT a thrown sentinel): when
@@ -1352,7 +1389,17 @@ async function runStepOnce(
     }
   }
 
-  await deps.stateStore.saveStep(deps.runId, result.entry)
+  // U4 / U7 / U9 — persist the sub-frame markers so resume reconstructs
+  // grouping (U8 projection) and so the parallel-suppression decision can be
+  // taken without re-reading lifecycle.ndjson (U9 / AE13).
+  const augmentedEntry: StepEntry = {
+    ...result.entry,
+    ...(subPath.length > 0 ? { subPath } : {}),
+    ...(subCallId !== undefined ? { subCallId } : {}),
+    ...(insideParallel ? { insideParallel: true as const } : {}),
+  }
+  await deps.stateStore.saveStep(deps.runId, augmentedEntry)
+  keysWrittenThisExecution.add(key)
   orchLog(deps.logger, 'saveStep', { stepName: key, kind: s.config.kind })
   return result.value
 }
@@ -1367,6 +1414,13 @@ async function executeWorkflowFn(fn: WorkflowFn, deps: WorkflowDeps): Promise<vo
   // serialize their capture windows through this lock; different executions
   // — and different test fixtures — each get their own factory instance.
   const captureLock = createCaptureLock()
+  // U4 R20 — tracks cache keys actually written during THIS execution. A
+  // second write to the same key under a different sub-call-id is the
+  // "same sub invoked twice in one run" collision (the brainstorm's
+  // case b). On resume the Set starts empty so a cached entry from a
+  // prior execution does not falsely flag a collision against a fresh
+  // invocation.
+  const keysWrittenThisExecution = new Set<string>()
 
   const run: RunFn = <T, V extends PromptVarsBound>(
     s: Step<T, V>,
@@ -1375,6 +1429,7 @@ async function executeWorkflowFn(fn: WorkflowFn, deps: WorkflowDeps): Promise<vo
     runStepOnce(
       deps,
       captureLock,
+      keysWrittenThisExecution,
       // Cast away the V generic — runStepOnce treats every step uniformly at
       // runtime and the cache-key fold uses `overrides.vars` directly.
       s as AnyStep,

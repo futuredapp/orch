@@ -47,19 +47,20 @@ describe('commit() factory', () => {
     expect(() => commit('line one\nline two')).toThrow('newline')
   })
 
-  it('accepts a message that slugifies to exactly 121 chars', () => {
-    // 128 total - 'commit:'.length (7) = 121 slug chars
-    const slug121 = 'a'.repeat(121)
+  it('accepts a message that slugifies to exactly 505 chars', () => {
+    // 512 total (MAX_STEP_NAME_LENGTH, widened by U4 to accommodate sub
+    // cache keys) - 'commit:'.length (7) = 505 slug chars
+    const slug505 = 'a'.repeat(505)
 
-    const s = commit(slug121)
+    const s = commit(slug505)
 
-    expect(s.name as string).toBe(`commit:${slug121}`)
+    expect(s.name as string).toBe(`commit:${slug505}`)
   })
 
-  it('throws for a message whose slug exceeds 121 chars', () => {
-    const slug122 = 'a'.repeat(122)
+  it('throws for a message whose slug exceeds 505 chars', () => {
+    const slug506 = 'a'.repeat(506)
 
-    expect(() => commit(slug122)).toThrow()
+    expect(() => commit(slug506)).toThrow()
   })
 
   it('strips leading and trailing non-alphanumeric characters from the slug', () => {
