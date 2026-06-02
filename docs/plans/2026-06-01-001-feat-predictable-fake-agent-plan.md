@@ -57,11 +57,13 @@ Real coding-agent CLIs are non-deterministic to test against, so high-level two-
 - No changes to real Claude/Codex runner behavior.
 - No command vocabulary beyond `type_and_send` and `finish`.
 - No socket/IPC transport now — file-based control only; the design must merely not preclude a later swap.
+- Interactive-mode failure-code propagation (`finish(2)` → `step:failed` in a TUI step) is excluded — the two-pane host does not surface a PTY child's exit code yet. Interactive `finish` is clean-exit only; see Key Technical Decisions.
 
 ### Deferred to Follow-Up Work
 
 - Autonomous QA agent that addresses instances over a non-file transport: future iteration; this plan only preserves the address/transport seam (R10, U1/U5).
 - A richer manual-input vocabulary or a non-file readiness transport: future, behind the same address/transport split.
+- Interactive-mode structured failure capture (wiring the host's `pane-died` exit code, the deferred "Phase D2" in `tmux-host.ts`): unblocks cross-mode `finish(code)` parity; separate work.
 
 ---
 
@@ -97,10 +99,11 @@ Real coding-agent CLIs are non-deterministic to test against, so high-level two-
 
 - **Readiness signal = filesystem ready-marker** (R13, user-confirmed). `__entry.ts` writes a `.ready` marker under the control dir when it first becomes idle-waiting; the driver awaits the marker's appearance. Durable and race-free (the Tier-5 findings prove pane scrapes are racy under fast teardown), mirrors the existing `.ack` pattern, requires no lifecycle-consumer churn, and the address/transport split keeps a future non-file transport open. Distinct from `step:start` by construction.
 - **Resolve the control path at step-run time by threading the derived key** (R7, user-confirmed). The executor passes the run-time `deriveStepKey` result + the resolved run state dir to the runner at spawn; `__entry.ts` derives `controlPath` itself. `deriveStepKey` stays the single source of truth, which is correct for subworkflow and parallel-branch instances (whose `subPath`/`parallelDepth`/vars only exist at run time) and makes cross-run isolation structural. Re-deriving in the launcher was rejected — it duplicates key logic and cannot see run-time-only path components.
-- **Logical address vs. transport filename** (R10). The logical address is the derived key (containing `>` and `:` separators). The transport filename is a **sanitized encoding** of that key (e.g. separators mapped to filesystem-safe tokens). This both honors R10 and avoids `>`/`:` surprising downstream tooling, while keeping addressing unchanged.
+- **Logical address vs. transport filename** (R10). The logical address is the derived key (containing `>` and `:` separators). The transport filename is an **injective (collision-free) sanitized encoding** of that key — e.g. percent-encoding `>`/`:` rather than a lossy `replace(/[>:]/g, '_')`. The load-bearing property is **injectivity, not invertibility**: distinct keys MUST map to distinct filenames so two keys (`a>b` and `a:b`) cannot collide on the same control file (which would silently break R9/R11 isolation). **No unit decodes the filename back to a key** — U3 and U5 each independently apply the *identical forward encoding* to resolve the same file, so do not build a decode path (percent-encoding happens to be reversible, but reversibility is incidental; a collision-free hash would also satisfy the requirement). This honors R10, avoids `>`/`:` surprising downstream tooling, and keeps addressing unchanged.
 - **One command engine, mode-injected output sink** (R1, R3). Factor the vocabulary + finish semantics + channel-agnostic parser into a single engine; the only mode-specific piece is where `type_and_send` output goes (NDJSON `emit` for headless vs. Ink render for interactive). This is the literal reading of R1 ("modes differ only in how output reaches the right pane").
+- **Interactive `finish(code)` is clean-exit only for this version** (R2, R3 — scoped limitation). The two-pane interactive path returns `exitCode: 0` unconditionally because tmux's `pane-died` hook does not surface the child's exit code (`tmux-host.ts:1324-1327`, "Phase D2 will wire structured failure capture"). So a non-zero `finish(code)` produces `step:failed` **only in headless mode**; in interactive mode `finish` advances the workflow as a clean exit and the code is not propagated. R3's "identical across modes" holds for the happy path (which all acceptance examples use) but not for failure-code propagation. Wiring interactive failure capture is out of scope here (it depends on host work the plan does not schedule); see Scope Boundaries.
 - **Reuse the existing ack mechanism verbatim** (R12) — do not invent a second confirmation scheme.
-- **Backward compatibility for existing puppet callers.** Current behavioral-dsl tests bake `script.controlPath` keyed on bare step name. Runtime key-derivation is engaged when the threaded key/state-dir is present; the script-baked `controlPath` remains a supported fallback so existing tests do not regress.
+- **Backward compatibility for existing puppet callers.** Current behavioral-dsl tests bake `script.controlPath` keyed on bare step name. Since U1 threads the run-time key on **every** step (including behavioral-dsl callers), the fallback discriminator is **the presence of a baked `script.controlPath`, which wins** — runtime key-derivation engages only when no `controlPath` is baked. (Gating on "threaded key absent" would never fire, because U1 always provides it, so the baked path and the derived path would silently diverge and every `waitForAck` would time out.) U3's backward-compat scenario must drive a real behavioral-dsl puppet end-to-end (append + `waitForAck`), not merely assert that a baked path resolves.
 
 ---
 
@@ -114,8 +117,8 @@ Real coding-agent CLIs are non-deterministic to test against, so high-level two-
 
 ### Deferred to Implementation
 
-- Exact env-var names for threading the key + state dir (e.g. `ORCH_STEP_KEY`, `ORCH_RUN_STATE_DIR`) and the precise sanitization map for the transport filename.
-- The exact `.ready` marker filename and whether it is rewritten on each return-to-idle or written once after initial render (AE5 only needs first-idle; the ack covers subsequent commands).
+- Exact env-var names for threading the key + state dir (e.g. `ORCH_STEP_KEY`, `ORCH_RUN_STATE_DIR`, and `ORCH_PARENT_PID` for the interactive self-reap — see U6) and the precise **injective (collision-free)** sanitization map for the transport filename (percent-encoding is the safe default — see Key Technical Decisions). Make a **shared constants module a named deliverable in U1's file list** (e.g. `src/runners/scripted-fake/addressing.ts` exporting the env-key names and the `encodeKey`/`<runStateDir>` formula) so U1/U3/U5/U6 cannot drift on names or encoding — a note that it is the "natural home" is not enough to guarantee three units agree.
+- The exact `.ready` marker filename and whether it is rewritten on each return-to-idle or written once after initial render (AE5 only needs first-idle; the ack covers subsequent commands). Whichever shape, the entry MUST delete any pre-existing marker at spawn (before it can be idle) so a stale marker from a retried/resumed step in the same `runId` dir cannot make `waitForReady()` resolve before the new instance is actually idle. **Delete-at-spawn narrows but does not close the race:** the driver's `waitForReady()` polls the same dir concurrently, so a poll landing in the window between the new process starting and its delete completing still observes the stale marker and resolves early — the exact race the feature removes. **Recommended:** make readiness monotonic per-attempt — encode an attempt token (the spawn pid or an attempt counter) into the marker filename or its contents, and have `waitForReady()` accept only the marker matching the attempt it is driving. This removes the spawn-vs-poll window entirely instead of narrowing it. (Note: U4's interactive entry must perform the same spawn-time delete / attempt-token write — it is easy to omit when reusing "U3's marker contract.")
 - Whether the interactive entry is a full Ink TUI or a minimal TTY stdin reader that renders lines — both satisfy R1/R6; pick the smallest that renders manual + control output and reaches idle observably.
 - The precise teardown hook in the real-tmux harness that reaps the interactive PTY child and any tail process (U6 resolves the location; exact wiring is implementation).
 
@@ -171,6 +174,7 @@ graph TD
   U1 --> U4
   U3 --> U5[U5 real-tmux per-instance handle]
   U1 --> U5
+  U2 --> U5
   U4 --> U6[U6 Teardown hygiene + leak guard]
   U3 --> U6
   U5 --> U7[U7 End-to-end F1/F2 + AE tests]
@@ -181,7 +185,7 @@ graph TD
 
 **Goal:** Make the executor expose the run-time-derived `key` and the resolved run state dir to the runner at the moment it builds its command, on both the autonomous and interactive spawn paths, without changing real-runner behavior. This is the addressing foundation for R7–R11.
 
-**Requirements:** R7, R10, R11
+**Requirements:** R7, R11. **Enables:** R10 (this unit threads the *logical address*; the transport-side sanitized encoding is implemented in U3, and the driver-side use in U5).
 
 **Dependencies:** None
 
@@ -189,13 +193,15 @@ graph TD
 - Modify: `src/core/workflow.ts` (autonomous `runRunner` call site near `:1028`; interactive `produceInteractiveStep` near `:726`)
 - Modify: `src/runners/types.ts` (extend `RunnerContext` with an optional addressing field, OR document the agreed env keys carried via `ctx.env`)
 - Modify: `src/services/process/merge-env.ts` consumers only if env-based (no new filtering — passthrough policy)
+- Modify: **whichever component exposes the run state dir to the executor** — see the run-state-dir decision below (likely `src/core/workflow.ts` `WorkflowDeps` *or* the `StateStore` port + `FileStateStore`, plus `src/cli/deps.ts` and `tests/helpers/real-tmux/workflow-driver.ts` wiring)
 - Test: `tests/unit/core/runner-addressing.test.ts` (new)
 
 **Approach:**
-- The key is already computed at `runStepOnce` (`workflow.ts:1280`) and passed as `spawn.stepName` to `runInteractive`. Surface the same `key` plus the resolved per-run state dir to the runner's `buildCommand` context. Prefer threading via `ctx.env` entries (e.g. `ORCH_STEP_KEY`, `ORCH_RUN_STATE_DIR`) so the passthrough env policy carries them and real runners simply ignore them; alternatively add an explicit optional `RunnerContext` field. Pick one and apply it identically to both paths so interactive and headless agree (today they diverge: autonomous reads bare `ORCH_LIFECYCLE_STEP_NAME`, interactive gets the derived key).
+- **DECISION REQUIRED — where does the executor get `<basePath>/<runId>`?** The executor cannot see the run state dir today: `WorkflowDeps` (`workflow.ts:233-305`) carries `runId` and `cwd` but no `basePath`/`stateBase`, and `StateStore`'s `#runDir` is private (`state-store.ts:475`). Only the host knows it (`tmux-host.ts:576`), and the runner-spawn path never consults the host. Pick one and add it to this unit's files: (a) thread a `basePath`/`stateDir` field into `WorkflowDeps`, or (b) add a public `runDir(runId)` accessor to the `StateStore` port and `FileStateStore`. Without this, "the executor passes the resolved run state dir to the runner at spawn" is unimplementable. See Open Questions.
+- The key is already computed at `runStepOnce` (`workflow.ts:1280`) and passed as `spawn.stepName` to `runInteractive`. This is **not** a read-only exposure: both runner contexts set `env: {}` today (autonomous `runnerCtx` near `workflow.ts:1021`; interactive `buildCtx` near `:703`), and scripted-fake's `buildCommand` reads `stepName` from its construction-time **closure** (`scriptedFake({ stepName })`), not from run-time ctx. So this unit must (a) **write** the derived key + run state dir into both call sites' `ctx.env` (e.g. `ORCH_STEP_KEY`, `ORCH_RUN_STATE_DIR`, plus `ORCH_PARENT_PID` = orch's own pid, which the interactive self-reap in U6 needs because a tmux-spawned child's `process.ppid` is not orch), identically, and (b) change scripted-fake `buildCommand` to **prefer the run-time key from `ctx.env`** over the closure `stepName`. Prefer `ctx.env` threading so the passthrough env policy carries the values and real runners ignore them; an explicit optional `RunnerContext` field is the alternative — pick one and apply it to both paths so interactive and headless agree (today they diverge: autonomous reads bare `ORCH_LIFECYCLE_STEP_NAME`, interactive gets the derived key). Note `ORCH_PARENT_PID` is **not** a free choice: U6's interactive self-reap can only read it as an env var (a tmux-spawned child cannot see orch's pid otherwise), so at minimum the parent pid must travel via env — which is why threading all three values via `ctx.env` consistently is the recommended option.
 - Do not change `deriveStepKey`. Do not alter env filtering — follow `mergeEnv` passthrough (CLAUDE.md runner env policy).
 
-**Execution note:** Test-first — write the failing test asserting the addressing values reach a stub runner's `buildCommand` on both paths before wiring.
+**Execution note:** Test-first — write the failing test asserting the addressing values reach a stub runner's `buildCommand` **via `ctx.env`** (not via the closure) on both paths before wiring.
 
 **Patterns to follow:**
 - `mergeEnv(process.env, extras, ctx.env)` env construction (`src/services/process/merge-env.ts`).
@@ -217,7 +223,7 @@ graph TD
 
 **Requirements:** R1, R2, R3, R4, R5
 
-**Dependencies:** U1
+**Dependencies:** U1 — sequenced first because both units modify `__entry.ts` (merge-conflict risk if done in parallel); the engine logic itself does **not** consume U1's threaded key/env outputs, so the dependency is ordering-only, not data-flow.
 
 **Files:**
 - Create: `src/runners/scripted-fake/command-engine.ts`
@@ -240,7 +246,7 @@ graph TD
 - Covers AE1. Happy path: `type_and_send("hello")` from the control channel appends exactly one line `hello` to the sink.
 - Covers AE1, AE2. Happy path: manual bare line `hello` parses to `type_and_send("hello")`; manual `q` and manual `exit` each parse to `finish`.
 - Happy path: `finish()` with no code terminates with default code; `finish(2)` terminates with code 2.
-- Edge case: empty manual line, whitespace-only line, and a line that is literally `q ` (trailing space) — define and assert the exact parse outcome.
+- Edge case: empty manual line, whitespace-only line, and a line that is literally `q ` (trailing space) — define and assert the exact parse outcome. Note the headless render path drops empty `info.text` (`scripted-fake-runner.ts:94-99` renders only non-empty strings) while a TUI would show a blank line, so the empty-line decision must keep headless and interactive output identical (reject in both, or render blank in both) to preserve R3.
 - Edge case: control-channel and manual-channel produce identical engine ops for the same logical command (R3 symmetry).
 - Error path: malformed control-file JSON line is rejected without crashing the engine (mirrors `safeParse` today).
 
@@ -263,9 +269,10 @@ graph TD
 - Test: `tests/integration/runners/scripted-fake-puppet-addressing.test.ts` (new or extend existing scripted-fake integration test)
 
 **Approach:**
-- When the threaded key + run state dir (U1) are present, derive `controlPath = <runStateDir>/test-control/<sanitize(key)>.ndjson` and `ackDir = <controlPath>.acks` in `__entry.ts`. When absent, fall back to `script.controlPath` (existing behavioral-dsl callers — no regression).
-- Apply the logical-address-vs-transport sanitization (Key Technical Decisions): map `>` and `:` to filesystem-safe tokens for the filename only; the logical address (key) is unchanged.
-- Emit the `.ready` marker (e.g. `<control-dir>/<sanitize(key)>.ready`) when the poll loop first reaches idle-waiting (after initial render, before/while awaiting commands). Distinct from `step:start`.
+- **Fallback discriminator = baked `script.controlPath` wins** (see Key Technical Decisions). Because U1 threads the key on *every* step, "key absent" is unreachable for behavioral-dsl callers; gating on it would silently diverge the baked path from the derived path and time out every `waitForAck`. So: when `script.controlPath` is baked, use it; otherwise derive `controlPath = <runStateDir>/test-control/<sanitize(key)>.ndjson` and `ackDir = <controlPath>.acks` in `__entry.ts`.
+- **Pin the `<runStateDir>` formula once, and use it identically in U3 (`__entry.ts` resolution) and U5 (`agent()` resolution).** `<runStateDir>` is `<basePath>/<runId>` where `basePath` is the host's state base — which in the real-tmux harness is `<fixture.stateBase>/.orch/state` (`workflow-driver.ts:103`), *not* the bare `cwd`/`stateBase`. **Do not copy behavioral-dsl's layout**, which is `<stateBase>/test-control/` with no `<runId>` segment (`subprocess.ts:92-93`) — an implementer who mirrors that example writes to a different directory than the host and every `waitForReady`/`waitForAck` times out.
+- Apply the **injective** logical-address-vs-transport sanitization (Key Technical Decisions): reversibly encode `>` and `:` (e.g. percent-encode) for the filename only; the logical address (key) is unchanged. U5 must use the identical encoding.
+- Emit the `.ready` marker (e.g. `<control-dir>/<sanitize(key)>.ready`) when the poll loop first reaches idle-waiting (after initial render, before/while awaiting commands). Distinct from `step:start`. **Delete any pre-existing marker at spawn** (before the loop can be idle) so a stale marker from a retried/resumed step in the same `runId` dir cannot make `waitForReady()` resolve early.
 - Preserve the cursor-from-0 tail (commands appended before the agent is ready are not lost) and the per-sequence ack write. Keep `parentExited()` in the loop.
 
 **Execution note:** Test-first against the on-disk contract (marker appears, ack appears, control file is read from cursor 0).
@@ -277,11 +284,13 @@ graph TD
 **Test scenarios:**
 - Covers R7. Happy path: a headless step with key `step2` writes/reads its control file at `<runStateDir>/test-control/step2.ndjson`.
 - Covers R7, R10. Happy path: a key containing `>`/`:` (subworkflow/vars) yields a sanitized filename while the handle still resolves by logical key.
+- Covers R10. Edge case: distinct keys `a>b` and `a:b` produce **distinct** transport filenames (injectivity — guards against silent control-file sharing).
 - Covers AE6, R12. Happy path: appending a `type_and_send` line produces a matching `<seq>.ack`; the seq counter matches the test-side counter.
 - Covers AE5, R13. Happy path: the `.ready` marker appears only after the agent is idle-waiting (not at `step:start`).
+- Covers AE5, R13. Edge case: a stale `.ready` marker left in the same `runId` control dir (simulating a retry/resume) does **not** make `waitForReady()` resolve before the new instance reaches idle (asserts the spawn-time delete).
 - Edge case: a command appended to the control file before the agent starts is still processed (cursor-0 tail).
 - Covers R11. Integration: two runs with the same key write to distinct `<runId>` state dirs; neither sees the other's control file.
-- Backward-compat: an existing puppet script with baked `controlPath` and no threaded key still drives correctly.
+- Backward-compat: drive a real behavioral-dsl puppet **end-to-end** (append a command + `waitForAck`) with a baked `controlPath` — confirms baked-wins, not merely that a path string resolves.
 
 **Verification:** Headless instances are addressable by run-time key under the run state dir; `.ready` and `.ack` files behave as specified; existing puppet tests pass; `bun run check` green.
 
@@ -296,13 +305,15 @@ graph TD
 **Dependencies:** U1, U2
 
 **Files:**
-- Create: `src/runners/scripted-fake/interactive-entry.ts` (or an interactive branch within `__entry.ts` — keep file ≤300 lines)
-- Modify: `src/runners/scripted-fake/scripted-fake-runner.ts` (`supports.interactive` conditional on mode; `buildCommand` selects the interactive entry/flag; `defaultView` for interactive)
+- Create: `src/runners/scripted-fake/interactive-entry.ts` (**separate file required** — `__entry.ts` is already ~323 lines, at the 300-line limit, so an interactive branch inside it would breach CLAUDE.md rule #5 with no headroom).
+- Modify: `src/runners/scripted-fake/scripted-fake-runner.ts` (interactive flag at **construction time** — see Approach; `buildCommand` selects the interactive entry; `defaultView` for interactive)
 - Modify: `src/runners/scripted-fake/types.ts` (interactive script/mode discriminator if needed)
 - Test: `tests/integration/runners/scripted-fake-interactive.test.ts` (new)
 
 **Approach:**
-- The interactive entry runs as a TTY app (the two-pane host spawns it as a real PTY in a hidden pane — `tmux-host.ts:1036`). It reads manual stdin lines, parses them via the shared engine parser (R5), and also reads the control file (R4) — both feed the same engine. The `type_and_send` sink renders a line into the TUI (minimal Ink or a line-printing TTY reader — see deferred question); `finish` exits the process so the host's `pane-died` advances the workflow.
+- **`supports.interactive` must be set at construction time, not as a runtime conditional.** `supports` is frozen at `defineRunner` time (`scripted-fake-runner.ts:61`) and the executor gates on `config.agent.supports.interactive` (`workflow.ts:589`) with no mode argument available — so one runner object cannot report `true` for an interactive step and `false` for an autonomous one. Add a per-instance factory option (e.g. `scriptedFake({ stepName, interactive: true })`) that bakes the flag; harness fixtures already build one runner per step, so an interactive step constructs an interactive runner and an autonomous step keeps `interactive: false`. This means two distinct runner constructions, not one mode-switching runner.
+- The interactive entry runs as a TTY app (the two-pane host spawns it as a real PTY in a hidden pane — `tmux-host.ts:1036`). It reads manual stdin lines, parses them via the shared engine parser (R5), and also reads the control file (R4) — both feed the same engine. The `type_and_send` sink renders a line into the TUI (minimal Ink or a line-printing TTY reader — see deferred question); `finish` exits the process so the host's `pane-died` advances the workflow. Note the **interactive `finish(code)` clean-exit limitation** (Key Technical Decisions): the host returns exit 0 regardless, so a non-zero code is not propagated in interactive mode — wire `finish` to exit cleanly and do not rely on TUI failure codes.
+- Two concurrent input loops run here (control-file poll like `runPuppet` + stdin reader); on `finish`, one loop must signal the other to stop. Both loops carry the self-reap check (see U6). **Cross-channel contract (DECISION — avoids a silent `waitForAck` hang):** serialize both loops through a single engine queue so a control-channel command already accepted is processed and its `<seq>.ack` written *before* a concurrently-arriving stdin `finish` terminates the process. Otherwise a driver that appended a control command and is awaiting its ack hangs forever when stdin `finish` wins the race. Add a U4 test for "control command awaiting ack + concurrent stdin `finish`" asserting the ack resolves (or a defined drop signal surfaces) rather than a silent timeout.
 - Emit the same `.ready` marker on first idle (U3's marker contract reused) so a driver can `waitForReady` regardless of mode (R13 cross-mode).
 - Flip `supports.interactive` to true when the runner is constructed/asked for interactive mode; keep headless `supports.interactive=false` semantics intact for the autonomous path.
 - Do not assume a universal TTY: under two-pane it is a real PTY; the plain host has no PTY (`interactive-mode-colors.md`). Target the two-pane host for the high-level tests; degrade gracefully (or document the limitation) on the plain host.
@@ -311,7 +322,7 @@ graph TD
 
 **Patterns to follow:**
 - Interactive PTY spawn + `pane-died` advance (`tmux-host.ts:956-1327`).
-- `interactive-mode-colors.md` PTY-vs-inherited-stdio split; `FakeRunner` `supports.interactive=true` shape (`fake-runner.ts:40`).
+- `interactive-mode-colors.md` PTY-vs-inherited-stdio split; `FakeRunner` `supports.interactive=true` shape (`src/runners/fake/fake-runner.ts:40`).
 
 **Test scenarios:**
 - Covers AE1, R3, R5, R6. Happy path: manual `hello`↵ typed into the interactive instance renders exactly one `hello` line; the same via control-file `type_and_send` renders identically.
@@ -328,9 +339,9 @@ graph TD
 
 **Goal:** Give the real-tmux harness a per-instance accessor `agent(labelPath)` returning an `AgentHandle` with `typeAndSend(text)` / `finish(code?)` / `waitForReady()`, resolving the control path from the run state dir + derived key and resolving the target pane fresh per call. Provides the driver-facing API for R8, R12, R13.
 
-**Requirements:** R8, R12, R13
+**Requirements:** R8, R9, R12, R13
 
-**Dependencies:** U1, U3
+**Dependencies:** U1, U2, U3 (U2 because the handle appends the `type_and_send` command variant U2 adds to `PuppetCommandSchema`)
 
 **Files:**
 - Create: `tests/helpers/real-tmux/agent-handle.ts`
@@ -340,7 +351,7 @@ graph TD
 - Test: `tests/integration/real-tmux/agent-handle.test.ts` (new)
 
 **Approach:**
-- `agent(labelPath)` derives the same logical key the workflow author used (via `deriveStepKey` semantics — flat for `as:`, `subPath>name` otherwise) and the same sanitized transport filename U3 uses, scoped to the harness's `runId` state dir. Name it distinctly from `left`/`right` pane handles (`agent`, not a second `handle`).
+- `agent(labelPath)` derives the same logical key the workflow author used (via `deriveStepKey` semantics — flat for `as:`, `subPath>name` otherwise) and the same sanitized transport filename U3 uses, scoped to the harness's `runId` state dir. Name it distinctly from `left`/`right` pane handles (`agent`, not a second `handle`). The handle is **bound to its harness instance's `runId`** — for the F2 concurrent-run case (U7) the test mounts two harnesses with distinct `runId`s and each harness's `agent()` resolves only that run's control files (this is what makes R11 isolation structural rather than coincidental).
 - The handle reuses the existing append+`waitForAck` machinery (`subprocess.ts:536-594`) against the resolved `<key>.ndjson` + `.acks` dir; `waitForReady()` polls for the `.ready` marker.
 - Thin wrappers `typeAndSend(handle, text)` / `finish(handle, code?)` target that instance (R8). When the handle needs to assert a pane, resolve the pane fresh (panes move on `swap-pane`).
 - Extend `HarnessStep`/`runWorkflow` so a step can be backed by the puppet/scripted-fake agent in either mode with a stable `as:` label flowing into `deriveStepKey` (this is how F2 branches become addressable).
@@ -371,15 +382,15 @@ graph TD
 **Dependencies:** U3, U4
 
 **Files:**
-- Modify: `src/runners/scripted-fake/interactive-entry.ts` (`parentExited()` in the interactive idle loop)
+- Modify: `src/runners/scripted-fake/interactive-entry.ts` (self-reap check in both interactive loops)
 - Modify: `tests/helpers/real-tmux/workflow-driver.ts` (`teardown()` reaps interactive PTY child + tail processes; or confirm `host.teardown()` already kills hidden panes)
 - Create: `tests/helpers/real-tmux/assert-no-leaks.ts` (process-count helper: `pgrep -fl scripted-fake` ⇒ expected count)
 - Test: `tests/integration/real-tmux/teardown-leak-guard.test.ts` (new)
 
 **Approach:**
-- The interactive entry runs as a real PTY child in a hidden tmux pane; on teardown the host's `unregisterSource` kills the pane (SIGHUP/SIGKILL). Confirm that path actually reaps the child and the per-step tail; if `MountedHarness.teardown()` (which today only closes host+logger) leaves them, add explicit reaping there.
-- Add `parentExited()` to the interactive idle loop exactly as the headless loops do — real-tmux has no launcher-side reaper, so self-reap is the only net. Probe the captured spawn-time parent pid (not `process.ppid`, which Bun caches).
-- Provide a reusable leak assertion the new tests call after teardown.
+- **The headless `parentExited()` pattern does NOT transfer to the interactive child.** The interactive fake is spawned **by tmux** into a hidden pane, so its `process.ppid` (captured as `SPAWN_PARENT_PID` in `__entry.ts:55`) is the tmux pane/server — not orch. Probing that pid stays alive after orch dies, so the self-reap loop would never exit → the exact leaked-daemon class (documented 8× slowdown) re-introduced. Resolve by **threading orch's pid in via env** (e.g. `ORCH_PARENT_PID`, set by the executor in U1's env write) and probing **that** in the interactive loops, instead of `process.ppid`. Both concurrent interactive loops (control-file poll + stdin) carry the check.
+- **Primary reap = tmux pane kill; self-reap = the net.** On teardown the host's `unregisterSource` kills the pane. Confirm empirically that the `bun` interactive child actually terminates on the pane's signal (Bun's default SIGHUP disposition is not assumed — add a SIGHUP handler that exits if needed). If `MountedHarness.teardown()` (which today only closes host+logger) leaves the child or the per-step `tail -F`, add explicit reaping there.
+- Provide a reusable leak assertion the new tests call after teardown. Note the guard is a **post-hoc sentinel**: it converts a silent leak into a loud failure but does not prevent one — the `ORCH_PARENT_PID` self-reap is the actual prevention.
 
 **Execution note:** Characterization-first — assert the baseline process count is restored after teardown; this is the regression sentinel for the documented 8× slowdown.
 
@@ -389,7 +400,8 @@ graph TD
 **Test scenarios:**
 - Covers R14. Happy path: after a full interactive+headless run and `teardown()`, `pgrep -fl scripted-fake` reports zero instances and no orphaned bun children.
 - Edge case: a run torn down while an instance is mid-idle (before `finish`) still leaves zero leaked processes.
-- Integration: simulate parent death (the self-reap path) — the interactive idle loop exits within one budget interval.
+- Integration: simulate **orch** death (kill the `ORCH_PARENT_PID` process, not the tmux pane parent) — the interactive child's loops exit within one budget interval. This is the scenario the naive `process.ppid` probe would miss.
+- Integration: tmux pane kill terminates the `bun` interactive child (verifies the primary reap path / SIGHUP disposition).
 
 **Verification:** Process count returns to baseline after every test; the leak-guard assertion passes; `bun run check` green.
 
@@ -421,8 +433,9 @@ graph TD
 
 **Test scenarios:**
 - Covers F1, AE5, AE6. Happy path: the two-step workflow runs to a finished state; every assertion is gated on a readiness/ack signal; repeated runs show zero timing flakiness.
-- Covers AE4, R6, R9. Happy path: parallel branches `a`/`b` receive only their own `type_and_send` text.
-- Covers AE3, R11. Happy path: two concurrent runs with identically-labeled steps are isolated — finishing one does not end the other.
+- Covers AE4, R9. Happy path: parallel branches `a`/`b` receive only their own `type_and_send` text.
+- Covers R6. Happy path: a bare line typed into the interactive pane via `tmux send-keys -l` (manual stdin, not the control channel) renders exactly once in the right pane — gated on `waitForReady` and asserted against the ANSI tee. This is the only scenario that exercises R6 through a real PTY; U4's unit-tier test cannot. (The old "AE4, R6, R9" label was wrong: the parallel-isolation test drives via the control channel and proves R9, not manual typing.)
+- Covers AE3, R11. Happy path: two concurrent runs with identically-labeled steps are isolated — finishing one does not end the other. **Mount two harnesses with distinct `runId`s** (the socket is keyed `orch-<runId>` and `agent(labelPath)` is scoped to one harness's `runId`); assert `agent('s')` on harness A never resolves harness B's control file.
 - Covers R14. Integration: post-teardown leak guard reports baseline process count for every test.
 - Edge case: snapshot taken immediately after `waitForReady` reliably shows the agent in its waiting state (the race the feature exists to remove).
 
@@ -433,7 +446,7 @@ graph TD
 ## System-Wide Impact
 
 - **Interaction graph:** Touches the executor spawn path (`workflow.ts` runRunner + runInteractive), the scripted-fake runner + entry, the two-pane interactive PTY path, and the real-tmux harness. Lifecycle/choreographer is **not** touched (readiness is a filesystem marker, not a lifecycle event) — a deliberate decision to avoid the exhaustive-consumer churn.
-- **Error propagation:** `finish(code)` maps to the existing terminal `complete`/`fail` ops; failure codes travel through the established runner-exit → `step:complete`/`step:failed` path. Malformed control lines are rejected without crashing (existing `safeParse` behavior).
+- **Error propagation:** In **headless** mode, `finish(code)` maps to the existing terminal `complete`/`fail` ops and failure codes travel the runner-exit → `step:complete`/`step:failed` path. In **interactive** mode, the host returns exit 0 unconditionally (tmux `pane-died` carries no exit code), so a non-zero `finish` advances as a clean exit — interactive failure-code propagation is out of scope (Key Technical Decisions / Scope Boundaries). Malformed control lines are rejected without crashing (existing `safeParse` behavior).
 - **State lifecycle risks:** Control files + `.ready`/`.ack` markers live under `<runId>` state dirs and are cleaned with the run. The chief risk is leaked processes (R14) — mitigated by U6 self-reap + leak guard.
 - **API surface parity:** No public API (`src/index.ts`) change — this is internal test tooling. The only "API" added is the real-tmux harness `agent(labelPath)` accessor (test-helper surface). Real Claude/Codex runners are untouched and ignore the new addressing env (U1 test asserts this).
 - **Integration coverage:** Cross-mode identical behavior (R3), cross-run isolation (R11), and parallel addressing (R9) are only proven at the integration layer (U7) — unit tests alone cannot prove the PTY/tee/teardown reality.
@@ -445,9 +458,11 @@ graph TD
 
 | Risk | Mitigation |
 |------|------------|
-| New interactive PTY child re-introduces the leaked-daemon flakiness (the documented 8× scar) | U6: `parentExited()` in the interactive loop + teardown reaping + a `pgrep` leak-guard assertion run after every new test, so a leak fails loudly. |
-| Key separators (`>`, `:`) break control-file path tooling | Logical-address-vs-transport split: sanitize the key into a filesystem-safe filename while keeping the logical address unchanged (R10). |
-| Moving control-path resolution to run time breaks existing behavioral-dsl puppet tests | Keep script-baked `controlPath` as a fallback when the threaded key is absent (U3); regression-test an existing puppet script. |
+| New interactive PTY child re-introduces the leaked-daemon flakiness (the documented 8× scar) — and the headless `process.ppid` self-reap does NOT work for it (tmux is its ppid, not orch) | U6: thread orch's pid via `ORCH_PARENT_PID` and probe **that** in both interactive loops (not `process.ppid`); tmux pane-kill as primary reap (verify SIGHUP terminates the child); `pgrep` leak guard after every test as a loud sentinel. |
+| Key separators (`>`, `:`) collide distinct keys on disk if sanitization is lossy → silent control-file sharing (breaks R9/R11 isolation) | Injective/reversible encoding (percent-encode), identical in U3 and U5; U3 test asserts `a>b` ≠ `a:b` on disk. |
+| Moving control-path resolution to run time breaks existing behavioral-dsl puppet tests (U1 threads the key on every step, so a "key absent" fallback never fires) | Fallback discriminator is **baked `controlPath` wins** (U3); backward-compat scenario drives a real behavioral-dsl puppet end-to-end (append + `waitForAck`). |
+| Stale `.ready` marker from a retry/resume in the same `runId` dir makes `waitForReady()` resolve before the agent is idle (re-introduces the race) | Entry deletes any pre-existing marker at spawn; U3 test asserts a stale marker does not resolve `waitForReady()` early. |
+| Interactive `finish(code)` silently drops the failure code (host returns exit 0) | Scoped out for this version (Key Technical Decisions / Scope Boundaries); `finish` wired as clean-exit; acceptance tests use only clean `finish`. |
 | Interactive fake assumes a TTY that the plain host doesn't provide | Target the two-pane host (real PTY) for high-level tests; degrade/document on the plain host (per `interactive-mode-colors.md`). |
 | Readiness/handle naming collides with existing `step:start` / `left`/`right` handles | Distinct names: filesystem `.ready` marker (not a lifecycle event) and `agent(labelPath)` accessor (per `two-pane-auto-attach.md` lesson). |
 | Pane assertions race fast teardown | Assert against durable on-disk signals (`.ready`, `.ack`, ANSI tee, `endedAt`), never bare pane scrapes (Tier-5 findings). |
