@@ -1,3 +1,3 @@
 line 1: header — do not touch
-line 2: shared content that branches will fight over
+line 2: CHANGED BY BRANCH A
 line 3: footer — do not touch
