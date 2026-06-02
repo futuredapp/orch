@@ -254,7 +254,8 @@ The full cheatsheet with signatures and minimal examples lives at [`references/a
 
 | Primitive | What it is |
 |---|---|
-| `workflow(name, fn)` | declares the workflow; gives you `run` and `args` |
+| `workflow<Args = WorkflowArgs>(name, fn)` | declares the workflow; gives you `run` and typed `args` |
+| `runWorkflow(sub, args)` | invoke another workflow inline as a subworkflow |
 | `step.define(name, config)` | autonomous or interactive agent step; supports `promptFile:` with run-time `vars` on `run()` |
 | `loadPrompt(path, vars)` | sync helper for composing prompt fragments inline |
 | `orch types [--watch]` | generate `.d.ts` sidecars so `promptFile:` paths get typed `vars` contracts |

@@ -7,6 +7,7 @@
 // touching a real CLI.
 
 import { describe, expect, it } from 'bun:test'
+import { SubworkflowDepthError } from '../../../src/core/errors.ts'
 import { parallel } from '../../../src/core/parallel.ts'
 import { runWorkflow } from '../../../src/core/run-workflow.ts'
 import { step } from '../../../src/core/step.ts'
@@ -16,6 +17,14 @@ import {
   type WorkflowDeps,
   workflow,
 } from '../../../src/core/workflow.ts'
+import {
+  type JsonObject,
+  type LogCategory,
+  type RawSink,
+  type SessionLogger,
+  type StepSpan,
+  stepSpanId,
+} from '../../../src/observability/index.ts'
 import { defineRunner, type Runner, type RunnerContext } from '../../../src/runners/index.ts'
 import {
   FakeClock,
@@ -29,6 +38,47 @@ import { FileStateStore, type RunId } from '../../../src/state/index.ts'
 import { createFakeHost } from '../../helpers/fake-host.ts'
 
 const rid = (s: string): RunId => s as RunId
+
+class RecordingLifecycleLogger implements SessionLogger {
+  readonly debug = false
+  readonly logsDir = null
+  readonly records: Array<{ readonly category: LogCategory; readonly record: JsonObject }> = []
+
+  constructor(readonly runId: RunId) {}
+
+  append(category: LogCategory, record: JsonObject): Promise<void> {
+    this.records.push({ category, record })
+    return Promise.resolve()
+  }
+
+  forStep(stepName: import('../../../src/core/types.ts').StepName): StepSpan {
+    return {
+      stepName,
+      stepSpanId: stepSpanId(`span-${String(stepName)}`),
+      append: (category: LogCategory, record: JsonObject): Promise<void> =>
+        this.append(category, record),
+    }
+  }
+
+  writeFile(_relPath: string, _body: string): Promise<void> {
+    return Promise.resolve()
+  }
+
+  rawSink(_relPath: string): null {
+    return null
+  }
+
+  streamSink(_relPath: string): RawSink {
+    return {
+      write: (_chunk: Uint8Array | string): Promise<void> => Promise.resolve(),
+      close: (): Promise<void> => Promise.resolve(),
+    }
+  }
+
+  close(): Promise<void> {
+    return Promise.resolve()
+  }
+}
 
 function makeDeps(extras: Partial<WorkflowDeps> = {}): WorkflowDeps {
   const fs = new FakeFsService()
@@ -169,7 +219,9 @@ describe('runWorkflow — depth guard (R21)', () => {
       await runWorkflow(current, {})
     })
 
-    await expect(parent.execute(deps)).rejects.toThrow(/runWorkflow depth 9 exceeds max 8/)
+    await expect(parent.execute(deps)).rejects.toThrow(SubworkflowDepthError)
+    const state = await deps.stateStore.loadRun(deps.runId)
+    expect(state?.status).toBe('crashed')
   })
 
   it('respects a per-execution maxSubworkflowDepth override', async () => {
@@ -211,7 +263,7 @@ describe('runWorkflow — typed args (R5, AE5)', () => {
 })
 
 describe('runWorkflow — parallel composition (AE6, R8, R13)', () => {
-  it('two sibling runWorkflow calls inside a homogeneous parallel block both report depth 1', async () => {
+  it('two sibling runWorkflow calls inside a homogeneous parallel block report depth 1 and insideParallel', async () => {
     const deps = makeDeps()
 
     const shipA = workflow('ship-a', async () => {})
@@ -231,12 +283,20 @@ describe('runWorkflow — parallel composition (AE6, R8, R13)', () => {
       expect((e as { depth: number }).depth).toBe(1)
       expect((e as { insideParallel?: true }).insideParallel).toBe(true)
     }
+
+    const exits = recordedLifecycleEvents(deps).filter((e) => e.type === 'subworkflow:exit')
+    expect(exits).toHaveLength(2)
+    for (const e of exits) {
+      expect((e as { depth: number }).depth).toBe(1)
+      expect((e as { insideParallel?: true }).insideParallel).toBe(true)
+    }
   })
 })
 
 describe('runWorkflow — host enter-throw vs exit-throw asymmetry (R10)', () => {
-  it('host throw on subworkflow:enter propagates and the sub body does NOT run', async () => {
-    const deps = makeDeps()
+  it('host throw on subworkflow:enter propagates, logs host-error and failed exit, and the sub body does NOT run', async () => {
+    const logger = new RecordingLifecycleLogger(rid('r-2026-05-28-110000-enter'))
+    const deps = makeDeps({ logger })
     const host = deps.host as ReturnType<typeof createFakeHost>
     // Wrap onLifecycleEvent: throw on enter, otherwise record normally.
     const original = host.onLifecycleEvent.bind(host)
@@ -255,6 +315,31 @@ describe('runWorkflow — host enter-throw vs exit-throw asymmetry (R10)', () =>
 
     await expect(parent.execute(deps)).rejects.toThrow(/host enter boom/)
     expect(ranBody).toBe(false)
+
+    const lifecycle = logger.records
+      .filter((record) => record.category === 'lifecycle')
+      .map((record) => record.record)
+    expect(lifecycle).toContainEqual({
+      type: 'subworkflow:enter',
+      name: 'sub',
+      depth: 1,
+      subPath: ['sub'],
+    })
+    expect(lifecycle).toContainEqual({
+      type: 'host-error',
+      source: 'subworkflow:enter',
+      name: 'sub',
+      depth: 1,
+      message: 'host enter boom',
+    })
+    expect(lifecycle).toContainEqual(
+      expect.objectContaining({
+        type: 'subworkflow:exit',
+        name: 'sub',
+        depth: 1,
+        outcome: 'failed',
+      }),
+    )
   })
 
   it('host throw on subworkflow:exit is suppressed and emitted as a typed host-error event', async () => {
@@ -283,5 +368,57 @@ describe('runWorkflow — host enter-throw vs exit-throw asymmetry (R10)', () =>
       name: 'sub',
     })
     expect((hostError as { message: string }).message).toContain('host exit boom')
+  })
+})
+
+describe('runWorkflow — resume collision detection (R20)', () => {
+  it('does not replay the first cached sub invocation for a second same-sub call after resume', async () => {
+    const deps = makeDeps({ runId: rid('r-2026-05-28-110000-ab') })
+    const PLAN = step.define('plan', { agent: silentRunner(deps, 'resume-collision'), prompt: 'x' })
+    let firstAttempt = true
+
+    const sub = workflow('ship', async (run) => {
+      await run(PLAN)
+    })
+    const parent = workflow('test', async () => {
+      await runWorkflow(sub, {})
+      if (firstAttempt) {
+        firstAttempt = false
+        throw new Error('crash after first sub')
+      }
+      await runWorkflow(sub, {})
+    })
+
+    await expect(parent.execute(deps)).rejects.toThrow(/crash after first sub/)
+
+    const beforeResume = await deps.stateStore.loadRun(deps.runId)
+    expect(beforeResume?.steps['ship>plan']).toBeDefined()
+
+    await expect(parent.resume(deps)).rejects.toThrow(/same workflow was invoked twice/)
+
+    const afterResume = await deps.stateStore.loadRun(deps.runId)
+    expect(Object.keys(afterResume?.steps ?? {})).toEqual(['ship>plan'])
+  })
+
+  it('claims a same-sub key before async persistence so parallel duplicate sub calls collide', async () => {
+    const deps = makeDeps({ runId: rid('r-2026-05-28-110000-ac') })
+    const PLAN = step.define('plan', {
+      agent: silentRunner(deps, 'parallel-collision'),
+      prompt: 'x',
+    })
+
+    const sub = workflow('ship', async (run) => {
+      await run(PLAN)
+    })
+    const parent = workflow('test', async () => {
+      await parallel([1, 2], async () => {
+        await runWorkflow(sub, {})
+      })
+    })
+
+    await expect(parent.execute(deps)).rejects.toThrow(/parallel branch/)
+
+    const state = await deps.stateStore.loadRun(deps.runId)
+    expect(Object.keys(state?.steps ?? {})).toEqual(['ship>plan'])
   })
 })

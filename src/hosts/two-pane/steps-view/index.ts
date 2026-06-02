@@ -26,6 +26,7 @@ export type {
   StepStatus,
   StepsViewModel,
   StepsViewState,
+  SubworkflowEvent,
   SubworkflowOverlay,
   TuiOverlay,
   TuiOverlaySnapshot,
@@ -39,6 +40,7 @@ export {
   parseTuiOverlayLine,
   projectStepsView,
   serializeTuiOverlayLine,
+  subworkflowOverlayKey,
 } from './steps-view-model.ts'
 export type { TailNdjsonHandle, TailNdjsonOptions } from './tail-ndjson.ts'
 export { tailNdjson } from './tail-ndjson.ts'

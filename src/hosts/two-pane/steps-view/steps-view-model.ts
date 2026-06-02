@@ -104,6 +104,7 @@ export function createStepsViewModel(opts: CreateStepsViewModelOptions): StepsVi
             readonly mode?: string
             readonly name?: string
             readonly depth?: number
+            readonly subPath?: readonly string[]
             readonly durationMs?: number
             readonly outcome?: 'completed' | 'failed'
             readonly insideParallel?: true
@@ -112,7 +113,13 @@ export function createStepsViewModel(opts: CreateStepsViewModelOptions): StepsVi
           const now = opts.clock.now()
           applyLifecycleEvent(
             overlay,
-            { type: parsed.type, stepName: parsed.stepName, mode: parsed.mode },
+            {
+              type: parsed.type,
+              stepName: parsed.stepName,
+              mode: parsed.mode,
+              subPath: parsed.subPath,
+              insideParallel: parsed.insideParallel,
+            },
             now,
           )
           applySubworkflowEvent(
@@ -121,6 +128,7 @@ export function createStepsViewModel(opts: CreateStepsViewModelOptions): StepsVi
               type: parsed.type,
               name: parsed.name,
               depth: parsed.depth,
+              subPath: parsed.subPath,
               durationMs: parsed.durationMs,
               outcome: parsed.outcome,
               insideParallel: parsed.insideParallel,
@@ -171,10 +179,14 @@ export function createStepsViewModel(opts: CreateStepsViewModelOptions): StepsVi
   }
 }
 
-export type { LiveOverlay, SubworkflowOverlay } from './live-overlay.ts'
 // Public re-exports — callers import from the barrel which re-exports from
 // here, so existing imports stay source-compatible after the split.
-export { applyLifecycleEvent, applySubworkflowEvent } from './live-overlay.ts'
+export type { LiveOverlay, SubworkflowEvent, SubworkflowOverlay } from './live-overlay.ts'
+export {
+  applyLifecycleEvent,
+  applySubworkflowEvent,
+  subworkflowOverlayKey,
+} from './live-overlay.ts'
 export type { ProjectArgs } from './project-steps-view.ts'
 export { projectStepsView } from './project-steps-view.ts'
 export type {

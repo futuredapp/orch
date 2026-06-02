@@ -67,6 +67,11 @@ import {
 import { outcomesToFailures, outcomesToPersisted, runValidators } from './validation-runner.ts'
 import { runWorktreeStep } from './worktree.ts'
 
+// This file intentionally remains the workflow executor's coordination hub:
+// it owns run()/resume(), cache replay, validation, lifecycle fan-out, and
+// CLI args plumbing. Specialized surfaces such as runWorkflow live in smaller
+// sibling modules once they need their own lifecycle or state machinery.
+
 // ---------------------------------------------------------------------------
 // JsonValue — compile-time serialization safety for extraContext
 // ---------------------------------------------------------------------------
@@ -149,10 +154,33 @@ export type RunOverrides<V extends PromptVarsBound = PromptVars> = RunOverridesB
 export type ParallelBranchStatus = 'running' | 'completed' | 'failed' | 'cancelled'
 
 export type StepLifecycleEvent =
-  | { readonly type: 'step:start'; readonly stepName: StepName; readonly mode: StepMode }
-  | { readonly type: 'step:complete'; readonly stepName: StepName; readonly durationMs: number }
-  | { readonly type: 'step:failed'; readonly stepName: StepName; readonly error: unknown }
-  | { readonly type: 'step:cached'; readonly stepName: StepName }
+  | {
+      readonly type: 'step:start'
+      readonly stepName: StepName
+      readonly mode: StepMode
+      readonly subPath?: readonly string[]
+      readonly insideParallel?: true
+    }
+  | {
+      readonly type: 'step:complete'
+      readonly stepName: StepName
+      readonly durationMs: number
+      readonly subPath?: readonly string[]
+      readonly insideParallel?: true
+    }
+  | {
+      readonly type: 'step:failed'
+      readonly stepName: StepName
+      readonly error: unknown
+      readonly subPath?: readonly string[]
+      readonly insideParallel?: true
+    }
+  | {
+      readonly type: 'step:cached'
+      readonly stepName: StepName
+      readonly subPath?: readonly string[]
+      readonly insideParallel?: true
+    }
   | {
       readonly type: 'step:parallel-branch-update'
       readonly stepName: StepName
@@ -188,6 +216,7 @@ export type StepLifecycleEvent =
       readonly type: 'subworkflow:enter'
       readonly name: string
       readonly depth: number
+      readonly subPath?: readonly string[]
       readonly insideParallel?: true
     }
   | {
@@ -197,6 +226,7 @@ export type StepLifecycleEvent =
       readonly type: 'subworkflow:exit'
       readonly name: string
       readonly depth: number
+      readonly subPath?: readonly string[]
       readonly durationMs: number
       readonly outcome: 'completed' | 'failed'
       readonly insideParallel?: true
@@ -415,6 +445,7 @@ function hasNonEmptyVars(vars: PromptVars | undefined): boolean {
 // cache entries. Empty vars (or no overrides) leave the key unchanged for
 // back-compat with workflows that don't use the new contract.
 
+/** @internal Exported only for focused cache-key regression tests. */
 export function deriveStepKey(
   name: StepName,
   overrides: RunOverrides | undefined,
@@ -1267,10 +1298,32 @@ async function runCommitStep(
 // alias instead of the prior `s as unknown as Step<T>` double-cast.
 type AnyStep = Step<unknown, PromptVarsBound>
 
+interface StepKeyOwner {
+  readonly subPath: readonly string[]
+  readonly subCallId?: string
+}
+
+function sameSubPath(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((seg, i) => seg === b[i])
+}
+
+function assertNoExecutionCollision(
+  step: AnyStep,
+  prior: StepKeyOwner,
+  attempted: StepKeyOwner,
+): void {
+  if (
+    !sameSubPath(prior.subPath, attempted.subPath) ||
+    (attempted.subCallId !== undefined && prior.subCallId !== attempted.subCallId)
+  ) {
+    throw new StepNameCollisionError(step.name, prior.subPath, attempted.subPath)
+  }
+}
+
 async function runStepOnce(
   deps: WorkflowDeps,
   captureLock: CaptureLock,
-  keysWrittenThisExecution: Set<string>,
+  keyOwnersThisExecution: Map<string, StepKeyOwner>,
   s: AnyStep,
   overrides: RunOverrides | undefined,
 ): Promise<unknown> {
@@ -1281,6 +1334,10 @@ async function runStepOnce(
   const subStore = executionContext.getStore()
   const subCallId = subStore?.subCallId
   const insideParallel = isInsideParallel()
+  const attemptedOwner: StepKeyOwner = {
+    subPath,
+    ...(subCallId !== undefined ? { subCallId } : {}),
+  }
 
   // Register the runner for resume lookup before any short-circuit. Cache hits
   // on `orch resume` populate the registry progressively so the right pane
@@ -1291,20 +1348,27 @@ async function runStepOnce(
     deps.resumeRegistry?.register(key, s.config.agent)
   }
 
+  // U4 R20 case-b — same-execution second ownership of the same key by a
+  // different sub invocation must throw BEFORE the cache short-circuit,
+  // otherwise the second invocation silently replays the first's value. On
+  // resume, a prior-run cached entry is allowed to be claimed once by the
+  // current execution; a second fresh subCallId for the same key then collides.
+  const executionOwner = keyOwnersThisExecution.get(key)
+  if (executionOwner !== undefined) {
+    assertNoExecutionCollision(s, executionOwner, attemptedOwner)
+  } else {
+    keyOwnersThisExecution.set(key, attemptedOwner)
+  }
+
   const state = await deps.stateStore.loadRun(deps.runId)
   const cached = state?.steps[key]
-  // U4 R20 case-b — same-execution second write with a different sub-call-id
-  // must throw BEFORE the cache short-circuit, otherwise the second
-  // invocation silently replays the first's value instead of being flagged.
-  // We compare against `keysWrittenThisExecution` so resume (which loads
-  // entries written in a prior execution) does not falsely flag.
-  if (cached !== undefined && keysWrittenThisExecution.has(key)) {
-    const priorPath = cached.subPath ?? []
-    const samePath =
-      priorPath.length === subPath.length && priorPath.every((seg, i) => seg === subPath[i])
-    const priorSubCall = cached.subCallId
-    if (!samePath || (subCallId !== undefined && priorSubCall !== subCallId)) {
-      throw new StepNameCollisionError(s.name, priorPath, subPath)
+  if (cached !== undefined) {
+    const cachedOwner: StepKeyOwner = {
+      subPath: cached.subPath ?? [],
+      ...(cached.subCallId !== undefined ? { subCallId: cached.subCallId } : {}),
+    }
+    if (!sameSubPath(cachedOwner.subPath, attemptedOwner.subPath)) {
+      throw new StepNameCollisionError(s.name, cachedOwner.subPath, attemptedOwner.subPath)
     }
   }
   if (cached !== undefined) {
@@ -1324,9 +1388,16 @@ async function runStepOnce(
       // Cached events do not mint a fresh span — the step's structured records
       // live in the original run's logs. Emit a run-level lifecycle line so the
       // timeline still shows the cache hit.
-      deps.host.onLifecycleEvent({ type: 'step:cached', stepName: key })
-      void deps.logger?.append('lifecycle', { type: 'step:cached', stepName: key }).catch(() => {})
+      const cachedLifecycle: StepLifecycleEvent = {
+        type: 'step:cached',
+        stepName: key,
+        ...(subPath.length > 0 ? { subPath } : {}),
+        ...(insideParallel ? { insideParallel: true as const } : {}),
+      }
+      deps.host.onLifecycleEvent(cachedLifecycle)
+      void deps.logger?.append('lifecycle', cachedLifecycle).catch(() => {})
       orchLog(deps.logger, 'cache-hit', { stepName: key, kind: s.config.kind })
+      keyOwnersThisExecution.set(key, attemptedOwner)
       return cached.value
     }
   }
@@ -1433,7 +1504,7 @@ async function runStepOnce(
     ...(insideParallel ? { insideParallel: true as const } : {}),
   }
   await deps.stateStore.saveStep(deps.runId, augmentedEntry)
-  keysWrittenThisExecution.add(key)
+  keyOwnersThisExecution.set(key, attemptedOwner)
   orchLog(deps.logger, 'saveStep', { stepName: key, kind: s.config.kind })
   return result.value
 }
@@ -1448,13 +1519,11 @@ async function executeWorkflowFn(fn: WorkflowFn, deps: WorkflowDeps): Promise<vo
   // serialize their capture windows through this lock; different executions
   // — and different test fixtures — each get their own factory instance.
   const captureLock = createCaptureLock()
-  // U4 R20 — tracks cache keys actually written during THIS execution. A
-  // second write to the same key under a different sub-call-id is the
-  // "same sub invoked twice in one run" collision (the brainstorm's
-  // case b). On resume the Set starts empty so a cached entry from a
-  // prior execution does not falsely flag a collision against a fresh
-  // invocation.
-  const keysWrittenThisExecution = new Set<string>()
+  // U4 R20 — tracks cache-key ownership during THIS execution. A cached
+  // entry from a prior execution may be claimed once on resume, but a second
+  // fresh sub-call-id for the same key collides instead of replaying the
+  // first invocation's value.
+  const keyOwnersThisExecution = new Map<string, StepKeyOwner>()
 
   const run: RunFn = <T, V extends PromptVarsBound>(
     s: Step<T, V>,
@@ -1463,7 +1532,7 @@ async function executeWorkflowFn(fn: WorkflowFn, deps: WorkflowDeps): Promise<vo
     runStepOnce(
       deps,
       captureLock,
-      keysWrittenThisExecution,
+      keyOwnersThisExecution,
       // Cast away the V generic — runStepOnce treats every step uniformly at
       // runtime and the cache-key fold uses `overrides.vars` directly.
       s as AnyStep,
@@ -1539,6 +1608,15 @@ async function executeWorkflowFn(fn: WorkflowFn, deps: WorkflowDeps): Promise<vo
   }
 }
 
+function argsFromDeps<Args extends WorkflowArgs>(deps: WorkflowDeps): Args {
+  // `deps.args` comes from CLI/runtime loading and can only be checked as the
+  // base `WorkflowArgs` shape. Workflows with stricter Args are valid for
+  // subworkflow calls; executing them directly relies on the caller supplying
+  // matching args. Keep that unavoidable runtime trust at this single boundary
+  // instead of weakening the workflow body type.
+  return (deps.args ?? {}) as Args
+}
+
 // Workflow names share the cache-key alphabet so a sub name embedded into a
 // step cache key like `simple-feature>plan` cannot collide with an existing
 // step name. The pattern matches existing names in `examples/` (e.g.
@@ -1566,7 +1644,7 @@ export function workflow<Args extends WorkflowArgs = WorkflowArgs>(
       // assignable from WorkflowArgs at the call boundary. The dual-role
       // limit (Args requiring non-prompt fields is sub-only) is documented
       // in the public guide.
-      await executeWorkflowFn(fn as unknown as WorkflowFn, deps)
+      await executeWorkflowFn((run) => fn(run, argsFromDeps<Args>(deps)), deps)
     },
     async resume(deps: WorkflowDeps): Promise<void> {
       // Skip initRun() — resume validates existence and resets status directly.
@@ -1575,7 +1653,7 @@ export function workflow<Args extends WorkflowArgs = WorkflowArgs>(
       if (state === undefined) throw new RunNotFoundError(deps.runId)
       if (state.status === 'completed') throw new ResumeError(deps.runId, state.status)
       await deps.stateStore.setStatus(deps.runId, 'running')
-      await executeWorkflowFn(fn as unknown as WorkflowFn, deps)
+      await executeWorkflowFn((run) => fn(run, argsFromDeps<Args>(deps)), deps)
     },
   }
 }

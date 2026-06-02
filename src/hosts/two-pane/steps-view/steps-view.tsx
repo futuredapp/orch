@@ -87,10 +87,10 @@ function displayName(name: string): string {
 
 // Boundary rows and step rows can share a stable `name` (a sub `simple` and
 // some step `simple` are distinct in R20 but indistinguishable by name alone),
-// so React keys mix kind + depth + name.
+// so React keys mix kind + full sub path identity.
 function rowKey(step: StepRowData): string {
-  if (step.kind === 'subworkflow-enter') return `enter:${step.depth}:${step.name}`
-  if (step.kind === 'subworkflow-exit') return `exit:${step.depth}:${step.name}`
+  if (step.kind === 'subworkflow-enter') return `enter:${step.subPath.join('>')}`
+  if (step.kind === 'subworkflow-exit') return `exit:${step.subPath.join('>')}`
   return step.name
 }
 

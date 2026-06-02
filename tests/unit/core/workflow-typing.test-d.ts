@@ -2,8 +2,8 @@
 // `Args = WorkflowArgs`, and the module-private body handle. These tests do
 // NOT execute any runtime code; failures land at `tsc --noEmit` time.
 //
-// `runWorkflow` typing is covered in U5's tests; this file scopes to the
-// factory and the executor shape.
+// `runWorkflow` typing is covered in run-workflow-typing.test-d.ts; this file
+// scopes to the factory and the executor shape.
 
 import type {
   bodyHandle,

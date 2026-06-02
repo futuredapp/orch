@@ -36,6 +36,32 @@ describe('applyLifecycleEvent', () => {
     })
   })
 
+  it('preserves subPath and insideParallel metadata for live-only projected rows', () => {
+    const overlay = new Map<string, LiveOverlay>()
+
+    applyLifecycleEvent(
+      overlay,
+      {
+        type: 'step:start',
+        stepName: 'simple-feature>plan',
+        mode: 'autonomous',
+        subPath: ['simple-feature'],
+        insideParallel: true,
+      },
+      1000,
+    )
+    applyLifecycleEvent(overlay, { type: 'step:complete', stepName: 'simple-feature>plan' }, 1200)
+
+    expect(overlay.get('simple-feature>plan')).toEqual({
+      status: 'completed',
+      mode: 'autonomous',
+      subPath: ['simple-feature'],
+      insideParallel: true,
+      startedAt: 1000,
+      endedAt: 1200,
+    })
+  })
+
   it('flips to completed on step:complete and preserves the prior mode + startedAt', () => {
     const overlay = new Map<string, LiveOverlay>()
     applyLifecycleEvent(overlay, { type: 'step:start', stepName: 'plan', mode: 'autonomous' }, 100)
@@ -60,6 +86,28 @@ describe('applyLifecycleEvent', () => {
     expect(entry?.status).toBe('failed')
     expect(entry?.startedAt).toBe(100)
     expect(entry?.endedAt).toBe(700)
+  })
+
+  it('uses subPath metadata on terminal events even when no start event was seen', () => {
+    const overlay = new Map<string, LiveOverlay>()
+
+    applyLifecycleEvent(
+      overlay,
+      {
+        type: 'step:complete',
+        stepName: 'outer>inner>plan',
+        subPath: ['outer', 'inner'],
+        insideParallel: true,
+      },
+      700,
+    )
+
+    expect(overlay.get('outer>inner>plan')).toEqual({
+      status: 'completed',
+      subPath: ['outer', 'inner'],
+      insideParallel: true,
+      endedAt: 700,
+    })
   })
 
   it('marks step:cached without overwriting previously-set timing fields', () => {

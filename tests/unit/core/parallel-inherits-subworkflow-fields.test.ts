@@ -1,6 +1,7 @@
 // U3 — parallel() branchStore propagation. Asserts that a hypothetical
 // `runWorkflow` invocation inside a parallel branch would see the parent's
-// `subworkflowPath`, `runFnRef`, `loggerRef`, and `maxSubworkflowDepth`.
+// `subworkflowPath`, `subCallId`, `runFnRef`, `loggerRef`, and
+// `maxSubworkflowDepth`.
 //
 // Without this propagation, sibling parallel branches would (a) read
 // `runFnRef === undefined` and trip U5's outside-scope guard, (b) read
@@ -55,6 +56,27 @@ describe('parallel() branchStore — subworkflow field propagation', () => {
 
     expect(observed[0]).toEqual(['outer'])
     expect(observed[1]).toEqual(['outer'])
+  })
+
+  it('propagates subCallId so branch-local steps belong to the enclosing sub invocation', async () => {
+    const observed: Array<string | undefined> = []
+
+    await executionContext.run(
+      {
+        parallelDepth: 0,
+        subworkflowPath: ['outer'],
+        subworkflowDepth: 1,
+        subCallId: 'call-outer',
+      },
+      async () => {
+        await parallel([1, 2], async () => {
+          observed.push(executionContext.getStore()?.subCallId)
+        })
+      },
+    )
+
+    expect(observed[0]).toBe('call-outer')
+    expect(observed[1]).toBe('call-outer')
   })
 
   it('propagates subworkflowDepth so nested runWorkflow inside a branch starts from the parent depth', async () => {

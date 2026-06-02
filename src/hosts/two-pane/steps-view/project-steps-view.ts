@@ -12,7 +12,7 @@
 // for completed exits before they're persisted.
 
 import type { RunState, StepEntry } from '../../../state/index.ts'
-import type { LiveOverlay, SubworkflowOverlay } from './live-overlay.ts'
+import { type LiveOverlay, type SubworkflowOverlay, subworkflowOverlayKey } from './live-overlay.ts'
 import type {
   Banner,
   EndOfRunSummary,
@@ -104,7 +104,13 @@ function collectRecords(
   for (const [name, live] of overlay) {
     if (seen.has(name)) continue
     seen.add(name)
-    records.push({ name, entry: undefined, live, subPath: [], insideParallel: false })
+    records.push({
+      name,
+      entry: undefined,
+      live,
+      subPath: live.subPath ?? [],
+      insideParallel: live.insideParallel === true,
+    })
   }
   return records
 }
@@ -124,10 +130,15 @@ function collectSuppressedSubs(
   const suppressed = new Set<string>()
   for (const rec of records) {
     if (!rec.insideParallel) continue
-    for (const name of rec.subPath) suppressed.add(name)
+    for (let i = 0; i < rec.subPath.length; i++) {
+      suppressed.add(subworkflowOverlayKey(rec.subPath.slice(0, i + 1)))
+    }
   }
-  for (const [name, sub] of subOverlay) {
-    if (sub.insideParallel === true) suppressed.add(name)
+  for (const sub of subOverlay.values()) {
+    if (sub.insideParallel !== true) continue
+    for (let i = 0; i < sub.subPath.length; i++) {
+      suppressed.add(subworkflowOverlayKey(sub.subPath.slice(0, i + 1)))
+    }
   }
   return suppressed
 }
@@ -157,7 +168,8 @@ function buildRows(args: BuildRowsArgs): StepRow[] {
     for (let i = currentPath.length - 1; i >= k; i--) {
       const name = currentPath[i]
       if (name === undefined) continue
-      const exit = buildExitRow(name, i + 1, args.subOverlay, args.suppressed)
+      const subPath = currentPath.slice(0, i + 1)
+      const exit = buildExitRow(name, i + 1, subPath, args.subOverlay, args.suppressed)
       if (exit !== undefined) rows.push(exit)
     }
 
@@ -165,10 +177,12 @@ function buildRows(args: BuildRowsArgs): StepRow[] {
     for (let i = k; i < newPath.length; i++) {
       const name = newPath[i]
       if (name === undefined) continue
-      if (renderedSubs.has(name)) continue
-      const enter = buildEnterRow(name, i + 1, args.suppressed)
+      const subPath = newPath.slice(0, i + 1)
+      const key = subworkflowOverlayKey(subPath)
+      if (renderedSubs.has(key)) continue
+      const enter = buildEnterRow(name, i + 1, subPath, args.suppressed)
       if (enter !== undefined) rows.push(enter)
-      renderedSubs.add(name)
+      renderedSubs.add(key)
     }
 
     rows.push(buildStepRow(rec))
@@ -183,8 +197,10 @@ function buildRows(args: BuildRowsArgs): StepRow[] {
   for (let i = currentPath.length - 1; i >= 0; i--) {
     const name = currentPath[i]
     if (name === undefined) continue
-    if (!args.terminal && args.subOverlay.get(name)?.status === 'running') continue
-    const exit = buildExitRow(name, i + 1, args.subOverlay, args.suppressed)
+    const subPath = currentPath.slice(0, i + 1)
+    const sub = getSubOverlay(args.subOverlay, subPath)
+    if (!args.terminal && sub?.status === 'running') continue
+    const exit = buildExitRow(name, i + 1, subPath, args.subOverlay, args.suppressed)
     if (exit !== undefined) rows.push(exit)
   }
 
@@ -192,14 +208,16 @@ function buildRows(args: BuildRowsArgs): StepRow[] {
   // (no child step ever materialised). Append in `startedAt` order so the
   // tail reflects chronology.
   const stepless: readonly [string, SubworkflowOverlay][] = [...args.subOverlay]
-    .filter(([name]) => !renderedSubs.has(name))
+    .filter(([key]) => !renderedSubs.has(key))
     .sort((a, b) => a[1].startedAt - b[1].startedAt)
-  for (const [name, sub] of stepless) {
-    const enter = buildEnterRow(name, sub.depth, args.suppressed)
+  for (const [key, sub] of stepless) {
+    const name = sub.subPath[sub.subPath.length - 1]
+    if (name === undefined) continue
+    const enter = buildEnterRow(name, sub.depth, sub.subPath, args.suppressed)
     if (enter !== undefined) rows.push(enter)
-    renderedSubs.add(name)
+    renderedSubs.add(key)
     if (sub.status !== 'running' || args.terminal) {
-      const exit = buildExitRow(name, sub.depth, args.subOverlay, args.suppressed)
+      const exit = buildExitRow(name, sub.depth, sub.subPath, args.subOverlay, args.suppressed)
       if (exit !== undefined) rows.push(exit)
     }
   }
@@ -217,28 +235,38 @@ function commonPrefixLength(a: readonly string[], b: readonly string[]): number 
 function buildEnterRow(
   name: string,
   depth: number,
+  subPath: readonly string[],
   suppressed: ReadonlySet<string>,
 ): StepRow | undefined {
-  if (suppressed.has(name)) return undefined
-  return { kind: 'subworkflow-enter', name, depth, glyph: '▼' }
+  if (suppressed.has(subworkflowOverlayKey(subPath))) return undefined
+  return { kind: 'subworkflow-enter', name, depth, subPath, glyph: '▼' }
 }
 
 function buildExitRow(
   name: string,
   depth: number,
+  subPath: readonly string[],
   subOverlay: ReadonlyMap<string, SubworkflowOverlay>,
   suppressed: ReadonlySet<string>,
 ): StepRow | undefined {
-  if (suppressed.has(name)) return undefined
-  const sub = subOverlay.get(name)
+  if (suppressed.has(subworkflowOverlayKey(subPath))) return undefined
+  const sub = getSubOverlay(subOverlay, subPath)
   const glyph: '✓' | '✗' = sub?.status === 'completed' ? '✓' : '✗'
   return {
     kind: 'subworkflow-exit',
     name,
     depth,
+    subPath,
     glyph,
     durationMs: sub?.durationMs,
   }
+}
+
+function getSubOverlay(
+  subOverlay: ReadonlyMap<string, SubworkflowOverlay>,
+  subPath: readonly string[],
+): SubworkflowOverlay | undefined {
+  return subOverlay.get(subworkflowOverlayKey(subPath))
 }
 
 interface FinalizeArgs {

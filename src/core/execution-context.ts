@@ -40,7 +40,9 @@ export interface ExecutionContext {
   readonly parallelBlockIdRef?: ParallelBlockIdRef
   // Subworkflow frame fields (U3). Undefined at the root frame, populated
   // on each `runWorkflow` entry. `subworkflowDepth` defaults to 0 (root);
-  // `subworkflowPath` defaults to [] (root); `insideParallel` is set when
+  // `subworkflowPath` defaults to [] (root). Persisted step entries spell
+  // the same chain as `subPath`; keep the ALS name explicit to distinguish
+  // execution-frame state from stored step metadata. `insideParallel` is set when
   // a sub is entered from a parent frame inside a `parallel()` branch and
   // propagates to all descendants (R23 — uniform suppression across the
   // sub-of-sub subtree).

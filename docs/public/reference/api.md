@@ -60,7 +60,7 @@ await run(GREET, { vars: { name: 'Ada'   } })
 await run(GREET, { vars: { name: 'Boris' } })
 ```
 
-Two `run()` calls with different `vars` produce distinct cache entries; the same vars on a second call hits the cache. Setting `as:` explicitly overrides the cache name (no vars hash is appended). See [Typed prompt vars](../guides/typed-prompt-vars) for the full compile-time contract.
+Two `run()` calls with different `vars` produce distinct cache entries; the same vars on a second call hits the cache. Setting `as:` explicitly overrides the cache name (no vars hash is appended). Inside a subworkflow, `as:` also bypasses the automatic sub-path prefix, so use it only when you intentionally want a flat, shared cache key. See [Typed prompt vars](../guides/typed-prompt-vars) for the full compile-time contract.
 
 Forcing `mode: 'interactive'` changes the return type to `InteractiveResult` (`{ exitCode, durationMs, sessionId }`).
 
@@ -317,6 +317,8 @@ const reviews = await parallel(
 
 Each branch gets a stable memoization key, so a parallel block is individually resumable. Interactive steps cannot run inside `parallel()`.
 
+`runWorkflow(...)` is supported only in the homogeneous `parallel(items, fn)` form. The heterogeneous array form eagerly creates promises before `parallel()` owns a branch frame, so `parallel([runWorkflow(a, args), runWorkflow(b, args)])` is unsupported in v1.
+
 ::: warning Don't parallelize ordered work
 `parallel()` is for genuinely independent work. Sequential, dependent steps belong in a plain `for` loop.
 :::
@@ -341,7 +343,17 @@ export default workflow('feature', async (_run, args) => {
 })
 ```
 
-Sub-internal step names are persisted under a namespaced cache key (`<sub>>name`) so two subs with overlapping step names can run from the same parent without colliding.
+Sub-internal step names are persisted under a namespaced cache key (`<sub>>name`) so two subs with overlapping step names can run from the same parent without colliding. User-authored workflow names must match `^[a-z0-9][a-z0-9-]*$`; `:` and `>` are reserved for generated step/cache keys.
+
+Inside `parallel()`, call subworkflows only from the homogeneous `parallel(items, fn)` form:
+
+```ts
+await parallel([{ sub: shipA }, { sub: shipB }], async (branch) => {
+  await runWorkflow(branch.sub, { prompt: args.prompt ?? '' })
+})
+```
+
+The heterogeneous form `parallel([runWorkflow(a, args), runWorkflow(b, args)])` is unsupported in v1 because those `runWorkflow(...)` calls enter before `parallel()` can create branch-local execution context.
 
 ::: warning v1 — single invocation per sub per run
 A sub can be invoked at most once per parent run. A second invocation throws `StepNameCollisionError`. For "the same sequence N times", use N distinct subs (see [Subworkflows guide](/guides/subworkflows#single-invocation-limit-v1)).
@@ -376,6 +388,8 @@ export default workflow<ReviewArgs>('review', async (run, args) => {
 ```
 
 The default `Args = WorkflowArgs` keeps every existing top-level workflow source-compatible.
+
+Workflow names must be lowercase kebab-case: `^[a-z0-9][a-z0-9-]*$`. Step names share the same lowercase-first style but generated cache keys may also contain `:` and `>` internally, with a 512-character cap to accommodate sub-path prefixes.
 
 ## schema
 

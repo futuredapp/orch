@@ -27,8 +27,24 @@ import {
 import { pressUntilFrame, waitForFrame, waitForIntents } from '../../../../helpers/ink-frame.ts'
 
 const ARROW_UP = '\x1b[A'
-const ARROW_DOWN = '\x1b[B'
 const ENTER = '\r'
+
+function enter(
+  name: string,
+  depth: number,
+  subPath: readonly string[] = [name],
+): Extract<StepRow, { kind: 'subworkflow-enter' }> {
+  return { kind: 'subworkflow-enter', name, depth, subPath, glyph: '▼' }
+}
+
+function exit(
+  name: string,
+  depth: number,
+  subPath: readonly string[] = [name],
+  durationMs = 1,
+): Extract<StepRow, { kind: 'subworkflow-exit' }> {
+  return { kind: 'subworkflow-exit', name, depth, subPath, glyph: '✓', durationMs }
+}
 
 // AE10 pane: [parent-A, ▼ sub, child-1, child-2, ✓ sub, parent-B]. The two
 // boundary rows split the pane into the three selectable clusters the test
@@ -42,7 +58,7 @@ const PANE_STEPS: readonly StepRow[] = [
     startedAt: 0,
     endedAt: 100,
   },
-  { kind: 'subworkflow-enter', name: 'sub', depth: 1, glyph: '▼' },
+  enter('sub', 1),
   {
     kind: 'agent',
     mode: 'autonomous',
@@ -61,7 +77,7 @@ const PANE_STEPS: readonly StepRow[] = [
     endedAt: 300,
     depth: 1,
   },
-  { kind: 'subworkflow-exit', name: 'sub', depth: 1, glyph: '✓', durationMs: 200 },
+  exit('sub', 1, ['sub'], 200),
   { kind: 'agent', mode: 'autonomous', status: 'running', name: 'parent-B', startedAt: 300 },
 ]
 
@@ -148,7 +164,7 @@ describe('useStepsSelection — boundary-row skip (AE10)', () => {
         startedAt: 0,
         endedAt: 1,
       },
-      { kind: 'subworkflow-enter', name: 'sub', depth: 1, glyph: '▼' },
+      enter('sub', 1),
     ]
 
     const ui = render(<Harness steps={stepsEndingInBoundary} expose={() => {}} />)
@@ -163,8 +179,8 @@ describe('useStepsSelection — boundary-row skip (AE10)', () => {
 
   it('selection-skip terminal: ↑ stays put when no selectable row exists above the cursor', async () => {
     const steps: readonly StepRow[] = [
-      { kind: 'subworkflow-enter', name: 'outer', depth: 1, glyph: '▼' },
-      { kind: 'subworkflow-enter', name: 'inner', depth: 2, glyph: '▼' },
+      enter('outer', 1),
+      enter('inner', 2, ['outer', 'inner']),
       {
         kind: 'agent',
         mode: 'autonomous',
@@ -174,8 +190,8 @@ describe('useStepsSelection — boundary-row skip (AE10)', () => {
         endedAt: 1,
         depth: 2,
       },
-      { kind: 'subworkflow-exit', name: 'inner', depth: 2, glyph: '✓', durationMs: 1 },
-      { kind: 'subworkflow-exit', name: 'outer', depth: 1, glyph: '✓', durationMs: 1 },
+      exit('inner', 2, ['outer', 'inner']),
+      exit('outer', 1),
     ]
     const ui = render(<Harness steps={steps} expose={() => {}} />)
     await waitForFrame(ui, (f) => f.includes('selected=leaf'))
@@ -195,10 +211,7 @@ describe('useStepsSelection — boundary-row skip (AE10)', () => {
   })
 
   it('selection-skip empty: a pane with only boundary rows reports selectedName=none', async () => {
-    const steps: readonly StepRow[] = [
-      { kind: 'subworkflow-enter', name: 'outer', depth: 1, glyph: '▼' },
-      { kind: 'subworkflow-exit', name: 'outer', depth: 1, glyph: '✓', durationMs: 1 },
-    ]
+    const steps: readonly StepRow[] = [enter('outer', 1), exit('outer', 1)]
     const ui = render(<Harness steps={steps} expose={() => {}} />)
     const frame = await waitForFrame(ui, (f) => f.includes('selected=none'))
 
@@ -214,10 +227,7 @@ describe('<StepsView> Enter on a boundary row is a no-op', () => {
     const intents: StepsViewIntent[] = []
     // Pane of pure boundary rows — selectedName resolves to `undefined`, so
     // Enter must not produce any intent (the R24 defensive guard).
-    const steps: readonly StepRow[] = [
-      { kind: 'subworkflow-enter', name: 'sub', depth: 1, glyph: '▼' },
-      { kind: 'subworkflow-exit', name: 'sub', depth: 1, glyph: '✓', durationMs: 1 },
-    ]
+    const steps: readonly StepRow[] = [enter('sub', 1), exit('sub', 1)]
 
     const ui = render(
       <StepsView state={liveState(steps)} onIntent={(i) => intents.push(i)} now={() => 5_000} />,

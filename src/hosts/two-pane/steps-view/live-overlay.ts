@@ -8,15 +8,17 @@
 // the UI shows currently-running steps before they hit disk.
 //
 // `subworkflow:enter` / `subworkflow:exit` are folded into a SEPARATE overlay
-// keyed by sub name (sub names cannot collide with step names per R20 in v1).
-// The projector reads it to render boundary rows for in-flight subs that have
-// no child step yet, and to mark exit rows for any sub that exited.
+// keyed by full sub path. The projector reads it to render boundary rows for
+// in-flight subs that have no child step yet, and to mark exit rows for any
+// sub that exited.
 
 import type { StepStatus } from './step-types.ts'
 
 export interface LiveOverlay {
   readonly status: StepStatus
   readonly mode?: 'interactive' | 'autonomous'
+  readonly subPath?: readonly string[]
+  readonly insideParallel?: true
   readonly startedAt?: number
   readonly endedAt?: number
 }
@@ -24,6 +26,7 @@ export interface LiveOverlay {
 export interface SubworkflowOverlay {
   readonly status: 'running' | 'completed' | 'failed'
   readonly depth: number
+  readonly subPath: readonly string[]
   /**
    * True when this sub ran inside (or transitively inside) a `parallel()`
    * branch. The projector uses it to suppress boundary rendering uniformly
@@ -36,17 +39,44 @@ export interface SubworkflowOverlay {
   readonly durationMs?: number
 }
 
+export function subworkflowOverlayKey(subPath: readonly string[]): string {
+  return JSON.stringify(subPath)
+}
+
+function parseSubPath(value: unknown): readonly string[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  if (value.length === 0) return undefined
+  if (!value.every((segment) => typeof segment === 'string' && segment.length > 0)) {
+    return undefined
+  }
+  return value
+}
+
+function eventSubPath(event: { readonly subPath?: readonly string[] }): readonly string[] {
+  const parsed = parseSubPath(event.subPath)
+  return parsed ?? []
+}
+
 // step:complete and step:failed are structurally identical bar the status:
 // both carry over the prior mode/startedAt and stamp endedAt. Extracted to
 // keep applyLifecycleEvent under the rule-5 cognitive-complexity budget.
 function terminalOverlay(
   status: 'completed' | 'failed',
   previous: LiveOverlay | undefined,
+  frame: Pick<LiveOverlay, 'subPath' | 'insideParallel'>,
   now: number,
 ): LiveOverlay {
   return {
     status,
     ...(previous?.mode !== undefined ? { mode: previous.mode } : {}),
+    ...(previous?.subPath !== undefined
+      ? { subPath: previous.subPath }
+      : frame.subPath !== undefined
+        ? { subPath: frame.subPath }
+        : {}),
+    ...(previous?.insideParallel === true || frame.insideParallel === true
+      ? { insideParallel: true as const }
+      : {}),
     ...(previous?.startedAt !== undefined ? { startedAt: previous.startedAt } : {}),
     endedAt: now,
   }
@@ -54,12 +84,23 @@ function terminalOverlay(
 
 export function applyLifecycleEvent(
   overlay: Map<string, LiveOverlay>,
-  event: { readonly type: string; readonly stepName?: string; readonly mode?: string },
+  event: {
+    readonly type: string
+    readonly stepName?: string
+    readonly mode?: string
+    readonly subPath?: readonly string[]
+    readonly insideParallel?: true
+  },
   now: number,
 ): void {
   const name = event.stepName
   if (typeof name !== 'string' || name.length === 0) return
   const previous = overlay.get(name)
+  const subPath = eventSubPath(event)
+  const frame = {
+    ...(subPath.length > 0 ? { subPath } : {}),
+    ...(event.insideParallel === true ? { insideParallel: true as const } : {}),
+  }
   switch (event.type) {
     case 'step:start': {
       const mode: 'interactive' | 'autonomous' | undefined =
@@ -67,20 +108,25 @@ export function applyLifecycleEvent(
       overlay.set(name, {
         status: mode === 'interactive' ? 'interactive' : 'running',
         ...(mode !== undefined ? { mode } : {}),
+        ...frame,
         startedAt: now,
       })
       return
     }
     case 'step:complete':
-      overlay.set(name, terminalOverlay('completed', previous, now))
+      overlay.set(name, terminalOverlay('completed', previous, frame, now))
       return
     case 'step:failed':
-      overlay.set(name, terminalOverlay('failed', previous, now))
+      overlay.set(name, terminalOverlay('failed', previous, frame, now))
       return
     case 'step:cached':
       overlay.set(name, {
         status: 'cached',
         ...(previous?.mode !== undefined ? { mode: previous.mode } : {}),
+        ...(previous?.subPath !== undefined ? { subPath: previous.subPath } : frame),
+        ...(previous?.insideParallel === true || event.insideParallel === true
+          ? { insideParallel: true as const }
+          : {}),
       })
       return
     default:
@@ -92,6 +138,7 @@ export interface SubworkflowEvent {
   readonly type: string
   readonly name?: string
   readonly depth?: number
+  readonly subPath?: readonly string[]
   readonly durationMs?: number
   readonly outcome?: 'completed' | 'failed'
   readonly insideParallel?: true
@@ -107,22 +154,28 @@ export function applySubworkflowEvent(
   if (typeof name !== 'string' || name.length === 0) return
   const depth = event.depth
   if (typeof depth !== 'number' || depth <= 0) return
+  const subPath = parseSubPath(event.subPath)
+  if (subPath === undefined || subPath.length !== depth || subPath[depth - 1] !== name) return
+  const key = subworkflowOverlayKey(subPath)
 
   if (event.type === 'subworkflow:enter') {
-    overlay.set(name, {
+    overlay.set(key, {
       status: 'running',
       depth,
+      subPath,
       ...(event.insideParallel === true ? { insideParallel: true } : {}),
       startedAt: now,
     })
     return
   }
 
-  const previous = overlay.get(name)
-  const status: 'completed' | 'failed' = event.outcome === 'failed' ? 'failed' : 'completed'
-  overlay.set(name, {
+  if (event.outcome !== 'completed' && event.outcome !== 'failed') return
+  const previous = overlay.get(key)
+  const status: 'completed' | 'failed' = event.outcome
+  overlay.set(key, {
     status,
     depth,
+    subPath,
     ...(previous?.insideParallel === true || event.insideParallel === true
       ? { insideParallel: true as const }
       : {}),

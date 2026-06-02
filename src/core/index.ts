@@ -30,7 +30,10 @@ export {
 export {
   currentCwd,
   currentParallelDepth,
+  currentSubworkflowDepth,
+  currentSubworkflowPath,
   executionContext,
+  isInsideParallel,
   setWorkflowCwd,
 } from './execution-context.ts'
 export type { FailureSummary, SummarizeFailureInputs } from './failure-summary.ts'

@@ -32,7 +32,7 @@ import {
 
 export async function runWorkflow<Args extends WorkflowArgs>(
   executor: WorkflowExecutor<Args>,
-  args: Args,
+  args: NoInfer<Args>,
 ): Promise<void> {
   // R2 — outside-scope guard. `runWorkflow` requires an active workflow
   // ALS frame; called from top-level user code (no enclosing workflow body)
@@ -74,6 +74,7 @@ export async function runWorkflow<Args extends WorkflowArgs>(
   // cannot leak back to the parent; `subworkflowDepth` and
   // `subworkflowPath` are pushed-new; `insideParallel` propagates downward
   // so the sub-of-sub subtree renders uniformly.
+  const subPath = [...(parent.subworkflowPath ?? []), executor.name]
   const subFrame: ExecutionContext = {
     parallelDepth: parent.parallelDepth,
     ...(parent.homogeneousBranch !== undefined
@@ -85,7 +86,7 @@ export async function runWorkflow<Args extends WorkflowArgs>(
       : {}),
     ...(parent.workflowCwd !== undefined ? { workflowCwd: parent.workflowCwd } : {}),
     subworkflowDepth: newDepth,
-    subworkflowPath: [...(parent.subworkflowPath ?? []), executor.name],
+    subworkflowPath: subPath,
     subCallId: randomUUID(),
     runFnRef: parentRun,
     ...(parent.loggerRef !== undefined ? { loggerRef: parent.loggerRef } : {}),
@@ -109,10 +110,41 @@ export async function runWorkflow<Args extends WorkflowArgs>(
     type: 'subworkflow:enter',
     name: executor.name,
     depth: newDepth,
+    subPath,
     ...(insideParallel ? { insideParallel: true as const } : {}),
   }
   void parent.loggerRef?.append('lifecycle', enterEvent).catch(() => {})
-  parent.emitLifecycle?.(enterEvent)
+  try {
+    parent.emitLifecycle?.(enterEvent)
+  } catch (hostErr) {
+    const durationMs = Date.now() - startedAt
+    const hostMessage = hostErr instanceof Error ? hostErr.message : String(hostErr)
+    const hostErrorEvent: StepLifecycleEvent = {
+      type: 'host-error',
+      source: 'subworkflow:enter',
+      name: executor.name,
+      depth: newDepth,
+      message: hostMessage,
+    }
+    const exitEvent: StepLifecycleEvent = {
+      type: 'subworkflow:exit',
+      name: executor.name,
+      depth: newDepth,
+      subPath,
+      durationMs,
+      outcome: 'failed',
+      ...(insideParallel ? { insideParallel: true as const } : {}),
+    }
+    void parent.loggerRef?.append('lifecycle', hostErrorEvent).catch(() => {})
+    void parent.loggerRef?.append('lifecycle', exitEvent).catch(() => {})
+    try {
+      parent.emitLifecycle?.(hostErrorEvent)
+    } catch {
+      // Preserve the original host-enter failure. The host-error event has
+      // already been written to lifecycle logs when a logger is configured.
+    }
+    throw hostErr
+  }
 
   let outcome: 'completed' | 'failed' = 'completed'
   let thrown: unknown
@@ -128,6 +160,7 @@ export async function runWorkflow<Args extends WorkflowArgs>(
     type: 'subworkflow:exit',
     name: executor.name,
     depth: newDepth,
+    subPath,
     durationMs,
     outcome,
     ...(insideParallel ? { insideParallel: true as const } : {}),

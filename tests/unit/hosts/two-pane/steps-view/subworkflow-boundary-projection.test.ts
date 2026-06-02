@@ -11,11 +11,18 @@ import type {
   StepRow,
   SubworkflowOverlay,
 } from '../../../../../src/hosts/two-pane/steps-view/index.ts'
-import { projectStepsView } from '../../../../../src/hosts/two-pane/steps-view/index.ts'
+import {
+  projectStepsView,
+  subworkflowOverlayKey,
+} from '../../../../../src/hosts/two-pane/steps-view/index.ts'
 import { makeRunState, makeStepEntry } from '../../../../helpers/make-step-entry.ts'
 
 const HEADER = { workflowName: 'demo', runIdFallback: 'r-2026-06-01-100000-aa' }
 const EMPTY_OVERLAY: ReadonlyMap<string, LiveOverlay> = new Map()
+
+function subEntry(subPath: readonly string[], sub: Omit<SubworkflowOverlay, 'subPath'>) {
+  return [subworkflowOverlayKey(subPath), { ...sub, subPath }] as const
+}
 
 function rowSummary(row: StepRow): string {
   if (row.kind === 'subworkflow-enter') return `▼${row.depth}:${row.name}`
@@ -41,10 +48,13 @@ describe('projectStepsView — subworkflow boundary rows (AE8, AE11)', () => {
       },
     })
     const subOverlay = new Map<string, SubworkflowOverlay>([
-      [
-        'simple-feature',
-        { status: 'completed', depth: 1, startedAt: 100, endedAt: 900, durationMs: 7900 },
-      ],
+      subEntry(['simple-feature'], {
+        status: 'completed',
+        depth: 1,
+        startedAt: 100,
+        endedAt: 900,
+        durationMs: 7900,
+      }),
     ])
 
     const state = projectStepsView({ run, overlay: EMPTY_OVERLAY, subOverlay, ...HEADER })
@@ -74,8 +84,8 @@ describe('projectStepsView — subworkflow boundary rows (AE8, AE11)', () => {
       },
     })
     const subOverlay = new Map<string, SubworkflowOverlay>([
-      ['outer', { status: 'running', depth: 1, startedAt: 100 }],
-      ['inner', { status: 'running', depth: 2, startedAt: 200 }],
+      subEntry(['outer'], { status: 'running', depth: 1, startedAt: 100 }),
+      subEntry(['outer', 'inner'], { status: 'running', depth: 2, startedAt: 200 }),
     ])
 
     const state = projectStepsView({ run, overlay: EMPTY_OVERLAY, subOverlay, ...HEADER })
@@ -105,8 +115,20 @@ describe('projectStepsView — subworkflow boundary rows (AE8, AE11)', () => {
       },
     })
     const subOverlay = new Map<string, SubworkflowOverlay>([
-      ['outer', { status: 'completed', depth: 1, startedAt: 100, endedAt: 900, durationMs: 800 }],
-      ['inner', { status: 'completed', depth: 2, startedAt: 200, endedAt: 800, durationMs: 600 }],
+      subEntry(['outer'], {
+        status: 'completed',
+        depth: 1,
+        startedAt: 100,
+        endedAt: 900,
+        durationMs: 800,
+      }),
+      subEntry(['outer', 'inner'], {
+        status: 'completed',
+        depth: 2,
+        startedAt: 200,
+        endedAt: 800,
+        durationMs: 600,
+      }),
     ])
 
     const state = projectStepsView({ run, overlay: EMPTY_OVERLAY, subOverlay, ...HEADER })
@@ -128,7 +150,7 @@ describe('projectStepsView — subworkflow boundary rows (AE8, AE11)', () => {
       },
     })
     const subOverlay = new Map<string, SubworkflowOverlay>([
-      ['simple-feature', { status: 'running', depth: 1, startedAt: 1000 }],
+      subEntry(['simple-feature'], { status: 'running', depth: 1, startedAt: 1000 }),
     ])
 
     const state = projectStepsView({ run, overlay: EMPTY_OVERLAY, subOverlay, ...HEADER })
@@ -149,7 +171,7 @@ describe('projectStepsView — subworkflow boundary rows (AE8, AE11)', () => {
     })
     // No exit recorded in overlay: the sub was interrupted before exit fired.
     const subOverlay = new Map<string, SubworkflowOverlay>([
-      ['simple-feature', { status: 'running', depth: 1, startedAt: 100 }],
+      subEntry(['simple-feature'], { status: 'running', depth: 1, startedAt: 100 }),
     ])
 
     const state = projectStepsView({ run, overlay: EMPTY_OVERLAY, subOverlay, ...HEADER })
@@ -181,10 +203,13 @@ describe('projectStepsView — subworkflow boundary rows (AE8, AE11)', () => {
       },
     })
     const subOverlay = new Map<string, SubworkflowOverlay>([
-      [
-        'simple-feature',
-        { status: 'completed', depth: 1, startedAt: 150, endedAt: 250, durationMs: 100 },
-      ],
+      subEntry(['simple-feature'], {
+        status: 'completed',
+        depth: 1,
+        startedAt: 150,
+        endedAt: 250,
+        durationMs: 100,
+      }),
     ])
 
     const state = projectStepsView({ run, overlay: EMPTY_OVERLAY, subOverlay, ...HEADER })
@@ -196,5 +221,76 @@ describe('projectStepsView — subworkflow boundary rows (AE8, AE11)', () => {
     } else {
       throw new Error(`unexpected status ${state.status}`)
     }
+  })
+
+  it('keeps sibling nested subworkflows with the same leaf name separate', () => {
+    const run = makeRunState({
+      status: 'completed',
+      steps: {
+        'api>ship>plan': makeStepEntry({
+          name: 'api>ship>plan',
+          subPath: ['api', 'ship'],
+        }),
+        'web>ship>plan': makeStepEntry({
+          name: 'web>ship>plan',
+          subPath: ['web', 'ship'],
+        }),
+      },
+    })
+    const subOverlay = new Map<string, SubworkflowOverlay>([
+      subEntry(['api'], { status: 'completed', depth: 1, startedAt: 0, endedAt: 10 }),
+      subEntry(['api', 'ship'], { status: 'completed', depth: 2, startedAt: 1, endedAt: 9 }),
+      subEntry(['web'], { status: 'completed', depth: 1, startedAt: 10, endedAt: 20 }),
+      subEntry(['web', 'ship'], { status: 'completed', depth: 2, startedAt: 11, endedAt: 19 }),
+    ])
+
+    const state = projectStepsView({ run, overlay: EMPTY_OVERLAY, subOverlay, ...HEADER })
+
+    expect(state.steps.map(rowSummary)).toEqual([
+      '▼1:api',
+      '▼2:ship',
+      'api>ship>plan',
+      '✓2:ship',
+      '✓1:api',
+      '▼1:web',
+      '▼2:ship',
+      'web>ship>plan',
+      '✓2:ship',
+      '✓1:web',
+    ])
+    const shipRows = state.steps.filter(
+      (row): row is Extract<StepRow, { kind: 'subworkflow-enter' | 'subworkflow-exit' }> =>
+        row.name === 'ship' &&
+        (row.kind === 'subworkflow-enter' || row.kind === 'subworkflow-exit'),
+    )
+    expect(shipRows.map((row) => row.subPath)).toEqual([
+      ['api', 'ship'],
+      ['api', 'ship'],
+      ['web', 'ship'],
+      ['web', 'ship'],
+    ])
+  })
+
+  it('uses live overlay subPath for an in-flight child step before persistence', () => {
+    const overlay = new Map<string, LiveOverlay>([
+      [
+        'simple-feature>plan',
+        {
+          status: 'running',
+          mode: 'autonomous',
+          subPath: ['simple-feature'],
+          startedAt: 100,
+        },
+      ],
+    ])
+    const subOverlay = new Map<string, SubworkflowOverlay>([
+      subEntry(['simple-feature'], { status: 'running', depth: 1, startedAt: 90 }),
+    ])
+
+    const state = projectStepsView({ run: undefined, overlay, subOverlay, ...HEADER })
+
+    expect(state.steps.map(rowSummary)).toEqual(['▼1:simple-feature', 'simple-feature>plan'])
+    const stepRow = state.steps[1]
+    if (stepRow?.kind === 'agent') expect(stepRow.depth).toBe(1)
   })
 })

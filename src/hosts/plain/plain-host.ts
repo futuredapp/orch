@@ -236,11 +236,11 @@ function textLifecycle(event: StepLifecycleEvent): string {
       // composition renders a one-line boundary so the user can see where the
       // sub starts and ends.
       if (event.insideParallel === true) return ''
-      return `── ▶ subworkflow: ${event.name} ──`
+      return `── ▶ subworkflow[${event.depth}]: ${event.name} ──`
     case 'subworkflow:exit': {
       if (event.insideParallel === true) return ''
       const tag = event.outcome === 'completed' ? '◀' : '✗'
-      return `── ${tag} subworkflow: ${event.name} (${event.durationMs}ms) ──`
+      return `── ${tag} subworkflow[${event.depth}]: ${event.name} (${event.durationMs}ms) ──`
     }
     case 'host-error':
       return `── ! host-error on ${event.source} for ${event.name}: ${event.message} ──`
@@ -270,7 +270,12 @@ function jsonLifecycle(event: StepLifecycleEvent): Record<string, unknown> {
     case 'step:parallel-complete':
       return { ev: 'step.parallel-complete', blockId: event.blockId }
     case 'subworkflow:enter':
-      return { ev: 'subworkflow.enter', name: event.name, depth: event.depth }
+      return {
+        ev: 'subworkflow.enter',
+        name: event.name,
+        depth: event.depth,
+        ...(event.insideParallel === true ? { insideParallel: true } : {}),
+      }
     case 'subworkflow:exit':
       return {
         ev: 'subworkflow.exit',
@@ -278,6 +283,7 @@ function jsonLifecycle(event: StepLifecycleEvent): Record<string, unknown> {
         depth: event.depth,
         durationMs: event.durationMs,
         outcome: event.outcome,
+        ...(event.insideParallel === true ? { insideParallel: true } : {}),
       }
     case 'host-error':
       return {

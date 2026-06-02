@@ -93,6 +93,8 @@ Sub-internal step names are persisted under a namespaced cache key. If `simple-f
 
 The practical effect: two subs with overlapping step names can run from the same parent without colliding, and the parent's own `plan` step (if any) at the root is `plan` — separate from both.
 
+`as:` is an escape hatch. If a sub step runs with `await run(STEP, { as: 'shared-key' })`, that explicit key bypasses the sub-path prefix and can collide with root or sibling-sub steps using the same key. Use it only when you intentionally want one flat cache entry.
+
 This rule is what makes the `feature` example below safe — both `simple-feature` and `complex-feature` declare a `plan` step, but each lives under its own sub-prefixed key.
 
 ```ts
@@ -181,7 +183,25 @@ The override is read once at workflow-root construction and propagated to every 
 
 ## Subworkflows inside `parallel()`
 
-A `runWorkflow(...)` call inside a `parallel()` branch is legal. Every step inside such a sub is marked `insideParallel: true` on its persisted entry, and the two-pane view suppresses the sub's `▼`/`✓` boundary rows uniformly across the subtree — the parallel rollup is the visual frame, not the sub gutter. The lifecycle.ndjson still records every `subworkflow:enter`/`subworkflow:exit` event so the trace stays complete.
+Use the homogeneous `parallel(items, fn)` form when a parallel branch calls `runWorkflow(...)`:
+
+```ts
+await parallel(
+  [
+    { name: 'ship-a', sub: shipA },
+    { name: 'ship-b', sub: shipB },
+  ],
+  async (branch) => {
+    await runWorkflow(branch.sub, { prompt: args.prompt ?? '' })
+  },
+)
+```
+
+In this form, `parallel()` owns the branch frame before `runWorkflow(...)` enters. Every step inside the sub is marked `insideParallel: true` on its persisted entry, and the two-pane view suppresses the sub's `▼`/`✓` boundary rows uniformly across the subtree — the parallel rollup is the visual frame, not the sub gutter. The lifecycle.ndjson and plain JSON output still record every `subworkflow:enter`/`subworkflow:exit` event, including `insideParallel: true`, so the trace stays complete.
+
+::: warning Heterogeneous subworkflow parallelism is unsupported in v1
+Do not write `parallel([runWorkflow(a, args), runWorkflow(b, args)])`. JavaScript creates those promises before `parallel()` can install a branch frame, so `runWorkflow(...)` has already entered outside parallel ownership. Keep subworkflow fan-out in the homogeneous form above.
+:::
 
 ## Where to go next
 

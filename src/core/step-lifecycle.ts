@@ -19,7 +19,11 @@ import type { Host } from '../hosts/index.ts'
 import type { JsonObject, StepSpan } from '../observability/index.ts'
 import type { Clock } from '../services/index.ts'
 import type { StepEntry } from '../state/index.ts'
-import { currentParallelDepth } from './execution-context.ts'
+import {
+  currentParallelDepth,
+  currentSubworkflowPath,
+  isInsideParallel,
+} from './execution-context.ts'
 import type { StepMode, StepName } from './types.ts'
 // Type-only — `workflow.ts` imports `withStepLifecycle` from here at runtime,
 // so a value-level import would create a cycle. The event union is erased.
@@ -126,8 +130,13 @@ export async function withStepLifecycle<T>(
   }
   const elapsed = (): number => stamped ?? ctx.clock.now() - startedAt
   const inParallel = trackParallel && currentParallelDepth() > 0
+  const subPath = currentSubworkflowPath()
+  const stepFrame = {
+    ...(subPath.length > 0 ? { subPath } : {}),
+    ...(isInsideParallel() ? { insideParallel: true as const } : {}),
+  }
 
-  emitStepLifecycle(host, stepSpan, { type: 'step:start', stepName: key, mode })
+  emitStepLifecycle(host, stepSpan, { type: 'step:start', stepName: key, mode, ...stepFrame })
   if (inParallel) {
     emitStepLifecycle(host, stepSpan, {
       type: 'step:parallel-branch-update',
@@ -139,7 +148,12 @@ export async function withStepLifecycle<T>(
   try {
     const product = await body(timer)
     const durationMs = elapsed()
-    emitStepLifecycle(host, stepSpan, { type: 'step:complete', stepName: key, durationMs })
+    emitStepLifecycle(host, stepSpan, {
+      type: 'step:complete',
+      stepName: key,
+      durationMs,
+      ...stepFrame,
+    })
     if (inParallel) {
       emitStepLifecycle(host, stepSpan, {
         type: 'step:parallel-branch-update',
@@ -151,7 +165,12 @@ export async function withStepLifecycle<T>(
     return product
   } catch (err) {
     const durationMs = elapsed()
-    emitStepLifecycle(host, stepSpan, { type: 'step:failed', stepName: key, error: err })
+    emitStepLifecycle(host, stepSpan, {
+      type: 'step:failed',
+      stepName: key,
+      error: err,
+      ...stepFrame,
+    })
     if (inParallel) {
       emitStepLifecycle(host, stepSpan, {
         type: 'step:parallel-branch-update',

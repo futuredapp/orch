@@ -58,8 +58,13 @@ Both forms reuse one step definition across several calls, so each branch needs 
 A `parallel()` branch cannot be an interactive step — there's only one right pane to drive. Keep interactive steps in the sequential body. (Worktree steps with `enter: true` are valid only in the homogeneous form; see [Worktrees and commits](/guides/worktrees-and-commits).)
 :::
 
+::: warning Subworkflows require the homogeneous form
+`runWorkflow(...)` is supported inside `parallel(items, fn)`, where `parallel()` installs the branch frame before your callback runs. The eager array form `parallel([runWorkflow(a, args), runWorkflow(b, args)])` is unsupported in v1.
+:::
+
 ## Where to go next
 
 - [Worktrees and commits](/guides/worktrees-and-commits) — give each parallel branch its own checkout.
+- [Subworkflows](/guides/subworkflows#subworkflows-inside-parallel) — compose reusable workflow bodies in parallel.
 - [Writing a workflow](/guide/4-writing-a-workflow) — the sequential composition this builds on.
 - [`parallel` reference](/reference/api#parallel) — both signatures in full.

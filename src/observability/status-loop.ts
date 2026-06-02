@@ -191,4 +191,6 @@ export function applyEvent(
       // Swallowing it here is intentional.
       return
   }
+  const _exhaustive: never = event
+  void _exhaustive
 }

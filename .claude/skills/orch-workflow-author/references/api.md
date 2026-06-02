@@ -2,7 +2,7 @@
 
 Every symbol below is exported from `src/core/index.ts` or `src/runners/index.ts`. Never reach past these barrels.
 
-## `workflow(name, fn)`
+## `workflow<Args = WorkflowArgs>(name, fn)`
 
 Declares the workflow. The function receives `(run, args)` — `args.prompt` is the optional string the user passes on the CLI.
 
@@ -16,6 +16,42 @@ export default workflow('feature-build', async (run, args) => {
 ```
 
 The returned object has `.execute(deps)` and `.resume(deps)` — but the CLI does that wiring; you never call them by hand in a workflow file.
+
+Typed subworkflow args:
+
+```ts
+interface ReviewArgs extends WorkflowArgs {
+  readonly prompt: string
+  readonly lens: 'security' | 'performance' | 'design'
+}
+
+export default workflow<ReviewArgs>('review', async (run, args) => {
+  await run(REVIEW, { vars: { prompt: args.prompt, lens: args.lens } })
+})
+```
+
+Workflow names must be lowercase kebab-case: `^[a-z0-9][a-z0-9-]*$`. `:` and `>` are reserved for generated step/cache keys.
+
+## `runWorkflow(sub, args)`
+
+Invokes another workflow inline as a subworkflow. It shares the parent's `runId`, state store, log directory, and capture lock, but pushes a fresh sub-frame so `setWorkflowCwd(...)` / `createWorktree({ enter: true })` inside the sub cannot leak back to the parent.
+
+```ts
+import { runWorkflow, workflow } from 'orch'
+import review from '../review/index.ts'
+
+export default workflow('parent', async (_run, args) => {
+  await runWorkflow(review, { prompt: args.prompt ?? '', lens: 'security' })
+})
+```
+
+Rules:
+
+- A given sub may be invoked at most once per parent run; a second call throws `StepNameCollisionError`.
+- Inside `parallel()`, use only the homogeneous `parallel(items, fn)` form. Do not write `parallel([runWorkflow(a, args), runWorkflow(b, args)])`.
+- Sub-internal step keys are prefixed (`review>plan`) so overlapping step names in different subs do not collide.
+- `as:` on a sub step bypasses that prefix. Use it only when you intentionally want a flat shared cache key.
+- Chains deeper than `maxSubworkflowDepth` (default `8`) throw `SubworkflowDepthError`.
 
 ## `step.define(name, config)`
 
@@ -254,6 +290,8 @@ Structured output (`returns:`) requires `codex exec`, which the runner auto-sele
 All exported from `src/core/index.ts`:
 
 - `StepError` — runner exited non-zero or returned a terminal `error` event.
+- `StepNameCollisionError` — duplicate step key, including calling the same subworkflow twice in one run.
+- `SubworkflowDepthError` — `runWorkflow` nesting exceeded the configured depth bound.
 - `ValidationError` — a `validate:` validator failed.
 - `SchemaValidationError` — runner output failed Zod parse.
 - `AskNoDefaultError` — `--noninteractive` hit an `ask()` with no `defaultWhenNoninteractive`.

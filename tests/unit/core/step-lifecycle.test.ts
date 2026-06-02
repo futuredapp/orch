@@ -110,9 +110,9 @@ describe('withStepLifecycle', () => {
     )
 
     expect(lifecycleEvents(host)).toEqual([
-      { type: 'step:start', stepName: KEY, mode: 'autonomous' },
+      { type: 'step:start', stepName: KEY, mode: 'autonomous', insideParallel: true },
       { type: 'step:parallel-branch-update', stepName: KEY, branchStatus: 'running' },
-      { type: 'step:complete', stepName: KEY, durationMs: 30 },
+      { type: 'step:complete', stepName: KEY, durationMs: 30, insideParallel: true },
       {
         type: 'step:parallel-branch-update',
         stepName: KEY,

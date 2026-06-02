@@ -4,7 +4,7 @@ import {
   type OrchestratorConfig,
   resolveWorkflow,
 } from '../../config/index.ts'
-import type { WorkflowExecutor } from '../../core/workflow.ts'
+import { bodyHandle, type WorkflowExecutor } from '../../core/workflow.ts'
 import type { Path } from '../../services/types.ts'
 import { EXIT } from '../main.ts'
 
@@ -18,7 +18,7 @@ interface LoadError {
 }
 
 function isExecutorShape(v: unknown): v is WorkflowExecutor {
-  return typeof v === 'object' && v !== null && 'execute' in v && 'resume' in v
+  return typeof v === 'object' && v !== null && 'execute' in v && 'resume' in v && bodyHandle in v
 }
 
 function extractDefault(mod: unknown): unknown {

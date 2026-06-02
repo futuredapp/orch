@@ -226,6 +226,15 @@ export function createLifecycleChoreographer(
       rollup.reset()
       return
     }
+    if (
+      event.type === 'subworkflow:enter' ||
+      event.type === 'subworkflow:exit' ||
+      event.type === 'host-error'
+    ) {
+      return
+    }
+    const _exhaustive: never = event
+    return _exhaustive
   }
 
   // FIFO tail: chain each event's processing so its effects settle before the

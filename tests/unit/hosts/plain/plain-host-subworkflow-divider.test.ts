@@ -49,7 +49,7 @@ describe('plain host (text) — subworkflow divider', () => {
     host.onLifecycleEvent({ type: 'subworkflow:enter', name: 'simple-feature', depth: 1 })
 
     const joined = stdout.chunks.join('')
-    expect(joined).toContain('▶ subworkflow: simple-feature')
+    expect(joined).toContain('▶ subworkflow[1]: simple-feature')
     expect(joined).toContain('──')
   })
 
@@ -64,7 +64,7 @@ describe('plain host (text) — subworkflow divider', () => {
     })
 
     const joined = stdout.chunks.join('')
-    expect(joined).toContain('◀ subworkflow: simple-feature')
+    expect(joined).toContain('◀ subworkflow[1]: simple-feature')
     expect(joined).toContain('1234ms')
   })
 
@@ -79,7 +79,7 @@ describe('plain host (text) — subworkflow divider', () => {
     })
 
     const joined = stdout.chunks.join('')
-    expect(joined).toContain('✗ subworkflow: sub')
+    expect(joined).toContain('✗ subworkflow[1]: sub')
   })
 
   it('suppresses the divider for events flagged insideParallel', () => {
@@ -169,7 +169,7 @@ describe('plain host (json) — subworkflow records', () => {
     expect(parsed.message).toBe('oops')
   })
 
-  it('emits subworkflow records even when insideParallel is set (json is structured only)', () => {
+  it('emits subworkflow records with insideParallel when the event carries it', () => {
     const { host, stdout } = makeJsonHost()
     host.onLifecycleEvent({
       type: 'subworkflow:enter',
@@ -181,5 +181,23 @@ describe('plain host (json) — subworkflow records', () => {
     const line = stdout.chunks.join('').trim()
     const parsed = JSON.parse(line)
     expect(parsed.ev).toBe('subworkflow.enter')
+    expect(parsed.insideParallel).toBe(true)
+  })
+
+  it('emits insideParallel on subworkflow.exit when the event carries it', () => {
+    const { host, stdout } = makeJsonHost()
+    host.onLifecycleEvent({
+      type: 'subworkflow:exit',
+      name: 'sub',
+      depth: 1,
+      durationMs: 7,
+      outcome: 'completed',
+      insideParallel: true,
+    })
+
+    const line = stdout.chunks.join('').trim()
+    const parsed = JSON.parse(line)
+    expect(parsed.ev).toBe('subworkflow.exit')
+    expect(parsed.insideParallel).toBe(true)
   })
 })

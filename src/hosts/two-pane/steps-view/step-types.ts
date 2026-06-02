@@ -94,6 +94,7 @@ export type StepRow =
       readonly kind: 'subworkflow-enter'
       readonly name: string
       readonly depth: number
+      readonly subPath: readonly string[]
       readonly glyph: '▼'
     }
   | {
@@ -106,6 +107,7 @@ export type StepRow =
       readonly kind: 'subworkflow-exit'
       readonly name: string
       readonly depth: number
+      readonly subPath: readonly string[]
       readonly glyph: '✓' | '✗'
       readonly durationMs: number | undefined
     }

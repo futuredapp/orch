@@ -17,6 +17,10 @@ import { stripAnsi } from '../../../../../src/observability/index.ts'
 
 const NOOP = (): void => {}
 
+function enter(name: string, depth: number, subPath: readonly string[]): StepRow {
+  return { kind: 'subworkflow-enter', name, depth, subPath, glyph: '▼' }
+}
+
 function liveState(steps: readonly StepRow[]): StepsViewState {
   return {
     status: 'live',
@@ -28,10 +32,10 @@ function liveState(steps: readonly StepRow[]): StepsViewState {
 
 function chainSteps(): readonly StepRow[] {
   return [
-    { kind: 'subworkflow-enter', name: 'outer', depth: 1, glyph: '▼' },
-    { kind: 'subworkflow-enter', name: 'mid1', depth: 2, glyph: '▼' },
-    { kind: 'subworkflow-enter', name: 'mid2', depth: 3, glyph: '▼' },
-    { kind: 'subworkflow-enter', name: 'leaf', depth: 4, glyph: '▼' },
+    enter('outer', 1, ['outer']),
+    enter('mid1', 2, ['outer', 'mid1']),
+    enter('mid2', 3, ['outer', 'mid1', 'mid2']),
+    enter('leaf', 4, ['outer', 'mid1', 'mid2', 'leaf']),
     {
       kind: 'agent',
       mode: 'autonomous',
@@ -88,9 +92,9 @@ describe('<StepsView> depth-overflow collapse (AE12)', () => {
 
   it('renders the stacked-bar form at depth 3, width 50 (both conditions are required)', () => {
     const depth3Steps: readonly StepRow[] = [
-      { kind: 'subworkflow-enter', name: 'outer', depth: 1, glyph: '▼' },
-      { kind: 'subworkflow-enter', name: 'mid1', depth: 2, glyph: '▼' },
-      { kind: 'subworkflow-enter', name: 'leaf', depth: 3, glyph: '▼' },
+      enter('outer', 1, ['outer']),
+      enter('mid1', 2, ['outer', 'mid1']),
+      enter('leaf', 3, ['outer', 'mid1', 'leaf']),
       {
         kind: 'agent',
         mode: 'autonomous',
