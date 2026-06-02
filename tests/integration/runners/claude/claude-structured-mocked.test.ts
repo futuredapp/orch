@@ -21,6 +21,9 @@ import { check } from '../../../../src/validators/index.ts'
 
 const rid = (s: string): RunId => s as RunId
 const BASE = path('/runs')
+// U4: the executor now mints a per-step --session-id for autonomous Claude. Pin
+// it deterministically so the scripted-argv registrations below still match.
+const SESSION_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 
 function loadFixtureLines(name: string): string[] {
   const filePath = resolve(import.meta.dir, '../../../_support/fixtures/claude', name)
@@ -48,6 +51,7 @@ function makeDeps(overrides?: {
     host: createFakeHost(),
     promptService: new FakePromptService(),
     interactivity: 'interactive' as const,
+    generateSessionId: () => SESSION_ID,
   }
 }
 
@@ -66,6 +70,7 @@ describe('ClaudeRunner structured output — mocked integration', () => {
       env: {},
       prompt: 'Analyze risks',
       extraArgs: [] as string[],
+      sessionId: SESSION_ID,
       schema: { jsonSchema: schema(researchSchema).jsonSchema },
     }
     const cmd = await runner.buildCommand(ctx)
@@ -96,6 +101,7 @@ describe('ClaudeRunner structured output — mocked integration', () => {
       env: {},
       prompt: 'Analyze risks',
       extraArgs: [] as string[],
+      sessionId: SESSION_ID,
       schema: { jsonSchema: schema(researchSchema).jsonSchema },
     }
     const cmd = await runner.buildCommand(ctx)
@@ -133,6 +139,7 @@ describe('ClaudeRunner structured output — mocked integration', () => {
       env: {},
       prompt: 'Analyze risks',
       extraArgs: [] as string[],
+      sessionId: SESSION_ID,
       schema: { jsonSchema: schema(researchSchema).jsonSchema },
     }
     const cmd = await runner.buildCommand(ctx)
@@ -218,6 +225,7 @@ describe('ClaudeRunner structured output — mocked integration', () => {
       env: {},
       prompt: 'Analyze risks',
       extraArgs: [] as string[],
+      sessionId: SESSION_ID,
       schema: { jsonSchema: s.jsonSchema },
     }
     const cmd = await runner.buildCommand(ctx)

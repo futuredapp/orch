@@ -298,7 +298,11 @@ function buildAutonomousArgv(
     '--output-format',
     'stream-json',
     '--verbose',
-    '--no-session-persistence',
+    // U4: autonomous now persists a forkable session (the prerequisite for
+    // fork-resume recovery). `--no-session-persistence` is gone; the
+    // orch-generated `--session-id` rides when the executor supplies one so the
+    // fork checkpoint id is known up front (surfaced via system/init).
+    ...(ctx.sessionId ? ['--session-id', ctx.sessionId] : []),
     ...(opts.model ? ['--model', opts.model] : []),
     ...(opts.maxTurns !== undefined ? ['--max-turns', String(opts.maxTurns)] : []),
     ...(ctx.schema ? ['--json-schema', ctx.schema.jsonSchema] : []),

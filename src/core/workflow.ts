@@ -1115,6 +1115,14 @@ async function produceAgentStep(
   // Build the runner command up front so spawn records capture argv/env even
   // when the runner fails mid-run. Agents that error before exec still land a
   // spawn entry with the argv the executor would have used.
+  // U4: mint a fresh session id per produce-body invocation (mirroring the
+  // interactive path) and propagate it into the autonomous runner context so
+  // the persisted session has a known checkpoint id to fork from. Must be fresh
+  // on every invocation — including workflow-level re-execution — because the
+  // session is now persisted on disk and a reused id would collide (where
+  // `--no-session-persistence` previously made reuse harmless). Runners that
+  // mint their own id (Codex) ignore this field.
+  const orchSessionId = deps.generateSessionId?.() ?? randomUUID()
   const runnerCtx = {
     cwd,
     // U1: addressing values ride ctx.env (passthrough policy). The fake reads
@@ -1122,6 +1130,7 @@ async function produceAgentStep(
     env: addressingEnv(deps, key),
     prompt,
     extraArgs: [],
+    sessionId: orchSessionId,
     ...(config.returns !== undefined ? { schema: { jsonSchema: config.returns.jsonSchema } } : {}),
   }
   let result: Awaited<ReturnType<typeof runRunner>>

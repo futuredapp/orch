@@ -81,7 +81,8 @@ describe('ClaudeRunner mocked integration', () => {
     expect(cmd.argv).toContain('--output-format')
     expect(cmd.argv).toContain('stream-json')
     expect(cmd.argv).toContain('--verbose')
-    expect(cmd.argv).toContain('--no-session-persistence')
+    // U4: autonomous now persists a forkable session.
+    expect(cmd.argv).not.toContain('--no-session-persistence')
     expect(cmd.argv).toContain('--model')
     expect(cmd.argv).toContain('claude-sonnet-4-20250514')
     expect(cmd.argv).toContain('--max-turns')

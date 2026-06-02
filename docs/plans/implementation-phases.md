@@ -141,7 +141,7 @@ Legend: ☐ not started · ◐ in progress · ✓ landed
 **Goal:** first real end-to-end execution. **This is the "real feedback early" milestone.**
 
 **Deliverables:**
-- `src/runners/claude/claude-runner.ts` — Zod schemas, NDJSON parser, `claude()` factory via `defineRunner()`. `buildCommand` producing `claude --bare -p <prompt> --output-format stream-json --verbose --no-session-persistence`. Env policy: passthrough — see [2026-04-27 env passthrough plan](2026-04-27-feat-env-passthrough-plan.md).
+- `src/runners/claude/claude-runner.ts` — Zod schemas, NDJSON parser, `claude()` factory via `defineRunner()`. `buildCommand` producing `claude --bare -p <prompt> --output-format stream-json --verbose --session-id <uuid>` (autonomous now persists a forkable session — `--no-session-persistence` was reversed and an orch-generated `--session-id` added by the error-recovery work, U4; see [2026-06-02 agent error-recovery plan](2026-06-02-002-feat-agent-error-recovery-headless-plan.md)). Env policy: passthrough — see [2026-04-27 env passthrough plan](2026-04-27-feat-env-passthrough-plan.md).
 - `src/runners/claude/index.ts` — module barrel.
 - `claude()` factory exported from `src/runners/index.ts`.
 
