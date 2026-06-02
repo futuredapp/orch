@@ -48,6 +48,7 @@ import * as fs from 'node:fs/promises'
 import { defineRunner, type Runner, type RunnerCommand } from '../../../src/runners/index.ts'
 import { path as toPath } from '../../../src/services/types.ts'
 import {
+  allocateSocketName,
   canRunRealTmux,
   createRealTmuxFixture,
   type MountedHarness,
@@ -97,8 +98,9 @@ describe.skipIf(!canRun)('two-pane host - sequential runs against real tmux', ()
   let fixtures: RealTmuxFixture[] = []
   let harnesses: MountedHarness[] = []
   let tmpDirs: string[] = []
-  // Sockets created by spawned CLI subprocesses (case 3) — the fixture cannot
-  // own these, so we reap them here to leave no servers behind on failure.
+  // Reserved orch-test-<pid>-<nonce> sockets bridged into spawned CLI
+  // subprocesses (case 3) — the fixture cannot own these, so we reap them here
+  // to leave no servers behind on failure.
   let subprocessSockets: string[] = []
 
   afterEach(async () => {
@@ -216,12 +218,21 @@ describe.skipIf(!canRun)('two-pane host - sequential runs against real tmux', ()
         readonly stdout: string
         readonly stderr: string
       }
+      // Bridge a reserved orch-test-<pid>-<nonce> socket into each spawned CLI
+      // via ORCH_TMUX_SOCKET (same channel as the Tier 5 launcher), so these
+      // subprocess servers never take a prod-shaped `orch-${runId}` name a
+      // parallel `bun test` sweep could collide with — and a crashed leak stays
+      // reapable by the liveness-gated preload. Each spawn gets a fresh socket,
+      // tracked for afterEach teardown.
       const spawnOnce = (): RunOutput => {
+        const socket = allocateSocketName()
+        subprocessSockets.push(socket)
         const r = Bun.spawnSync({
           cmd: ['bun', 'run', cliPath, 'run', 'demo', '--mode=two-pane', '--no-attach'],
           cwd: tmpDir,
-          // Real env so PATH/HOME/TMPDIR reach the spawned tmux server.
-          env: process.env as Record<string, string>,
+          // Real env so PATH/HOME/TMPDIR reach the spawned tmux server, plus the
+          // reserved socket override.
+          env: { ...process.env, ORCH_TMUX_SOCKET: socket } as Record<string, string>,
         })
         return {
           exitCode: r.exitCode ?? -1,
@@ -230,17 +241,10 @@ describe.skipIf(!canRun)('two-pane host - sequential runs against real tmux', ()
         }
       }
 
-      const trackSocket = (out: RunOutput): void => {
-        const m = out.stderr.match(/r-\d{4}-\d{2}-\d{2}-\d{6}-[a-z0-9]{2}/)
-        if (m !== null) subprocessSockets.push(`orch-${m[0]}`)
-      }
-
       const r1 = spawnOnce()
-      trackSocket(r1)
       expect(r1).toMatchObject({ exitCode: 0 })
 
       const r2 = spawnOnce()
-      trackSocket(r2)
       // The whole point of this test: if run 2 exits non-zero, we've
       // reproduced the bug.
       expect(r2).toMatchObject({ exitCode: 0 })

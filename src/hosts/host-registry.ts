@@ -13,6 +13,7 @@
 import type { RunMode } from '../core/run-mode.ts'
 import { SINGLE_PANE_DEFERRED_MESSAGE } from '../core/run-mode.ts'
 import type { ProcessService } from '../services/process/index.ts'
+import { type SocketName, socketName } from '../services/tmux/index.ts'
 import type { Host } from './host.ts'
 import type { PlainFormat } from './plain/plain-host.ts'
 import { createPlainHost } from './plain/plain-host.ts'
@@ -136,10 +137,32 @@ export function registerBuiltinHosts(registry: HostRegistry, deps: RegisterBuilt
       workflowName: args.workflowName,
       stderr: args.stderr,
       ...(deps.tmuxOverrides ?? {}),
+      // Env bridge spreads last: ORCH_TMUX_SOCKET wins over any `socket` set in
+      // `tmuxOverrides` (the subprocess bridge must win — see readTmuxSocketOverride).
+      ...readTmuxSocketOverride(),
       ...(args.logger !== undefined ? { logger: args.logger } : {}),
       ...(args.fs !== undefined ? { fs: args.fs } : {}),
       ...(args.stateStore !== undefined ? { stateStore: args.stateStore } : {}),
       ...(args.resumeRegistry !== undefined ? { resumeRegistry: args.resumeRegistry } : {}),
     }),
   )
+}
+
+/**
+ * Test-only out-of-process socket bridge (KTD-3). The real-tmux behavioral-dsl
+ * harness spawns `orch` as a subprocess and cannot hand it a TypeScript param,
+ * so it passes `ORCH_TMUX_SOCKET=orch-test-<pid>-<nonce>` in the child's env.
+ * Read here at host-build time (never at import — CLAUDE.md rule #8) and threaded
+ * into `createTmuxHost`'s `socket` param so the spawned run's tmux server lands
+ * in the reserved namespace and its leaks are reapable by the stale-socket
+ * preload.
+ *
+ * Unset/empty/whitespace-only → byte-for-byte unchanged production behavior
+ * (`orch-${runId}`). A non-empty but malformed value fails loudly through the
+ * `socketName` smart constructor rather than booting an out-of-grammar server.
+ */
+function readTmuxSocketOverride(): { readonly socket: SocketName } | Record<string, never> {
+  const raw = process.env.ORCH_TMUX_SOCKET
+  if (raw === undefined || raw.trim().length === 0) return {}
+  return { socket: socketName(raw) }
 }

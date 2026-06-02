@@ -3,12 +3,15 @@
 // way to thread it into `createTmuxHost` and Enter-to-inspect intents are
 // silently dropped (a real bug we hit on 2026-05-06).
 
-import { describe, expect, it } from 'bun:test'
+import { afterEach, describe, expect, it } from 'bun:test'
+import { Writable } from 'node:stream'
 import { createResumeRegistry } from '../../../src/core/resume-registry.ts'
 import type { HostFactoryInputs, RegisterBuiltinHostsDeps } from '../../../src/hosts/index.ts'
+import { createHostRegistry, registerBuiltinHosts } from '../../../src/hosts/index.ts'
 import { createNullSessionLogger } from '../../../src/observability/index.ts'
 import { toClaudeTranscriptLines } from '../../../src/runners/index.ts'
-import { FakeClock } from '../../../src/services/index.ts'
+import { FakeClock, FakeProcessService, type ProcessService } from '../../../src/services/index.ts'
+import { FakeTmuxService, paneId } from '../../../src/services/tmux/index.ts'
 import {
   type PersistedWorkflowArgs,
   type RunId,
@@ -103,5 +106,81 @@ describe('HostFactoryInputs.resumeRegistry contract', () => {
     }
 
     expect(inputs.resumeRegistry).toBe(resumeRegistry)
+  })
+})
+
+describe('two-pane ORCH_TMUX_SOCKET bridge', () => {
+  const ENV_KEY = 'ORCH_TMUX_SOCKET'
+  const originalEnv = process.env[ENV_KEY]
+
+  afterEach(() => {
+    if (originalEnv === undefined) delete process.env[ENV_KEY]
+    else process.env[ENV_KEY] = originalEnv
+  })
+
+  function nullStream(): NodeJS.WritableStream {
+    return new Writable({ write: (_c, _e, cb) => cb() }) as unknown as NodeJS.WritableStream
+  }
+
+  // Drives the real two-pane factory against a FakeTmuxService (injected via
+  // tmuxOverrides) so we read the socket the factory resolved without booting a
+  // real tmux server. No module mocking — the seam is the `tmux` port.
+  async function resolveTwoPaneSocket(): Promise<string[]> {
+    const tmux = new FakeTmuxService()
+    tmux.setListPanesResult(['%0'])
+    tmux.nextPaneId(paneId('%1'))
+
+    const registry = createHostRegistry()
+    registerBuiltinHosts(registry, {
+      processService: new FakeProcessService() as ProcessService,
+      format: 'text',
+      tmuxOverrides: {
+        tmux,
+        skipVersionCheck: true,
+        disableStepsView: true,
+        skipAttach: true,
+        installExitHandler: () => {},
+        installRejectionHandler: () => {},
+      },
+    })
+
+    await registry.resolve('two-pane')({
+      runId: toRunId('r-2026-06-02-101010-z9'),
+      workflowName: 'demo',
+      stdout: nullStream(),
+      stderr: nullStream(),
+      clock: new FakeClock(0),
+    })
+
+    const sockets = new Set<string>()
+    for (const call of tmux.recordedCalls) {
+      const socket = (call.opts as { socket?: unknown }).socket
+      if (typeof socket === 'string') sockets.add(socket)
+    }
+    return [...sockets]
+  }
+
+  it('passes the env socket into createTmuxHost when ORCH_TMUX_SOCKET is set', async () => {
+    process.env[ENV_KEY] = 'orch-test-12345-abcd'
+
+    expect(await resolveTwoPaneSocket()).toEqual(['orch-test-12345-abcd'])
+  })
+
+  it('derives orch-${runId} when ORCH_TMUX_SOCKET is unset (production default)', async () => {
+    delete process.env[ENV_KEY]
+
+    expect(await resolveTwoPaneSocket()).toEqual(['orch-r-2026-06-02-101010-z9'])
+  })
+
+  it('derives orch-${runId} when ORCH_TMUX_SOCKET is empty', async () => {
+    process.env[ENV_KEY] = ''
+
+    expect(await resolveTwoPaneSocket()).toEqual(['orch-r-2026-06-02-101010-z9'])
+  })
+
+  it('throws at the socketName smart constructor for a malformed ORCH_TMUX_SOCKET', async () => {
+    process.env[ENV_KEY] = 'orch_BAD'
+
+    await expect(resolveTwoPaneSocket()).rejects.toThrow(/invalid socket/)
   })
 })

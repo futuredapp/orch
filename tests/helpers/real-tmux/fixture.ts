@@ -23,13 +23,12 @@ import { BunProcessService } from '../../../src/services/process/index.ts'
 import {
   RealTmuxService,
   type SocketName,
-  socketName,
   type TmuxService,
 } from '../../../src/services/tmux/index.ts'
 import type { Path } from '../../../src/services/types.ts'
 import { path as toPath } from '../../../src/services/types.ts'
 import { generateRunId, type RunId } from '../../../src/state/index.ts'
-import { assertNoNestedTmux } from './socket.ts'
+import { allocateSocketName, assertNoNestedTmux } from './socket.ts'
 
 const DEFAULT_WIDTH = 200
 const DEFAULT_HEIGHT = 50
@@ -101,9 +100,10 @@ function killAllLiveSocketsSync(): void {
 
 export interface CreateRealTmuxFixtureOptions {
   /**
-   * Run identifier. Determines the tmux socket name (`orch-${runId}`), so
-   * mounting createTmuxHost with the same runId reuses this socket
-   * automatically. Defaults to `generateRunId({ clock })`.
+   * Run identifier. Drives the state base (`<stateBase>/<runId>`), the session
+   * logger, and session naming — but NOT the tmux socket, which is allocated
+   * independently in the reserved `orch-test-` namespace (see `socket`).
+   * Defaults to `generateRunId({ clock })`.
    */
   readonly runId?: RunId
   /** Override the state-base directory. Defaults to `mkdtemp(tmpdir()/orch-harness-)`. */
@@ -121,7 +121,12 @@ export interface CreateRealTmuxFixtureOptions {
 
 export interface RealTmuxFixture {
   readonly runId: RunId
-  /** Always `socketName('orch-' + runId)` so createTmuxHost lands on it. */
+  /**
+   * Reserved `orch-test-<pid>-<nonce>` socket, decoupled from `runId`.
+   * `mountTmuxHost` passes it into `createTmuxHost`'s `socket` param so the
+   * booted server lands here. The `orch-test-` prefix keeps the stale-socket
+   * preload from ever naming a production `orch-r-…` server.
+   */
   readonly socket: SocketName
   readonly stateBase: Path
   readonly tmux: TmuxService
@@ -181,10 +186,12 @@ export async function createRealTmuxFixture(
   const clock = new BunClock()
 
   const runId = opts.runId ?? generateRunId({ clock })
-  // createTmuxHost derives its socket as `socketName('orch-' + runId)`.
-  // Matching here lets the fixture and any later `mountTmuxHost(fixture, …)`
-  // call hit the same tmux server without an extra config knob.
-  const socket = socketName(`orch-${runId}`)
+  // Allocate the socket in the reserved `orch-test-<pid>-<nonce>` namespace,
+  // independent of `runId`. `mountTmuxHost` threads this into `createTmuxHost`'s
+  // `socket` param so the fixture and the host land on the same server. The
+  // reserved prefix is what keeps the stale-socket preload from naming — and
+  // killing — a live production `orch-r-…` server (incident repro).
+  const socket = allocateSocketName()
 
   let stateBase: Path
   let ownsStateBase: boolean

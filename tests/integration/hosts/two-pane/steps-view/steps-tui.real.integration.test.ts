@@ -21,6 +21,7 @@ import {
 } from '../../../../../src/services/tmux/index.ts'
 import { path as toPath } from '../../../../../src/services/types.ts'
 import {
+  allocateSocketName,
   REAL_TMUX_ASSERT_TIMEOUT_MS,
   REAL_TMUX_TEST_TIMEOUT_MS,
 } from '../../../../helpers/real-tmux/index.ts'
@@ -49,8 +50,10 @@ afterEach(async () => {
   dirsToClean = []
 })
 
+// Reserved `orch-test-<pid>-<nonce>` socket (KTD-1) with the debug tag appended
+// after the pid so the stale-socket preload can reap a crashed leak by liveness.
 const newSocket = (tag: string): SocketName => {
-  const s = socketName(`orch-stepstui-${tag}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`)
+  const s = socketName(`${allocateSocketName()}-${tag}`)
   sockets.push(s)
   return s
 }

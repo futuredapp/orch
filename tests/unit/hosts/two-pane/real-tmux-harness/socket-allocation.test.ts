@@ -12,6 +12,7 @@ import {
   assertNoNestedTmux,
   canRunRealTmux,
   createRealTmuxFixture,
+  pidFromTestSocket,
   type RealTmuxFixture,
 } from '../../../../helpers/real-tmux/index.ts'
 
@@ -25,21 +26,67 @@ afterEach(async () => {
 })
 
 describe('allocateSocketName', () => {
-  it('returns a fresh SocketName matching the smart-constructor grammar on every call', () => {
+  it('returns a reserved orch-test-<pid>-<nonce> name embedding this process pid', () => {
+    const name = allocateSocketName()
+
+    expect(name).toMatch(/^orch-test-\d+-[0-9a-f]+$/)
+    expect(pidFromTestSocket(name)).toBe(process.pid)
+  })
+
+  it('returns a fresh, distinct name on every call', () => {
     const a = allocateSocketName()
     const b = allocateSocketName()
 
     expect(a).not.toEqual(b)
-    expect(a).toMatch(/^orch-t-\d+-[0-9a-f]+$/)
-    expect(b).toMatch(/^orch-t-\d+-[0-9a-f]+$/)
   })
 
-  it('honors a caller-supplied tag and rejects tags outside the SocketName grammar', () => {
-    const tagged = allocateSocketName('demo')
+  it('never produces a production-shaped or bare orch- socket name', () => {
+    const name = String(allocateSocketName())
 
-    expect(tagged).toMatch(/^orch-demo-\d+-[0-9a-f]+$/)
-    expect(() => allocateSocketName('NOT_VALID')).toThrow(/tag must match/)
-    expect(() => allocateSocketName('with spaces')).toThrow(/tag must match/)
+    expect(name).not.toMatch(/^orch-r-/)
+    expect(name.startsWith('orch-test-')).toBe(true)
+  })
+})
+
+describe('reserved-prefix audit guard (success criterion)', () => {
+  // Encodes "no bare orch- / orch-r- socket is ever created by test code".
+  // PROD_OR_BARE matches a production orch-r- socket OR any orch- name whose
+  // first segment is not `test` — exactly the shapes the stale-socket preload
+  // must never name. A reserved orch-test- socket starts with `orch-t`, so it
+  // fails both alternatives.
+  const PROD_OR_BARE = /^orch-(r-|[^t])/
+
+  it('allocateSocketName() never yields a production-shaped or bare socket name', () => {
+    const name = String(allocateSocketName())
+
+    expect(name).not.toMatch(PROD_OR_BARE)
+    expect(name).toMatch(/^orch-test-/)
+  })
+
+  it('a created fixture socket never yields a production-shaped or bare socket name', async () => {
+    const fixture = await createRealTmuxFixture({ env: {} })
+    fixturesToDispose.push(fixture)
+
+    expect(String(fixture.socket)).not.toMatch(PROD_OR_BARE)
+    expect(String(fixture.socket)).toMatch(/^orch-test-/)
+  })
+})
+
+describe('pidFromTestSocket', () => {
+  it('parses the pid from a reserved orch-test- socket name', () => {
+    expect(pidFromTestSocket('orch-test-12345-ab12cd')).toBe(12345)
+  })
+
+  it('returns undefined for a production-shaped orch-r- socket name', () => {
+    expect(pidFromTestSocket('orch-r-2026-06-01-151213-4s')).toBeUndefined()
+  })
+
+  it('returns undefined when the first segment after the prefix is not numeric', () => {
+    expect(pidFromTestSocket('orch-test-notapid-xx')).toBeUndefined()
+  })
+
+  it('round-trips with allocateSocketName back to this process pid', () => {
+    expect(pidFromTestSocket(allocateSocketName())).toBe(process.pid)
   })
 })
 
@@ -66,12 +113,14 @@ describe('canRunRealTmux', () => {
 })
 
 describe('createRealTmuxFixture lifecycle', () => {
-  it('exposes services, a runId-derived socket, and an existing state-base directory', async () => {
+  it('exposes services, a reserved orch-test- socket decoupled from runId, and an existing state-base directory', async () => {
     const fixture = await createRealTmuxFixture({ env: {} })
     fixturesToDispose.push(fixture)
 
     expect(fixture.runId).toMatch(/^r-\d{4}-\d{2}-\d{2}-\d{6}-[a-z0-9]{2}$/)
-    expect(String(fixture.socket)).toBe(`orch-${fixture.runId}`)
+    expect(String(fixture.socket)).toMatch(/^orch-test-\d+-[0-9a-f]+$/)
+    expect(String(fixture.socket)).not.toBe(`orch-${fixture.runId}`)
+    expect(pidFromTestSocket(fixture.socket)).toBe(process.pid)
     const stateBaseStat = await stat(fixture.stateBase)
     expect(stateBaseStat.isDirectory()).toBe(true)
     expect(fixture.width).toBe(200)

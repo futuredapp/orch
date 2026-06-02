@@ -21,7 +21,12 @@ export {
   type PaneHandle,
   type WaitOptions,
 } from './pane-handle.ts'
-export { allocateSocketName, assertNoNestedTmux } from './socket.ts'
+export {
+  allocateSocketName,
+  assertNoNestedTmux,
+  pidFromTestSocket,
+  RESERVED_TEST_PREFIX,
+} from './socket.ts'
 export {
   type HarnessStep,
   type MountedHarness,

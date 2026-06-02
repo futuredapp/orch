@@ -74,7 +74,7 @@ describe.skipIf(!canRunRealTmuxE2E('claude'))('Tier 4 — <bug class>', () => {
 
 ### `createRealTmuxFixture(opts?) → RealTmuxFixture`
 
-Allocates a fresh tmux socket (`orch-${runId}` so `createTmuxHost` lands on it), a per-test `mkdtemp` state base, and the real service composition (`RealTmuxService`, `BunProcessService`, `BunFsService`, `BunClock`). Does **not** boot the orch session — that happens inside `mountTmuxHost` via `createTmuxHost`.
+Allocates a fresh tmux socket in the reserved `orch-test-<pid>-<nonce>` namespace (decoupled from `runId`; `mountTmuxHost` threads it into `createTmuxHost`'s `socket` param so the host lands on it), a per-test `mkdtemp` state base, and the real service composition (`RealTmuxService`, `BunProcessService`, `BunFsService`, `BunClock`). Does **not** boot the orch session — that happens inside `mountTmuxHost` via `createTmuxHost`. The `orch-test-` prefix is what keeps the stale-socket preload (`tests/setup/reap-test-sockets.ts`) from ever naming — and killing — a live production `orch-r-…` server.
 
 Options:
 

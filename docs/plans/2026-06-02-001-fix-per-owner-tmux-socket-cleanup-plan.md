@@ -1,6 +1,6 @@
 ---
 date: 2026-06-02
-status: active
+status: completed
 type: fix
 area: tests/setup, tests/helpers/real-tmux, tests/helpers/behavioral-dsl, src/hosts/two-pane
 origin: docs/brainstorms/2026-06-02-fix-per-owner-tmux-socket-cleanup-requirements.md

@@ -34,7 +34,7 @@ afterEach(async () => {
 })
 
 describe.skipIf(!canRunRealTmux())('Tier 5 launcher — two-step-linear smoke', () => {
-  it('boots the fixture, parses runId, derives socket, and exposes the rawStreams handle', async () => {
+  it('boots the fixture, parses runId, lands on a reserved socket, and exposes the rawStreams handle', async () => {
     handle = await launchOrchWorkflow('two-step-linear', {
       script: {
         plan: { kind: 'instant-ok' },
@@ -44,7 +44,11 @@ describe.skipIf(!canRunRealTmux())('Tier 5 launcher — two-step-linear smoke', 
     })
 
     expect(handle.runId).toMatch(/^r-\d{4}-\d{2}-\d{2}-\d{6}-[a-z0-9]{2}$/)
-    expect(handle.socket).toBe(`orch-${handle.runId}` as typeof handle.socket)
+    // The launcher bridges a reserved orch-test-<pid>-<nonce> socket into the
+    // spawned orch via ORCH_TMUX_SOCKET, so the run lands there — never on the
+    // prod-shaped orch-${runId} a parallel `bun test` sweep could reap.
+    expect(handle.socket).toMatch(/^orch-test-\d+-[0-9a-f]+$/)
+    expect(handle.socket).not.toBe(`orch-${handle.runId}`)
     expect(handle.stateBase.length).toBeGreaterThan(0)
     expect(handle.stateDir).toBe(`${handle.stateBase}/${handle.runId}` as typeof handle.stateDir)
     // rawStreams: true → both raw-stream views are present.

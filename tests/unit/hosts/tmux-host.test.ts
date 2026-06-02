@@ -21,6 +21,8 @@ import {
 import {
   FakeTmuxService,
   paneId,
+  type SocketName,
+  socketName,
   TmuxCommandError,
   type WaitForOptions,
 } from '../../../src/services/tmux/index.ts'
@@ -805,5 +807,77 @@ describe('TmuxHost.teardown', () => {
 
     const bytesAfterExit = writes.join('').length
     expect(bytesAfterExit).toBe(bytesAfterTeardown)
+  })
+})
+
+describe('createTmuxHost socket resolution', () => {
+  // Collect every socket the host named across its recorded tmux calls. Every
+  // call that talks to tmux carries a `socket`; the set should be a singleton.
+  function socketsTouched(tmux: FakeTmuxService): Set<string> {
+    const sockets = new Set<string>()
+    for (const call of tmux.recordedCalls) {
+      const socket = (call.opts as { socket?: unknown }).socket
+      if (typeof socket === 'string') sockets.add(socket)
+    }
+    return sockets
+  }
+
+  function paneDiedCommand(tmux: FakeTmuxService): string | undefined {
+    const hook = tmux.recordedCalls.find(
+      (c) => c.method === 'setHook' && /pane-died/.test(JSON.stringify(c.opts)),
+    )
+    return hook?.method === 'setHook' ? hook.opts.command : undefined
+  }
+
+  async function buildHostWith(opts: { socket?: SocketName }): Promise<FakeTmuxService> {
+    const tmux = new FakeTmuxService()
+    tmux.setListPanesResult(['%0'])
+    tmux.nextPaneId(paneId('%1'))
+    const stderr = makeStderr()
+    await createTmuxHost({
+      tmux,
+      processService: new FakeProcessService() as ProcessService,
+      clock: new FakeClock(0),
+      runId: 'r-2026-04-23-phased1' as RunId,
+      workflowName: 'compound',
+      stderr: stderr.stream,
+      skipVersionCheck: true,
+      disableStepsView: true,
+      ...(opts.socket !== undefined ? { socket: opts.socket } : {}),
+    })
+    return tmux
+  }
+
+  it('derives the socket as orch-${runId} when no socket is supplied', async () => {
+    const tmux = await buildHostWith({})
+
+    expect([...socketsTouched(tmux)]).toEqual(['orch-r-2026-04-23-phased1'])
+    expect(paneDiedCommand(tmux)).toContain('tmux -L orch-r-2026-04-23-phased1')
+  })
+
+  it('routes every tmux call through an explicit socket override when supplied', async () => {
+    const tmux = await buildHostWith({ socket: socketName('orch-test-99-abcd') })
+
+    expect([...socketsTouched(tmux)]).toEqual(['orch-test-99-abcd'])
+  })
+
+  it('embeds the provided socket in the pane-died hook, not orch-${runId}', async () => {
+    const tmux = await buildHostWith({ socket: socketName('orch-test-99-abcd') })
+
+    const command = paneDiedCommand(tmux)
+    expect(command).toContain('tmux -L orch-test-99-abcd')
+    expect(command).not.toContain('orch-r-2026-04-23-phased1')
+  })
+
+  it('functions when socket diverges from runId — session setup and right-pane split still run', async () => {
+    const tmux = await buildHostWith({ socket: socketName('orch-test-99-abcd') })
+
+    const methods = tmux.recordedCalls.map((c) => c.method)
+    expect(methods).toContain('createSession')
+    expect(methods).toContain('splitPane')
+    // runId still drives session naming; only the socket decoupled.
+    const create = tmux.recordedCalls.find((c) => c.method === 'createSession')
+    if (create?.method !== 'createSession') throw new Error('expected createSession call')
+    expect(String(create.opts.socket)).toBe('orch-test-99-abcd')
   })
 })

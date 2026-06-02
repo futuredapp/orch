@@ -33,8 +33,10 @@ export type BringToStateRequest =
 export type RunId = string & { readonly __brand: 'RunId' }
 
 /**
- * tmux socket name derived from `'orch-' + runId`. Matches the
- * `createTmuxHost` convention.
+ * tmux socket name the spawned orch run booted on. The launcher allocates a
+ * reserved `orch-test-<pid>-<nonce>` socket and bridges it into the subprocess
+ * via `ORCH_TMUX_SOCKET`, so this is that reserved name (not `orch-${runId}`).
+ * Used by Tier 5 matchers for the external tmux probe.
  */
 export type Socket = string & { readonly __brand: 'Socket' }
 

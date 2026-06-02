@@ -15,6 +15,7 @@ import {
   type SpawnHandle,
 } from '../../../../src/services/process/index.ts'
 import { path as toPath } from '../../../../src/services/types.ts'
+import { allocateSocketName } from '../../real-tmux/index.ts'
 import type {
   AgentControl,
   BringToStateRequest,
@@ -37,6 +38,7 @@ const DEFAULT_STATE_POLL_INTERVAL_MS = 50
 
 const ORCH_LIFECYCLE_SCRIPT_ENV = 'ORCH_LIFECYCLE_SCRIPT'
 const ORCH_STATE_BASE_ENV = 'ORCH_STATE_BASE'
+const ORCH_TMUX_SOCKET_ENV = 'ORCH_TMUX_SOCKET'
 
 export interface SpawnOrchOptions {
   readonly workflowFixture: string
@@ -114,11 +116,20 @@ export const spawnOrch = async (opts: SpawnOrchOptions): Promise<OrchHandle> => 
     subprocessCwd = resolvedRepoRoot
   }
 
+  // Allocate the reserved `orch-test-<pid>-<nonce>` socket in THIS launcher
+  // process and bridge it into the spawned `orch` via ORCH_TMUX_SOCKET (KTD-3).
+  // The embedded pid is the launcher's — the durable owner the test controls —
+  // so a SIGKILL'd launcher leaves a leak the stale-socket preload reaps by
+  // liveness. The spawned orch child is a different pid, but the sweep keys off
+  // the embedded launcher pid, not the child's.
+  const tmuxSocket = allocateSocketName()
+
   const env = mergeEnv(
     process.env,
     {
       [ORCH_LIFECYCLE_SCRIPT_ENV]: scriptPath,
       [ORCH_STATE_BASE_ENV]: stateBaseRaw,
+      [ORCH_TMUX_SOCKET_ENV]: tmuxSocket,
     },
     opts.env ?? {},
   )
@@ -168,13 +179,14 @@ export const spawnOrch = async (opts: SpawnOrchOptions): Promise<OrchHandle> => 
   const stdoutCollector = collectLines(subprocess.stdout)
 
   let teardownCalled = false
-  // Set once the runId (and thus the socket) is known. teardown reaps the
-  // detached tmux server: orch boots `orch-<runId>` in two-pane mode, and when
-  // a lifecycle test kills the orch process (SIGKILL/SIGTERM) it never tears
-  // its own server down, so the server survives and accumulates until the
-  // stale-socket preload reaps it (>5min). Reaping here keeps the per-test
-  // server count at zero. Best-effort + idempotent.
-  let socketToReap: string | undefined
+  // teardown reaps the detached tmux server: orch boots on `tmuxSocket` (passed
+  // via ORCH_TMUX_SOCKET) in two-pane mode, and when a lifecycle test kills the
+  // orch process (SIGKILL/SIGTERM) it never tears its own server down, so the
+  // server survives until the stale-socket preload reaps it. Reaping here keeps
+  // the per-test server count at zero. Known before spawn (unlike the old
+  // runId-derived socket), so even a spawn-to-runId failure reaps it. Best-
+  // effort + idempotent.
+  let socketToReap: string | undefined = tmuxSocket
   const teardown = async (): Promise<void> => {
     if (teardownCalled) return
     teardownCalled = true
@@ -200,8 +212,9 @@ export const spawnOrch = async (opts: SpawnOrchOptions): Promise<OrchHandle> => 
     throw err
   }
 
-  const socket = `orch-${runId}` as Socket
-  socketToReap = socket
+  // The spawned orch booted its tmux server on the bridged ORCH_TMUX_SOCKET, so
+  // the handle's probe socket is that reserved name — not `orch-${runId}`.
+  const socket = tmuxSocket as string as Socket
   const stateDir = toPath(`${stateBaseRaw}/${runId}`)
 
   const agent = (stepName: string): AgentControl => {

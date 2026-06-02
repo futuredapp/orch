@@ -288,6 +288,16 @@ const errorLifecycleFields = (err: unknown): JsonObject => {
 
 export interface TmuxHostOptions {
   readonly tmux?: TmuxService
+  /**
+   * Explicit tmux socket override. Production omits it → the socket is derived
+   * as `orch-${runId}`. The real-tmux test harness passes a reserved
+   * `orch-test-<pid>-<nonce>` socket (and the Tier 5 subprocess receives the
+   * same value via `ORCH_TMUX_SOCKET`) so the stale-socket preload can never
+   * name — and therefore never kill — a live production server. When supplied,
+   * `runId` and `socket` may diverge: `runId` still drives state/logging/session
+   * naming; only the tmux socket decouples.
+   */
+  readonly socket?: SocketName
   readonly processService: ProcessService
   readonly clock: Clock
   readonly runId: RunId
@@ -416,7 +426,10 @@ export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
   // a tiny temp file — harmless because the recorded createSession call is
   // fake-side and never actually reads the path.
   const fs: FsService = opts.fs ?? new BunFsService()
-  const socket = socketName(`orch-${opts.runId}`)
+  // Single resolution point for the socket. Every downstream tmux call reads
+  // this local — production derives `orch-${runId}`; a harness override (Tier 1
+  // param or Tier 5 `ORCH_TMUX_SOCKET`) lands a reserved `orch-test-…` socket.
+  const socket = opts.socket ?? socketName(`orch-${opts.runId}`)
   const queue = createPaneQueue()
 
   await initOrchSession(tmux, fs, {

@@ -113,6 +113,7 @@ export async function mountTmuxHost(
 
   const host = await createTmuxHost({
     tmux: fixture.tmux,
+    socket: fixture.socket,
     processService: fixture.processService,
     clock: fixture.clock,
     runId: fixture.runId,

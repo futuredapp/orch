@@ -16,6 +16,7 @@ import {
   TmuxCommandError,
 } from '../../../../src/services/tmux/index.ts'
 import { path } from '../../../../src/services/types.ts'
+import { allocateSocketName } from '../../../helpers/real-tmux/index.ts'
 
 const canRun = Bun.which('tmux') !== null
 
@@ -30,8 +31,12 @@ const killServer = async (socket: SocketName): Promise<void> => {
 
 let sockets: SocketName[] = []
 
+// Reserved `orch-test-<pid>-<nonce>` socket (KTD-1) with the debug tag appended
+// after the pid so the stale-socket preload can reap a crashed leak by liveness.
+// The pre-pid `orch-test-<tag>` form had a non-numeric first segment and was
+// unreapable by the new liveness sweep.
 const newSocket = (tag: string): SocketName => {
-  const s = socketName(`orch-test-${tag}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`)
+  const s = socketName(`${allocateSocketName()}-${tag}`)
   sockets.push(s)
   return s
 }
