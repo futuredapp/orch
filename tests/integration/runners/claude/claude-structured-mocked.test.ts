@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createFakeHost } from '@orch/test/fake-host.ts'
 import { z } from 'zod'
+import { noRetry } from '../../../../src/core/recovery/index.ts'
 import { SchemaValidationError, schema } from '../../../../src/core/schema.ts'
 import { step } from '../../../../src/core/step.ts'
 import type { WorkflowDeps } from '../../../../src/core/workflow.ts'
@@ -147,10 +148,14 @@ describe('ClaudeRunner structured output — mocked integration', () => {
     const fixtureLines = loadFixtureLines('structured-output-retries-exhausted.jsonl')
     deps.processService.when(cmd.argv).respondWith({ stdout: fixtureLines, exitCode: 1 })
 
+    // noRetry: this is a deterministic terminal error (schema retries exhausted),
+    // not a transient API failure — opt out of the default backoffResume so the
+    // test asserts the runner's error routing, not the recovery envelope.
     const STEP = step.define('research', {
       agent: runner,
       prompt: 'Analyze risks',
       returns: schema(researchSchema),
+      recovery: noRetry(),
     })
 
     const wf = workflow('test', async (run) => {

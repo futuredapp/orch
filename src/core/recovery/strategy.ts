@@ -24,6 +24,15 @@ export const DEFAULT_CEILING = 5
 export const DEFAULT_WALL_CLOCK_CAP_MS = 60 * 60 * 1000
 /** Default per-class wait between attempts: ~5 minutes (R13). */
 export const DEFAULT_WAIT_MS = 5 * 60 * 1000
+/**
+ * Default per-attempt stall watchdog (U7). A single forked attempt may not run
+ * longer than this before the loop aborts it and re-enters the verdict — so a
+ * fork that emits one event then hangs (stdout never closes) can never hold the
+ * run open indefinitely. Defaults to the wall-clock cap, so the out-of-the-box
+ * behavior is "one attempt is bounded by the whole envelope" (no premature
+ * kills of a legitimately long turn); tune it down to fail a hung attempt sooner.
+ */
+export const DEFAULT_STALL_TIMEOUT_MS = DEFAULT_WALL_CLOCK_CAP_MS
 
 /** Wait-curve shape between attempts. `flat` is the default per R13. */
 export type WaitCurve = 'flat' | 'exponential'
@@ -41,6 +50,12 @@ export interface BackoffResumeOptions {
   readonly waits?: Partial<Record<ErrorCategory, number>>
   /** Wait curve between attempts (default `flat`). */
   readonly curve?: WaitCurve
+  /**
+   * Per-attempt stall watchdog in ms (default {@link DEFAULT_STALL_TIMEOUT_MS}).
+   * The loop aborts a forked attempt that runs longer than this and re-enters
+   * the verdict, so a hung CLI cannot hold the run open indefinitely (U7).
+   */
+  readonly stallTimeoutMs?: number
 }
 
 /** Options with every default applied — what a `backoffResume` strategy carries. */
@@ -49,6 +64,7 @@ export interface ResolvedBackoffOptions {
   readonly wallClockCapMs: number
   readonly waits: Partial<Record<ErrorCategory, number>>
   readonly curve: WaitCurve
+  readonly stallTimeoutMs: number
 }
 
 function resolveOptions(opts: BackoffResumeOptions): ResolvedBackoffOptions {
@@ -57,6 +73,7 @@ function resolveOptions(opts: BackoffResumeOptions): ResolvedBackoffOptions {
     wallClockCapMs: opts.wallClockCapMs ?? DEFAULT_WALL_CLOCK_CAP_MS,
     waits: opts.waits ?? {},
     curve: opts.curve ?? 'flat',
+    stallTimeoutMs: opts.stallTimeoutMs ?? DEFAULT_STALL_TIMEOUT_MS,
   }
 }
 

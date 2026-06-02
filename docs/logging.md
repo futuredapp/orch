@@ -109,6 +109,45 @@ Cached resume (the step's value is already in `state.json`) does not
 re-enter the step, so the folder — if it exists from a prior run — is
 left untouched.
 
+### Recovery log (`state.json` → `steps.<name>.recoveryLog`)
+
+When an autonomous agent step recovers from a transient API failure under the
+default `backoffResume` strategy (R16), the step's `StepEntry` in
+`.orch/state/<runId>/state.json` carries a `recoveryLog` — one entry per forked
+attempt, plus a terminal `gave-up` marker when the envelope was exhausted:
+
+| Field | Meaning |
+|---|---|
+| `attemptIndex` | 1-based index of the forked attempt (`gave-up` marker carries the next index) |
+| `errorClass` | classified category that drove the decision (`overload`, `server_error`, `unknown`, …) |
+| `waitMs` | wait honored before this attempt (`0` for the `gave-up` marker) |
+| `parentSessionId` | the clean checkpoint this attempt forked from — constant across attempts (R8) |
+| `forkSessionId` | the forked session id captured from the attempt's `session-started`, when seen |
+| `outcome` | `progressed` \| `errored-again` \| `gave-up` \| `completed` |
+
+Notes:
+
+- Present only on steps that actually forked (the strategy retried at least
+  once); absent on `noRetry()` steps and steps that succeeded first try.
+- **Persisted on the failure path too.** The give-up / mid-recovery fail-fast
+  paths save the partial `StepEntry` (with the `recoveryLog`) *before* the run
+  fails, so the fork chain of a failed run survives in `state.json` for audit —
+  this is the durable cross-process audit record (the per-step transcript
+  sidecar does not survive an `orch resume`).
+- The step's top-level `sessionId` of a recovered step is the **last successful**
+  `forkSessionId`, so `orch resume` resumes the right branch.
+- The give-up `StepError` message is legible (R15): it states how many attempts
+  ran, how many made progress, the total recovery wall-clock, the error class,
+  and the give-up reason (`ceiling` or `wall-clock`).
+- The fork chain is reconstructable by following `parentSessionId` →
+  `forkSessionId` links, not by row position.
+
+Reconstruct the chain for one step:
+
+```bash
+jq '.steps["<stepName>"].recoveryLog' .orch/state/<runId>/state.json
+```
+
 ## The `stepSpanId`
 
 Every step attempt gets a fresh UUID — the `stepSpanId` — that tags every

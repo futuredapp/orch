@@ -9,6 +9,16 @@ export {
   isTransientCategory,
 } from './classified-error.ts'
 export type {
+  AttemptOutcome,
+  AttemptRunResult,
+  RecoveryFailure,
+  RecoveryLogEntry,
+  RecoveryLoopDeps,
+  RecoveryLoopResult,
+  RecoveryOutcome,
+} from './loop.ts'
+export { formatRecoveryFailure, runRecoveryLoop } from './loop.ts'
+export type {
   AttemptState,
   BackoffResumeOptions,
   GiveUpSummary,
@@ -20,6 +30,7 @@ export type {
 export {
   backoffResume,
   DEFAULT_CEILING,
+  DEFAULT_STALL_TIMEOUT_MS,
   DEFAULT_WAIT_MS,
   DEFAULT_WALL_CLOCK_CAP_MS,
   noRetry,

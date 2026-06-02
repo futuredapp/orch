@@ -231,7 +231,13 @@ describe('resolveRecoveryStrategy', () => {
 })
 
 describe('pickDelay', () => {
-  const flat = { ceiling: 5, wallClockCapMs: 1, waits: {}, curve: 'flat' as const }
+  const flat = {
+    ceiling: 5,
+    wallClockCapMs: 1,
+    waits: {},
+    curve: 'flat' as const,
+    stallTimeoutMs: 60_000,
+  }
 
   it('honors a present serverRetryAfterMs over the configured per-class wait', () => {
     const delay = pickDelay(classified({ serverRetryAfterMs: 1234 }), 0, {

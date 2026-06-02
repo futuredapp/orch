@@ -16,10 +16,14 @@ import {
   type CaptureError,
   type CaptureHandle,
   type CaptureLock,
+  type ForkResumeContext,
+  type InfoEvent,
   ORCH_PARENT_PID_ENV,
   ORCH_RUN_STATE_DIR_ENV,
   ORCH_STEP_KEY_ENV,
+  type RunnerCommand,
   type RunnerContext,
+  type RunnerEvent,
 } from '../runners/types.ts'
 import type { Clock, FsService, GitService, ProcessService } from '../services/index.ts'
 import { GitCommandError, mergeEnv } from '../services/index.ts'
@@ -50,7 +54,14 @@ import {
   executionContext,
   isInsideParallel,
 } from './execution-context.ts'
-import type { RecoveryStrategy } from './recovery/index.ts'
+import {
+  type AttemptOutcome,
+  formatRecoveryFailure,
+  type RecoveryLogEntry,
+  type RecoveryStrategy,
+  resolveRecoveryStrategy,
+  runRecoveryLoop,
+} from './recovery/index.ts'
 import type { ResumeRegistry } from './resume-registry.ts'
 import { type StepTimer, withStepLifecycle } from './step-lifecycle.ts'
 import { resolveView } from './view-registry.ts'
@@ -1160,15 +1171,19 @@ async function produceAgentStep(
   // a step failure from a fs hiccup is not.
   const stepTranscript = deps.transcriptSidecar?.forStep(key)
   const rawCapture = openRawCapture(deps.logger, key)
-  const runnerDeps = {
-    processService: deps.processService,
-    clock: deps.clock,
-    onEvent: makeAgentEventHandler(deps, key, config.agent, stepTranscript, stepSpan, isSilent),
-    ...(rawCapture !== undefined ? { onRawLine: rawCapture.onRawLine } : {}),
-  }
-  // Build the runner command up front so spawn records capture argv/env even
-  // when the runner fails mid-run. Agents that error before exec still land a
-  // spawn entry with the argv the executor would have used.
+  // Shared event fan-out (sidecar / span / host). `runOneAttempt` layers the
+  // per-attempt recovery observers (progress predicate, session-started capture,
+  // info-event accumulation) on top of it. The raw-capture sink stays open
+  // across every attempt — it truncates once per process, so the forked
+  // attempts append rather than overwrite — and closes once after the loop.
+  const baseEventHandler = makeAgentEventHandler(
+    deps,
+    key,
+    config.agent,
+    stepTranscript,
+    stepSpan,
+    isSilent,
+  )
   // U4: mint a fresh session id per produce-body invocation (mirroring the
   // interactive path) and propagate it into the autonomous runner context so
   // the persisted session has a known checkpoint id to fork from. Must be fresh
@@ -1193,34 +1208,35 @@ async function produceAgentStep(
   // taken BEFORE the runner spawns, so capture starts here and resolves after.
   const captureHandle = await startAutonomousCapture(deps, config.agent, cwd, captureLock)
 
-  let result: Awaited<ReturnType<typeof runRunner>>
+  const attemptDeps: AttemptDeps = {
+    deps,
+    key,
+    config,
+    stepSpan,
+    cwd,
+    baseEventHandler,
+    ...(rawCapture !== undefined ? { onRawLine: rawCapture.onRawLine } : {}),
+  }
+
+  let agentRun: AgentRunResult
   try {
-    result = await runRunner(config.agent, runnerCtx, runnerDeps)
+    // First (pre-recovery) attempt. On a terminal error the recovery loop takes
+    // over (R7–R10); on a fail-fast class or `noRetry` it throws as today.
+    const first = await runOneAttempt(attemptDeps, runnerCtx, { sinceResume: false })
+    const capture = await resolveAutonomousCapture(captureHandle, orchSessionId)
+    agentRun = await runAgentWithRecovery({
+      attemptDeps,
+      runnerCtx,
+      captureLock,
+      first,
+      checkpointSessionId: capture.checkpointSessionId,
+      sessionIdCaptureError: capture.sessionIdCaptureError,
+      startedAt,
+    })
   } finally {
     await rawCapture?.close().catch(() => {})
   }
-  const durationMs = deps.clock.now() - startedAt
-
-  // The resumable checkpoint id (R8): the captured thread id for runners that
-  // mint their own, else the orch-generated UUID.
-  const { checkpointSessionId, sessionIdCaptureError } = await resolveAutonomousCapture(
-    captureHandle,
-    orchSessionId,
-  )
-
-  await logAgentSpawn(stepSpan, config, runnerCtx, {
-    cwd,
-    exitCode: result.exitCode,
-    durationMs,
-  })
-
-  if (result.finalEvent.type === 'error' || result.exitCode !== 0) {
-    const msg =
-      result.finalEvent.type === 'error'
-        ? result.finalEvent.message
-        : `runner exited ${result.exitCode}`
-    throw new StepError(key, result.exitCode, msg)
-  }
+  const { result, durationMs, checkpointSessionId, sessionIdCaptureError, recoveryLog } = agentRun
 
   const rawValue = config.agent.extractStructuredOutput(result.finalEvent)
   const value = validateSchemaOutput(config, key, rawValue)
@@ -1246,6 +1262,10 @@ async function produceAgentStep(
     typeof config.agent.resumeCommand === 'function' ||
     typeof config.agent.forkResumeCommand === 'function'
   const persistsSessionId = hasResumeSupport && sessionIdCaptureError === undefined
+  // The step's resumable id is the LAST successful fork's id when recovery ran
+  // (R8/U8), else the original checkpoint — so `orch resume` resumes the right
+  // branch.
+  const resumeSessionId = agentRun.recoveredSessionId ?? checkpointSessionId
 
   const entry = buildAgentEntry({
     key,
@@ -1255,8 +1275,9 @@ async function produceAgentStep(
     preRunSnapshot,
     outcomes,
     transcriptMeta: stepTranscript?.snapshot(),
-    ...(persistsSessionId ? { sessionId: checkpointSessionId } : {}),
+    ...(persistsSessionId ? { sessionId: resumeSessionId } : {}),
     ...(sessionIdCaptureError !== undefined ? { sessionIdCaptureError } : {}),
+    ...(recoveryLog !== undefined ? { recoveryLog } : {}),
   })
 
   await writeAgentSession(deps.logger, stepSpan, {
@@ -1273,14 +1294,249 @@ async function produceAgentStep(
   return { value, entry }
 }
 
+// ---------------------------------------------------------------------------
+// Recovery wiring (U7) — one attempt + the backoffResume loop at the seam.
+// ---------------------------------------------------------------------------
+
+type RunnerRunResult = Awaited<ReturnType<typeof runRunner>>
+
+interface AttemptDeps {
+  readonly deps: WorkflowDeps
+  readonly key: StepName
+  readonly config: AgentStepConfig
+  readonly stepSpan: StepSpan | undefined
+  readonly cwd: Path
+  readonly baseEventHandler: (evt: RunnerEvent) => void
+  readonly onRawLine?: (stream: 'stdout' | 'stderr', line: string) => void
+}
+
+interface AttemptResult extends AttemptOutcome {
+  readonly result: RunnerRunResult
+}
+
+interface AgentRunResult {
+  readonly result: RunnerRunResult
+  readonly durationMs: number
+  readonly checkpointSessionId: string
+  readonly sessionIdCaptureError: CaptureError | undefined
+  readonly recoveryLog?: readonly RecoveryLogEntry[]
+  readonly recoveredSessionId?: string
+}
+
+/** The single "continue" nudge a forked attempt sends (R7 — at most one). */
+const RECOVERY_NUDGE = 'continue'
+
+// Run one runner invocation (initial or forked) under the per-attempt event
+// observers, and emit one `spawns` span entry. `sinceResume` gates the progress
+// predicate so a forked nudge's own pre-work events never count as progress (R9).
+async function runOneAttempt(
+  ad: AttemptDeps,
+  runnerCtx: RunnerContext,
+  opts: {
+    readonly sinceResume: boolean
+    readonly command?: RunnerCommand
+    readonly signal?: AbortSignal
+  },
+): Promise<AttemptResult> {
+  const { config } = ad
+  const isProgress = config.agent.isProgressEvent
+  let sawProgress = false
+  let forkSessionId: string | undefined
+  const infoEvents: InfoEvent[] = []
+
+  const onEvent = (evt: RunnerEvent): void => {
+    ad.baseEventHandler(evt)
+    if (evt.kind === 'info') {
+      infoEvents.push(evt)
+      if (evt.type === 'session-started') {
+        const sid = (evt.payload as { readonly sessionId?: unknown } | undefined)?.sessionId
+        if (typeof sid === 'string') forkSessionId = sid
+      }
+    }
+    if (
+      opts.sinceResume &&
+      typeof isProgress === 'function' &&
+      isProgress(evt, { sinceResume: true })
+    ) {
+      sawProgress = true
+    }
+  }
+
+  // Build the command once so the spawn record and the runner share an argv —
+  // the fork argv on a recovery attempt, else the runner's autonomous argv.
+  const command = opts.command ?? (await config.agent.buildCommand(runnerCtx))
+  const result = await runRunner(config.agent, runnerCtx, {
+    processService: ad.deps.processService,
+    clock: ad.deps.clock,
+    onEvent,
+    command,
+    ...(ad.onRawLine !== undefined ? { onRawLine: ad.onRawLine } : {}),
+    ...(opts.signal !== undefined ? { signal: opts.signal } : {}),
+  })
+  await logAgentSpawn(ad.stepSpan, config, runnerCtx, {
+    cwd: ad.cwd,
+    exitCode: result.exitCode,
+    durationMs: result.durationMs,
+    command,
+  })
+
+  return {
+    result,
+    sawProgress,
+    infoEvents,
+    ...(forkSessionId !== undefined ? { forkSessionId } : {}),
+  }
+}
+
+interface RecoveryArgs {
+  readonly attemptDeps: AttemptDeps
+  readonly runnerCtx: RunnerContext
+  readonly captureLock: CaptureLock
+  readonly first: AttemptResult
+  readonly checkpointSessionId: string
+  readonly sessionIdCaptureError: CaptureError | undefined
+  readonly startedAt: number
+}
+
+// Reconcile the first attempt's result: success first try returns immediately;
+// a terminal error consults the resolved strategy and either fails fast (today's
+// behavior for `noRetry` / non-recovery-capable runners) or drives the loop.
+async function runAgentWithRecovery(args: RecoveryArgs): Promise<AgentRunResult> {
+  const { attemptDeps, first, checkpointSessionId, sessionIdCaptureError, startedAt } = args
+  const { deps, key, config } = attemptDeps
+
+  if (first.result.finalEvent.type !== 'error' && first.result.exitCode === 0) {
+    return {
+      result: first.result,
+      durationMs: deps.clock.now() - startedAt,
+      checkpointSessionId,
+      sessionIdCaptureError,
+    }
+  }
+
+  const strategy = resolveRecoveryStrategy(config.recovery, deps.recovery)
+  const classifyError = config.agent.classifyError
+  const forkFn = config.agent.forkResumeCommand
+  const resumeFn = config.agent.resumeCommand
+  if (
+    strategy.kind !== 'backoffResume' ||
+    typeof classifyError !== 'function' ||
+    (typeof forkFn !== 'function' && typeof resumeFn !== 'function')
+  ) {
+    throw new StepError(key, first.result.exitCode, terminalErrorMessage(first.result))
+  }
+
+  const loop = await runRecoveryLoop({
+    strategy,
+    clock: deps.clock,
+    checkpointSessionId,
+    classify: (signal) => classifyError(signal, 'autonomous'),
+    initial: first,
+    runAttempt: (signal) => runForkAttempt(args, signal),
+  })
+
+  if (loop.ok) {
+    return {
+      result: {
+        finalEvent: loop.result.finalEvent,
+        exitCode: loop.result.exitCode,
+        durationMs: deps.clock.now() - startedAt,
+      },
+      durationMs: deps.clock.now() - startedAt,
+      checkpointSessionId,
+      sessionIdCaptureError,
+      recoveryLog: loop.recoveryLog,
+      ...(loop.forkSessionId !== undefined ? { recoveredSessionId: loop.forkSessionId } : {}),
+    }
+  }
+
+  // Give-up / mid-recovery fail-fast. Persist the partial entry (carrying the
+  // recovery log) BEFORE throwing — `executeWorkflowFn`'s catch only sets the
+  // run status, never `saveStep`, so a naive throw would lose the failed run's
+  // recovery log for exactly the runs most needing audit (R16).
+  if (loop.recoveryLog.length > 0) await persistRecoveryFailure(args, loop.recoveryLog)
+  throw new StepError(
+    key,
+    first.result.exitCode,
+    formatRecoveryFailure(loop.failure, loop.recoveryLog),
+  )
+}
+
+// One forked attempt: build the fork (or resume-in-place) command under the
+// watchdog signal, then run it with `sinceResume: true`.
+async function runForkAttempt(args: RecoveryArgs, signal: AbortSignal): Promise<AttemptResult> {
+  const command = await buildRecoveryCommand(args, signal)
+  return runOneAttempt(args.attemptDeps, args.runnerCtx, { sinceResume: true, command, signal })
+}
+
+async function buildRecoveryCommand(
+  args: RecoveryArgs,
+  signal: AbortSignal,
+): Promise<RunnerCommand> {
+  const { config, cwd, deps } = args.attemptDeps
+  const forkFn = config.agent.forkResumeCommand
+  if (typeof forkFn === 'function') {
+    const forkCtx: ForkResumeContext = {
+      cwd,
+      fs: deps.fsService,
+      clock: deps.clock,
+      lock: args.captureLock,
+      signal,
+      env: {},
+      extraArgs: [],
+    }
+    return forkFn(forkCtx, args.checkpointSessionId, RECOVERY_NUDGE)
+  }
+  // Resume-in-place fallback (R4/R7): no clean parent to fork from; the loop's
+  // one-attempt-per-verdict cadence is what preserves the no-stacking discipline.
+  const resumeFn = config.agent.resumeCommand
+  if (typeof resumeFn === 'function') {
+    return resumeFn({ ...args.runnerCtx, prompt: RECOVERY_NUDGE }, args.checkpointSessionId)
+  }
+  throw new Error(`recovery: runner "${config.agent.name}" has no fork or resume primitive`)
+}
+
+async function persistRecoveryFailure(
+  args: RecoveryArgs,
+  recoveryLog: readonly RecoveryLogEntry[],
+): Promise<void> {
+  const { attemptDeps, sessionIdCaptureError, startedAt } = args
+  const { deps, key } = attemptDeps
+  const entry = buildAgentEntry({
+    key,
+    value: undefined,
+    startedAt,
+    endedAt: deps.clock.now(),
+    preRunSnapshot: undefined,
+    outcomes: [],
+    transcriptMeta: undefined,
+    ...(sessionIdCaptureError !== undefined ? { sessionIdCaptureError } : {}),
+    recoveryLog,
+  })
+  await deps.stateStore.saveStep(deps.runId, entry).catch(() => {})
+}
+
+function terminalErrorMessage(result: RunnerRunResult): string {
+  return result.finalEvent.type === 'error'
+    ? result.finalEvent.message
+    : `runner exited ${result.exitCode}`
+}
+
 async function logAgentSpawn(
   stepSpan: StepSpan | undefined,
   config: AgentStepConfig,
   runnerCtx: import('../runners/index.ts').RunnerContext,
-  r: { readonly cwd: Path; readonly exitCode: number; readonly durationMs: number },
+  r: {
+    readonly cwd: Path
+    readonly exitCode: number
+    readonly durationMs: number
+    // The actual command this attempt ran — the fork argv on a recovery attempt,
+    // else rebuilt from the runner. One spawn record per attempt (U7).
+    readonly command?: RunnerCommand
+  },
 ): Promise<void> {
   if (stepSpan === undefined) return
-  const cmd = await tryBuildCommand(config, runnerCtx)
+  const cmd = r.command ?? (await tryBuildCommand(config, runnerCtx))
   void stepSpan
     .append('spawns', {
       runnerName: config.agent.name,
@@ -1375,6 +1631,8 @@ function buildAgentEntry(inputs: {
   // typed reason — both additive-optional, mirroring the interactive entry.
   readonly sessionId?: string
   readonly sessionIdCaptureError?: CaptureError
+  // Per-attempt recovery log (U8/R16) — present only when recovery forked.
+  readonly recoveryLog?: readonly RecoveryLogEntry[]
 }): StepEntry {
   const { transcriptMeta, preRunSnapshot } = inputs
   return {
@@ -1395,6 +1653,7 @@ function buildAgentEntry(inputs: {
     ...(inputs.sessionIdCaptureError !== undefined
       ? { sessionIdCaptureError: inputs.sessionIdCaptureError }
       : {}),
+    ...(inputs.recoveryLog !== undefined ? { recoveryLog: inputs.recoveryLog } : {}),
   }
 }
 

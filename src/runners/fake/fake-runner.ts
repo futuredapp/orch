@@ -1,10 +1,15 @@
+import type { ClassifiedError, ErrorCategory } from '../../core/recovery/index.ts'
+import { isFailFast } from '../../core/recovery/index.ts'
 import type { ViewDefault } from '../../core/view.ts'
 import type { FakeProcessService } from '../../services/process/fake-process-service.ts'
 import type {
   AutoStopPreparation,
   CaptureHandle,
   CaptureSessionIdContext,
+  ClassifyErrorSignal,
+  ForkResumeContext,
   InfoEvent,
+  ProgressContext,
   Runner,
   RunnerCommand,
   RunnerContext,
@@ -46,6 +51,9 @@ export class FakeRunner implements Runner {
   #invocations = 0
   #resumeArgvBuilder?: (sessionId: string) => readonly string[]
   #captureImpl?: (ctx: CaptureSessionIdContext) => CaptureHandle
+  #classifyImpl?: (signal: ClassifyErrorSignal) => ClassifiedError
+  #forkArgvBuilder?: (checkpointSessionId: string, nudge: string) => readonly string[]
+  #progressImpl?: (event: RunnerEvent, ctx: ProgressContext) => boolean
   readonly #supportsAutoStop: boolean
 
   constructor(processService: FakeProcessService, opts: FakeRunnerOptions = {}) {
@@ -94,6 +102,13 @@ export class FakeRunner implements Runner {
 
   get invocationCount(): number {
     return this.#invocations
+  }
+
+  /** The argv every invocation (initial + forked) spawns under. Recovery tests
+   *  point a resume-in-place builder at this so the scripted `FakeProcessService`
+   *  queue drains in order across attempts. */
+  get spawnArgv(): readonly string[] {
+    return [':fake:', this.#nonce]
   }
 
   buildCommand(ctx: RunnerContext): RunnerCommand {
@@ -194,4 +209,90 @@ export class FakeRunner implements Runner {
     if (!this.#supportsAutoStop) return undefined
     return async (): Promise<AutoStopPreparation> => ({ env: {}, cleanup: async () => {} })
   }
+
+  // -------------------------------------------------------------------------
+  // Recovery capabilities (U7) — presence-as-capability, off until a builder
+  // enables them, mirroring `withResumeCommand` / `withCaptureSessionId`.
+  // -------------------------------------------------------------------------
+
+  /**
+   * Enable `classifyError`. The default classifier reads the terminal error
+   * message: a message that NAMES an {@link ErrorCategory} (e.g. `'auth'`,
+   * `'overload'`) classifies as that category — so a test drives the strategy
+   * by what it scripts in `failWith.message`. Anything else is `overload`
+   * (the common retryable case). Pass a custom fn for full control.
+   */
+  withClassifyError(impl?: (signal: ClassifyErrorSignal) => ClassifiedError): this {
+    this.#classifyImpl = impl ?? defaultFakeClassify
+    return this
+  }
+
+  get classifyError(): Runner['classifyError'] {
+    if (this.#classifyImpl === undefined) return undefined
+    const impl = this.#classifyImpl
+    return (signal: ClassifyErrorSignal): ClassifiedError => impl(signal)
+  }
+
+  /**
+   * Enable `forkResumeCommand`. The default builder returns the SAME argv as
+   * `buildCommand` (`[':fake:', nonce]`) so each forked attempt drains the
+   * next queued `script(...)` response in order — that is how a test sequences
+   * error → fork → progress → complete across attempts. Pass a builder to
+   * assert a distinct fork argv.
+   */
+  withForkResumeCommand(
+    builder?: (checkpointSessionId: string, nudge: string) => readonly string[],
+  ): this {
+    this.#forkArgvBuilder = builder ?? (() => [':fake:', this.#nonce])
+    return this
+  }
+
+  get forkResumeCommand(): Runner['forkResumeCommand'] {
+    if (this.#forkArgvBuilder === undefined) return undefined
+    const builder = this.#forkArgvBuilder
+    return (ctx: ForkResumeContext, checkpointSessionId: string, nudge: string): RunnerCommand => ({
+      argv: builder(checkpointSessionId, nudge),
+      env: ctx.env,
+    })
+  }
+
+  /**
+   * Enable `isProgressEvent`. The default predicate counts an `assistant` info
+   * event after resume as progress (the Claude-shaped happy path); pre-resume
+   * events never count. Pass a custom predicate for other shapes.
+   */
+  withProgressEvent(impl?: (event: RunnerEvent, ctx: ProgressContext) => boolean): this {
+    this.#progressImpl = impl ?? defaultFakeProgress
+    return this
+  }
+
+  get isProgressEvent(): Runner['isProgressEvent'] {
+    if (this.#progressImpl === undefined) return undefined
+    const impl = this.#progressImpl
+    return (event: RunnerEvent, ctx: ProgressContext): boolean => impl(event, ctx)
+  }
+}
+
+const KNOWN_CATEGORIES: readonly ErrorCategory[] = [
+  'overload',
+  'server_error',
+  'rate_limit',
+  'usage_limit',
+  'auth',
+  'billing',
+  'invalid_request',
+  'model_not_found',
+  'unknown',
+]
+
+function defaultFakeClassify(signal: ClassifyErrorSignal): ClassifiedError {
+  const message = signal.finalEvent.type === 'error' ? signal.finalEvent.message : ''
+  const named = KNOWN_CATEGORIES.find((c) => message.includes(c))
+  const category = named ?? 'overload'
+  return { category, transient: !isFailFast(category) }
+}
+
+function defaultFakeProgress(event: RunnerEvent, ctx: ProgressContext): boolean {
+  if (!ctx.sinceResume) return false
+  return event.kind === 'info' && event.type === 'assistant'
 }

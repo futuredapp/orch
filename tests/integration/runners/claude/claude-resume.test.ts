@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createFakeHost } from '@orch/test/fake-host.ts'
+import { noRetry } from '../../../../src/core/recovery/index.ts'
 import { step } from '../../../../src/core/step.ts'
 import type { WorkflowDeps } from '../../../../src/core/workflow.ts'
 import { workflow } from '../../../../src/core/workflow.ts'
@@ -59,7 +60,14 @@ describe('ClaudeRunner crash+resume (mocked)', () => {
     const sharedRunId = rid('r-2026-04-13-327523-xq')
 
     const STEP_1 = step.define('step-1', { agent: runner, prompt: 'do step 1' })
-    const STEP_2 = step.define('step-2', { agent: runner, prompt: 'do step 2' })
+    // noRetry: this test exercises crash+resume on a terminal max-turns error,
+    // not the recovery envelope — opt out of the default backoffResume so the
+    // step fails fast (as before this feature) and resume re-runs it.
+    const STEP_2 = step.define('step-2', {
+      agent: runner,
+      prompt: 'do step 2',
+      recovery: noRetry(),
+    })
 
     // First run: step 1 succeeds, step 2 fails
     const fps1 = new FakeProcessService()

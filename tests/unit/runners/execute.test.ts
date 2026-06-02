@@ -7,6 +7,7 @@ import {
   runRunner,
 } from '../../../src/runners/index.ts'
 import { FakeClock, path } from '../../../src/services/index.ts'
+import { FakeProcessService } from '../../../src/services/process/fake-process-service.ts'
 import type {
   ProcessService,
   SpawnHandle,
@@ -152,6 +153,52 @@ describe('runRunner cleanup on failure paths', () => {
     expect(caught).toBeInstanceOf(Error)
     expect((caught as Error).message).toBe('stdout pipe broke')
     expect(handle.killed).toBe(true)
+  })
+})
+
+describe('runRunner recovery seams (U7)', () => {
+  it('uses the prebuilt command override instead of buildCommand', async () => {
+    const fps = new FakeProcessService()
+    fps.when([':forked:']).respondWith({
+      stdout: [JSON.stringify({ kind: 'terminal', type: 'turn-complete', data: 'ok' })],
+      exitCode: 0,
+    })
+    const runner = dummyRunner((line) => JSON.parse(line) as RunnerEvent)
+
+    const result = await runRunner(runner, ctxFor('x'), {
+      processService: fps,
+      clock: new FakeClock(),
+      command: { argv: [':forked:'], env: {} },
+    })
+
+    expect(result.finalEvent.type).toBe('turn-complete')
+    expect(result.exitCode).toBe(0)
+  })
+
+  it('aborts a hung spawn via the signal and synthesizes a terminal error', async () => {
+    const fps = new FakeProcessService()
+    // One info line, then stdout hangs open until the handle is killed.
+    fps.when([':hang:']).respondWith({
+      stdout: [JSON.stringify({ kind: 'info', type: 'assistant' })],
+      exitCode: 0,
+      stallUntilKilled: true,
+    })
+    const runner = dummyRunner((line) => JSON.parse(line) as RunnerEvent)
+    const controller = new AbortController()
+
+    const promise = runRunner(runner, ctxFor('x'), {
+      processService: fps,
+      clock: new FakeClock(),
+      command: { argv: [':hang:'], env: {} },
+      signal: controller.signal,
+    })
+    // Let the runner drain the one info line and wedge on the next read.
+    await new Promise((r) => setImmediate(r))
+    controller.abort()
+
+    const result = await promise
+    expect(result.finalEvent.type).toBe('error')
+    expect(result.exitCode).toBe(-1)
   })
 })
 

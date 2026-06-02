@@ -1,5 +1,5 @@
 import type { Clock, ProcessHandle, ProcessService } from '../services/index.ts'
-import type { Runner, RunnerContext, RunnerEvent, TerminalEvent } from './types.ts'
+import type { Runner, RunnerCommand, RunnerContext, RunnerEvent, TerminalEvent } from './types.ts'
 import { isTerminalEvent } from './types.ts'
 
 // ---------------------------------------------------------------------------
@@ -16,6 +16,11 @@ function safeKill(handle: ProcessHandle): void {
   } catch {
     /* subprocess already gone */
   }
+}
+
+/** True for the `AbortError` an aborted stream iterator raises. */
+function isAbortError(err: unknown): boolean {
+  return err instanceof Error && err.name === 'AbortError'
 }
 
 // ---------------------------------------------------------------------------
@@ -47,10 +52,25 @@ export async function runRunner(
      * accepts. See plan § Phase 3.
      */
     readonly onRawLine?: (stream: 'stdout' | 'stderr', line: string) => void
+    /**
+     * Recovery (U7): abort the spawn when the loop's per-attempt stall
+     * watchdog (or the wall-clock cap) fires. On abort the handle is killed,
+     * the stdout iterator unwinds, and `runRunner` synthesizes a terminal
+     * error rather than crashing — so a hung fork can never hold the run
+     * open indefinitely.
+     */
+    readonly signal?: AbortSignal
+    /**
+     * Recovery (U7): a prebuilt command that overrides `runner.buildCommand`.
+     * The fork-resume path builds its argv via `runner.forkResumeCommand`
+     * (Claude `--fork-session`, Codex rollout-copy) and hands it here, so the
+     * runner re-uses the same spawn/parse machinery for every attempt.
+     */
+    readonly command?: RunnerCommand
   },
 ): Promise<RunnerResult> {
   const startedAt = deps.clock.now()
-  const cmd = await runner.buildCommand(ctx)
+  const cmd = deps.command ?? (await runner.buildCommand(ctx))
   const handle = deps.processService.spawn({
     argv: cmd.argv,
     env: cmd.env,
@@ -58,9 +78,21 @@ export async function runRunner(
     tag: 'agent',
   })
 
+  // Abort wiring (U7): killing the handle unwinds the stdout/stderr iterators.
+  // `once` + explicit removal in `finally` keeps the listener from leaking
+  // across the many attempts a recovery loop drives through one signal.
+  const onAbort = (): void => safeKill(handle)
+  if (deps.signal !== undefined) {
+    if (deps.signal.aborted) safeKill(handle)
+    else deps.signal.addEventListener('abort', onAbort, { once: true })
+  }
+
   // Drain stderr concurrently to prevent pipe deadlock. Under `--debug` the
-  // raw-line hook also fires on every stderr line.
-  const stderrDone = drainStream(handle.stderr, (line) => deps.onRawLine?.('stderr', line))
+  // raw-line hook also fires on every stderr line. Swallow drain errors
+  // (including the abort unwind) so they never surface as unhandled rejections.
+  const stderrDone = drainStream(handle.stderr, (line) => deps.onRawLine?.('stderr', line)).catch(
+    () => {},
+  )
 
   let finalEvent: TerminalEvent | null = null
   let exitCode: number
@@ -80,7 +112,15 @@ export async function runRunner(
     const waitResult = await handle.wait()
     exitCode = waitResult.exitCode
     await stderrDone
+  } catch (err) {
+    // An aborted attempt (watchdog/cap kill) unwinds the iterator with an
+    // `AbortError`. Treat it as "no terminal event" — the synthesized error
+    // below lets the recovery loop re-enter the verdict. Anything else is a
+    // genuine fault and propagates.
+    if (!isAbortError(err)) throw err
+    exitCode = -1
   } finally {
+    if (deps.signal !== undefined) deps.signal.removeEventListener('abort', onAbort)
     safeKill(handle)
   }
 
