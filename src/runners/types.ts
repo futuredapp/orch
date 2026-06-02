@@ -1,4 +1,8 @@
 import { z } from 'zod'
+// Type-only cross-module import, mirroring `ViewDefault` below. `src/core/recovery`
+// is pure (no runner imports), so this introduces no import cycle; the type is
+// erased at runtime regardless.
+import type { ClassifiedError } from '../core/recovery/index.ts'
 import type { ViewDefault } from '../core/view.ts'
 import type { Clock } from '../services/clock/index.ts'
 import type { FsService } from '../services/fs/index.ts'
@@ -211,6 +215,83 @@ export interface Runner {
    * truth, mirroring `resumeCommand` / `captureSessionId`.
    */
   prepareAutoStop?(ctx: RunnerContext): Promise<AutoStopPreparation>
+  /**
+   * Normalize this runner's raw terminal signal into one {@link ClassifiedError}
+   * for the recovery strategy (R3, R5, R6). Classify from the numeric HTTP
+   * status first; the string label / subtype is an untrusted tiebreaker (R12).
+   * The terminal event alone may not carry the status (a missing-terminal stream
+   * synthesizes a status-less error), so the recovery loop accumulates the
+   * attempt's info events and passes them via {@link ClassifyErrorSignal.infoEvents}.
+   *
+   * Optional — runners without recovery support omit it; the executor reads the
+   * capability via `typeof runner.classifyError === 'function'`. There is no
+   * `supports.*` flag, matching `resumeCommand` / `captureSessionId`.
+   */
+  classifyError?(signal: ClassifyErrorSignal, mode: RunnerMode): ClassifiedError
+  /**
+   * Build the argv + env that forks the clean checkpoint session and sends a
+   * single "continue" nudge (R7, R8, R11, R11a). Claude uses native
+   * `--fork-session` (synchronous); Codex emulates fork by copying + rewriting
+   * the rollout JSONL (async, needs `fs`/`clock`/`lock`/`signal` from the
+   * context) and degrades to a resume-in-place command on any copy/rewrite
+   * failure. A runner lacking this method degrades to resume-in-place with the
+   * no-stacking discipline (R4).
+   *
+   * Capability check: `typeof runner.forkResumeCommand === 'function'`.
+   */
+  forkResumeCommand?(
+    ctx: ForkResumeContext,
+    checkpointSessionId: string,
+    nudge: string,
+  ): RunnerCommand | Promise<RunnerCommand>
+  /**
+   * True when `event` is real progress on a resumed (forked) attempt — used to
+   * reset the give-up counter (R9). MUST exclude pseudo-progress: Claude's
+   * synthetic `<synthetic>` "API Error…" assistant turn, and Codex's
+   * `item.started` for processing the nudge itself (which precedes any model
+   * work and would defeat the attempt ceiling). `ctx.sinceResume` lets the
+   * runner ignore pre-resume events.
+   *
+   * Capability check: `typeof runner.isProgressEvent === 'function'`.
+   */
+  isProgressEvent?(event: RunnerEvent, ctx: ProgressContext): boolean
+}
+
+// ---------------------------------------------------------------------------
+// Recovery capabilities — context/result types for the optional methods above
+// ---------------------------------------------------------------------------
+
+/** The step mode a runner is operating in; mirrors `RunnerContext.mode` minus
+ *  the optionality (the executor always knows the mode at the classify site). */
+export type RunnerMode = 'interactive' | 'autonomous'
+
+/**
+ * The raw terminal signal handed to `classifyError`. `finalEvent` + `exitCode`
+ * are what `runRunner` returns; `infoEvents` are the attempt's accumulated info
+ * events (e.g. Claude's `api_retry` / status-bearing records) that the terminal
+ * event alone does not carry.
+ */
+export interface ClassifyErrorSignal {
+  readonly finalEvent: TerminalEvent
+  readonly exitCode: number
+  readonly infoEvents: readonly InfoEvent[]
+}
+
+/**
+ * Context for `forkResumeCommand`. A superset of {@link CaptureSessionIdContext}
+ * (so Codex's emulated fork has `fs`/`clock`/`lock`/`signal` for the rollout
+ * copy) plus the `env`/`extraArgs` needed to build the argv. `cwd` comes from
+ * the capture-context base.
+ */
+export interface ForkResumeContext extends CaptureSessionIdContext {
+  readonly env: Readonly<Record<string, string>>
+  readonly extraArgs: readonly string[]
+}
+
+/** Context for `isProgressEvent`. `sinceResume` is true once the resume nudge
+ *  has been issued, so the runner can ignore pre-resume / synthetic events. */
+export interface ProgressContext {
+  readonly sinceResume: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -304,6 +385,26 @@ const RunnerAdapterSchema = z.object({
   // of truth and powers the fail-fast `AutoStopUnsupportedError`.
   prepareAutoStop: z
     .custom<NonNullable<Runner['prepareAutoStop']>>((v) => typeof v === 'function', {
+      message: 'expected function',
+    })
+    .optional(),
+  // Optional recovery capabilities (R3, R4). Each slot enforces the
+  // function-shape contract at the type level. Without a slot the method
+  // survives at runtime (Object.freeze) but is stripped from the validated
+  // shape — untyped/unvalidated, the trap to avoid. Capability is detected via
+  // `typeof runner.method === 'function'`, never a `supports.*` flag.
+  classifyError: z
+    .custom<NonNullable<Runner['classifyError']>>((v) => typeof v === 'function', {
+      message: 'expected function',
+    })
+    .optional(),
+  forkResumeCommand: z
+    .custom<NonNullable<Runner['forkResumeCommand']>>((v) => typeof v === 'function', {
+      message: 'expected function',
+    })
+    .optional(),
+  isProgressEvent: z
+    .custom<NonNullable<Runner['isProgressEvent']>>((v) => typeof v === 'function', {
       message: 'expected function',
     })
     .optional(),

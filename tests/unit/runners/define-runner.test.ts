@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'bun:test'
+import type { ClassifiedError } from '../../../src/core/recovery/index.ts'
 import {
+  type ClassifyErrorSignal,
   defineRunner,
+  type ForkResumeContext,
   type InfoEvent,
   isTerminalEvent,
+  type ProgressContext,
   type Runner,
   type RunnerCommand,
   type RunnerContext,
@@ -90,6 +94,49 @@ describe('defineRunner', () => {
       const msg = (err as Error).message
       expect(msg).not.toContain('KEY_12345')
     }
+  })
+})
+
+function withRecoveryCapabilities(): Runner {
+  return {
+    ...makeValidAdapter(),
+    classifyError(_signal: ClassifyErrorSignal): ClassifiedError {
+      return { category: 'overload', transient: true, httpStatus: 529 }
+    },
+    forkResumeCommand(_ctx: ForkResumeContext, _checkpoint: string, _nudge: string): RunnerCommand {
+      return { argv: ['test', '--fork-session'], env: {} }
+    },
+    isProgressEvent(_event: RunnerEvent, _ctx: ProgressContext): boolean {
+      return false
+    },
+  }
+}
+
+describe('defineRunner recovery capabilities', () => {
+  it('accepts an adapter that declares all three recovery methods', () => {
+    const adapter = withRecoveryCapabilities()
+
+    const result = defineRunner(adapter)
+
+    expect(typeof result.classifyError).toBe('function')
+    expect(typeof result.forkResumeCommand).toBe('function')
+    expect(typeof result.isProgressEvent).toBe('function')
+  })
+
+  it('accepts an adapter declaring none of them and reads as capability-absent via typeof', () => {
+    const adapter = makeValidAdapter()
+
+    const result = defineRunner(adapter)
+
+    expect(typeof result.classifyError).toBe('undefined')
+    expect(typeof result.forkResumeCommand).toBe('undefined')
+    expect(typeof result.isProgressEvent).toBe('undefined')
+  })
+
+  it('rejects a malformed (non-function) classifyError', () => {
+    const adapter = { ...makeValidAdapter(), classifyError: 'nope' } as unknown as Runner
+
+    expect(() => defineRunner(adapter)).toThrow(/classifyError/)
   })
 })
 
