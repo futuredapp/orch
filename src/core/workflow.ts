@@ -49,6 +49,7 @@ import {
   executionContext,
   isInsideParallel,
 } from './execution-context.ts'
+import type { RecoveryStrategy } from './recovery/index.ts'
 import type { ResumeRegistry } from './resume-registry.ts'
 import { type StepTimer, withStepLifecycle } from './step-lifecycle.ts'
 import { resolveView } from './view-registry.ts'
@@ -310,6 +311,13 @@ export interface WorkflowDeps {
   readonly onInteractive?: (ctx: InteractiveContext) => Promise<InteractiveResult>
   /** Injectable session ID generator. Defaults to crypto.randomUUID(). */
   readonly generateSessionId?: () => string
+  /**
+   * Workflow-level default error-recovery strategy for autonomous agent steps
+   * (R14). A step's own `recovery:` overrides this; when neither is set the
+   * built-in `backoffResume()` applies. Resolved per step via
+   * `resolveRecoveryStrategy`. Consumed by the recovery loop (U7).
+   */
+  readonly recovery?: RecoveryStrategy
   /** CLI-supplied arguments. When omitted, the workflow callback sees `{}`. */
   readonly args?: WorkflowArgs
   /**

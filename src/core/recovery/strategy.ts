@@ -161,6 +161,19 @@ export function noRetry(): RecoveryStrategy {
   }
 }
 
+/**
+ * Resolve the effective strategy for an autonomous agent step (R14). Precedence:
+ * the step's own `recovery:` wins, then the workflow-level default, then the
+ * built-in `backoffResume()`. Pure — the executor (U7) calls this at the error
+ * site; kept off the public author barrel.
+ */
+export function resolveRecoveryStrategy(
+  stepRecovery: RecoveryStrategy | undefined,
+  workflowDefault: RecoveryStrategy | undefined,
+): RecoveryStrategy {
+  return stepRecovery ?? workflowDefault ?? backoffResume()
+}
+
 /** The recovery loop's strategy (F1): fail fast on terminal classes, give up
  *  when the envelope is exhausted, otherwise retry with a per-class wait. */
 export function backoffResume(opts: BackoffResumeOptions = {}): RecoveryStrategy {

@@ -26,4 +26,5 @@ export {
   onErrorAgain,
   onProgress,
   pickDelay,
+  resolveRecoveryStrategy,
 } from './strategy.ts'

@@ -10,6 +10,7 @@ import {
   onErrorAgain,
   onProgress,
   pickDelay,
+  resolveRecoveryStrategy,
 } from '../../../../src/core/recovery/index.ts'
 
 // ---------------------------------------------------------------------------
@@ -203,6 +204,31 @@ describe('noRetry.decide', () => {
 // ---------------------------------------------------------------------------
 // pickDelay (R13)
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// resolveRecoveryStrategy — precedence (R14)
+// ---------------------------------------------------------------------------
+
+describe('resolveRecoveryStrategy', () => {
+  it('prefers the step strategy over a workflow default', () => {
+    const step = noRetry()
+    const workflowDefault = backoffResume()
+
+    expect(resolveRecoveryStrategy(step, workflowDefault)).toBe(step)
+  })
+
+  it('falls back to the workflow default when the step sets none', () => {
+    const workflowDefault = noRetry()
+
+    expect(resolveRecoveryStrategy(undefined, workflowDefault)).toBe(workflowDefault)
+  })
+
+  it('falls back to the built-in backoffResume when neither is set', () => {
+    const resolved = resolveRecoveryStrategy(undefined, undefined)
+
+    expect(resolved.kind).toBe('backoffResume')
+  })
+})
 
 describe('pickDelay', () => {
   const flat = { ceiling: 5, wallClockCapMs: 1, waits: {}, curve: 'flat' as const }
