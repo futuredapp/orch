@@ -68,7 +68,6 @@ describe('CodexRunner mocked integration', () => {
       'exec',
       '--json',
       '--skip-git-repo-check',
-      '--ephemeral',
       '--full-auto',
       '--output-schema',
       '/tmp/codex-schema1/schema.json',
@@ -121,7 +120,7 @@ describe('CodexRunner mocked integration', () => {
     expect(cmd.argv[1]).toBe('exec')
     expect(cmd.argv).toContain('--json')
     expect(cmd.argv).toContain('--skip-git-repo-check')
-    expect(cmd.argv).toContain('--ephemeral')
+    expect(cmd.argv).not.toContain('--ephemeral')
     expect(cmd.argv).toContain('--sandbox')
     expect(cmd.argv).toContain('read-only')
     expect(cmd.argv).toContain('-m')

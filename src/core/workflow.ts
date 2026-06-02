@@ -14,6 +14,7 @@ import { runRunner } from '../runners/index.ts'
 // without importing a runner adapter.
 import {
   type CaptureError,
+  type CaptureHandle,
   type CaptureLock,
   ORCH_PARENT_PID_ENV,
   ORCH_RUN_STATE_DIR_ENV,
@@ -1042,6 +1043,7 @@ function safeToTranscriptLines(
 
 async function runAgentStep(
   deps: WorkflowDeps,
+  captureLock: CaptureLock,
   config: AgentStepConfig,
   key: StepName,
   overrides: RunOverrides | undefined,
@@ -1076,8 +1078,53 @@ async function runAgentStep(
       trackParallel: true,
       runnerName: config.agent.name,
     },
-    () => produceAgentStep(deps, config, key, overrides, stepSpan, isSilent),
+    () => produceAgentStep(deps, captureLock, config, key, overrides, stepSpan, isSilent),
   )
+}
+
+// Start post-spawn session-id capture for runners that mint their own id (U4/U6).
+// Runs for EVERY autonomous step of such a runner (even `noRetry()` ones) — lazy
+// capture is impossible because the baseline snapshot must precede the spawn.
+// Returns the handle (awaiting `snapshotReady` so the caller can spawn safely),
+// or `undefined` for runners that pre-set the id (Claude via --session-id). The
+// per-workflow `captureLock` serializes concurrent windows under `parallel()`.
+async function startAutonomousCapture(
+  deps: WorkflowDeps,
+  agent: AgentStepConfig['agent'],
+  cwd: Path,
+  captureLock: CaptureLock,
+): Promise<CaptureHandle | undefined> {
+  const captureFn = agent.captureSessionId
+  if (typeof captureFn !== 'function') return undefined
+  // Fail loud if the lock didn't reach this path (guards an out-of-order landing
+  // where the autonomous capture wiring is incomplete).
+  if (captureLock === undefined) {
+    throw new Error(
+      `produceAgentStep: captureSessionId-capable runner "${agent.name}" reached the autonomous ` +
+        'path without a CaptureLock — capture cannot be serialized',
+    )
+  }
+  const handle = captureFn({ cwd, fs: deps.fsService, clock: deps.clock, lock: captureLock })
+  await handle.snapshotReady
+  return handle
+}
+
+// Resolve the capture result into the resumable checkpoint id, or the typed
+// failure reason. Awaiting `result` here never extends a user-visible wait — by
+// the time the runner returns the rollout has almost always landed; the helper's
+// own timeout bounds the worst case.
+async function resolveAutonomousCapture(
+  handle: CaptureHandle | undefined,
+  orchSessionId: string,
+): Promise<{ checkpointSessionId: string; sessionIdCaptureError: CaptureError | undefined }> {
+  if (handle === undefined) {
+    return { checkpointSessionId: orchSessionId, sessionIdCaptureError: undefined }
+  }
+  const captureResult = await handle.result
+  if ('sessionId' in captureResult) {
+    return { checkpointSessionId: captureResult.sessionId, sessionIdCaptureError: undefined }
+  }
+  return { checkpointSessionId: orchSessionId, sessionIdCaptureError: captureResult.error }
 }
 
 // The run-and-produce body for an autonomous step, lifted out of the
@@ -1085,8 +1132,15 @@ async function runAgentStep(
 // already-branchy executor. Throws `StepError` / `ValidationError` /
 // `SchemaValidationError`; the envelope turns those into `step:failed`. Uses
 // wall-clock for the lifecycle duration (no `timer.stamp`).
+//
+// Over the cognitive-complexity budget (CLAUDE.md rule #5): this body sequences
+// validators, schema extraction, the session-id capture window, spawn/session
+// logging, and the agent-error seam in one place — the capture helpers above are
+// already extracted; splitting further would scatter the spawn ordering the
+// comments exist to make legible. Revisit when the recovery loop (U7) lands here.
 async function produceAgentStep(
   deps: WorkflowDeps,
+  captureLock: CaptureLock,
   config: AgentStepConfig,
   key: StepName,
   overrides: RunOverrides | undefined,
@@ -1133,6 +1187,12 @@ async function produceAgentStep(
     sessionId: orchSessionId,
     ...(config.returns !== undefined ? { schema: { jsonSchema: config.returns.jsonSchema } } : {}),
   }
+
+  // Recovery prerequisite (U4/U6): for runners that mint their own session id
+  // post-spawn (Codex's thread_id), the snapshot of `~/.codex/sessions/` must be
+  // taken BEFORE the runner spawns, so capture starts here and resolves after.
+  const captureHandle = await startAutonomousCapture(deps, config.agent, cwd, captureLock)
+
   let result: Awaited<ReturnType<typeof runRunner>>
   try {
     result = await runRunner(config.agent, runnerCtx, runnerDeps)
@@ -1140,6 +1200,13 @@ async function produceAgentStep(
     await rawCapture?.close().catch(() => {})
   }
   const durationMs = deps.clock.now() - startedAt
+
+  // The resumable checkpoint id (R8): the captured thread id for runners that
+  // mint their own, else the orch-generated UUID.
+  const { checkpointSessionId, sessionIdCaptureError } = await resolveAutonomousCapture(
+    captureHandle,
+    orchSessionId,
+  )
 
   await logAgentSpawn(stepSpan, config, runnerCtx, {
     cwd,
@@ -1171,6 +1238,15 @@ async function produceAgentStep(
     throw new ValidationError(key, failures)
   }
 
+  // Persist the resumable checkpoint id (the substrate the recovery loop forks
+  // from) when the runner can resume/fork and capture didn't fail — mirroring the
+  // interactive path's `persistsSessionId` gate. A capture error is recorded so a
+  // later resume can name the cause rather than silently lacking an id.
+  const hasResumeSupport =
+    typeof config.agent.resumeCommand === 'function' ||
+    typeof config.agent.forkResumeCommand === 'function'
+  const persistsSessionId = hasResumeSupport && sessionIdCaptureError === undefined
+
   const entry = buildAgentEntry({
     key,
     value,
@@ -1179,6 +1255,8 @@ async function produceAgentStep(
     preRunSnapshot,
     outcomes,
     transcriptMeta: stepTranscript?.snapshot(),
+    ...(persistsSessionId ? { sessionId: checkpointSessionId } : {}),
+    ...(sessionIdCaptureError !== undefined ? { sessionIdCaptureError } : {}),
   })
 
   await writeAgentSession(deps.logger, stepSpan, {
@@ -1293,6 +1371,10 @@ function buildAgentEntry(inputs: {
   readonly transcriptMeta:
     | { readonly transcriptPath: string; readonly transcriptEventCount: number }
     | undefined
+  // The resumable checkpoint id (U4) and, when post-spawn capture failed, the
+  // typed reason — both additive-optional, mirroring the interactive entry.
+  readonly sessionId?: string
+  readonly sessionIdCaptureError?: CaptureError
 }): StepEntry {
   const { transcriptMeta, preRunSnapshot } = inputs
   return {
@@ -1309,6 +1391,10 @@ function buildAgentEntry(inputs: {
       : {}),
     transcriptEventCount: transcriptMeta?.transcriptEventCount ?? 0,
     transcriptTruncated: false,
+    ...(inputs.sessionId !== undefined ? { sessionId: inputs.sessionId } : {}),
+    ...(inputs.sessionIdCaptureError !== undefined
+      ? { sessionIdCaptureError: inputs.sessionIdCaptureError }
+      : {}),
   }
 }
 
@@ -1490,7 +1576,7 @@ async function runStepOnce(
       if (mode === 'interactive') {
         result = await runInteractiveStep(deps, captureLock, config, key, overrides, stepSpan)
       } else {
-        result = await runAgentStep(deps, config, key, overrides, stepSpan)
+        result = await runAgentStep(deps, captureLock, config, key, overrides, stepSpan)
       }
       break
     }
