@@ -1,3 +1,10 @@
+// NOTE: this file exceeds the 300-line soft budget (rule #5). It is the single
+// definition of the `Runner` port and every type that port references —
+// RunnerContext, the event union, RunnerCommand, the capture-session-id
+// context/result types, and (since the error-recovery work) the recovery
+// capability context types. Keeping them together preserves "one file defines
+// the port"; splitting recovery types into a sibling file would fragment the
+// contract without removing the coupling. Prefer a budget exception here.
 import { z } from 'zod'
 // Type-only cross-module import, mirroring `ViewDefault` below. `src/core/recovery`
 // is pure (no runner imports), so this introduces no import cycle; the type is
