@@ -25,7 +25,7 @@ import {
   categoryForStatus,
   isTransientCategory,
 } from '../../core/recovery/index.ts'
-import type { ClassifyErrorSignal, InfoEvent } from '../types.ts'
+import type { ClassifyErrorSignal } from '../types.ts'
 
 /** Gather every text fragment that might carry a category hint: the terminal
  *  message, any nested `error.message` / `error.code` on its data, and the
@@ -45,7 +45,7 @@ function collectErrorText(signal: ClassifyErrorSignal): string {
   }
 
   for (const info of signal.infoEvents) {
-    const message = (info as InfoEvent).payload?.message
+    const message = info.payload?.message
     if (typeof message === 'string') parts.push(message)
   }
 
@@ -76,7 +76,9 @@ function categoryFromKeywords(text: string): ClassifiedError | undefined {
   if (/unauthorized|invalid api key|not logged in|authentication/.test(text)) {
     return { category: 'auth', transient: false }
   }
-  if (/quota|billing/.test(text)) {
+  // Word-boundaried: a bare substring match (e.g. a path containing "billing")
+  // must not flip a retryable failure into a non-retryable fail-fast.
+  if (/\b(?:quota|billing)\b/.test(text)) {
     return { category: 'billing', transient: false }
   }
   return undefined

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { backoffResume, noRetry } from '../../../src/core/recovery/index.ts'
+import { backoffResume, noRetry } from '../../../src/core/index.ts'
 import { step } from '../../../src/core/step.ts'
 import type { WorkflowDeps } from '../../../src/core/workflow.ts'
 import { workflow } from '../../../src/core/workflow.ts'

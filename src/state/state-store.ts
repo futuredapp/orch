@@ -105,6 +105,14 @@ export interface StepEntry {
    * dependency (same convention as `PersistedWorkflowArgs`).
    */
   readonly recoveryLog?: readonly PersistedRecoveryLogEntry[]
+  /**
+   * Set only on the partial entry the recovery loop persists *before* throwing
+   * a give-up `StepError` (so the failure-path recovery log survives — R16).
+   * Such an entry carries `value: undefined` and is NOT a successful result, so
+   * `orch resume` must treat it as a cache miss and re-execute the step rather
+   * than replaying `undefined`. Additive optional — no `schemaVersion` bump.
+   */
+  readonly recoveryGaveUp?: true
 }
 
 /**
@@ -241,6 +249,10 @@ export const StepEntrySchema = z.object({
       }),
     )
     .optional(),
+  // Recovery give-up marker (R16/resume-safety) — additive, no schemaVersion
+  // bump. Marks a partial entry persisted before a give-up throw so resume
+  // re-executes instead of replaying its `undefined` value as a cache hit.
+  recoveryGaveUp: z.literal(true).optional(),
 })
 
 const PersistedWorkflowArgsSchema = z.object({
@@ -292,6 +304,7 @@ function rebuildSteps(
       ...(s.subCallId !== undefined ? { subCallId: s.subCallId } : {}),
       ...(s.insideParallel !== undefined ? { insideParallel: s.insideParallel } : {}),
       ...(s.recoveryLog !== undefined ? { recoveryLog: s.recoveryLog } : {}),
+      ...(s.recoveryGaveUp !== undefined ? { recoveryGaveUp: s.recoveryGaveUp } : {}),
     }
   }
   return steps

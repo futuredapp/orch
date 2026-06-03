@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import { z } from 'zod'
 import { executionContext } from '../../../src/core/execution-context.ts'
-import { backoffResume, noRetry } from '../../../src/core/recovery/index.ts'
+import { backoffResume, noRetry } from '../../../src/core/index.ts'
 import { schema } from '../../../src/core/schema.ts'
 import { onCacheHit, type StepConfig, step } from '../../../src/core/step.ts'
 import { type Path, path, stepName } from '../../../src/core/types.ts'

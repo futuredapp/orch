@@ -68,6 +68,12 @@ export interface ResolvedBackoffOptions {
 }
 
 function resolveOptions(opts: BackoffResumeOptions): ResolvedBackoffOptions {
+  // A ceiling below 1 makes the first verdict give up before any fork (0 >= 0),
+  // silently turning recovery into a no-op. That intent is `noRetry()`, not a
+  // zero ceiling — fail loudly at construction instead.
+  if (opts.ceiling !== undefined && opts.ceiling < 1) {
+    throw new Error('backoffResume: `ceiling` must be >= 1 (use noRetry() to disable recovery)')
+  }
   return {
     ceiling: opts.ceiling ?? DEFAULT_CEILING,
     wallClockCapMs: opts.wallClockCapMs ?? DEFAULT_WALL_CLOCK_CAP_MS,
@@ -203,7 +209,7 @@ export function backoffResume(opts: BackoffResumeOptions = {}): RecoveryStrategy
 
       const elapsedMs = state.recoveryStartedAt === null ? 0 : now - state.recoveryStartedAt
       const hitCeiling = state.attemptsSinceProgress >= resolved.ceiling
-      const hitWallClock = elapsedMs > resolved.wallClockCapMs
+      const hitWallClock = elapsedMs >= resolved.wallClockCapMs
       if (hitCeiling || hitWallClock) {
         return {
           kind: 'give-up',

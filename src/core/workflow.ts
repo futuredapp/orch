@@ -1,3 +1,9 @@
+// NOTE (CLAUDE.md rule #5): this file exceeds the 300-line soft budget. It is
+// the single workflow executor — the produce-bodies for every step kind, the
+// resume/cache short-circuit, and the autonomous recovery seam all live here
+// because they share one lifecycle envelope and the same `deps`/`key` context.
+// Splitting them would scatter the lifecycle invariants across files. New
+// recovery helpers were extracted to `src/core/recovery/` to limit the growth.
 import { randomUUID } from 'node:crypto'
 import type { Host } from '../hosts/index.ts'
 import type { JsonObject, SessionLogger, StepSpan } from '../observability/index.ts'
@@ -9,22 +15,21 @@ import { envKeys as envKeyList, orchLog, redactReproduceCommand } from '../obser
 // runner ever needs it.
 import { createCaptureLock } from '../runners/codex/capture-lock.ts'
 import { runRunner } from '../runners/index.ts'
+import type {
+  CaptureError,
+  CaptureHandle,
+  CaptureLock,
+  ForkResumeContext,
+  InfoEvent,
+  RunnerCommand,
+  RunnerContext,
+  RunnerEvent,
+} from '../runners/index.ts'
 // Addressing env-var names live on the Runner port (the executor↔runner spawn
 // contract) — not in a concrete runner — so the core executor can name them
-// without importing a runner adapter.
-import {
-  type CaptureError,
-  type CaptureHandle,
-  type CaptureLock,
-  type ForkResumeContext,
-  type InfoEvent,
-  ORCH_PARENT_PID_ENV,
-  ORCH_RUN_STATE_DIR_ENV,
-  ORCH_STEP_KEY_ENV,
-  type RunnerCommand,
-  type RunnerContext,
-  type RunnerEvent,
-} from '../runners/types.ts'
+// without importing a runner adapter. They are value constants not surfaced on
+// the public barrel, so they come from the port module directly.
+import { ORCH_PARENT_PID_ENV, ORCH_RUN_STATE_DIR_ENV, ORCH_STEP_KEY_ENV } from '../runners/types.ts'
 import type { Clock, FsService, GitService, ProcessService } from '../services/index.ts'
 import { GitCommandError, mergeEnv } from '../services/index.ts'
 import type { PromptService } from '../services/prompt/index.ts'
@@ -1436,13 +1441,14 @@ async function runAgentWithRecovery(args: RecoveryArgs): Promise<AgentRunResult>
   })
 
   if (loop.ok) {
+    const totalDurationMs = deps.clock.now() - startedAt
     return {
       result: {
         finalEvent: loop.result.finalEvent,
         exitCode: loop.result.exitCode,
-        durationMs: deps.clock.now() - startedAt,
+        durationMs: totalDurationMs,
       },
-      durationMs: deps.clock.now() - startedAt,
+      durationMs: totalDurationMs,
       checkpointSessionId,
       sessionIdCaptureError,
       recoveryLog: loop.recoveryLog,
@@ -1512,8 +1518,16 @@ async function persistRecoveryFailure(
     transcriptMeta: undefined,
     ...(sessionIdCaptureError !== undefined ? { sessionIdCaptureError } : {}),
     recoveryLog,
+    recoveryGaveUp: true,
   })
-  await deps.stateStore.saveStep(deps.runId, entry).catch(() => {})
+  // This write IS the durability guarantee for the failed run's recovery log
+  // (R16) — the run still fails via the throw at the call site, but a silently
+  // dropped write loses exactly the audit trail a human needs. Surface it.
+  await deps.stateStore
+    .saveStep(deps.runId, entry)
+    .catch((err: unknown) =>
+      orchLog(deps.logger, 'recovery-log-persist-failed', { error: String(err) }),
+    )
 }
 
 function terminalErrorMessage(result: RunnerRunResult): string {
@@ -1633,6 +1647,9 @@ function buildAgentEntry(inputs: {
   readonly sessionIdCaptureError?: CaptureError
   // Per-attempt recovery log (U8/R16) — present only when recovery forked.
   readonly recoveryLog?: readonly RecoveryLogEntry[]
+  // Marks a partial entry persisted before a give-up throw so `orch resume`
+  // re-executes instead of replaying this entry's `undefined` value.
+  readonly recoveryGaveUp?: true
 }): StepEntry {
   const { transcriptMeta, preRunSnapshot } = inputs
   return {
@@ -1654,6 +1671,7 @@ function buildAgentEntry(inputs: {
       ? { sessionIdCaptureError: inputs.sessionIdCaptureError }
       : {}),
     ...(inputs.recoveryLog !== undefined ? { recoveryLog: inputs.recoveryLog } : {}),
+    ...(inputs.recoveryGaveUp !== undefined ? { recoveryGaveUp: inputs.recoveryGaveUp } : {}),
   }
 }
 
@@ -1801,7 +1819,13 @@ async function runStepOnce(
     // invalid, we log a one-liner and fall through to the normal execution
     // path, which atomically replaces the stale entry. Cancelled cache stays
     // valid across button/field changes — cancel doesn't depend on shape.
-    if (s.config.kind === 'ask' && !isAskCacheValid(s.config, cached.value)) {
+    if (cached.recoveryGaveUp === true) {
+      // A recovery give-up persists a partial entry (value: undefined) solely
+      // to preserve its recovery log (R16). It is NOT a successful result, so
+      // `orch resume` must re-execute the step — replaying `undefined` as a
+      // cache hit would silently skip the work and propagate undefined.
+      orchLog(deps.logger, 'cache-skip-recovery-failure', { stepName: key })
+    } else if (s.config.kind === 'ask' && !isAskCacheValid(s.config, cached.value)) {
       orchLog(deps.logger, 'cache-stale', { stepName: key, kind: 'ask' })
     } else {
       // Kind-agnostic cache-hit dispatch: agent re-validates schema, worktree
