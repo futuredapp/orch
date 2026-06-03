@@ -22,9 +22,9 @@ branch_exists "$branch" || { echo "RESULT: REFUSED (no such branch: $branch)"; e
 
 main_wt="$(main_worktree)" || die "could not locate main worktree"
 
-if worktree_is_dirty "$main_wt"; then
-  echo "RESULT: REFUSED (main worktree is dirty: $main_wt)"
-  git -C "$main_wt" status --short
+if worktree_has_tracked_changes "$main_wt"; then
+  echo "RESULT: REFUSED (main worktree has uncommitted tracked changes: $main_wt)"
+  git -C "$main_wt" status --short --untracked-files=no
   exit 2
 fi
 

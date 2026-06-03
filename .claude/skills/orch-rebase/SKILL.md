@@ -114,9 +114,11 @@ per-worktree summaries + the conflict matrix and decides:
   relies on." This is the "if something changes another worktree's behavior,
   point it out" requirement — make it prominent.
 
-Write the decision to `docs/rebase/<slug>.md` using the template in
+Write the decision to `.orch/rebase/<slug>.md` using the template in
 `references/doc-template.md`. This doc is the run's source of truth and running
-log — update it as each branch lands.
+log — update it as each branch lands. It lives under `.orch/` (gitignored) on
+purpose: writing it into the tracked tree would dirty the main worktree and trip
+the `merge-to-main.sh` clean-tree gate, so keep it out of `docs/`.
 
 Present the plan (order + interaction warnings + backup location) to the user.
 For a routine run you can proceed; if there are predicted conflicts or notable
@@ -157,7 +159,7 @@ green main so the next rebases onto known-good code.
      integration, stop and report it to the user. After fixing, commit the fix
      on main and re-run `scripts/verify.sh` until green.
 
-4. **Log** — update `docs/rebase/<slug>.md`: branch, result, any conflicts
+4. **Log** — update `.orch/rebase/<slug>.md`: branch, result, any conflicts
    resolved, any integration fixes, final main SHA.
 
 ### 6. Report

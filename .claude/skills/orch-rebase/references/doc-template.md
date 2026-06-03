@@ -1,6 +1,7 @@
 # Run-doc template
 
-Write this to `docs/rebase/<slug>.md` in phase 4 and keep it updated as a running
+Write this to `.orch/rebase/<slug>.md` (gitignored, so it never dirties the main
+worktree) in phase 4 and keep it updated as a running
 log through phase 5. It's the single source of truth for the run — what was
 decided, why, and what happened — so a later reader (or you, after a crash) can
 reconstruct the state.

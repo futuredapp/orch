@@ -48,6 +48,17 @@ worktree_is_dirty() {
   [ -n "$(git -C "$1" status --porcelain)" ]
 }
 
+# True if the working tree at $1 has uncommitted *tracked* changes (staged or
+# not), ignoring untracked files. A `--ff-only` merge is safe in the presence of
+# untracked files — git itself refuses only if an incoming tracked file would
+# clobber an untracked one — so the merge gate uses this looser check. That lets
+# the run-doc and any unrelated untracked work coexist with the merge instead of
+# blocking it. Tracked, uncommitted edits still block: those can be lost by a
+# checkout-style fast-forward and are the user's to resolve.
+worktree_has_tracked_changes() {
+  [ -n "$(git -C "$1" status --porcelain --untracked-files=no)" ]
+}
+
 # Commits on $1 that are not on main (three-dot range from the merge base).
 ahead_count() { git rev-list --count "main..$1"; }
 behind_count() { git rev-list --count "$1..main"; }
