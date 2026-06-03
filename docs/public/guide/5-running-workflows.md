@@ -20,6 +20,16 @@ orch run feature "add a CSV exporter to the report module"
 
 The positional form and `--prompt "..."` are equivalent; use whichever reads better.
 
+## Run a built-in — no file required
+
+You don't have to author a workflow to get started. orch ships a few **built-in** workflows under an `orch::` prefix that run in place — no `.orch/workflows/` file, no `orch.config.ts` entry:
+
+```bash
+orch run orch::work-cc "add a CSV exporter to the report module"
+```
+
+`orch::work-cc` (Claude) and `orch::work-codex` (Codex) take a plan file or an inline description and build it in phases, unattended. See [Built-in workflows](/guides/built-in-workflows).
+
 ## Choosing how it renders
 
 A [run mode](/guide/3-core-concepts#run-modes) decides *where* the views appear. You rarely set it by hand — orch picks one:

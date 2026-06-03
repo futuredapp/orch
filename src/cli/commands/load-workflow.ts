@@ -6,6 +6,7 @@ import {
 } from '../../config/index.ts'
 import { bodyHandle, type WorkflowExecutor } from '../../core/workflow.ts'
 import type { Path } from '../../services/types.ts'
+import { isBuiltinName, resolveBuiltin } from '../../workflows/index.ts'
 import { EXIT } from '../main.ts'
 
 interface LoadResult {
@@ -42,9 +43,16 @@ export async function loadWorkflow(cwd: Path, name: string): Promise<LoadResult 
     throw err
   }
 
+  // `orch::<name>` routes to a packaged built-in resolved against orch's own
+  // source tree, bypassing the user's `config.workflows` map entirely. Config
+  // is still loaded above (run state/mode resolution), so a built-in run with
+  // no `.orch/` surfaces the same ConfigLoadError as a bare-name run. Bare
+  // names resolve exactly as before.
   let workflowPath: Path
   try {
-    workflowPath = resolveWorkflow(config, name, configDir)
+    workflowPath = isBuiltinName(name)
+      ? resolveBuiltin(name)
+      : resolveWorkflow(config, name, configDir)
   } catch (err) {
     process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`)
     return { code: EXIT.CONFIG_ERROR }

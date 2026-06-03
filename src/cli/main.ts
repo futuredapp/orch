@@ -19,6 +19,7 @@ import {
 } from '../hosts/index.ts'
 import { toClaudeTranscriptLines } from '../runners/index.ts'
 import type { ProcessService } from '../services/process/index.ts'
+import { BUILTIN_NAMES, BUILTIN_PREFIX } from '../workflows/index.ts'
 import { dryRunCmd } from './commands/dry-run.ts'
 import { initCmd } from './commands/init.ts'
 import { logsCmd } from './commands/logs.ts'
@@ -115,12 +116,15 @@ export type { HostFactory, HostFactoryInputs as HostFactoryArgs }
 // Help text
 // ---------------------------------------------------------------------------
 
+const BUILTINS_LINE = BUILTIN_NAMES.map((n) => `${BUILTIN_PREFIX}${n}`).join(', ')
+
 const HELP = `Usage: orch <command> [options]
 
 Commands:
   init                     Scaffold a fresh .orch/ in this project
   new <name>               Create a new workflow file under .orch/workflows/
   run <name> [prompt]      Run a workflow (optional inline prompt)
+                           Built-ins (no .orch/workflows/ needed): ${BUILTINS_LINE}
   resume [id] [prompt]     Resume a run; optional prompt overrides persisted args
   runs                     List recent runs
   status <id>              Show status of a run

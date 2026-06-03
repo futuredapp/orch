@@ -837,6 +837,26 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
   }
 
   /**
+   * Forget a stale source AND kill its lingering tmux session before dropping
+   * the in-memory handle. Used by the stale-pane recovery paths, where the
+   * pane's process exited but `remain-on-exit` keeps the SESSION alive around
+   * the dead pane. Per-source session names are deterministic
+   * (`sanitizeSessionName(skey)`), so a plain `forgetSource` followed by
+   * `registerSource` would re-issue `new-session` against the still-alive name
+   * and fail with "duplicate session" — the recovery never completes and the
+   * step wedges on every subsequent Enter (run r-2026-06-03-145019-5a). Killing
+   * the lingering session first (idempotent — `teardownSourceSession` swallows
+   * "session not found") frees the name so re-registration succeeds.
+   */
+  const forgetAndKillSource = async (skey: string): Promise<void> => {
+    const entry = panes.get(skey)
+    if (entry !== undefined) {
+      await teardownSourceSession(opts.tmux, { socket: opts.socket, session: entry.session })
+    }
+    forgetSource(skey)
+  }
+
+  /**
    * True for the tmux failure raised when a swap targets a pane whose process
    * exited and tmux already destroyed it. `hasSession` cannot detect this when
    * `remain-on-exit` keeps the session alive around the dead pane, so it is the
@@ -932,7 +952,7 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
       // "can't find pane". Forget the stale source and let the caller fall
       // through to re-register. Any other failure propagates → error banner.
       if (!isStalePaneError(err)) throw err
-      forgetSource(sourceKeyToString(key))
+      await forgetAndKillSource(sourceKeyToString(key))
       logLifecycle({ type: 'live-pane-stale-refresh', stepName, sourceKey: sourceKeyToString(key) })
       return false
     }
@@ -954,7 +974,7 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
     } catch (err) {
       if (!isStalePaneError(err)) throw err
       const replaySkey = sourceKeyToString(replayKey)
-      forgetSource(replaySkey)
+      await forgetAndKillSource(replaySkey)
       logLifecycle({
         type: 'replay-pane-stale-refresh',
         stepName: step.name,

@@ -65,6 +65,16 @@
           }
         }
       }
+    },
+    {
+      "includes": ["src/workflows/*/index.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noDefaultExport": "off"
+          }
+        }
+      }
     }
   ],
   "json": {

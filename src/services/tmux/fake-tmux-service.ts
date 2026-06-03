@@ -226,7 +226,18 @@ export class FakeTmuxService implements TmuxService {
     this.#failIfSocketLost('new-session')
     const scriptedError = this.#createSessionErrors.shift()
     if (scriptedError !== undefined) throw scriptedError
-    this.#getOrCreateSessionSet(opts.socket).add(opts.session)
+    // Faithful to real tmux: `new-session -s <name>` against a name that is
+    // already live (even one whose pane died but whose session lingers via
+    // `remain-on-exit`) fails with "duplicate session". Modeling this is
+    // load-bearing — without it, a recovery path that forgets a stale source
+    // and re-`createSession`s the SAME deterministic session name appears to
+    // succeed here while real tmux rejects it (run r-2026-06-03-145019-5a).
+    const liveSessions = this.#getOrCreateSessionSet(opts.socket)
+    if (liveSessions.has(opts.session)) {
+      const stderr = `duplicate session: ${opts.session}`
+      throw new TmuxCommandError(1, stderr, `tmux new-session failed (exit 1): ${stderr}`)
+    }
+    liveSessions.add(opts.session)
     const scripted = this.#createSessionPaneIds.shift()
     const id = scripted ?? paneId(`%${this.#nextCreateSessionCounter++}`)
     const key = `${opts.socket}/${opts.session}`

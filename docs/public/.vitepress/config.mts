@@ -42,6 +42,7 @@ export default defineConfig({
       {
         text: 'Guides',
         items: [
+          { text: 'Built-in workflows', link: '/guides/built-in-workflows' },
           { text: 'Chain two agents', link: '/guides/chain-two-agents' },
           { text: 'File-based prompts', link: '/guides/file-based-prompts' },
           { text: 'Interactive steps', link: '/guides/interactive-steps' },
@@ -58,6 +59,7 @@ export default defineConfig({
         text: 'Reference',
         items: [
           { text: 'Authoring API', link: '/reference/api' },
+          { text: 'Built-in workflows', link: '/reference/built-ins' },
           { text: 'Runners', link: '/reference/runners' },
           { text: 'CLI', link: '/reference/cli' },
           { text: 'Configuration', link: '/reference/config' },
