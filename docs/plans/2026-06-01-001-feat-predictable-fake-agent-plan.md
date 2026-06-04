@@ -163,6 +163,34 @@ sequenceDiagram
 
 ---
 
+## Phased Delivery
+
+The seven units split into two phases along the **headless / interactive** seam. Each phase ends in a usable, tested capability rather than internal plumbing, and the dependency DAG is respected (every Phase 2 unit depends only on Phase 1 units or other Phase 2 units).
+
+**Resolve first (Phase 1 blocker):** the U1 "where does the executor get `<basePath>/<runId>`" decision (`WorkflowDeps` field vs. a public `StateStore.runDir(runId)` accessor — see U1 Approach and Open Questions). Both phases build on it, so settle it before any wiring.
+
+### Phase 1 — Headless predictable fake, fully addressable (U1, U2, U3, U5 + headless slice of U7)
+
+Delivers a per-instance-addressable **headless** fake with a `.ready` marker and a driver-facing `agent(labelPath)` handle — enough to write deterministic headless two-pane tests. Independently shippable: it ends with a real test-author API, not just wiring. No new teardown work is required yet — the existing `parentExited()` self-reap preserved in U3 covers headless hygiene; the new leak class only arrives with the interactive PTY child in Phase 2.
+
+- **U1** — thread the run-time key + run state dir to the runner (addressing foundation; the shared `addressing.ts` constants module lands here).
+- **U2** — shared command engine + channel-agnostic parser.
+- **U3** — headless control-path resolution, `.ready` marker, baked-`controlPath` backward-compat.
+- **U5** — real-tmux `agent(labelPath)` handle (`typeAndSend` / `finish` / `waitForReady`).
+- **Headless slice of U7** — the F2 assertions that need no TUI: parallel branches driven via the **control channel** (R9) and the two concurrent-runs isolation test (AE3 / R11). These ride entirely on headless fakes.
+
+### Phase 2 — Interactive TUI + teardown guard + full acceptance (U4, U6, interactive slice of U7)
+
+Adds the interactive mode and the leak guard exactly when the interactive PTY child introduces the leaked-daemon risk, then proves the cross-mode acceptance flows.
+
+- **U4** — interactive TUI mode; flips `supports.interactive` at construction time; manual stdin via the shared engine.
+- **U6** — teardown hygiene + leak guard. Lands here deliberately: this is where `ORCH_PARENT_PID` self-reap (not `process.ppid`) becomes load-bearing for the tmux-spawned child.
+- **Interactive slice of U7** — F1 (interactive step 1 → headless step 2) and the R6 manual-typing-through-a-real-PTY acceptance test.
+
+**Note on U7:** it is split across both phases. Its F1 flow opens with an interactive step, so anything requiring a rendered TUI or real-PTY manual typing is Phase 2; the headless-only isolation assertions are Phase 1.
+
+**Dependency legality:** U4 → U1, U2 (both Phase 1); U6 → U3 (P1), U4 (P2); U7 → U5 (P1), U6 (P2). No back-edge from Phase 1 into Phase 2.
+
 ## Implementation Units
 
 ```mermaid
@@ -181,7 +209,7 @@ graph TD
   U6 --> U7
 ```
 
-### U1. Thread the run-time step key and run state dir to the runner at spawn
+### U1. Thread the run-time step key and run state dir to the runner at spawn — Phase 1
 
 **Goal:** Make the executor expose the run-time-derived `key` and the resolved run state dir to the runner at the moment it builds its command, on both the autonomous and interactive spawn paths, without changing real-runner behavior. This is the addressing foundation for R7–R11.
 
@@ -217,7 +245,7 @@ graph TD
 
 ---
 
-### U2. Shared command engine and channel-agnostic input parser
+### U2. Shared command engine and channel-agnostic input parser — Phase 1
 
 **Goal:** Factor a single engine in `scripted-fake` implementing the `type_and_send` / `finish` vocabulary and finish semantics, with a channel-agnostic parser that maps both control-file NDJSON lines and manual stdin lines to the same operations, and a mode-injected output sink. Satisfies R1–R5 at the engine level.
 
@@ -254,7 +282,7 @@ graph TD
 
 ---
 
-### U3. Headless mode: runtime per-instance control path + readiness marker
+### U3. Headless mode: runtime per-instance control path + readiness marker — Phase 1
 
 **Goal:** In the headless puppet path, derive the control path at step-run time from the threaded key under the run state dir, write the `.ready` marker on first idle, and keep the existing `.ack` confirmation and `parentExited()` self-reap. Satisfies R7, R10, R11, R12, R13 for headless.
 
@@ -296,7 +324,7 @@ graph TD
 
 ---
 
-### U4. Interactive (TUI) mode for the fake
+### U4. Interactive (TUI) mode for the fake — Phase 2
 
 **Goal:** Add an interactive mode where the fake renders its own TUI, reads manual stdin and the control file through the shared engine (U2), emits the `.ready` marker, and supports manual typing. Flips `supports.interactive` so the two-pane host spawns it as a real PTY. Satisfies R1, R3, R5, R6, R13 for interactive.
 
@@ -335,7 +363,7 @@ graph TD
 
 ---
 
-### U5. real-tmux harness per-instance handle (`agent(labelPath)`)
+### U5. real-tmux harness per-instance handle (`agent(labelPath)`) — Phase 1
 
 **Goal:** Give the real-tmux harness a per-instance accessor `agent(labelPath)` returning an `AgentHandle` with `typeAndSend(text)` / `finish(code?)` / `waitForReady()`, resolving the control path from the run state dir + derived key and resolving the target pane fresh per call. Provides the driver-facing API for R8, R12, R13.
 
@@ -373,7 +401,7 @@ graph TD
 
 ---
 
-### U6. Teardown hygiene and leaked-process guard
+### U6. Teardown hygiene and leaked-process guard — Phase 2
 
 **Goal:** Guarantee every fake instance — the interactive PTY child and any per-step `tail -F` process — is reaped on run end / harness teardown, preserve `parentExited()` in the interactive idle loop, and add a process-count assertion so a leak fails loudly instead of degrading the suite. Satisfies R14.
 
@@ -407,7 +435,7 @@ graph TD
 
 ---
 
-### U7. End-to-end real-tmux tests (F1, F2) and acceptance examples
+### U7. End-to-end real-tmux tests (F1, F2) and acceptance examples — Phase 1 (headless slice) + Phase 2 (interactive slice)
 
 **Goal:** Prove the success criteria with high-level real-tmux tests: drive a two-step workflow (interactive then headless) to a finished state with no timing flakiness, and drive parallel branches and concurrent runs independently with no cross-talk. Covers F1, F2 and AE1–AE6 at the integration boundary.
 

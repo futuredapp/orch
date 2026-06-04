@@ -41,9 +41,10 @@ The full phased roadmap lives at [`docs/plans/implementation-phases.md`](docs/pl
 
 ## How to write a two-pane test
 
-- Read [`docs/testing-strategy.md`](docs/testing-strategy.md) for the four-tier model and the triage rule.
+- Read [`docs/testing-strategy.md`](docs/testing-strategy.md) for the five-tier model and the triage rule.
 - Default to Tier 2 (Ink projection) or Tier 1 (real-tmux + FakeRunner). The harness lives at [`tests/helpers/real-tmux/`](tests/helpers/real-tmux/README.md).
 - Triage rule: *"Would this test still pass if the visible pane were empty / wrong / unformatted? If yes, demote or delete."*
+- For black-box, screen-level QA or reproducing a rendering/lifecycle bug on screen, the `orch-qa-engineer` skill drives the `scriptedFake` subprocess fake end-to-end (deterministic, zero-token). Explicit-invoke-only and not on the `bun run check` gate — it complements the tiers, it doesn't replace them.
 
 ## How to update user docs
 

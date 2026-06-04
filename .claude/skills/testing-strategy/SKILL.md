@@ -86,3 +86,12 @@ Principles this demonstrates:
 - `assertMemoized()` from `@orch/test/assert-memoized` — custom matcher: did this step re-run or hit cache?
 
 If a helper doesn't exist yet, create it in `tests/helpers/` rather than inlining setup into the test.
+
+## Fakes and screen-level QA
+
+Two agent doubles stand in for real `claude`/`codex`. Pick by whether the test drives the agent from inside or outside the orch process:
+
+- **`FakeRunner`** (`src/runners/fake/`, public barrel) — in-process, script fixed at construction. The default for unit, mocked-integration, and the two-pane Tier 1/2 tests.
+- **`scriptedFake`** (`src/runners/scripted-fake/`, dev-only deep import) — a subprocess fake an external driver advances step-by-step over a `.ready` → NDJSON → `.ack` control file. Only for Tier 5 lifecycle tests and the QA skill. It is *not* a flakiness remedy — for a known script `FakeRunner` is already deterministic and faster.
+
+For **explicit** requests to QA / manually verify / smoke-test / reproduce two-pane TUI behavior on screen — or to reproduce a rendering/lifecycle bug — defer to the **`orch-qa-engineer`** skill, which drives `scriptedFake` end-to-end and produces a screenshot verdict report. It is not part of `bun run check` and does not replace tiered coverage. This skill stays focused on the three-layer "mock only at the edge" rule. Full tier model and the fake comparison: [`docs/testing-strategy.md`](../../../docs/testing-strategy.md).

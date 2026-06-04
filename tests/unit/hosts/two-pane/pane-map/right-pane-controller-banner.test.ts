@@ -56,6 +56,7 @@ function makeStore(): StateStore {
     setArgs: async () => {
       throw new Error('not implemented')
     },
+    runDir: (rid) => toPath(`/runs/${rid}`),
   }
 }
 

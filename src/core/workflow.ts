@@ -9,7 +9,17 @@ import { envKeys as envKeyList, orchLog, redactReproduceCommand } from '../obser
 // runner ever needs it.
 import { createCaptureLock } from '../runners/codex/capture-lock.ts'
 import { runRunner } from '../runners/index.ts'
-import type { CaptureError, CaptureLock, RunnerContext } from '../runners/types.ts'
+// Addressing env-var names live on the Runner port (the executor↔runner spawn
+// contract) — not in a concrete runner — so the core executor can name them
+// without importing a runner adapter.
+import {
+  type CaptureError,
+  type CaptureLock,
+  ORCH_PARENT_PID_ENV,
+  ORCH_RUN_STATE_DIR_ENV,
+  ORCH_STEP_KEY_ENV,
+  type RunnerContext,
+} from '../runners/types.ts'
 import type { Clock, FsService, GitService, ProcessService } from '../services/index.ts'
 import { GitCommandError, mergeEnv } from '../services/index.ts'
 import type { PromptService } from '../services/prompt/index.ts'
@@ -473,6 +483,24 @@ export function deriveStepKey(
 }
 
 // ---------------------------------------------------------------------------
+// addressingEnv — the per-spawn ctx.env addressing values (U1)
+// ---------------------------------------------------------------------------
+//
+// Written into BOTH spawn paths' `ctx.env` identically so the predictable fake
+// resolves its control transport from the run-time key under the run state
+// dir, regardless of autonomous vs. interactive. Real runners receive the same
+// three vars via the passthrough env policy and ignore them. `ORCH_PARENT_PID`
+// is orch's own pid: the interactive self-reap (U6) cannot read it any other
+// way because a tmux-spawned child's `process.ppid` is the pane, not orch.
+function addressingEnv(deps: WorkflowDeps, key: StepName): Record<string, string> {
+  return {
+    [ORCH_STEP_KEY_ENV]: key as string,
+    [ORCH_RUN_STATE_DIR_ENV]: deps.stateStore.runDir(deps.runId) as string,
+    [ORCH_PARENT_PID_ENV]: String(process.pid),
+  }
+}
+
+// ---------------------------------------------------------------------------
 // resolveMode — override > config > autonomous
 // ---------------------------------------------------------------------------
 
@@ -731,7 +759,9 @@ async function produceInteractiveStep(
 
     const buildCtx: RunnerContext = {
       cwd,
-      env: {},
+      // U1: identical addressing values to the autonomous path so an
+      // interactive fake resolves the same control transport (R7).
+      env: addressingEnv(deps, key),
       prompt,
       extraArgs: [],
       mode: 'interactive',
@@ -1049,7 +1079,9 @@ async function produceAgentStep(
   // spawn entry with the argv the executor would have used.
   const runnerCtx = {
     cwd,
-    env: {},
+    // U1: addressing values ride ctx.env (passthrough policy). The fake reads
+    // them to resolve its control transport; real runners ignore them.
+    env: addressingEnv(deps, key),
     prompt,
     extraArgs: [],
     ...(config.returns !== undefined ? { schema: { jsonSchema: config.returns.jsonSchema } } : {}),

@@ -125,6 +125,14 @@ export interface StateStore {
   /** Overwrite the persisted `args` of an existing run (used by `orch resume
    *  <id> "new-prompt"`). Throws if the run does not exist. */
   setArgs(runId: RunId, args: PersistedWorkflowArgs): Promise<void>
+  /**
+   * The absolute directory this store reads/writes for a run (`<basePath>/<runId>`).
+   * Public so the executor can hand the resolved run state dir to a runner at
+   * spawn (the predictable-fake control transport lives under it) without
+   * re-deriving the base path. A pure path computation — no I/O, does not imply
+   * the directory exists.
+   */
+  runDir(runId: RunId): Path
 }
 
 export class StateCorruptionError extends Error {
@@ -470,6 +478,12 @@ export class FileStateStore implements StateStore {
   #nextTmpPath(filePath: Path): Path {
     this.#tmpCounter += 1
     return path(`${filePath}.${process.pid}-${this.#tmpCounter}.tmp`)
+  }
+
+  /** Public accessor for `<basePath>/<runId>`. Delegates to the private
+   *  `#runDir` so the layout stays defined in exactly one place. */
+  runDir(rid: RunId): Path {
+    return this.#runDir(rid)
   }
 
   #runDir(rid: RunId): Path {

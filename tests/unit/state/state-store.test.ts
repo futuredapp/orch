@@ -79,6 +79,15 @@ class RecordingFsService implements FsService {
 }
 
 describe('FileStateStore', () => {
+  it('runDir resolves <basePath>/<runId> without touching the filesystem', () => {
+    const { store } = makeStore()
+    const id = rid('r-2026-06-01-090000-aa')
+
+    const dir = store.runDir(id)
+
+    expect(dir).toBe(`${BASE}/${id}` as Path)
+  })
+
   it('loadRun returns undefined for a non-existent run', async () => {
     const { store } = makeStore()
 

@@ -5,6 +5,30 @@ import type { FsService } from '../services/fs/index.ts'
 import type { Path } from '../services/types.ts'
 
 // ---------------------------------------------------------------------------
+// Addressing env keys — the executor↔runner contract for spawn-time addressing
+// ---------------------------------------------------------------------------
+//
+// The executor writes these into every spawn's `ctx.env` (passthrough policy);
+// real runners ignore them, the predictable fake reads them to resolve its
+// control transport. They live on the port (not inside a concrete runner) so
+// the core executor can name them without importing a concrete runner — they
+// describe orch's own execution context (its derived step key, run state dir,
+// and pid), not anything fake-specific.
+
+/** Env var carrying the run-time-derived step key (the logical address). */
+export const ORCH_STEP_KEY_ENV = 'ORCH_STEP_KEY'
+
+/** Env var carrying the resolved run state dir (`<basePath>/<runId>`). */
+export const ORCH_RUN_STATE_DIR_ENV = 'ORCH_RUN_STATE_DIR'
+
+/**
+ * Env var carrying orch's own pid at spawn. Load-bearing for the interactive
+ * self-reap (Phase 2): a tmux-spawned child's `process.ppid` is the tmux pane,
+ * not orch, so the child can only learn orch's pid by reading it from here.
+ */
+export const ORCH_PARENT_PID_ENV = 'ORCH_PARENT_PID'
+
+// ---------------------------------------------------------------------------
 // RunnerContext — the input bag every runner receives
 // ---------------------------------------------------------------------------
 

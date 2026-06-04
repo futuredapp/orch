@@ -7,7 +7,11 @@
 // on each `HarnessStep` differs. The driver does not synthesize an agent of
 // its own — every step's runner is whatever the caller passed in.
 
+import { writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import * as nodePath from 'node:path'
 import { Writable } from 'node:stream'
+import { parallel } from '../../../src/core/parallel.ts'
 import { step } from '../../../src/core/step.ts'
 import type { StepMode } from '../../../src/core/types.ts'
 import type { RunOverrides, WorkflowDeps } from '../../../src/core/workflow.ts'
@@ -16,16 +20,103 @@ import type { Host } from '../../../src/hosts/index.ts'
 import { createTmuxHost } from '../../../src/hosts/index.ts'
 import { createFileSessionLogger, type SessionLogger } from '../../../src/observability/index.ts'
 import type { Runner } from '../../../src/runners/index.ts'
+import {
+  ORCH_LIFECYCLE_SCRIPT_ENV,
+  scriptedFake,
+} from '../../../src/runners/scripted-fake/index.ts'
 import { FakeGitService, type ProcessService } from '../../../src/services/index.ts'
 import { FakePromptService } from '../../../src/services/prompt/index.ts'
 import { type PaneId, paneId as toPaneId } from '../../../src/services/tmux/index.ts'
 import { path as toPath } from '../../../src/services/types.ts'
 import { FileStateStore } from '../../../src/state/index.ts'
+import { type AgentHandle, createAgentHandle } from './agent-handle.ts'
 import type { RealTmuxFixture } from './fixture.ts'
 import { type NamedKey, sendKeysToPane } from './keys.ts'
 import { createPaneHandle, type PaneHandle } from './pane-handle.ts'
 
 const SESSION = 'orch'
+
+// ---------------------------------------------------------------------------
+// Shared scripted-fake script provisioning.
+//
+// The scripted-fake entry reads its step declarations from a single JSON file
+// pointed to by ORCH_LIFECYCLE_SCRIPT (process env). Multiple in-process
+// harnesses (e.g. two concurrent runs in one F2 test) therefore share that one
+// env var, so we merge every harness's puppet step declarations into ONE
+// per-process file rather than letting harnesses clobber each other. The
+// declarations are run-agnostic (`{ kind: 'puppet' }`, no controlPath) — each
+// run's control path is derived from its own ORCH_RUN_STATE_DIR (U1/U3), so a
+// shared declaration file preserves per-run isolation.
+const SHARED_SCRIPT_PATH = nodePath.join(
+  tmpdir(),
+  `orch-real-tmux-scripted-fake-${process.pid}.json`,
+)
+const sharedScriptSteps: Record<string, { readonly kind: 'puppet' }> = {}
+
+async function provisionPuppetScript(stepNames: readonly string[]): Promise<void> {
+  for (const name of stepNames) sharedScriptSteps[name] = { kind: 'puppet' }
+  await writeFile(SHARED_SCRIPT_PATH, JSON.stringify({ steps: sharedScriptSteps }), 'utf-8')
+  process.env[ORCH_LIFECYCLE_SCRIPT_ENV] = SHARED_SCRIPT_PATH
+}
+
+/**
+ * One predictable-fake step in a puppet workflow. `name` is the step's
+ * define-name (also the scripted-fake script row). `as` is the stable label
+ * that becomes the run-time key (`deriveStepKey`: `as` wins) — required to make
+ * parallel branches individually addressable (R9). The agent handle is fetched
+ * by `as ?? name`.
+ */
+export interface PuppetStepSpec {
+  readonly name: string
+  readonly as?: string
+  /** Defaults to autonomous (headless). Interactive is Phase 2 (U4). */
+  readonly mode?: StepMode
+  /**
+   * Interactive pane UI, only consulted when `mode: 'interactive'`. `'raw'`
+   * (default) drives the deterministic line-printer entry; `'ink'` drives the
+   * Ink list+input entry. Forwarded to `scriptedFake({ interactiveUi })`.
+   */
+  readonly ui?: 'raw' | 'ink'
+}
+
+/** A sequential step, or a set of branches to run via `parallel([...])`. */
+export type PuppetWorkflowItem = PuppetStepSpec | { readonly parallel: readonly PuppetStepSpec[] }
+
+function specNames(items: readonly PuppetWorkflowItem[]): string[] {
+  const names: string[] = []
+  for (const item of items) {
+    if ('parallel' in item) names.push(...item.parallel.map((s) => s.name))
+    else names.push(item.name)
+  }
+  return names
+}
+
+function allSpecs(items: readonly PuppetWorkflowItem[]): PuppetStepSpec[] {
+  const specs: PuppetStepSpec[] = []
+  for (const item of items) {
+    if ('parallel' in item) specs.push(...item.parallel)
+    else specs.push(item)
+  }
+  return specs
+}
+
+// Two specs that resolve to the same control-file key (`as ?? name`) would
+// silently share ONE control file — an `agent(label)` handle could not address
+// them independently and their acks/render would interleave. Detect the
+// collision up front and throw a clear error (mirrors the spirit of the
+// executor's R20 `StepNameCollisionError`) instead of letting it pass silently.
+function assertNoDuplicateLabels(items: readonly PuppetWorkflowItem[]): void {
+  const seen = new Set<string>()
+  for (const spec of allSpecs(items)) {
+    const label = spec.as ?? spec.name
+    if (seen.has(label)) {
+      throw new Error(
+        `runPuppetWorkflow: two workflow items resolve to the same control-file key ${JSON.stringify(label)} — give each a distinct \`as:\` so its agent() handle can address it independently`,
+      )
+    }
+    seen.add(label)
+  }
+}
 
 export interface HarnessStep {
   /** Step name (e.g. `'plan'`). Becomes the StepName. */
@@ -52,6 +143,21 @@ export interface MountedHarness {
   sendKeys(input: NamedKey | string): Promise<void>
   /** Execute the supplied steps in order through a real workflow body. */
   runWorkflow(steps: readonly HarnessStep[]): Promise<RunWorkflowResult>
+  /**
+   * Execute a workflow of predictable-fake (scripted-fake puppet) steps, each
+   * drivable via `agent(label)`. Sequential items run in order; a `{ parallel }`
+   * item runs its branches concurrently. Returns the run promise — hold it,
+   * drive the instances via their handles, then await it.
+   */
+  runPuppetWorkflow(items: readonly PuppetWorkflowItem[]): Promise<RunWorkflowResult>
+  /**
+   * Per-instance handle for the predictable fake addressed by the author's
+   * label (the run-time key — flat `as:` label or `sub>name`). Bound to THIS
+   * harness's `runId`, so two harnesses' handles never resolve each other's
+   * control files (structural R11 isolation). Named distinctly from the
+   * `left`/`right` pane handles.
+   */
+  agent(labelPath: string): AgentHandle
   /** Tear down host + logger. Does not dispose the underlying fixture — caller owns that. */
   teardown(): Promise<void>
 }
@@ -187,29 +293,46 @@ export async function mountTmuxHost(
 
   const agentProcessService = opts.agentProcessService ?? fixture.processService
 
-  const runWorkflow = async (steps: readonly HarnessStep[]): Promise<RunWorkflowResult> => {
-    const deps: WorkflowDeps = {
-      stateStore,
-      processService: agentProcessService,
-      clock: fixture.clock,
-      runId: fixture.runId,
-      cwd: toPath(String(fixture.stateBase)),
-      fsService: fixture.fs,
-      gitService: new FakeGitService(),
-      host,
-      promptService: new FakePromptService(),
-      interactivity: 'interactive',
-      logger,
-      workflowName,
-    }
+  const makeDeps = (): WorkflowDeps => ({
+    stateStore,
+    processService: agentProcessService,
+    clock: fixture.clock,
+    runId: fixture.runId,
+    cwd: toPath(String(fixture.stateBase)),
+    fsService: fixture.fs,
+    gitService: new FakeGitService(),
+    host,
+    promptService: new FakePromptService(),
+    interactivity: 'interactive',
+    logger,
+    workflowName,
+  })
 
+  const execute = async (body: (run: WorkflowRun) => Promise<void>): Promise<RunWorkflowResult> => {
     try {
-      await workflow(workflowName, buildWorkflowBody(steps)).execute(deps)
+      await workflow(workflowName, body).execute(makeDeps())
       return { completed: true }
     } catch (error) {
       return { completed: false, error }
     }
   }
+
+  const runWorkflow = (steps: readonly HarnessStep[]): Promise<RunWorkflowResult> =>
+    execute(buildWorkflowBody(steps))
+
+  const runPuppetWorkflow = async (
+    items: readonly PuppetWorkflowItem[],
+  ): Promise<RunWorkflowResult> => {
+    assertNoDuplicateLabels(items)
+    await provisionPuppetScript(specNames(items))
+    return execute(buildPuppetBody(items))
+  }
+
+  const agent = (labelPath: string): AgentHandle =>
+    createAgentHandle({
+      runStateDir: String(stateStore.runDir(fixture.runId)),
+      key: labelPath,
+    })
 
   let tornDown = false
   const teardown = async (): Promise<void> => {
@@ -228,6 +351,8 @@ export async function mountTmuxHost(
     sendKeysToPaneId,
     sendKeys,
     runWorkflow,
+    runPuppetWorkflow,
+    agent,
     teardown,
   }
 }
@@ -264,6 +389,44 @@ function buildWorkflowBody(steps: readonly HarnessStep[]): (run: WorkflowRun) =>
   return async (run) => {
     for (const harnessStep of steps) {
       await runHarnessStep(run, harnessStep)
+    }
+  }
+}
+
+// Run one predictable-fake spec: a scripted-fake puppet step, with the spec's
+// `as` label flowing into deriveStepKey so the agent handle can address it.
+// `mode: 'interactive'` constructs an interactive runner (U4) — `supports.
+// interactive` is frozen at construction, so the mode is baked into the runner
+// here, not toggled at run time. Interactive steps cannot appear inside
+// `parallel()` (the executor's InteractiveParallelError), so they must be
+// sequential items.
+function runPuppetSpec(run: WorkflowRun, spec: PuppetStepSpec): Promise<unknown> {
+  const interactive = spec.mode === 'interactive'
+  const overrides: RunOverrides = {
+    ...(spec.as !== undefined ? { as: spec.as } : {}),
+    ...(spec.mode !== undefined ? { mode: spec.mode } : {}),
+  }
+  const defined = step.define(spec.name, {
+    agent: scriptedFake({
+      stepName: spec.name,
+      interactive,
+      ...(spec.ui !== undefined ? { interactiveUi: spec.ui } : {}),
+    }),
+    ...(spec.mode !== undefined ? { mode: spec.mode } : {}),
+  } as Parameters<typeof step.define>[1])
+  return run(defined, overrides)
+}
+
+function buildPuppetBody(
+  items: readonly PuppetWorkflowItem[],
+): (run: WorkflowRun) => Promise<void> {
+  return async (run) => {
+    for (const item of items) {
+      if ('parallel' in item) {
+        await parallel(item.parallel.map((spec) => runPuppetSpec(run, spec)))
+      } else {
+        await runPuppetSpec(run, item)
+      }
     }
   }
 }

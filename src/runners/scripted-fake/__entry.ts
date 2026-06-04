@@ -16,22 +16,43 @@
  * stdout followed by `process.exit(1)` so the parent always sees a
  * terminal event (matches the executor's invariant in
  * `src/runners/execute.ts`).
+ *
+ * NOTE on size: this file runs over the 300-line soft limit (CLAUDE.md rule
+ * #5). The headless puppet lifecycle — control-path resolution, the legacy
+ * command dispatch (`emit`/`write-file`/`run-shell`/`complete`/`fail`/`wait`),
+ * the `.ready`/`.ack` machinery, and the `parentExited()` self-reap — is one
+ * tightly-coupled process concern; splitting it would scatter a single process
+ * lifecycle across files for no clarity gain (mirrors `interactive-entry.ts`).
  */
 
-import { writeFile as writeFileNode } from 'node:fs/promises'
+import { rm, writeFile as writeFileNode } from 'node:fs/promises'
 import * as nodePath from 'node:path'
 import { BunFsService } from '../../services/fs/index.ts'
 import type { RunnerEvent, TerminalEvent } from '../types.ts'
-import { loadScriptedFakeScript, resolveStepScript, ScriptLoadError } from './script-loader.ts'
 import {
-  type EmitThenHangScript,
-  type InstantFailScript,
-  type InstantOkScript,
-  type PuppetCommand,
-  PuppetCommandSchema,
-  type PuppetScript,
-  type StepScript,
-  type WaitForFileScript,
+  type ControlPaths,
+  controlPathsForControlFile,
+  ORCH_RUN_STATE_DIR_ENV,
+  ORCH_STEP_KEY_ENV,
+  resolveControlPaths,
+} from './addressing.ts'
+import {
+  controlToEngineOp,
+  type EngineResult,
+  type OutputSink,
+  parseControlLine,
+  runEngineOp,
+} from './command-engine.ts'
+import { writeAck } from './puppet-io.ts'
+import { loadScriptedFakeScript, resolveStepScript, ScriptLoadError } from './script-loader.ts'
+import type {
+  EmitThenHangScript,
+  InstantFailScript,
+  InstantOkScript,
+  PuppetCommand,
+  PuppetScript,
+  StepScript,
+  WaitForFileScript,
 } from './types.ts'
 
 const DEFAULT_GATE_POLL_INTERVAL_MS = 50
@@ -52,6 +73,11 @@ const ORCH_LIFECYCLE_STEP_NAME_ENV = 'ORCH_LIFECYCLE_STEP_NAME'
 // sends no signal — it just succeeds if the pid exists and throws ESRCH once
 // orch is gone. Reading process.ppid here is a pure read — no import-time side
 // effect.
+//
+// Headless entries are spawned directly by orch via ProcessService (not tmux),
+// so `process.ppid` IS orch and is the correct self-reap probe here — unlike
+// the interactive entry, which is tmux-spawned and must read `ORCH_PARENT_PID`
+// because its `process.ppid` is the pane, not orch.
 const SPAWN_PARENT_PID = process.ppid
 
 /** True once orch (our spawner) has exited, so a blocking script can self-reap. */
@@ -135,23 +161,44 @@ interface PuppetReaderState {
   buffer: string
 }
 
-interface BatchResult {
-  readonly kind: 'continue' | 'terminate'
-  readonly exitCode?: number
+// `EngineResult` ({ kind: 'continue' | 'terminate'; exitCode? }) is the single
+// loop-outcome shape shared by the engine, the per-command dispatch, and the
+// per-batch reader — no parallel near-identical types, no re-wrapping.
+
+/**
+ * Headless output sink: `type_and_send` emits an `info` event the transcript
+ * pipeline renders as an assistant line; `finish` writes the NDJSON terminal
+ * event (turn-complete for 0, error otherwise) so the executor's
+ * runner-exit → step:complete/step:failed path carries the code.
+ */
+function headlessSink(): OutputSink {
+  return {
+    typeLine(text: string): void {
+      writeEvent({ kind: 'info', type: 'assistant', payload: { text } })
+    },
+    finish(code: number): void {
+      if (code === 0) {
+        writeEvent({ kind: 'terminal', type: 'turn-complete' })
+      } else {
+        writeEvent({ kind: 'terminal', type: 'error', message: `finished with code ${code}` })
+      }
+    },
+  }
 }
 
 async function processPuppetBatch(
   raw: string,
   state: PuppetReaderState,
   ackDir: string,
-): Promise<BatchResult> {
+  sink: OutputSink,
+): Promise<EngineResult> {
   state.buffer += raw.slice(state.cursor)
   state.cursor = raw.length
   const lines = state.buffer.split('\n')
   state.buffer = lines.pop() ?? ''
   for (const line of lines) {
     if (line.trim().length === 0) continue
-    const parsed = parsePuppetCommand(line)
+    const parsed = parseControlLine(line)
     if (parsed.kind === 'error') {
       writeEvent({
         kind: 'terminal',
@@ -161,17 +208,44 @@ async function processPuppetBatch(
       return { kind: 'terminate', exitCode: 1 }
     }
     state.lineCounter += 1
-    const outcome = await dispatchPuppetCommand(parsed.value)
-    await writePuppetAck(ackDir, state.lineCounter, outcome)
+    const outcome = await dispatchPuppetCommand(parsed.value, sink)
+    await writeAck(ackDir, state.lineCounter, outcome)
     if (outcome.kind === 'terminate') return { kind: 'terminate', exitCode: outcome.exitCode }
   }
   return { kind: 'continue' }
 }
 
+/**
+ * Resolve the control transport (R7). The fallback discriminator is the
+ * presence of a baked `script.controlPath` — it WINS (behavioral-dsl backward
+ * compat). Otherwise derive the path from the run-time step key under the run
+ * state dir, both threaded into the env by the executor (U1). Gating on the
+ * key being absent would never fire — it is always threaded — so the baked
+ * path is the discriminator.
+ */
+function resolvePuppetControl(script: PuppetScript): ControlPaths {
+  const baked = script.controlPath
+  if (baked !== undefined) {
+    return controlPathsForControlFile(baked)
+  }
+  const key = process.env[ORCH_STEP_KEY_ENV]
+  const runStateDir = process.env[ORCH_RUN_STATE_DIR_ENV]
+  if (
+    key === undefined ||
+    key.length === 0 ||
+    runStateDir === undefined ||
+    runStateDir.length === 0
+  ) {
+    throw new Error(
+      `puppet: no baked controlPath and ${ORCH_STEP_KEY_ENV}/${ORCH_RUN_STATE_DIR_ENV} are unset`,
+    )
+  }
+  return resolveControlPaths({ runStateDir, key })
+}
+
 async function runPuppet(script: PuppetScript): Promise<number> {
-  const controlPath = script.controlPath
+  const { controlPath, ackDir, readyPath } = resolvePuppetControl(script)
   const interval = script.pollIntervalMs ?? DEFAULT_PUPPET_POLL_INTERVAL_MS
-  const ackDir = `${controlPath}.acks`
   const fs = new BunFsService()
   const { path } = await import('../../services/types.ts')
 
@@ -180,8 +254,19 @@ async function runPuppet(script: PuppetScript): Promise<number> {
   if (!(await fs.exists(path(controlPath)))) {
     await writeFileNode(controlPath, '', 'utf-8')
   }
+  // Delete any `.ready` marker already present at spawn, then write a fresh one
+  // once idle (below). In Phase 1 each run uses a fresh runId dir with a single
+  // attempt per key, so this delete-at-spawn is what keeps a driver from
+  // resolving `waitForReady()` against a marker the *current* process did not
+  // write. (A future in-run retry/resume that re-ran the same key in the same
+  // dir would re-open a spawn-vs-poll window; closing that needs the driver to
+  // verify the marker's attempt token — the marker already carries this pid —
+  // and is deferred until such a retry path exists.)
+  await rm(readyPath, { force: true }).catch(() => {})
 
+  const sink = headlessSink()
   const state: PuppetReaderState = { cursor: 0, lineCounter: 0, buffer: '' }
+  let readyWritten = false
   for (;;) {
     if (parentExited()) return 0
     let raw: string
@@ -191,23 +276,31 @@ async function runPuppet(script: PuppetScript): Promise<number> {
       raw = ''
     }
     if (raw.length > state.cursor) {
-      const result = await processPuppetBatch(raw, state, ackDir)
+      const result = await processPuppetBatch(raw, state, ackDir, sink)
       if (result.kind === 'terminate') return result.exitCode ?? 0
+    }
+    // Idle-waiting (R13): write the readiness marker once, on first idle.
+    // Distinct from `step:start` by construction — a filesystem marker the
+    // driver polls, not a lifecycle event. On write failure leave the flag
+    // unset so the next tick retries.
+    if (!readyWritten) {
+      readyWritten = await writeFileNode(readyPath, String(process.pid), 'utf-8')
+        .then(() => true)
+        .catch(() => false)
     }
     await new Promise((res) => setTimeout(res, interval))
   }
 }
 
-interface PuppetTerminate {
-  readonly kind: 'terminate'
-  readonly exitCode: number
-}
-interface PuppetContinue {
-  readonly kind: 'continue'
-}
-type PuppetOutcome = PuppetTerminate | PuppetContinue
-
-async function dispatchPuppetCommand(command: PuppetCommand): Promise<PuppetOutcome> {
+async function dispatchPuppetCommand(
+  command: PuppetCommand,
+  sink: OutputSink,
+): Promise<EngineResult> {
+  // Cross-mode vocabulary (`type_and_send` / `finish`) routes through the
+  // shared engine so the control channel and manual stdin (U4) converge on the
+  // same ops and the same sink. Legacy headless commands fall through.
+  const engineOp = controlToEngineOp(command)
+  if (engineOp !== null) return runEngineOp(engineOp, sink)
   switch (command.cmd) {
     case 'emit':
       writeEvent(command.event)
@@ -241,35 +334,12 @@ async function dispatchPuppetCommand(command: PuppetCommand): Promise<PuppetOutc
     case 'wait':
       await new Promise((res) => setTimeout(res, command.ms))
       return { kind: 'continue' }
+    default:
+      // `type_and_send` / `finish` are handled by the engine above; any other
+      // cmd is unreachable given the schema. Satisfy the exhaustiveness check
+      // without a silent fall-through.
+      return { kind: 'continue' }
   }
-}
-
-type ParseResult =
-  | { readonly kind: 'ok'; readonly value: PuppetCommand }
-  | { readonly kind: 'error'; readonly message: string }
-
-function parsePuppetCommand(line: string): ParseResult {
-  let json: unknown
-  try {
-    json = JSON.parse(line)
-  } catch (cause) {
-    const reason = cause instanceof Error ? cause.message : String(cause)
-    return { kind: 'error', message: `invalid JSON (${reason})` }
-  }
-  const parsed = PuppetCommandSchema.safeParse(json)
-  if (!parsed.success) {
-    const summary = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')
-    return { kind: 'error', message: `schema (${summary})` }
-  }
-  return { kind: 'ok', value: parsed.data }
-}
-
-async function writePuppetAck(ackDir: string, seq: number, outcome: PuppetOutcome): Promise<void> {
-  const filePath = nodePath.join(ackDir, `${seq}.ack`)
-  const body = outcome.kind === 'terminate' ? `terminate:${outcome.exitCode}` : 'continue'
-  await writeFileNode(filePath, body, 'utf-8').catch(() => {
-    /* ack failures are non-fatal — tests poll the ack dir and time out cleanly */
-  })
 }
 
 async function dispatch(script: StepScript): Promise<number> {

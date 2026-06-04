@@ -99,6 +99,7 @@ function makeStore(steps: Record<string, StepEntry>): StateStore {
     setArgs: async () => {
       throw new Error('not implemented')
     },
+    runDir: (rid) => toPath(`/runs/${rid}`),
   }
 }
 

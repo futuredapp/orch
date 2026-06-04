@@ -14,6 +14,15 @@ export default defineConfig({
     'command-tick-demo': 'command-tick-demo/index.ts',
     'command-lazygit': 'command-lazygit/index.ts',
     'file-prompts-demo': 'file-prompts-demo/index.ts',
+    // DEV-ONLY: predictable fake agent (scriptedFake) as a drivable, Ink-rendered
+    // interactive TUI stand-in. Deep-imports a non-public runner — never include
+    // in a shipped config. See examples/predictable-tui/README.md.
+    'predictable-tui': 'predictable-tui/index.ts',
+    // DEV-ONLY: predictable fake parent + subworkflow (`deep-dive`) for QA-agent
+    // subworkflow-launch testing. Deep-imports a non-public runner — never ship.
+    'predictable-sub': 'predictable-sub/index.ts',
+    // DEV-ONLY: minimal two-step linear fake for QA-agent live-follow testing.
+    'predictable-two-step': 'predictable-two-step/index.ts',
     // Subworkflow examples (U10). `feature` dispatches to one of two subs,
     // `parent`/`branch-isolated` show cwd isolation, `ship-many` shows the
     // parallel-of-distinct-subs canonical shape.

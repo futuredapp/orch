@@ -10,7 +10,7 @@ This is the canonical reference for **where a test belongs** and **how to write 
 | **Tier 2** | Ink projection — state→view, key→intent, footer indicators, banner rendering. | `tests/unit/hosts/two-pane/steps-view/*.test.tsx` | No | No |
 | **Tier 3** | `RealTmuxService` argv contract — tmux flags, escape rules, env passthrough. | `tests/unit/services/tmux/*.test.ts` (out of two-pane audit scope) | No (`FakeProcessService`) | No |
 | **Tier 4** | Real-CLI end-to-end on real tmux — exactly Tier 1's body with a real `ClaudeRunner` / `CodexRunner` in the agent slot. | `tests/e2e/tier-4/*.real.e2e.test.ts` | Yes | Yes (env-gated) |
-| **Tier 5** | CLI signal handlers (`SIGINT` / `SIGTERM` / `SIGHUP` to the orch process), attached-TTY input (Ctrl-C / `q` typed inside tmux), external tmux verbs (`kill-pane`, `kill-session`, `kill-server`), stdin-EOF — bug classes Tier 1 cannot reach because the in-process `TmuxHost` mount never goes through `src/cli/main.ts`. | `tests/integration/lifecycle/*.real.test.ts` | Yes | No (`ScriptedFakeRunner` drives every first-batch cell). Real-CLI Tier 5 variants are deferred follow-up — the `canRunRealTmuxE2E('codex')` predicate is kept available but unused in this plan. |
+| **Tier 5** | CLI signal handlers (`SIGINT` / `SIGTERM` / `SIGHUP` to the orch process), attached-TTY input (Ctrl-C / `q` typed inside tmux), external tmux verbs (`kill-pane`, `kill-session`, `kill-server`), stdin-EOF — bug classes Tier 1 cannot reach because the in-process `TmuxHost` mount never goes through `src/cli/main.ts`. | `tests/integration/lifecycle/*.real.test.ts` | Yes | No (`ScriptedFakeRunner` — the `scriptedFake` subprocess fake, see [The two fakes](#the-two-fakes-fakerunner-vs-scriptedfake) — drives every first-batch cell via the `.ready` → NDJSON → `.ack` control contract). Real-CLI Tier 5 variants are deferred follow-up — the `canRunRealTmuxE2E('codex')` predicate is kept available but unused in this plan. |
 
 Each tier has a unique responsibility. The "mocked + real" pair across Tier 1 and Tier 4 is the **only** sanctioned duplication: Tier 1 catches the bug class deterministically with a FakeRunner; Tier 4 proves the same body still works against the real CLI. Tier 5 is additive — Tier 1 stays the in-process default, and Tier 5 is reserved for the bug class Tier 1's harness mechanically cannot reach.
 
@@ -28,6 +28,40 @@ This is the question to ask before writing a new test, and the question the audi
 - **Validate a new Claude/Codex CLI scenario end-to-end** → Tier 4.
 - **Reproduce a lifecycle bug that requires real CLI signal handlers, attached-TTY input, or external `tmux kill-*` verbs** → Tier 5.
 - **Refactor a Service port** → unit test on the port itself; no host tier change.
+
+## The two fakes: `FakeRunner` vs `scriptedFake`
+
+Two agent doubles stand in for real Claude/Codex in the tiers above. They are **not** interchangeable — pick by whether the test drives the agent from *inside* or *outside* the orch process.
+
+| | `FakeRunner` | `scriptedFake` / `ScriptedFakeRunner` |
+| --- | --- | --- |
+| Lives in | `src/runners/fake/` — exported from the public barrel `src/runners/index.ts` | `src/runners/scripted-fake/` — **dev-only deep import**, deliberately *not* in the public barrel |
+| Process boundary | In-process; shares the test's JS context | Subprocess; orch spawns it as a child (`__entry.ts` under bun) |
+| Script binding | Constructor method chain — `new FakeRunner(fps).script({ events, structuredOutput, failWith, sessionId })` | JSON file at `ORCH_LIFECYCLE_SCRIPT`, indexed per step by `ORCH_LIFECYCLE_STEP_NAME` |
+| External driving | None — the whole script is fixed at construction | Yes — a driver appends NDJSON commands to a per-step control file, gating on a `.ready` marker and per-command `.ack` files |
+| Interactive UI | raw line-printer only | raw **or** Ink TUI (`scriptedFake({ stepName, interactive: true, interactiveUi: 'raw' \| 'ink' })`) |
+| Used by | Tiers 1 & 2, unit + mocked-integration (~53 files) | Tier 5 lifecycle tests, the real-tmux predictable-fake tests, and the `orch-qa-engineer` skill (~8 files) |
+
+**When to reach for each:**
+
+- **`FakeRunner` is the default.** Any test whose entire agent script is known when you write it — Tiers 1, 2, the mocked runner tests. It's cheaper (no subprocess) and fully deterministic in-process.
+- **`scriptedFake` only when something *outside* the orch process must drive a live run step-by-step** — a Tier 5 lifecycle test that interleaves agent output with signals/keypresses, or the `orch-qa-engineer` skill screenshotting panes between actions. The `.ready` → NDJSON → `.ack` contract exists to remove the agent-startup race across the process boundary; that is its reason to exist.
+
+> **`scriptedFake` is not a flakiness remedy.** For a script known at write time `FakeRunner` is *already* fully deterministic and faster — swapping it for `scriptedFake` only adds subprocess overhead. The documented real-tmux flakes (the two-pane-sequential-runs flake 2026-05-26, the `nav.f-snaps` flake 2026-05-29) were tmux-contention / dropped-keypress bugs, fixed by unique sockets + poll-and-resend (see *Predictability rules* below), not by changing the fake. The remaining residual is a peak-parallelism timing ceiling whose lever is real-tmux concurrency reduction.
+
+The runner surface (`scriptedFake`, `resolveControlPaths`, `encodeKey`, the `ORCH_*` env consts) is exported from `src/runners/scripted-fake/index.ts`. The drive-command vocabulary (`type_and_send`, `finish`) is documented in [`.claude/skills/orch-qa-engineer/references/fake-grammar.md`](../.claude/skills/orch-qa-engineer/references/fake-grammar.md).
+
+## Screen-level manual QA — the `orch-qa-engineer` skill
+
+This is **not a tier**. It writes no assertions and is not part of `bun run check` — it's a complementary, out-of-process tool for *looking at* orch on screen the way a human tester would. It drives a real two-pane tmux run against `scriptedFake` (so it's **deterministic, zero-token, no API calls**), screenshots the left (steps) and right (agent) panes, advances steps deterministically, simulates a human typing/clicking, and writes a PASS/FAIL verdict report with screenshots under `<runDir>/qa-screenshots/`.
+
+Everything is driven by one in-repo CLI, `examples/qa/qa.ts` (`info` / `shot` / `steps` / `awaiting` / `send` / `keys` / `focus` / `down`), against the bundled `examples/predictable-*` fake workflows. See [`.claude/skills/orch-qa-engineer/SKILL.md`](../.claude/skills/orch-qa-engineer/SKILL.md) for the full loop.
+
+**When to use it:**
+
+> Invoke this skill **only when explicitly asked** to QA / manually verify / smoke-test / exercise / reproduce two-pane TUI behavior. It is **not** on the automated gate and does **not** replace Tier 1–5 coverage — a green QA session is screen-level evidence, not a regression guard.
+
+It *is* a first-class tool for **debugging a rendering or lifecycle bug, or reproducing one on-screen**, before you write the formal tier test that pins it. The relationship to the tiers: Tier 1+ prove the behavior with assertions; the QA skill lets you *see* it first, without writing a test.
 
 ## Writing a Tier 1 test — 5-line skeleton
 
@@ -199,7 +233,7 @@ Everything else — fixture boot, `mountTmuxHost`, `runWorkflow`, `right.waitFor
 
 - **Tier 1** auto-skips when `tmux` is not on PATH (existing `Bun.which('tmux')` convention).
 - **Tier 4** auto-skips unless `tmux` is on PATH **AND** the named CLI binary is on PATH **AND** `RUN_REAL_TMUX_E2E=1`. Developer-opt-in until a future PR adds a scheduled CI job.
-- **Tier 5** cells auto-skip on `!canRunRealTmux()` (same as Tier 1) — every first-batch cell is `ScriptedFakeRunner`-driven, so `tmux` on PATH is the only requirement. Real-CLI Tier 5 variants are deferred follow-up; when one lands, it'll additionally require `RUN_REAL_TMUX_E2E=1` and the named CLI on PATH (same as Tier 4), via the `canRunRealTmuxE2E('codex')` / `canRunRealTmuxE2E('claude')` predicate kept available for that purpose. Tier 5 cells live under `tests/integration/lifecycle/` and are run via `bun test tests/integration/lifecycle/`; the plan's intent is to keep them off the pre-commit gate, though the current `bun test tests/unit tests/integration` script still picks them up — see plan Risk R-A for the long-term split.
+- **Tier 5** cells auto-skip on `!canRunRealTmux()` (same as Tier 1) — every first-batch cell is `ScriptedFakeRunner`-driven (the [`scriptedFake`](#the-two-fakes-fakerunner-vs-scriptedfake) subprocess fake, advanced over its `.ready` → NDJSON → `.ack` control contract), so `tmux` on PATH is the only requirement. Real-CLI Tier 5 variants are deferred follow-up; when one lands, it'll additionally require `RUN_REAL_TMUX_E2E=1` and the named CLI on PATH (same as Tier 4), via the `canRunRealTmuxE2E('codex')` / `canRunRealTmuxE2E('claude')` predicate kept available for that purpose. Tier 5 cells live under `tests/integration/lifecycle/` and are run via `bun test tests/integration/lifecycle/`; the plan's intent is to keep them off the pre-commit gate, though the current `bun test tests/unit tests/integration` script still picks them up — see plan Risk R-A for the long-term split.
 
 ## Harness API surface
 

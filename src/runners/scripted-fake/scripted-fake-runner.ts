@@ -38,15 +38,41 @@ export interface ScriptedFakeOptions {
    *   const execute = scriptedFake({ stepName: 'execute' })
    */
   readonly stepName: string
+  /**
+   * Interactive (TUI) mode (U4). When `true`, `supports.interactive` is `true`
+   * and `buildCommand` re-invokes `interactive-entry.ts` (a real-PTY TTY reader)
+   * instead of the headless `__entry.ts`.
+   *
+   * Construction-time, NOT a runtime conditional: `supports` is frozen at
+   * `defineRunner` time and the executor gates on
+   * `config.agent.supports.interactive` with no mode argument available, so one
+   * runner object cannot report `true` for an interactive step and `false` for
+   * an autonomous one. Harness fixtures build one runner per step, so an
+   * interactive step constructs an interactive runner and an autonomous step
+   * keeps `interactive: false`. Defaults to `false`.
+   */
+  readonly interactive?: boolean
+  /**
+   * Interactive pane UI. Only consulted when `interactive` is `true`:
+   *   - `'raw'` (default) — the deterministic line-printer (`interactive-entry.ts`).
+   *     Shows nothing until Enter; used by the test harness and the non-TTY
+   *     integration test (which pipes stdin, so it cannot use Ink raw-mode input).
+   *   - `'ink'` — the Ink list+input TUI (`ink-entry.tsx`). Echoes keystrokes as
+   *     you type; for human/dev driving in a real PTY pane.
+   *
+   * Both share one engine, sink contract, and the `.ready`/`.ack`/render-log
+   * signals, so a driver cannot tell which is mounted.
+   */
+  readonly interactiveUi?: 'raw' | 'ink'
 }
 
 /**
- * Resolves the absolute filesystem path to `__entry.ts`. `import.meta.dir`
+ * Resolves the absolute filesystem path to an entry script. `import.meta.dir`
  * points at this file's directory regardless of cwd, so the resolved path is
  * stable across spawn cwds (the orch subprocess's cwd is the fixture dir).
  */
-function entryScriptPath(): string {
-  return nodePath.join(import.meta.dir, '__entry.ts')
+function entryScriptPath(file: string): string {
+  return nodePath.join(import.meta.dir, file)
 }
 
 export function scriptedFake(opts: ScriptedFakeOptions) {
@@ -54,11 +80,14 @@ export function scriptedFake(opts: ScriptedFakeOptions) {
   if (stepName.length === 0) {
     throw new Error('scriptedFake({ stepName }): stepName cannot be empty')
   }
-  const entry = entryScriptPath()
+  const interactive = opts.interactive ?? false
+  const interactiveEntry =
+    (opts.interactiveUi ?? 'raw') === 'ink' ? 'ink-entry.tsx' : 'interactive-entry.ts'
+  const entry = entryScriptPath(interactive ? interactiveEntry : '__entry.ts')
 
   return defineRunner({
     name: 'scripted-fake',
-    supports: { interactive: false, structuredOutput: true },
+    supports: { interactive, structuredOutput: true },
     defaultView: { kind: 'transcript', pane: 'right' },
 
     buildCommand(ctx: RunnerContext): RunnerCommand {

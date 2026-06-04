@@ -69,6 +69,7 @@ function makeStore(steps: Record<string, StepEntry>): StateStore {
     setArgs: async (_rid: RunId, _args: PersistedWorkflowArgs) => {
       throw new Error('not implemented')
     },
+    runDir: (rid) => toPath(`/runs/${rid}`),
   }
 }
 

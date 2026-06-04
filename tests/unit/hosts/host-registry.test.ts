@@ -43,6 +43,7 @@ function makeNoopStateStore(rid: RunId): StateStore {
     setArgs: async (_rid: RunId, _args: PersistedWorkflowArgs) => {
       throw new Error('not implemented')
     },
+    runDir: (rid) => `/runs/${rid}` as ReturnType<StateStore['runDir']>,
   }
 }
 

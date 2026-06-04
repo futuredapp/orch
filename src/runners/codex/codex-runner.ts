@@ -406,9 +406,10 @@ async function prepareCodexAutoStop(
   fs: FsService,
   ctx: RunnerContext,
 ): Promise<AutoStopPreparation> {
-  // The interactive executor passes `ctx.env = {}`, so the real CODEX_HOME comes
-  // from the process env (or the default) — not ctx.env. ctx.env is checked
-  // first only for forward-compat with a future caller that threads it.
+  // The interactive executor threads only addressing vars into `ctx.env`
+  // (never CODEX_HOME), so the real CODEX_HOME comes from the process env (or
+  // the default) — not ctx.env. ctx.env is checked first only for forward-compat
+  // with a future caller that threads it.
   const realCodexHome = path(ctx.env.CODEX_HOME ?? process.env.CODEX_HOME ?? `${homedir()}/.codex`)
   const orchCodexHome = path(`${realCodexHome}-orch`)
   await fs.mkdir(orchCodexHome, { recursive: true })

@@ -98,12 +98,15 @@ export const PuppetScriptSchema = z
   .object({
     kind: z.literal('puppet'),
     /**
-     * Absolute path to the per-step control NDJSON file. The test launcher
-     * derives this from <stateBase>/test-control/<stepName>.ndjson and writes
-     * it into the script before spawn. The runner opens the file in
-     * append-mode-read and tails forever.
+     * Absolute path to the per-step control NDJSON file. **Optional**, and the
+     * fallback discriminator (plan §Key Technical Decisions): when a baked
+     * `controlPath` is present it *wins* (behavioral-dsl backward compat); when
+     * absent, the entry derives the path at run time from the threaded step key
+     * (`ORCH_STEP_KEY`) under the run state dir (`ORCH_RUN_STATE_DIR`) via
+     * `resolveControlPaths`. Gating on "threaded key absent" would never fire —
+     * U1 threads it on every step — so the baked path must be the discriminator.
      */
-    controlPath: z.string().min(1),
+    controlPath: z.string().min(1).optional(),
     /** Poll interval for `fs.stat` size changes. Defaults to 30ms. */
     pollIntervalMs: z.number().int().positive().optional(),
   })
@@ -172,6 +175,26 @@ const WaitCommandSchema = z
   })
   .strict()
 
+// `type_and_send` / `finish` — the cross-mode vocabulary (R2). They map to the
+// engine's two ops and behave identically across modes and channels (R3). The
+// legacy commands above stay for behavioral-dsl backward compatibility.
+const TypeAndSendCommandSchema = z
+  .object({
+    cmd: z.literal('type_and_send'),
+    text: z.string(),
+  })
+  .strict()
+
+const FinishCommandSchema = z
+  .object({
+    cmd: z.literal('finish'),
+    // Optional exit/result code. Headless propagates a non-zero code as
+    // step:failed; interactive `finish` is clean-exit only (see plan §Key
+    // Technical Decisions), so the code is ignored there.
+    code: z.number().int().nonnegative().optional(),
+  })
+  .strict()
+
 export const PuppetCommandSchema = z.discriminatedUnion('cmd', [
   EmitCommandSchema,
   WriteFileCommandSchema,
@@ -179,6 +202,8 @@ export const PuppetCommandSchema = z.discriminatedUnion('cmd', [
   CompleteCommandSchema,
   FailCommandSchema,
   WaitCommandSchema,
+  TypeAndSendCommandSchema,
+  FinishCommandSchema,
 ])
 
 export type PuppetCommand = z.infer<typeof PuppetCommandSchema>

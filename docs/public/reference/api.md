@@ -456,6 +456,23 @@ For advanced workflows that change directory or inspect nesting:
 | `currentParallelDepth()` | `number` | Nesting level inside `parallel()`. |
 | `executionContext()` | context | The current execution-context store. |
 
+## StateStore
+
+The persistence port behind a run's state directory. Most workflows never touch it directly, but it is exported from `orch` for tools that need to locate a run's on-disk artifacts.
+
+```ts
+runDir(runId: RunId): Path
+```
+
+Returns the absolute directory this store reads and writes for a run (`<basePath>/<runId>`). A pure path computation — no I/O, and it does not imply the directory exists.
+
+```ts
+import { FileStateStore } from 'orch'
+
+const store = new FileStateStore({ fs, basePath })
+const dir = store.runDir(runId) // e.g. <basePath>/<runId>
+```
+
 ## Where to go next
 
 - [Runners](/reference/runners) — `claude()`, `codex()`, and writing your own.
