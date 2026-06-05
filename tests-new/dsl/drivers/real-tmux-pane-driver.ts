@@ -21,11 +21,13 @@ import type { PaneHandle } from '@orch/test/real-tmux/index.ts'
 import type { NamedKey } from '@orch/test/real-tmux/index.ts'
 import { CARET_ECHO_TOKENS, type PaneDriver } from '../panes/pane-driver.ts'
 import {
+  frameHasColoredText,
   glyphChar,
   highlightedStepName,
   occurrences,
   previewCursorStepName,
   rowHasGlyph,
+  rowVisible,
   runningStepName,
 } from './frame-text.ts'
 
@@ -87,6 +89,23 @@ export function createRealTmuxPaneDriver(deps: RealTmuxPaneDriverDeps): PaneDriv
     }
   }
 
+  // Send an idempotent key (`g`/`G` scroll), re-reading the frame each time, until
+  // the predicate holds — defeating the dropped-first-keypress race the same way
+  // `followLive` resends `f`. Safe only for keys whose Nth press equals their first.
+  async function pollSendKey(
+    key: NamedKey | string,
+    predicate: (frame: string) => boolean,
+  ): Promise<void> {
+    const perSend = Math.max(400, Math.floor(deps.assertTimeoutMs / 6))
+    for (let i = 0; i < 6; i++) {
+      const frame = await deps.handle.capture()
+      if (predicate(frame)) return
+      await deps.sendKey(key)
+      await deps.handle.waitFor(predicate, { timeoutMs: perSend }).catch(() => {})
+    }
+    await deps.handle.waitFor(predicate, waitOpts)
+  }
+
   return {
     assertBottomText(literal, { count }): Promise<void> {
       return deps.handle.waitFor((frame) => occurrences(frame, literal) === count, waitOpts)
@@ -130,6 +149,55 @@ export function createRealTmuxPaneDriver(deps: RealTmuxPaneDriverDeps): PaneDriv
       }
       // Final attempt with the full budget so the failure carries a clear frame.
       await deps.handle.waitFor(isLive, waitOpts)
+    },
+    async browseTo(step): Promise<void> {
+      await moveCursorTo(step)
+      await deps.handle.waitFor(
+        (frame) => previewCursorStepName(frame, deps.stepNames()) === step,
+        waitOpts,
+      )
+    },
+    assertPreviewCursorOn(step): Promise<void> {
+      return deps.handle.waitFor(
+        (frame) => previewCursorStepName(frame, deps.stepNames()) === step,
+        waitOpts,
+      )
+    },
+    assertStepVisible(step): Promise<void> {
+      return deps.handle.waitFor((frame) => rowVisible(frame, step), waitOpts)
+    },
+    assertStepOffscreen(step): Promise<void> {
+      return deps.handle.waitFor((frame) => !rowVisible(frame, step), waitOpts)
+    },
+    async scrollToOldest(): Promise<void> {
+      const oldest = deps.stepNames()[0]
+      if (oldest === undefined) return
+      // `g` (jump-to-top) is idempotent w.r.t. the oldest row being visible.
+      await pollSendKey('g', (frame) => rowVisible(frame, oldest))
+    },
+    async scrollToLive(): Promise<void> {
+      const names = deps.stepNames()
+      const live = names[names.length - 1]
+      if (live === undefined) return
+      await pollSendKey('G', (frame) => rowVisible(frame, live))
+    },
+    async assertColored(lineNeedle, colorName): Promise<void> {
+      // Colour lives in the RAW capture (tmux SGR escapes), so use captureRaw.
+      const deadline = Date.now() + deps.assertTimeoutMs
+      for (;;) {
+        const raw = await deps.handle.captureRaw()
+        if (frameHasColoredText(raw, lineNeedle, colorName)) return
+        if (Date.now() >= deadline) {
+          throw new Error(
+            `${deps.driverLabel}: no '${colorName}' SGR on a line containing ` +
+              `${JSON.stringify(lineNeedle)}.\nRaw frame:\n${raw}`,
+          )
+        }
+        await new Promise((r) => setTimeout(r, 50))
+      }
+    },
+    assertAbsent(text): Promise<void> {
+      return deps.handle.waitFor((frame) => !frame.includes(text), waitOpts)
     },
     async assertNoCaretEcho(): Promise<void> {
       const frame = await deps.handle.capture()

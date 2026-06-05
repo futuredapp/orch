@@ -65,7 +65,10 @@ function tick(): Promise<void> {
   return new Promise((r) => setTimeout(r, 30))
 }
 
-describe('EndOfRunSummary header repaint', () => {
+// MIGRATED → tests-new/model/end-of-run--summary-and-count.test.ts
+//          + tests-new/screen/end-of-run--summary-and-count-bytes.test.ts  (parent U5b)
+//   (the no-flicker re-render case is dropped — see ledger reason.)
+describe.skip('EndOfRunSummary header repaint', () => {
   it('repaints the header into a summary block on completion (totals + duration)', () => {
     const frame = stripAnsi(
       renderToString(<EndOfRunSummary run={RUN} summary={SUMMARY} status="completed" />, {
@@ -97,7 +100,7 @@ describe('EndOfRunSummary header repaint', () => {
   })
 })
 
-describe('EndOfRunFooter copy', () => {
+describe.skip('EndOfRunFooter copy', () => {
   it('leads with "q to quit · ⏎ to inspect" and includes the run status', () => {
     const frame = stripAnsi(renderToString(<EndOfRunFooter status="completed" />, { columns: 110 }))
 
@@ -106,7 +109,7 @@ describe('EndOfRunFooter copy', () => {
   })
 })
 
-describe('<StepsView> in a terminal state', () => {
+describe.skip('<StepsView> in a terminal state', () => {
   it('keeps Enter wired so resume on a past interactive step still fires onIntent', async () => {
     const intents: StepsViewIntent[] = []
     const ui = render(

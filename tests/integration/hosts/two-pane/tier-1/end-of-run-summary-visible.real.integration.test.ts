@@ -34,10 +34,11 @@ afterEach(async () => {
   fixturesToDispose = []
 })
 
+// MIGRATED → tests-new/screen/end-of-run--summary-and-count-bytes.test.ts  (parent U5b)
 describe.skipIf(!tmuxAvailable)(
   'Tier 1 — left pane shows the end-of-run summary after a successful workflow',
   () => {
-    it('left.capture() contains `run completed` footer and `steps 1/1 completed` summary', async () => {
+    it.skip('left.capture() contains `run completed` footer and `steps 1/1 completed` summary', async () => {
       const fixture = await createRealTmuxFixture({ env: {} })
       fixturesToDispose.push(fixture)
       const agentProcessService = new FakeProcessService()

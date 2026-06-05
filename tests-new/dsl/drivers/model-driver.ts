@@ -3,166 +3,173 @@
 // ---------------------------------------------------------------------------
 //
 // Builds a `ModelApp` over the steps-view Ink-render projection seam (today's
-// Tier-2 approach): render `<StepsView>` via `ink-testing-library`, drive its
-// input, and poll `lastFrame()` (stripped of ANSI). Assertions inspect the
-// PROJECTED/RENDERED view-model — what the controller DECIDED to show — never a
-// fake tmux. It allocates no socket and boots no tmux (R5).
+// Tier-2 approach): render `<StepsView>` via a configurable ink harness, drive
+// its input, and inspect `lastFrame()`. Assertions read the PROJECTED/RENDERED
+// view-model — what the controller DECIDED to show — never a fake tmux. It
+// allocates no socket and boots no tmux (R5).
 //
-// A tiny harness holds the right-pane `view` mode in React state and updates it
-// from the same `StepsViewIntent`s a real keypress produces, so the genuine
-// logic under test (selection tracking `view`, snap-to-live picking the live
-// step) runs against the real component + hooks.
+// Most assertions run over the ANSI-STRIPPED frame; colour assertions (D-P4)
+// run over the RAW frame, where Ink's SGR escapes are still present. Navigation
+// (selection, preview cursor, scroll, snap-to-live) is driven by REAL keystrokes
+// written to the harness stdin, so the genuine hooks run — except `selectStep`,
+// which commits via the same intent a real `Enter` produces.
 
-import { createElement, type ReactElement, useCallback, useEffect, useState } from 'react'
-import { render } from 'ink-testing-library'
+import chalk from 'chalk'
+import { createElement } from 'react'
 import type {
   RunHeader,
   StepRow,
-  StepsViewIntent,
   StepsViewState,
-  ViewMode,
 } from '../../../src/hosts/two-pane/steps-view/index.ts'
-import { StepsView } from '../../../src/hosts/two-pane/steps-view/index.ts'
 import { pressUntilFrame, waitForFrame } from '@orch/test/ink-frame.ts'
 import type { DriverName, ModelApp, ModelSpec } from '../app-surfaces.ts'
 import { LeftPane } from '../panes/left-pane.ts'
 import { CARET_ECHO_TOKENS, type PaneDriver } from '../panes/pane-driver.ts'
 import type { ScenarioMeta } from '../scenario.ts'
 import {
+  ARROW_DOWN,
+  ARROW_UP,
+  frameHasColoredText,
   glyphChar,
   highlightedStepName,
   occurrences,
+  previewCursorStepName,
   rowHasGlyph,
+  rowVisible,
   stripAnsi,
 } from './frame-text.ts'
+import { createVirtualClock, type HarnessApi, ModelHarness } from './model-harness.tsx'
+import { type ModelInkHarness, renderModel } from './model-ink-harness.ts'
 import type { Driver } from './registry.ts'
 
 // Deterministic clock for `<StepRow>` elapsed math — keeps frames stable.
 const NOW = 5_000
 const MODEL_TIMEOUT_MS = 10_000
+const RUN: RunHeader = { runId: 'r-2026-06-05-000000-u1', workflowName: 'demo', startedAt: 0 }
 
-const LIVE_VIEW: ViewMode = { mode: 'live' }
-
-type Instance = ReturnType<typeof render>
-
-interface HarnessApi {
-  dispatch(intent: StepsViewIntent): void
-}
-
-interface LiveBase {
-  readonly status: 'live'
-  readonly run: RunHeader
-  readonly steps: readonly StepRow[]
-}
-
-interface ModelHarnessProps {
-  readonly base: LiveBase
-  readonly now: number
-  readonly onApi: (api: HarnessApi) => void
-}
-
-function ModelHarness({ base, now, onApi }: ModelHarnessProps): ReactElement {
-  const [view, setView] = useState<ViewMode>(LIVE_VIEW)
-  const dispatch = useCallback((intent: StepsViewIntent): void => {
-    if (intent.type === 'enter') {
-      setView({ mode: 'replay', stepName: intent.stepName })
-    } else if (intent.type === 'follow-live') {
-      setView(LIVE_VIEW)
-    }
-    // 'quit' / 'dismiss-banner' have no projection effect in the model substrate.
-  }, [])
-
-  useEffect(() => {
-    onApi({ dispatch })
-  }, [onApi, dispatch])
-
-  const state: StepsViewState = { ...base, view }
-  return createElement(StepsView, { state, onIntent: dispatch, now: () => now })
-}
-
-function buildLiveBase(spec: ModelSpec): LiveBase {
+function buildBaseState(spec: ModelSpec): StepsViewState {
   const last = spec.steps.length - 1
+  const failed = spec.stopAt === 'end-of-run' && spec.outcome !== undefined && spec.outcome !== 'completed'
   const steps: StepRow[] = spec.steps.map((name, i) => {
-    const running = spec.stopAt === 'mid-step' && i === last
-    return running
-      ? { kind: 'agent', mode: 'autonomous', status: 'running', name, startedAt: i * 1_000 }
-      : {
-          kind: 'agent',
-          mode: 'autonomous',
-          status: 'completed',
-          name,
-          startedAt: i * 1_000,
-          endedAt: i * 1_000 + 500,
-        }
+    if (spec.stopAt === 'mid-step' && i === last) {
+      return { kind: 'agent', mode: 'autonomous', status: 'running', name, startedAt: i * 1_000 }
+    }
+    const status = failed && i === last ? 'failed' : 'completed'
+    return { kind: 'agent', mode: 'autonomous', status, name, startedAt: i * 1_000, endedAt: i * 1_000 + 500 }
   })
-  return {
-    status: 'live',
-    run: { runId: 'r-2026-06-05-000000-u1', workflowName: 'demo', startedAt: 0 },
-    steps,
+  const view = { mode: 'live' } as const
+  if (spec.stopAt === 'end-of-run') {
+    const summary = {
+      endedAt: steps.length * 1_000,
+      durationMs: steps.length * 1_000,
+      stepsTotal: steps.length,
+      stepsCompleted: failed ? steps.length - 1 : steps.length,
+      stepsFailed: failed ? 1 : 0,
+    }
+    const status = spec.outcome === 'crashed' ? 'crashed' : failed ? 'failed' : 'completed'
+    return { status, summary, run: RUN, steps, view }
   }
+  return { status: 'live', run: RUN, steps, view }
 }
 
-// The step `follow-live` snaps to: the running step under `stopAt: 'mid-step'`,
-// otherwise the last step (matching `committedFromView` in live mode).
+// `follow-live` snaps to the running step (mid-step) or the last step otherwise.
 function computeLiveName(spec: ModelSpec): string | undefined {
   return spec.steps[spec.steps.length - 1]
 }
 
-// --- the app ----------------------------------------------------------------
-
 function createModelApp(): ModelApp {
-  let ui: Instance | undefined
+  let ui: ModelInkHarness | undefined
   let api: HarnessApi | undefined
+  const clock = createVirtualClock()
   let stepNames: readonly string[] = []
   let liveName: string | undefined
 
-  const requireUi = (): Instance => {
+  const requireUi = (): ModelInkHarness => {
     if (ui === undefined) {
       throw new Error('model driver: launch(spec) must be called before any assertion')
     }
     return ui
   }
+  const requireApi = (): HarnessApi => {
+    if (api === undefined) throw new Error('model driver: harness api not ready')
+    return api
+  }
+  const strip = { transform: stripAnsi }
+
+  // Move the preview cursor toward `step` with real arrow keys, re-reading the
+  // frame each move so a dropped keystroke self-corrects (the ink useInput race).
+  async function moveCursorTo(step: string): Promise<void> {
+    const instance = requireUi()
+    const target = stepNames.indexOf(step)
+    if (target === -1) throw new Error(`model driver: browseTo(${JSON.stringify(step)}) — no such step`)
+    let budget = stepNames.length * 2 + 8
+    for (;;) {
+      const frame = stripAnsi(instance.lastFrame() ?? '')
+      const current = previewCursorStepName(frame, stepNames) ?? highlightedStepName(frame, stepNames)
+      if (current === step) return
+      if (budget-- <= 0) {
+        throw new Error(`model driver: browseTo(${JSON.stringify(step)}) stuck at ${JSON.stringify(current)}`)
+      }
+      const currentIdx = current === undefined ? -1 : stepNames.indexOf(current)
+      instance.stdin.write(currentIdx < target ? ARROW_DOWN : ARROW_UP)
+      await new Promise((r) => setTimeout(r, 15))
+    }
+  }
 
   const paneDriver: PaneDriver = {
     async assertBottomText(literal, { count }): Promise<void> {
-      await waitForFrame(requireUi(), (f) => occurrences(f, literal) === count, {
-        transform: stripAnsi,
-      })
+      await waitForFrame(requireUi(), (f) => occurrences(f, literal) === count, strip)
     },
     async assertContains(text): Promise<void> {
-      await waitForFrame(requireUi(), (f) => f.includes(text), { transform: stripAnsi })
+      await waitForFrame(requireUi(), (f) => f.includes(text), strip)
     },
     async assertSelected(step): Promise<void> {
-      await waitForFrame(requireUi(), (f) => highlightedStepName(f, stepNames) === step, {
-        transform: stripAnsi,
-      })
+      await waitForFrame(requireUi(), (f) => highlightedStepName(f, stepNames) === step, strip)
     },
     async assertGlyph(step, glyph): Promise<void> {
       const wanted = glyphChar(glyph)
-      await waitForFrame(requireUi(), (f) => rowHasGlyph(f, step, wanted), { transform: stripAnsi })
+      await waitForFrame(requireUi(), (f) => rowHasGlyph(f, step, wanted), strip)
     },
     async selectStep(step): Promise<void> {
-      const instance = requireUi()
-      if (api === undefined) throw new Error('model driver: harness api not ready')
-      api.dispatch({ type: 'enter', stepName: step })
-      await waitForFrame(instance, (f) => highlightedStepName(f, stepNames) === step, {
-        transform: stripAnsi,
-      })
+      requireApi().dispatch({ type: 'enter', stepName: step })
+      await waitForFrame(requireUi(), (f) => highlightedStepName(f, stepNames) === step, strip)
     },
     async followLive(): Promise<void> {
-      const instance = requireUi()
       const target = liveName
       if (target === undefined) throw new Error('model driver: spec has no live step to follow')
-      // `f` (snap-to-live) is idempotent w.r.t. the asserted committed step, so
-      // resending until it lands defeats the useInput-subscribe race safely.
-      await pressUntilFrame(instance, 'f', (f) => highlightedStepName(f, stepNames) === target, {
-        transform: stripAnsi,
-      })
+      await pressUntilFrame(requireUi(), 'f', (f) => highlightedStepName(f, stepNames) === target, strip)
+    },
+    async browseTo(step): Promise<void> {
+      await moveCursorTo(step)
+      await waitForFrame(requireUi(), (f) => previewCursorStepName(f, stepNames) === step, strip)
+    },
+    async assertPreviewCursorOn(step): Promise<void> {
+      await waitForFrame(requireUi(), (f) => previewCursorStepName(f, stepNames) === step, strip)
+    },
+    async assertStepVisible(step): Promise<void> {
+      await waitForFrame(requireUi(), (f) => rowVisible(f, step), strip)
+    },
+    async assertStepOffscreen(step): Promise<void> {
+      await waitForFrame(requireUi(), (f) => !rowVisible(f, step), strip)
+    },
+    async scrollToOldest(): Promise<void> {
+      const oldest = stepNames[0]
+      if (oldest === undefined) return
+      await pressUntilFrame(requireUi(), 'g', (f) => rowVisible(f, oldest), strip)
+    },
+    async scrollToLive(): Promise<void> {
+      const live = stepNames[stepNames.length - 1]
+      if (live === undefined) return
+      await pressUntilFrame(requireUi(), 'G', (f) => rowVisible(f, live), strip)
+    },
+    async assertColored(lineNeedle, colorName): Promise<void> {
+      // Colour lives in the RAW frame (Ink SGR escapes), so do not strip here.
+      await waitForFrame(requireUi(), (f) => frameHasColoredText(f, lineNeedle, colorName))
+    },
+    async assertAbsent(text): Promise<void> {
+      await waitForFrame(requireUi(), (f) => !f.includes(text), strip)
     },
     async assertNoCaretEcho(): Promise<void> {
-      // The Ink-rendered frame is not a real terminal, so caret-notation echo
-      // cannot occur here — the assertion holds trivially over the projection
-      // seam. Byte hygiene is only PROVEN on the real-tmux drivers (R5).
       const frame = stripAnsi(requireUi().lastFrame() ?? '')
       const offender = CARET_ECHO_TOKENS.find((token) => frame.includes(token))
       if (offender !== undefined) {
@@ -175,22 +182,40 @@ function createModelApp(): ModelApp {
 
   return {
     async launch(spec): Promise<void> {
+      // A scenario may re-launch (e.g. completed → failed → crashed); unmount the
+      // prior instance so only the latest harness is live.
+      ui?.unmount()
+      api = undefined
       stepNames = spec.steps
       liveName = computeLiveName(spec)
-      const base = buildLiveBase(spec)
-      const instance = render(
+      const base = buildBaseState(spec)
+      const initialBanner =
+        spec.banner !== undefined
+          ? { kind: spec.banner.kind, text: spec.banner.text, seq: 1 }
+          : undefined
+      const instance = renderModel(
         createElement(ModelHarness, {
           base,
           now: NOW,
+          clock,
+          ...(initialBanner !== undefined ? { initialBanner } : {}),
           onApi: (a) => {
             api = a
           },
         }),
+        spec.viewportRows !== undefined ? { rows: spec.viewportRows } : {},
       )
       ui = instance
       await waitForFrame(instance, (f) => f.length > 0)
     },
     leftPane,
+    async emitBanner(level, text): Promise<void> {
+      requireApi().emitBanner(level, text)
+      await waitForFrame(requireUi(), (f) => f.includes(text), strip)
+    },
+    async advanceTime(ms): Promise<void> {
+      clock.advance(ms)
+    },
     async teardown(): Promise<void> {
       ui?.unmount()
       ui = undefined
@@ -202,8 +227,14 @@ function createModelApp(): ModelApp {
 }
 
 export const modelDriver: Driver<ModelApp> = {
-  build: (_meta: ScenarioMeta<readonly DriverName[]>): Promise<ModelApp> =>
-    Promise.resolve(createModelApp()),
+  build: (_meta: ScenarioMeta<readonly DriverName[]>): Promise<ModelApp> => {
+    // Bun reports `isTTY === false`, so chalk defaults to level 0 and Ink emits
+    // NO ANSI — making the D-P4 colour assertions vacuous. Force truecolor at
+    // build time (a runtime side effect, not an import-time one) so the rendered
+    // frame carries real SGR escapes. Harmless to the stripped-frame assertions.
+    chalk.level = 3
+    return Promise.resolve(createModelApp())
+  },
   skip: () => false,
   timeout: MODEL_TIMEOUT_MS,
 }

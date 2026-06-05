@@ -31,8 +31,29 @@ export type Signal = 'SIGINT' | 'SIGTERM' | 'SIGHUP'
 export interface LaunchSpec {
   /** Step names, in order. */
   readonly steps: readonly string[]
-  /** `'mid-step'` pauses with all-but-last completed and the last step running. */
-  readonly stopAt?: 'mid-step'
+  /**
+   * `'mid-step'` pauses with all-but-last completed and the last step running;
+   * `'end-of-run'` reaches a terminal (completed) state with an end-of-run
+   * summary (U5b). Omitted ⇔ a fully-live frame.
+   */
+  readonly stopAt?: 'mid-step' | 'end-of-run'
+  /**
+   * Terminal outcome when `stopAt: 'end-of-run'` (U5b — summary colours).
+   * `'completed'` (default) renders the green summary label; `'failed'`/`'crashed'`
+   * the red one with a non-zero failed count. Ignored unless `stopAt: 'end-of-run'`.
+   */
+  readonly outcome?: 'completed' | 'failed' | 'crashed'
+  /**
+   * Bound the steps-body viewport to this many rows (U5a — scroll). On `model`
+   * it sets the harness pane height; the `screen` twin uses `resize` instead.
+   */
+  readonly viewportRows?: number
+  /**
+   * Render an initial banner above the steps grid (U5b — banner paint). The
+   * `model` driver also exposes `emitBanner`/`advanceTime` for TTL behaviour;
+   * the `screen` paint twin sets the banner here at launch.
+   */
+  readonly banner?: { readonly kind: 'info' | 'error'; readonly text: string }
 }
 
 export type ModelSpec = LaunchSpec
@@ -71,6 +92,17 @@ export interface ModelApp extends AppBase {
   launch(spec: ModelSpec): Promise<void>
   /** Projection-seam assertions only. */
   readonly leftPane: LeftPane
+  /**
+   * Inject a single-slot banner (U5b). Info banners auto-clear on the VIRTUAL
+   * clock via `advanceTime`; error banners persist until dismissed.
+   */
+  emitBanner(level: 'info' | 'error', text: string): Promise<void>
+  /**
+   * Advance the banner auto-dismiss clock by `ms` (U5b / D-P2). Drives TTL
+   * deterministically — a `screen` test must NEVER wait real wall-clock for a
+   * TTL, so `ScreenApp` deliberately has no `advanceTime`.
+   */
+  advanceTime(ms: number): Promise<void>
 }
 
 export interface ScreenApp extends AppBase {

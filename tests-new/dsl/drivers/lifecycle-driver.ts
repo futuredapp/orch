@@ -124,6 +124,14 @@ function deferredPaneDriver(): PaneDriver {
     assertGlyph: () => defer('assertGlyph'),
     selectStep: () => defer('selectStep'),
     followLive: () => defer('followLive'),
+    browseTo: () => defer('browseTo'),
+    assertPreviewCursorOn: () => defer('assertPreviewCursorOn'),
+    assertStepVisible: () => defer('assertStepVisible'),
+    assertStepOffscreen: () => defer('assertStepOffscreen'),
+    scrollToOldest: () => defer('scrollToOldest'),
+    scrollToLive: () => defer('scrollToLive'),
+    assertColored: () => defer('assertColored'),
+    assertAbsent: () => defer('assertAbsent'),
     assertNoCaretEcho: () => defer('assertNoCaretEcho'),
   }
 }

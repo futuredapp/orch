@@ -87,3 +87,58 @@ export function runningStepName(frame: string, names: readonly string[]): string
   const glyph = glyphChar('running')
   return names.find((name) => rowHasGlyph(frame, name, glyph))
 }
+
+/** Whether `frame` (already stripped) renders a row for `step`. */
+export function rowVisible(frame: string, step: string): boolean {
+  return frame.split('\n').some((line) => line.includes(step))
+}
+
+// --- ANSI escape sequences for keystroke transport (model stdin) -------------
+//
+// The `model` driver writes raw bytes to ink's fake stdin, so named keys are
+// the terminal's own escape sequences. The real-tmux drivers send NamedKeys
+// (`Up`/`Down`) through `tmux send-keys` instead — same intent, different
+// transport.
+export const ARROW_UP = '\u001b[A'
+export const ARROW_DOWN = '\u001b[B'
+
+// --- ANSI colour matching (D-P4 — glyph/summary colour, model + screen) ------
+//
+// A colour assertion proves a production palette choice survives to the frame.
+// The co-located colour NAME ('green'/'red'/'yellow') is the independent spec
+// (on the Pane Object); this table is the independent spec of how that name
+// renders as an SGR parameter. A production change from `green` to `blue` makes
+// the rendered byte `34m`, which no longer matches the `32` we look for — the
+// test goes RED, never laundered green. Ink emits the basic 16-colour codes for
+// named colours, and `tmux capture-pane -e` reproduces them verbatim.
+const SGR_PARAM: Record<string, number> = {
+  red: 31,
+  green: 32,
+  yellow: 33,
+  blue: 34,
+  magenta: 35,
+  cyan: 36,
+}
+
+/**
+ * Whether `line` carries an SGR escape that sets foreground `colorName`. Parses
+ * every `[...m` sequence and checks its semicolon-separated params for the
+ * standalone code — so `[1;32m` (bold green) and `[32m` both match
+ * `green`, while `320`/`132` do not.
+ */
+export function lineHasColor(line: string, colorName: string): boolean {
+  const code = SGR_PARAM[colorName]
+  if (code === undefined) return false
+  const target = String(code)
+  const sgr = /\[([0-9;]*)m/g
+  for (let m = sgr.exec(line); m !== null; m = sgr.exec(line)) {
+    const params = m[1] ?? ''
+    if (params.split(';').includes(target)) return true
+  }
+  return false
+}
+
+/** Whether any line containing `needle` also carries the `colorName` SGR code. */
+export function frameHasColoredText(frame: string, needle: string, colorName: string): boolean {
+  return frame.split('\n').some((line) => line.includes(needle) && lineHasColor(line, colorName))
+}

@@ -48,6 +48,8 @@ function createScreenApp(fixture: SinglePaneStepsFixture): ScreenApp {
       await fixture.launch({
         steps: spec.steps,
         ...(spec.stopAt !== undefined ? { stopAt: spec.stopAt } : {}),
+        ...(spec.outcome !== undefined ? { outcome: spec.outcome } : {}),
+        ...(spec.banner !== undefined ? { banner: spec.banner } : {}),
       })
     },
     leftPane,

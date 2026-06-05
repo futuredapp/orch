@@ -28,7 +28,10 @@ const SUMMARY = {
   stepsFailed: 1,
 }
 
-describe('<EndOfRunSummary> status label color', () => {
+// MIGRATED → tests-new/model/end-of-run--summary-colors.test.ts
+//          + tests-new/screen/end-of-run--summary-colors-bytes.test.ts  (parent U5b)
+//   (the "does not color the header text" case is merged — see ledger reason.)
+describe.skip('<EndOfRunSummary> status label color', () => {
   it('renders the "completed" label in green', () => {
     const frame = renderToString(
       <EndOfRunSummary run={RUN} summary={SUMMARY} status="completed" />,

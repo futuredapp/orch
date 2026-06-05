@@ -35,6 +35,32 @@ export interface PaneDriver {
   selectStep(step: string): Promise<void>
   /** Drive the pane to follow the live step (snap-to-live). */
   followLive(): Promise<void>
+
+  // --- U5a: preview cursor, scroll/viewport, colour -------------------------
+
+  /** Move the `↑/↓` preview cursor to `step` WITHOUT committing it. */
+  browseTo(step: string): Promise<void>
+  /** Assert `step` is the row under the `↑/↓` preview cursor (not yet committed). */
+  assertPreviewCursorOn(step: string): Promise<void>
+  /** Assert `step`'s row is inside the rendered viewport window. */
+  assertStepVisible(step: string): Promise<void>
+  /** Assert `step`'s row is scrolled out of the rendered viewport window. */
+  assertStepOffscreen(step: string): Promise<void>
+  /** Scroll the viewport to the oldest step (Home / `g` — jump to top). */
+  scrollToOldest(): Promise<void>
+  /** Scroll the viewport back to the live tail (End / `G` — jump to bottom). */
+  scrollToLive(): Promise<void>
+  /**
+   * Assert the line containing `lineNeedle` carries an SGR escape selecting
+   * `colorName` (D-P4 — glyph/summary colour). `colorName` is the co-located
+   * independent spec from the Pane Object, never a `src/` import.
+   */
+  assertColored(lineNeedle: string, colorName: string): Promise<void>
+
+  // --- U5b: banner / end-of-run absence -------------------------------------
+
+  /** Assert `text` is NOT present in the pane (a cleared banner, a hidden row). */
+  assertAbsent(text: string): Promise<void>
   /**
    * Assert the pane shows no caret-notation echo bytes (`^[`, `^M`, `^J`) — the
    * calling card of the legacy pty doubling bug. Only meaningful on a real-tmux

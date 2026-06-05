@@ -194,6 +194,103 @@ describe('screen driver — keystroke navigation over real tmux', () => {
   )
 })
 
+// U5a affordances over real tmux bytes: preview cursor, scroll/viewport window,
+// glyph colour. Each proves the byte-level fidelity a fake tmux cannot (R5).
+describe('screen driver — U5a preview cursor, scroll, glyph colour', () => {
+  it.skipIf(!tmuxAvailable)(
+    'browses the preview cursor without committing the selection',
+    async () => {
+      const app = await buildApp()
+      await app.resize(80, 24)
+      await app.launch({ steps: ['plan', 'execute'], stopAt: 'mid-step' })
+
+      await app.leftPane.assertStepSelected('execute')
+      await app.leftPane.browseTo('plan')
+      await app.leftPane.assertPreviewCursorOn('plan')
+      await app.leftPane.assertStepSelected('execute') // committed unchanged
+    },
+    REAL_TMUX_TEST_TIMEOUT_MS,
+  )
+
+  it.skipIf(!tmuxAvailable)(
+    'scrolls an off-window step into view and back to the live tail',
+    async () => {
+      const app = await buildApp()
+      await app.resize(80, 12)
+      await app.launch({
+        steps: ['a01', 'a02', 'a03', 'a04', 'a05', 'a06', 'a07', 'a08', 'a09', 'a10'],
+        stopAt: 'mid-step',
+      })
+
+      await app.leftPane.assertStepOffscreen('a01')
+      await app.leftPane.scrollToOldest()
+      await app.leftPane.assertStepVisible('a01')
+      await app.leftPane.scrollToLive()
+      await app.leftPane.assertStepVisible('a10')
+    },
+    REAL_TMUX_TEST_TIMEOUT_MS,
+  )
+
+  it.skipIf(!tmuxAvailable)(
+    'renders the glyph colours so they survive real tmux (ANSI bytes)',
+    async () => {
+      const app = await buildApp()
+      await app.resize(80, 24)
+      await app.launch({ steps: ['plan', 'execute'], stopAt: 'mid-step' })
+
+      await app.leftPane.assertGlyphColor('execute', 'running') // ◐ yellow
+      await app.leftPane.assertGlyphColor('plan', 'done') // ✓ green
+    },
+    REAL_TMUX_TEST_TIMEOUT_MS,
+  )
+})
+
+// U5b affordances over real tmux: footer hints, banner paint (no TTL — D-P2),
+// end-of-run summary text/count/colour.
+describe('screen driver — U5b footer hints, banner paint, end-of-run summary', () => {
+  it.skipIf(!tmuxAvailable)(
+    'renders the live-mode footer hints',
+    async () => {
+      const app = await buildApp()
+      await app.resize(80, 24)
+      await app.launch({ steps: ['plan'], stopAt: 'mid-step' })
+
+      await app.leftPane.assertViewStepHintVisible()
+      await app.leftPane.assertHelpHintVisible()
+    },
+    REAL_TMUX_TEST_TIMEOUT_MS,
+  )
+
+  it.skipIf(!tmuxAvailable)(
+    'paints an info banner and an error banner above the steps grid',
+    async () => {
+      const info = await buildApp()
+      await info.resize(80, 24)
+      await info.launch({ steps: ['plan'], stopAt: 'mid-step', banner: { kind: 'info', text: 'saved to disk' } })
+      await info.leftPane.assertInfoBannerShows('saved to disk')
+
+      const err = await buildApp()
+      await err.resize(80, 24)
+      await err.launch({ steps: ['plan'], stopAt: 'mid-step', banner: { kind: 'error', text: 'disk full' } })
+      await err.leftPane.assertErrorBannerShows('disk full')
+    },
+    REAL_TMUX_TEST_TIMEOUT_MS,
+  )
+
+  it.skipIf(!tmuxAvailable)(
+    'renders the end-of-run completion count and a coloured summary label',
+    async () => {
+      const app = await buildApp()
+      await app.resize(80, 24)
+      await app.launch({ steps: ['plan', 'execute'], stopAt: 'end-of-run' })
+
+      await app.leftPane.assertCompletionCount(2, 2)
+      await app.leftPane.assertSummaryColor('completed')
+    },
+    REAL_TMUX_TEST_TIMEOUT_MS,
+  )
+})
+
 // Real-tmux sockets land in the tmux socket dir as `orch-*`. Delta-based.
 function listOrchSockets(): string[] {
   const dir = `${process.env.TMUX_TMPDIR ?? '/tmp'}/tmux-${process.getuid?.() ?? 0}`

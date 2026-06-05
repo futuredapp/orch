@@ -67,6 +67,94 @@ describe('model driver assertions read the projected view-model', () => {
   })
 })
 
+describe('model driver U5a preview cursor + scroll + glyph colour', () => {
+  it('moves the preview cursor without committing the selection', async () => {
+    app = await modelDriver.build(META)
+    await app.launch({ steps: ['s1', 's2', 's3'], stopAt: 'mid-step' })
+
+    // Committed selection starts on the live (last) step.
+    await app.leftPane.assertStepSelected('s3')
+
+    // Browsing moves only the ↑/↓ preview cursor; the committed row is unchanged.
+    await app.leftPane.browseTo('s1')
+    await app.leftPane.assertPreviewCursorOn('s1')
+    await app.leftPane.assertStepSelected('s3')
+  })
+
+  it('scrolls an off-window step into and back out of the viewport', async () => {
+    app = await modelDriver.build(META)
+    await app.launch({
+      steps: ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8'],
+      stopAt: 'mid-step',
+      viewportRows: 10,
+    })
+
+    // At the live tail a small window shows the newest steps; the oldest is out.
+    await app.leftPane.assertStepOffscreen('s1')
+
+    await app.leftPane.scrollToOldest()
+    await app.leftPane.assertStepVisible('s1')
+
+    await app.leftPane.scrollToLive()
+    await app.leftPane.assertStepVisible('s8')
+  })
+
+  it('renders each glyph state in its expected colour (raw SGR)', async () => {
+    app = await modelDriver.build(META)
+    await app.launch({ steps: ['s1', 's2'], stopAt: 'mid-step' })
+
+    await app.leftPane.assertGlyphColor('s2', 'running') // ◐ yellow
+    await app.leftPane.assertGlyphColor('s1', 'done') // ✓ green
+  })
+})
+
+describe('model driver U5b banner TTL runs on the virtual clock (D-P2)', () => {
+  it('auto-clears an info banner only after advanceTime, taking no real wall-clock', async () => {
+    app = await modelDriver.build(META)
+    await app.launch({ steps: ['s1'], stopAt: 'mid-step' })
+
+    await app.emitBanner('info', 'saved to disk')
+    await app.leftPane.assertInfoBannerShows('saved to disk')
+
+    const startedAt = Date.now()
+    await app.advanceTime(4000)
+    await app.leftPane.assertBannerCleared('saved to disk')
+    const elapsed = Date.now() - startedAt
+
+    // The TTL is 4000ms of VIRTUAL time; if it had used wall-clock this would
+    // have taken ~4s. Proving ≈0 real time is the whole point of D-P2.
+    expect(elapsed).toBeLessThan(1000)
+  })
+
+  it('keeps an error banner up across advanceTime — it persists until dismissed', async () => {
+    app = await modelDriver.build(META)
+    await app.launch({ steps: ['s1'], stopAt: 'mid-step' })
+
+    await app.emitBanner('error', 'disk full')
+    await app.leftPane.assertErrorBannerShows('disk full')
+
+    await app.advanceTime(60_000)
+    await app.leftPane.assertErrorBannerShows('disk full')
+  })
+})
+
+describe('model driver U5b end-of-run summary', () => {
+  it('reaches a terminal completed state with a green summary and completion count', async () => {
+    app = await modelDriver.build(META)
+    await app.launch({ steps: ['s1', 's2', 's3'], stopAt: 'end-of-run' })
+
+    await app.leftPane.assertCompletionCount(3, 3)
+    await app.leftPane.assertSummaryColor('completed')
+  })
+
+  it('renders a red summary label on a failed run', async () => {
+    app = await modelDriver.build(META)
+    await app.launch({ steps: ['s1', 's2'], stopAt: 'end-of-run', outcome: 'failed' })
+
+    await app.leftPane.assertSummaryColor('failed')
+  })
+})
+
 describe('model driver teardown is idempotent', () => {
   it('can be torn down twice with no error and no new socket residue', async () => {
     const socketsBefore = listOrchTestSockets()

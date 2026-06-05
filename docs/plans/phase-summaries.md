@@ -161,3 +161,49 @@ typecheck are clean; all new two-pane scenarios and driver regression tests pass
 (fast 30 + blocking overlap report, tmux 38, lifecycle 7). Multi-area old files
 (bulk left-pane rendering, pane-map/right-pane-controller, the behavioral-dsl
 launcher smoke) were deliberately left live for U5–U8.
+
+## Phase 5
+
+Phase 5 (parent unit **U5**) is the bulk left-pane migration, split into U5a
+(selection, preview cursor, scroll/viewport, step glyphs + colour) and U5b
+(view-mode footer hints, banner + TTL, end-of-run summary/footer/count/colour).
+The load-bearing work was extending the scenario/driver DSL so these behaviours
+are *expressible at all*: new `LeftPane` semantic methods (with co-located chrome
+and a co-located colour→state token map, D-P4) backed by new `PaneDriver`
+capabilities implemented on **both** the `model` and real-tmux pane drivers, each
+shipped test-first with driver-level tests. A new configurable ink harness
+(`model-ink-harness.ts`) lets the `model` driver control pane width/height — which
+is what makes scroll-window and adaptive-column projection assertable without
+tmux — and the model now forces `chalk.level=3` at build so colour SGR is present
+for the D-P4 assertions. Banner TTL is `model`-only on a **virtual clock**
+(`advanceTime`/`emitBanner`): the driver-level test proves it elapses ~0 real
+wall-clock, which is the whole point of D-P2 (a `screen` test must never sleep on
+a TTL). The screen single-pane fixture grew `end-of-run`/`outcome`/`banner`
+support so the byte twins can reach terminal and banner states.
+
+Behaviour was re-derived as `model` projection scenarios with co-landed `screen`
+byte twins under shared `overlapGroup`s (the blocking overlap report stays green
+at every boundary, D-P1). Seven old files are now fully `.skip` with `// MIGRATED →`
+markers and every child case ledgered: `selection`, `preview-cursor`,
+`banner-rendering`, `end-of-run-footer`, `end-of-run-summary`,
+`end-of-run-summary-colors`, and the tier-1 `end-of-run-summary-visible`
+integration case. The migration was treated as a pruning re-derivation (the
+plan's intent), so a few cases are `drop`/`merge` with reasons (no-flicker
+re-render, "does not colour the header") rather than mechanically ported.
+
+Important for next work: this phase deliberately left several in-scope files
+**live** rather than skip them with un-ledgered children (the D15
+green-but-incomplete trap). Their U5-covered cases are ledgered, but the files
+stay live because their remaining cases route elsewhere: per-status colour
+(pending/interactive/cached) and the failed-glyph/failure-banner cases → **U8**
+(failure/lifecycle cluster); `tui-overlay` parse/serialize and the
+`adaptive-columns` threshold-constant case → **U10–U13** relocation (`demote→unit`,
+pure codec/policy, not rendering); the `steps-view-banner` Esc/help **keymap
+mechanics** and footer truncation, plus `steps-view`/`steps-view-scroll`/
+`steps-view-colors`/`steps-view-model`/`start-steps-view`/`selection-tracks-view`
+spans-files. The DSL seam those later phases need is now in place — they are
+scenario-authoring + ledger close-out, not new infrastructure. The gate's only
+red is the pre-existing 5 ENOENT fixture failures under gitignored `.orch/`
+(`file-prompts-demo`, `typed-vars`), unrelated to this phase; all two-pane buckets
+(fast 52, screen 34, lifecycle 7, full:fake 8, full:recorded 11), typecheck, and
+lint are green.

@@ -19,9 +19,15 @@ export type _SharedModelScreenKeys = Expect<
   Equal<keyof SharedApp<['model', 'screen']>, 'teardown' | 'launch' | 'leftPane'>
 >
 
-// A single-driver model scenario is exactly ModelApp.
+// A single-driver model scenario is exactly ModelApp — including the U5b
+// model-only banner/clock affordances (`emitBanner`/`advanceTime`), which are
+// deliberately NOT in the model∩screen surface above (D-P2: no `advanceTime` on
+// `screen`).
 export type _SharedModelIsModelApp = Expect<
-  Equal<keyof SharedApp<['model']>, 'teardown' | 'launch' | 'leftPane'>
+  Equal<
+    keyof SharedApp<['model']>,
+    'teardown' | 'launch' | 'leftPane' | 'emitBanner' | 'advanceTime'
+  >
 >
 
 // Never invoked — present only so tsc typechecks the bodies. Exported so the

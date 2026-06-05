@@ -34,7 +34,9 @@ function withBanner(banner: StepsViewState['banner']): StepsViewState {
   return state
 }
 
-describe('<StepsView> banner rendering', () => {
+// MIGRATED → tests-new/model/banner--info-and-error-paint.test.ts
+//          + tests-new/screen/banner--paint-bytes.test.ts  (parent U5b)
+describe.skip('<StepsView> banner rendering', () => {
   it('info banner text appears in the frame', () => {
     const frame = stripAnsi(
       renderToString(

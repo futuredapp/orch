@@ -39,7 +39,10 @@ function terminal(status: 'completed' | 'failed' | 'crashed'): StepsViewState {
   }
 }
 
-describe('<StepsView> end-of-run footer', () => {
+// MIGRATED → tests-new/model/end-of-run--summary-and-count.test.ts
+//          + tests-new/model/end-of-run--summary-colors.test.ts (failed/crashed footers)
+//          + tests-new/model/footer--view-mode-hints.test.ts (live footer)  (parent U5b)
+describe.skip('<StepsView> end-of-run footer', () => {
   it('completed terminal status shows the run-completed footer', () => {
     const frame = stripAnsi(
       renderToString(<StepsView state={terminal('completed')} onIntent={NOOP} now={() => NOW} />, {

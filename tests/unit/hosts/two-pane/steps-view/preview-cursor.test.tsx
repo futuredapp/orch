@@ -67,7 +67,9 @@ function liveState(steps: readonly StepRow[]): StepsViewState {
 
 const NAMES = ['plan', 'work'] as const
 
-describe('<StepsView> preview cursor (commit model, Issue 2)', () => {
+// MIGRATED → tests-new/model/preview-cursor--browse-commit-snap.test.ts
+//          + tests-new/screen/preview-cursor--bytes.test.ts  (parent U5a)
+describe.skip('<StepsView> preview cursor (commit model, Issue 2)', () => {
   it('moves a distinct preview cursor on ↑ while leaving the committed highlight on the live step', async () => {
     const intents: StepsViewIntent[] = []
     const ui = render(

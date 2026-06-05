@@ -67,7 +67,9 @@ function Harness({
   )
 }
 
-describe('useStepsSelection', () => {
+// MIGRATED → tests-new/model/selection--auto-tracks-live-and-browses.test.ts
+//          + tests-new/screen/selection--highlight-bytes.test.ts  (parent U5a)
+describe.skip('useStepsSelection', () => {
   it('auto-tracks the live step on first render with isUserDriven=false', async () => {
     let captured: StepsSelection | undefined
     const ui = render(<Harness steps={STEPS} expose={(s) => (captured = s)} />)
