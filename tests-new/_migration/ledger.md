@@ -140,3 +140,61 @@
 | steps-view/tui-overlay.test.ts | (all 11 parse/serialize cases) | — | demote→unit | `parseTuiOverlayLine`/`serializeTuiOverlayLine` are pure model-state codec tests, not left-pane rendering (D-P6/triage) — relocate as plain unit tests in U10–U13; file stays live. |
 | lifecycle/banner.info-banner-auto-clears-after-ttl.behavioral.real.test.ts | the "step complete" info banner is visible briefly then disappears | model/banner--info-clears-error-persists.test.ts | demote→model | Banner TTL is a decision over time — proven deterministically on the virtual clock, never real wall-clock (D-P2/D-P3). File is a lifecycle-cluster file; left live for U8 to close its boot/teardown concern. |
 | lifecycle/banner.error-banner-persists-until-escape.behavioral.real.test.ts | error banner stays visible past the info-TTL and dismisses on Esc (blocked it.todo) | model/banner--info-clears-error-persists.test.ts | demote→model | The persist-past-TTL half is now covered at the model seam; the Esc-dismiss half was a never-executed `it.todo`. File left live for U8. |
+
+## Migrated cases — two-pane plumbing: nav · replay · progression · multi-source (parent U6)
+
+> **Phase 6 / U6** migrates the two-pane *plumbing* surface — behaviours whose
+> risk is *what the controller decides about the panes* or *whether the two panes
+> communicate* — re-derived across `model` (decisions) and `full-host:fake-agent`
+> (communication), plus a `screen` byte twin for the one net-new rendering
+> surface (the help overlay). It is a **pruning** re-derivation: several nominal-U6
+> files answer "yes" to the triage rule ("would this still pass if the pane were
+> empty?") — their risk is orchestration / disk persistence / a race, not the
+> panes — so they are `demote→integration` (relocated in U10–U13), file left LIVE.
+>
+> The new full-host nav/replay/multi-step scenarios run in **static** mode (the
+> whole FakeRunner workflow runs to completion, then navigation drives the
+> mounted host), which sidesteps the U4 live single-handle multi-step limit.
+
+### Sub-phase U6a — navigation & replay → file `.skip`
+
+| Old file | Old case | New scenario (path) | Disposition | Reason |
+|---|---|---|---|---|
+| lifecycle/nav.help-overlay-opens-and-closes.behavioral.real.test.ts | ? opens the keymap overlay, Esc closes it, the step list survives | model/help-overlay--opens-and-closes.test.ts (+ screen/help-overlay--paint-bytes.test.ts) | port | New help-overlay affordance (U6a.1): controller-shows decision (model) + overlay bytes paint without eating the step list (screen), overlapGroup `help-overlay`. Closes the U5b-deferred Esc/help keymap mechanics. |
+| lifecycle/nav.up-down-moves-selection-without-detaching-live.behavioral.real.test.ts | ↑/↓ moves the preview cursor while the running step keeps live focus | model/nav--up-down-keeps-live-running.test.ts | port→model | Selection decoupled from live focus is a controller decision (no byte risk) — re-derived at the projection seam. |
+| lifecycle/nav.enter-on-completed-step-swaps-right-pane-to-transcript.behavioral.real.test.ts | Enter on a completed step swaps the right pane to its transcript | full-host/fake-agent/nav--enter-swaps-right-pane-to-transcript.test.ts | port | Two-pane communication: revisiting a completed step swaps the visible right pane to that step's source (proven via the deterministic per-source `[<step>] starting…` marker; the live↔replay footer-flip chrome is covered by the U5b `view-mode-footer` model/screen scenarios in live mode). |
+| lifecycle/nav.f-snaps-selection-back-to-live.behavioral.real.test.ts | f returns the committed selection to the live step | model/follow-live--returns-to-running-step.test.ts (+ model/selection--auto-tracks-live-and-browses.test.ts, U5 footer twins) | merge | Same follow-live decision already covered by the U4 follow-live group; added `oldTestRefs`. No distinct right-pane outcome to warrant a new full-host twin. |
+| tier-1/replay-shows-same-transcript-as-live.real.integration.test.ts | the transcript persists in the right pane after the run ends | full-host/fake-agent/replay--revisit-shows-same-transcript.test.ts | port | Single-step transcript persistence is deterministic; two-pane communication. |
+| tier-1/replay-revisit-reuses-pane.real.integration.test.ts | the per-source session pane count is stable across two right-pane captures after step:complete | full-host/fake-agent/replay--revisit-shows-same-transcript.test.ts | port (visible) + drop (pane-count) | VISIBLE half (revisit shows the same transcript) ported; the white-box per-source pane-COUNT invariant is `drop` — an implementation detail, not a user-visible outcome, covered structurally by the U2 driver no-orphans/teardown regression. |
+| tier-1/multi-step-right-pane-shows-latest.real.integration.test.ts | after the first step completes, the right pane auto-advances to the second live step while the first stays warm-cached | full-host/fake-agent/multi-step--right-pane-auto-advances.test.ts | port | Right-pane auto-advance + warm-cache revisit (two-pane plumbing), asserted via the deterministic per-source marker. |
+| tier-1/interactive-pane-shows-prompt.real.integration.test.ts | (single it.skip deferred placeholder — never executed) | — | drop | Deferred placeholder (`it.skip`) that never ran and asserted nothing. The interactive *badge* render is covered by U4 `launch.interactive-badge`; real interactive prompt BYTES belong to a U9 `real-agent` smoke if desired. File becomes `describe.skip`. |
+
+### Sub-phase U6b — progression, multi-source, command, demotions
+
+| Old file | Old case | New scenario (path) | Disposition | Reason |
+|---|---|---|---|---|
+| lifecycle/progression.live-focus-follows-newly-running-step.behavioral.real.test.ts | the live focus follows the newly-running step after the prior completes | model/progression--live-focus-and-glyph-flip.test.ts | port→model | Controller decision: committed selection auto-tracks the newest running step (overlaps U5 selection-auto-tracks-live). |
+| lifecycle/progression.step-completes-glyph-flips-to-check.behavioral.real.test.ts | a completed step's glyph flips to the done check | model/progression--live-focus-and-glyph-flip.test.ts | port→model | Glyph-flip decision (the colour bytes already have a `screen` twin in U5 `glyph--state-and-color`). |
+| tier-1/many-sources-no-split-failure.real.integration.test.ts | runs 6 autonomous steps back-to-back; each lands in its own per-source session and the right pane shows the latest | full-host/fake-agent/multi-source--each-source-swaps-distinct-content.test.ts | port | Consolidated at representative scale (3 sources): each per-source step lands in its own session; right pane auto-advances to the latest. |
+| tier-1/many-sources-no-split-failure.real.integration.test.ts | captures different pane content after swapping the visible slot across six sources | full-host/fake-agent/multi-source--each-source-swaps-distinct-content.test.ts | port | Swapping the visible slot shows each source's distinct content. |
+| lifecycle/per-source-sessions-10-step-walkthrough.real.test.ts | runs 10 autonomous steps; no pane-spawn-failed or scratch-window-rotate events fire; teardown reaps every per-source session | full-host/fake-agent/multi-source--each-source-swaps-distinct-content.test.ts | port (swap) + merge (no-leak/teardown) | The visible swap-across-sources is ported (at 3-source scale, not a slow 10-step real-tmux run); the no-split/no-leak/teardown-reaps property is already guaranteed by the U2 driver no-orphans/teardown regression — referenced, not duplicated. |
+
+### Sub-phase U6b — triage demotions (file left LIVE for U10–U13 relocation)
+
+> These cases answer **yes** to the triage rule ("would this still pass if the
+> pane were empty / wrong / unformatted?") — their risk is stop-channel
+> coordination, disk persistence, resume orchestration, or a race, NOT two-pane
+> rendering. They are `demote→integration` and **relocated in U10–U13**; U6
+> leaves each file **LIVE** (capability `skipIf` unchanged), because reconcile
+> rule 3 forbids a `// MIGRATED →` marker pointing at a target that does not yet
+> exist. U6 must not skip these.
+
+| Old file | Old case | New scenario (path) | Disposition | Reason |
+|---|---|---|---|---|
+| tier-1/auto-stop.real.integration.test.ts | closes itself when the stop channel is signaled, with no manual close | → U10–U13 | demote→integration | Stop-channel coordination, not rendering — passes if the pane is empty. File stays LIVE. |
+| tier-1/auto-stop.real.integration.test.ts | records armed → signaled → terminated lifecycle events in order | → U10–U13 | demote→integration | Stop-channel event ordering (host-coordinator integration with fakes). File stays LIVE. |
+| tier-1/auto-stop.real.integration.test.ts | resolves via pane-exit when an armed autoStop pane is manually closed, with no stop signal | → U10–U13 | demote→integration | Pane-exit race coordination, not a visible pane outcome. File stays LIVE. |
+| tier-1/auto-stop.real.integration.test.ts | a step without autoStop never arms and ignores a stop-channel signal | → U10–U13 | demote→integration | Negative stop-channel coordination. File stays LIVE. |
+| lifecycle/progression.per-step-artifacts-land-on-disk.behavioral.real.test.ts | writes session.json and events.ndjson for each completed step | → U10–U13 | demote→integration | Disk persistence, not rendering — passes if the pane is empty. File stays LIVE. |
+| lifecycle/resume.cached-steps-replay-with-cached-glyph.behavioral.real.test.ts | cached plan survives across runs; execute re-runs and the resumed run completes | → U10–U13 | demote→integration | Resume orchestration (cached-plan survival, runner re-invocation). The cached-glyph RENDER overlaps U8 cached-colour; the orchestration is the dominant risk. File stays LIVE. |
+| lifecycle/command.output-streams-to-right-pane-and-exit-code-recorded.behavioral.real.test.ts | command stdout streams to disk and state.json records exitCode 0 | → U10–U13 | demote→integration | The OLD case asserts disk streaming + `state.json` exitCode — both persistence/orchestration ("passes if the pane is empty"). The full-host harness runs agent steps only; a non-agent command step that streams to the right pane needs host-fixture infrastructure (a `command(...)` step + tmux pipe-pane capture) that does not exist in `tests-new/_support/real-tmux/` and is beyond U6's scenario-authoring scope. The visible command-output-to-pane behaviour is deferred to whichever phase adds command-step support; the persistence assertion relocates in U10–U13. File stays LIVE. |

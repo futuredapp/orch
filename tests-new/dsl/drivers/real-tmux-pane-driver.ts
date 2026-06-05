@@ -169,6 +169,23 @@ export function createRealTmuxPaneDriver(deps: RealTmuxPaneDriverDeps): PaneDriv
     assertStepOffscreen(step): Promise<void> {
       return deps.handle.waitFor((frame) => !rowVisible(frame, step), waitOpts)
     },
+    async openHelp(marker): Promise<void> {
+      // `?` toggles the overlay, so it is NOT idempotent — resend only while the
+      // marker is still absent (a dropped first keypress), never blind-spam.
+      const perSend = Math.max(400, Math.floor(deps.assertTimeoutMs / 6))
+      for (let i = 0; i < 6; i++) {
+        const frame = await deps.handle.capture()
+        if (frame.includes(marker)) return
+        await deps.sendKey('?')
+        await deps.handle.waitFor((f) => f.includes(marker), { timeoutMs: perSend }).catch(() => {})
+      }
+      await deps.handle.waitFor((frame) => frame.includes(marker), waitOpts)
+    },
+    async closeHelp(marker): Promise<void> {
+      // `Escape` on a closed overlay is a no-op / banner-dismiss, never a
+      // re-open, so it is safe to resend until the marker disappears.
+      await pollSendKey('Escape', (frame) => !frame.includes(marker))
+    },
     async scrollToOldest(): Promise<void> {
       const oldest = deps.stepNames()[0]
       if (oldest === undefined) return

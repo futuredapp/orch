@@ -26,8 +26,10 @@ afterEach(async () => {
   if (handle !== undefined) await handle.teardown()
 })
 
+// MIGRATED → tests-new/model/progression--live-focus-and-glyph-flip.test.ts — parent U6b.1.
+// port→model: live focus follows the newly-running step (controller decision).
 describe.skipIf(!canRunRealTmux())('Tier 5 behavioral — live focus follows next step', () => {
-  it('next step becomes running after the prior one completes', async () => {
+  it.skip('next step becomes running after the prior one completes', async () => {
     handle = await launchOrchWorkflow('three-step-linear', {
       script: { plan: puppet(), execute: puppet(), finalize: puppet() },
     })

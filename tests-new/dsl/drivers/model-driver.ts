@@ -29,6 +29,7 @@ import type { ScenarioMeta } from '../scenario.ts'
 import {
   ARROW_DOWN,
   ARROW_UP,
+  ESCAPE,
   frameHasColoredText,
   glyphChar,
   highlightedStepName,
@@ -151,6 +152,28 @@ function createModelApp(): ModelApp {
     },
     async assertStepOffscreen(step): Promise<void> {
       await waitForFrame(requireUi(), (f) => !rowVisible(f, step), strip)
+    },
+    async openHelp(marker): Promise<void> {
+      // `?` toggles, so resending is safe ONLY while the overlay is still hidden
+      // (a dropped first keypress). Re-read before each resend; never blind-spam.
+      const instance = requireUi()
+      for (let i = 0; i < 5; i++) {
+        if (stripAnsi(instance.lastFrame() ?? '').includes(marker)) break
+        instance.stdin.write('?')
+        await new Promise((r) => setTimeout(r, 20))
+      }
+      await waitForFrame(instance, (f) => f.includes(marker), strip)
+    },
+    async closeHelp(marker): Promise<void> {
+      // Esc on a closed overlay is a no-op (or banner-dismiss), never a re-open,
+      // so it is safe to resend until the overlay disappears.
+      const instance = requireUi()
+      for (let i = 0; i < 5; i++) {
+        if (!stripAnsi(instance.lastFrame() ?? '').includes(marker)) break
+        instance.stdin.write(ESCAPE)
+        await new Promise((r) => setTimeout(r, 20))
+      }
+      await waitForFrame(instance, (f) => !f.includes(marker), strip)
     },
     async scrollToOldest(): Promise<void> {
       const oldest = stepNames[0]

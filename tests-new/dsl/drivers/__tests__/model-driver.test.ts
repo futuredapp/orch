@@ -155,6 +155,43 @@ describe('model driver U5b end-of-run summary', () => {
   })
 })
 
+describe('model driver U6 help overlay', () => {
+  it('opens the overlay on ? and hides the view-mode footer while it is open', async () => {
+    app = await modelDriver.build(META)
+    await app.launch({ steps: ['plan', 'execute'], stopAt: 'mid-step' })
+
+    await app.leftPane.assertHelpHidden()
+    await app.leftPane.openHelp()
+    await app.leftPane.assertHelpVisible()
+  })
+
+  it('closes the overlay on Esc and leaves the step list intact across the toggle', async () => {
+    app = await modelDriver.build(META)
+    await app.launch({ steps: ['plan', 'execute', 'review'], stopAt: 'mid-step' })
+
+    await app.leftPane.openHelp()
+    await app.leftPane.assertHelpVisible()
+
+    await app.leftPane.closeHelp()
+    await app.leftPane.assertHelpHidden()
+
+    // Survival: every step row still renders after open→close.
+    await app.leftPane.assertStepListSurvives(['plan', 'execute', 'review'])
+  })
+
+  it('opens and closes idempotently across repeated toggles', async () => {
+    app = await modelDriver.build(META)
+    await app.launch({ steps: ['plan'], stopAt: 'mid-step' })
+
+    await app.leftPane.openHelp()
+    await app.leftPane.assertHelpVisible()
+    await app.leftPane.closeHelp()
+    await app.leftPane.assertHelpHidden()
+    await app.leftPane.openHelp()
+    await app.leftPane.assertHelpVisible()
+  })
+})
+
 describe('model driver teardown is idempotent', () => {
   it('can be torn down twice with no error and no new socket residue', async () => {
     const socketsBefore = listOrchTestSockets()

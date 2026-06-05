@@ -291,6 +291,45 @@ describe('screen driver — U5b footer hints, banner paint, end-of-run summary',
   )
 })
 
+// U6 help overlay over real tmux: the `?` keystroke opens the overlay bytes,
+// `Esc` closes them, and the step list survives the toggle. This is the net-new
+// surface U6 adds; it is proven at the driver level (open/close/survives) before
+// the help-overlay scenario leans on it.
+describe('screen driver — U6 help overlay over real tmux', () => {
+  it.skipIf(!tmuxAvailable)(
+    'opens the overlay bytes on ? and closes them on Esc',
+    async () => {
+      const app = await buildApp()
+      await app.resize(80, 24)
+      await app.launch({ steps: ['plan', 'execute'], stopAt: 'mid-step' })
+
+      await app.leftPane.assertHelpHidden()
+      await app.leftPane.openHelp()
+      await app.leftPane.assertHelpVisible()
+
+      await app.leftPane.closeHelp()
+      await app.leftPane.assertHelpHidden()
+    },
+    REAL_TMUX_TEST_TIMEOUT_MS,
+  )
+
+  it.skipIf(!tmuxAvailable)(
+    'leaves every step row intact across the overlay toggle',
+    async () => {
+      const app = await buildApp()
+      await app.resize(80, 24)
+      await app.launch({ steps: ['plan', 'execute', 'review'], stopAt: 'mid-step' })
+
+      await app.leftPane.openHelp()
+      await app.leftPane.assertHelpVisible()
+      await app.leftPane.closeHelp()
+
+      await app.leftPane.assertStepListSurvives(['plan', 'execute', 'review'])
+    },
+    REAL_TMUX_TEST_TIMEOUT_MS,
+  )
+})
+
 // Real-tmux sockets land in the tmux socket dir as `orch-*`. Delta-based.
 function listOrchSockets(): string[] {
   const dir = `${process.env.TMUX_TMPDIR ?? '/tmp'}/tmux-${process.getuid?.() ?? 0}`

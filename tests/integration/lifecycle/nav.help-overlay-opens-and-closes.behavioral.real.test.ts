@@ -30,8 +30,11 @@ afterEach(async () => {
   if (handle !== undefined) await handle.teardown()
 })
 
+// MIGRATED → tests-new/model/help-overlay--opens-and-closes.test.ts
+//            (+ tests-new/screen/help-overlay--paint-bytes.test.ts) — parent U6a.2.
+// port: ? opens the keymap overlay, Esc closes it, the step list survives.
 describe.skipIf(!canRunRealTmux())('Tier 5 behavioral — help overlay toggle', () => {
-  it('? opens help overlay, Esc closes it, and the step list survives', async () => {
+  it.skip('? opens help overlay, Esc closes it, and the step list survives', async () => {
     handle = await launchOrchWorkflow('three-step-linear', {
       script: { plan: puppet(), execute: puppet(), finalize: puppet() },
     })
@@ -48,9 +51,9 @@ describe.skipIf(!canRunRealTmux())('Tier 5 behavioral — help overlay toggle', 
       // The viewing footer should not be present after closing help.
       doesNotContain('viewing plan'),
     )
-    // 60s `it()` ceiling (matches the other behavioral.real cells): leaves
+    // 60s `it.skip()` ceiling (matches the other behavioral.real cells): leaves
     // room for the three sequential 15s polling assertions above to each play
     // out under contention so the *internal* budget — which names what it
-    // waited for — is the binding constraint, not the generic `it()` timeout.
+    // waited for — is the binding constraint, not the generic `it.skip()` timeout.
   }, 60_000)
 })

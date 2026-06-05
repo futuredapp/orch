@@ -37,8 +37,10 @@ afterEach(async () => {
   if (handle !== undefined) await handle.teardown()
 })
 
+// MIGRATED → tests-new/model/follow-live--returns-to-running-step.test.ts — parent U6a.3.
+// merge: same follow-live decision (f snaps committed selection back to live).
 describe.skipIf(!canRunRealTmux())('Tier 5 behavioral — f snaps to live', () => {
-  it('pressing f after entering a viewing state returns the footer to live mode', async () => {
+  it.skip('pressing f after entering a viewing state returns the footer to live mode', async () => {
     handle = await launchOrchWorkflow('three-step-linear', {
       script: { plan: puppet(), execute: puppet(), finalize: puppet() },
     })

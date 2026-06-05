@@ -33,10 +33,12 @@ afterEach(async () => {
   fixturesToDispose = []
 })
 
+// MIGRATED → tests-new/full-host/fake-agent/multi-step--right-pane-auto-advances.test.ts — parent U6a.4.
+// port: right pane auto-advances to the new live step; the first stays revisitable.
 describe.skipIf(!tmuxAvailable)(
   "Tier 1 — first step's warm-cached replay survives the second step starting",
   () => {
-    it('after the first step completes, the right pane auto-advances to the second live step while the first stays warm-cached', async () => {
+    it.skip('after the first step completes, the right pane auto-advances to the second live step while the first stays warm-cached', async () => {
       const fixture = await createRealTmuxFixture({ env: {} })
       fixturesToDispose.push(fixture)
       const agentProcessService = new FakeProcessService()

@@ -51,10 +51,13 @@ afterEach(async () => {
   tempDirs = []
 })
 
+// MIGRATED → tests-new/full-host/fake-agent/multi-source--each-source-swaps-distinct-content.test.ts — parent U6b.2.
+// port: each per-source step lands in its own session; swapping shows distinct content.
+// (no-split/no-leak/teardown property → merged into the U2 driver no-orphans regression.)
 describe.skipIf(!tmuxAvailable)(
   'Tier 1 — six sequential autonomous sources never trip "no space for new pane"',
   () => {
-    it('runs 6 autonomous steps back-to-back; each lands in its own per-source session and the right pane shows the latest', async () => {
+    it.skip('runs 6 autonomous steps back-to-back; each lands in its own per-source session and the right pane shows the latest', async () => {
       const fixture = await createRealTmuxFixture({ env: {} })
       fixturesToDispose.push(fixture)
       const agentProcessService = new FakeProcessService()
@@ -110,7 +113,7 @@ describe.skipIf(!tmuxAvailable)(
       expect(orchPanes).toHaveLength(2)
     }, 30_000)
 
-    it('captures different pane content after swapping the visible slot across six sources', async () => {
+    it.skip('captures different pane content after swapping the visible slot across six sources', async () => {
       // This second cell is the explicit cross-source swap probe: we drive
       // six file-tail sources directly (no workflow scaffolding) and assert
       // that swap-pane works across all six per-source sessions, with the

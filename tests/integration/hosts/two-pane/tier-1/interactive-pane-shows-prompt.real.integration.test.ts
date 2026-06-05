@@ -18,6 +18,9 @@ import { canRunRealTmux } from '../../../../helpers/real-tmux/index.ts'
 const tmuxAvailable = canRunRealTmux()
 const deferred = true
 
+// DROPPED (parent U6a.4): deferred placeholder (it.skip) that never executed and
+// asserted nothing. Interactive badge render → U4 launch.interactive-badge; real
+// interactive prompt bytes → a U9 real-agent smoke if desired. See ledger.
 describe.skipIf(!tmuxAvailable || deferred)(
   'Tier 1 — interactive pane shows prompt (DEFERRED — needs real PTY-producing agent)',
   () => {

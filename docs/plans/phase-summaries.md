@@ -207,3 +207,52 @@ red is the pre-existing 5 ENOENT fixture failures under gitignored `.orch/`
 (`file-prompts-demo`, `typed-vars`), unrelated to this phase; all two-pane buckets
 (fast 52, screen 34, lifecycle 7, full:fake 8, full:recorded 11), typecheck, and
 lint are green.
+
+## Phase 6
+
+Phase 6 (parent unit **U6**) migrates the two-pane *plumbing* surface — the
+behaviours whose risk is *what the controller decides about the panes* or
+*whether the two panes communicate*: navigation (up/down browse, Enter-to-swap,
+the help overlay), replay/revisit, multi-step auto-advance, progression, and
+many per-source sessions. These re-derive across `model` (decisions, no tmux)
+and `full-host:fake-agent` (real-tmux two-pane communication), plus one `screen`
+byte twin for the single net-new rendering surface. The load-bearing new piece
+is the **help-overlay affordance**: `openHelp`/`closeHelp` on the `PaneDriver`
+(backed on both the model ink harness and the real-tmux pane driver) and
+semantic `LeftPane` methods with a co-located `Keymap` chrome literal, shipped
+test-first with driver-level tests before the `model`+`screen` help scenario
+consumed them (overlapGroup `help-overlay`, so the blocking overlap report
+requires both halves).
+
+Two things worth carrying forward. **(1) Static full-host multi-step navigation
+works, with one caveat about what's assertable.** The static driver runs the
+whole FakeRunner workflow to completion, then keystroke-navigates the still-mounted
+host — so enter-swap, replay-revisit, multi-step auto-advance, and multi-source
+all run on real tmux without the U4 live single-handle hang. But the visible
+right-pane signal is the deterministic per-source `[<step>] starting…` marker,
+**not** the agent transcript text (which races teardown under instant
+FakeRunners — the old tier-1 multi-step test flagged the same thing). And a
+*completed* run renders the end-of-run footer, so the live↔replay `⏸ viewing`
+footer-flip is not assertable on a completed static run — that chrome stays
+covered by the U5b `view-mode-footer` model/screen scenarios in live mode.
+**(2) One planned scenario was demoted, not authored.** U6b.3 (command-output to
+the right pane) became a full `demote→integration` to U10–U13 rather than a new
+scenario: the old case actually asserts *disk streaming + `state.json` exitCode*
+(both persistence, "passes if the pane is empty"), and the full-host harness runs
+agent steps only — a non-agent `command(...)` step that streams to the pane needs
+host-fixture infrastructure (command step + tmux pipe-pane capture) that does not
+exist in `tests-new/_support/real-tmux/` and is beyond U6's scenario-authoring
+scope.
+
+Per the triage rule, four in-scope files are left **LIVE** (capability-gated, not
+skipped) because every one of their cases is `demote→integration` for U10–U13 and
+reconcile rule 3 forbids a `// MIGRATED →` marker to a not-yet-existing target:
+`auto-stop` (stop-channel coordination/races), `progression.per-step-artifacts`
+(disk persistence), `resume.cached-steps-replay` (resume orchestration), and
+`command.output-streams` (the demotion above). The ten fully-resolved files are
+unconditional `it.skip` with markers and every child case ledgered. Gate state:
+typecheck, lint, the blocking overlap report (47 scenarios), and all two-pane
+buckets are green — fast 61, full:fake 12, screen 37, lifecycle 7 — and the old
+unit suite (1954) is untouched. The heavy legacy real-tmux *integration* suite
+(`test:legacy`, documented-flaky) was not re-run end-to-end; the U6 files it owns
+were verified to skip cleanly and the four demoted files to remain live.

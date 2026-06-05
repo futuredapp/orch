@@ -50,6 +50,24 @@ export interface PaneDriver {
   scrollToOldest(): Promise<void>
   /** Scroll the viewport back to the live tail (End / `G` — jump to bottom). */
   scrollToLive(): Promise<void>
+
+  // --- U6: help overlay -----------------------------------------------------
+
+  /**
+   * Open the help overlay (`?`) and settle on it being shown. `marker` is the
+   * co-located overlay chrome literal from the Pane Object (never a `src/`
+   * import) — the driver uses it to know when the toggle has registered, so a
+   * dropped first keypress can be safely resent (only while still hidden, since
+   * `?` toggles). On `model` the `?` goes to the ink harness stdin; on real tmux
+   * it is a `?` keystroke through `sendKey`.
+   */
+  openHelp(marker: string): Promise<void>
+  /**
+   * Close the help overlay (`Esc`) and settle on it being hidden. `Esc` is safe
+   * to resend until `marker` disappears (an extra Esc on a closed overlay is a
+   * no-op / banner-dismiss, never a re-open).
+   */
+  closeHelp(marker: string): Promise<void>
   /**
    * Assert the line containing `lineNeedle` carries an SGR escape selecting
    * `colorName` (D-P4 — glyph/summary colour). `colorName` is the co-located

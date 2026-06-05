@@ -35,6 +35,15 @@ export class LeftPane {
     terminalFooterActions: ' · q to quit · ⏎ to inspect',
   } as const
 
+  // U6 — help-overlay chrome. The INDEPENDENT spec of the overlay's title and a
+  // distinctive hint line, quoted from the `src/` `HelpOverlay` render but NEVER
+  // imported — a production wording typo (`Keymap` → `Keys`) makes the captured
+  // byte stop matching, so the test goes RED rather than laundering the change.
+  private static readonly HELP = {
+    title: 'Keymap',
+    toggleHint: '? toggle this help',
+  } as const
+
   // U5a/D-P4 — expected colour→state mapping. The independent spec of which
   // production palette colour each glyph/summary state must render in; a
   // production palette typo (green→blue) makes the rendered byte stop matching,
@@ -96,6 +105,39 @@ export class LeftPane {
 
   followLive(): Promise<void> {
     return this.driver.followLive()
+  }
+
+  // --- U6: help overlay -----------------------------------------------------
+
+  /** Open the keymap help overlay (`?`). */
+  openHelp(): Promise<void> {
+    return this.driver.openHelp(LeftPane.HELP.title)
+  }
+
+  /** Close the keymap help overlay (`Esc`). */
+  closeHelp(): Promise<void> {
+    return this.driver.closeHelp(LeftPane.HELP.title)
+  }
+
+  /** The help overlay is shown (its co-located title chrome is present). */
+  assertHelpVisible(): Promise<void> {
+    return this.driver.assertContains(LeftPane.HELP.title)
+  }
+
+  /** The help overlay is gone (its co-located title chrome is absent). */
+  assertHelpHidden(): Promise<void> {
+    return this.driver.assertAbsent(LeftPane.HELP.title)
+  }
+
+  /**
+   * Every named step row still renders — the survival check after toggling the
+   * overlay (the overlay must not eat the step list). Reuses the existing
+   * `assertStepVisible` capability, so no new driver method is needed.
+   */
+  async assertStepListSurvives(steps: readonly string[]): Promise<void> {
+    for (const step of steps) {
+      await this.driver.assertStepVisible(step)
+    }
   }
 
   // --- U5a: preview cursor, scroll/viewport, glyph colour -------------------

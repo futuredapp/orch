@@ -102,6 +102,11 @@ export function rowVisible(frame: string, step: string): boolean {
 export const ARROW_UP = '\u001b[A'
 export const ARROW_DOWN = '\u001b[B'
 
+// A bare ESC byte — the help-overlay close key (U6). Ink surfaces a lone ESC
+// as `key.escape`; the screen/full-host drivers send the named `Escape` key
+// through tmux instead (same intent, different transport).
+export const ESCAPE = '\u001b'
+
 // --- ANSI colour matching (D-P4 — glyph/summary colour, model + screen) ------
 //
 // A colour assertion proves a production palette choice survives to the frame.

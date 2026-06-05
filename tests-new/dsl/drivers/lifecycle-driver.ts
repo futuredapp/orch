@@ -130,6 +130,8 @@ function deferredPaneDriver(): PaneDriver {
     assertStepOffscreen: () => defer('assertStepOffscreen'),
     scrollToOldest: () => defer('scrollToOldest'),
     scrollToLive: () => defer('scrollToLive'),
+    openHelp: () => defer('openHelp'),
+    closeHelp: () => defer('closeHelp'),
     assertColored: () => defer('assertColored'),
     assertAbsent: () => defer('assertAbsent'),
     assertNoCaretEcho: () => defer('assertNoCaretEcho'),

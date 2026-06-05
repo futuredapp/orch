@@ -11,6 +11,9 @@ class CapturingPaneDriver implements PaneDriver {
   readonly containsCalls: string[] = []
   readonly absentCalls: string[] = []
   readonly coloredCalls: { needle: string; colorName: string }[] = []
+  readonly openHelpCalls: string[] = []
+  readonly closeHelpCalls: string[] = []
+  readonly stepVisibleCalls: string[] = []
 
   assertBottomText(literal: string, opts: { count: number }): Promise<void> {
     this.bottomTextCalls.push({ literal, count: opts.count })
@@ -38,7 +41,8 @@ class CapturingPaneDriver implements PaneDriver {
   assertPreviewCursorOn(_step: string): Promise<void> {
     return Promise.resolve()
   }
-  assertStepVisible(_step: string): Promise<void> {
+  assertStepVisible(step: string): Promise<void> {
+    this.stepVisibleCalls.push(step)
     return Promise.resolve()
   }
   assertStepOffscreen(_step: string): Promise<void> {
@@ -48,6 +52,14 @@ class CapturingPaneDriver implements PaneDriver {
     return Promise.resolve()
   }
   scrollToLive(): Promise<void> {
+    return Promise.resolve()
+  }
+  openHelp(marker: string): Promise<void> {
+    this.openHelpCalls.push(marker)
+    return Promise.resolve()
+  }
+  closeHelp(marker: string): Promise<void> {
+    this.closeHelpCalls.push(marker)
     return Promise.resolve()
   }
   assertColored(needle: string, colorName: string): Promise<void> {
@@ -129,6 +141,42 @@ describe('LeftPane U5b footer/banner/summary chrome is co-located (D10/D-P4)', (
     await leftPane.assertBannerCleared('saved')
 
     expect(driver.absentCalls).toEqual(['saved'])
+  })
+})
+
+describe('LeftPane U6 help-overlay chrome is co-located (D10)', () => {
+  it('opens and closes the overlay against the co-located "Keymap" title literal', async () => {
+    const driver = new CapturingPaneDriver()
+    const leftPane = new LeftPane(driver)
+
+    await leftPane.openHelp()
+    await leftPane.closeHelp()
+
+    // The driver is told WHICH literal marks the overlay; corrupting the
+    // co-located constant changes these recorded values and fails the meta-test
+    // (and, on a real driver, makes the captured bytes stop matching — red).
+    expect(driver.openHelpCalls).toEqual(['Keymap'])
+    expect(driver.closeHelpCalls).toEqual(['Keymap'])
+  })
+
+  it('asserts visible/hidden via the co-located title on the contains/absent paths', async () => {
+    const driver = new CapturingPaneDriver()
+    const leftPane = new LeftPane(driver)
+
+    await leftPane.assertHelpVisible()
+    await leftPane.assertHelpHidden()
+
+    expect(driver.containsCalls).toEqual(['Keymap'])
+    expect(driver.absentCalls).toEqual(['Keymap'])
+  })
+
+  it('checks every named step row survives the overlay toggle', async () => {
+    const driver = new CapturingPaneDriver()
+    const leftPane = new LeftPane(driver)
+
+    await leftPane.assertStepListSurvives(['plan', 'execute', 'review'])
+
+    expect(driver.stepVisibleCalls).toEqual(['plan', 'execute', 'review'])
   })
 })
 

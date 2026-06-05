@@ -17,6 +17,9 @@ scenario(
     overlapGroup: 'follow-live-view-mode',
     oldTestRefs: [
       'tests/integration/hosts/two-pane/tier-1/follow-live-returns-to-running-step.real.integration.test.ts',
+      // U6a.3 merge: `nav.f-snaps-selection-back-to-live` is the same decision —
+      // `f` snaps the committed selection back to the live step.
+      'tests/integration/lifecycle/nav.f-snaps-selection-back-to-live.behavioral.real.test.ts',
     ],
   },
   async (app) => {

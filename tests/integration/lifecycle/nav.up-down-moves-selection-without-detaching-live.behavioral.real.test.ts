@@ -27,10 +27,12 @@ afterEach(async () => {
   if (handle !== undefined) await handle.teardown()
 })
 
+// MIGRATED → tests-new/model/nav--up-down-keeps-live-running.test.ts — parent U6a.3.
+// port→model: selection decoupled from live focus is a controller decision.
 describe.skipIf(!canRunRealTmux())(
   'Tier 5 behavioral — ↑/↓ navigation preserves live step glyph',
   () => {
-    it('arrow keys move selection while the live step stays marked running', async () => {
+    it.skip('arrow keys move selection while the live step stays marked running', async () => {
       handle = await launchOrchWorkflow('three-step-linear', {
         script: { plan: puppet(), execute: puppet(), finalize: puppet() },
       })

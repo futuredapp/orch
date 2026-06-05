@@ -77,10 +77,12 @@ const liveCreateCount = (events: LifecycleEvent[]): number =>
     (e) => e.type === 'source-session-created' && e.sourceKey?.startsWith('live:') === true,
   ).length
 
+// MIGRATED → tests-new/full-host/fake-agent/multi-source--each-source-swaps-distinct-content.test.ts — parent U6b.2.
+// port (swap, at 3-source scale) + merge (no-leak/teardown → U2 driver no-orphans regression).
 describe.skipIf(!tmuxAvailable)(
   'Tier 5 — per-source sessions: 10-step walkthrough lifecycle invariants',
   () => {
-    it('runs 10 autonomous steps; no pane-spawn-failed or scratch-window-rotate events fire; teardown reaps every per-source session', async () => {
+    it.skip('runs 10 autonomous steps; no pane-spawn-failed or scratch-window-rotate events fire; teardown reaps every per-source session', async () => {
       const fixture = await createRealTmuxFixture({ env: {} })
       fixturesToDispose.push(fixture)
       const agentProcessService = new FakeProcessService()

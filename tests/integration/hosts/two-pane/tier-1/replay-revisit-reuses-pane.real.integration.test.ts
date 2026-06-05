@@ -33,10 +33,13 @@ afterEach(async () => {
   fixturesToDispose = []
 })
 
+// MIGRATED → tests-new/full-host/fake-agent/replay--revisit-shows-same-transcript.test.ts — parent U6a.4.
+// port (visible: revisit shows the same transcript) + drop (white-box pane-count
+// invariant — covered structurally by the U2 driver no-orphans regression).
 describe.skipIf(!tmuxAvailable)(
   'Tier 1 — replay revisits do not respawn the hidden source pane',
   () => {
-    it('the per-source session pane count is stable across two right-pane captures after step:complete', async () => {
+    it.skip('the per-source session pane count is stable across two right-pane captures after step:complete', async () => {
       const fixture = await createRealTmuxFixture({ env: {} })
       fixturesToDispose.push(fixture)
       const agentProcessService = new FakeProcessService()

@@ -30,10 +30,12 @@ afterEach(async () => {
   fixturesToDispose = []
 })
 
+// MIGRATED → tests-new/full-host/fake-agent/replay--revisit-shows-same-transcript.test.ts — parent U6a.4.
+// port: the transcript persists in the right pane after the run ends.
 describe.skipIf(!tmuxAvailable)(
   'Tier 1 — replay of a completed autonomous step shows the same transcript as live',
   () => {
-    it('after the workflow ends, right.capture() still contains both transcript lines', async () => {
+    it.skip('after the workflow ends, right.capture() still contains both transcript lines', async () => {
       const fixture = await createRealTmuxFixture({ env: {} })
       fixturesToDispose.push(fixture)
       const agentProcessService = new FakeProcessService()

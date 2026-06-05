@@ -29,10 +29,12 @@ afterEach(async () => {
   if (handle !== undefined) await handle.teardown()
 })
 
+// MIGRATED → tests-new/full-host/fake-agent/nav--enter-swaps-right-pane-to-transcript.test.ts — parent U6a.3.
+// port: Enter on a completed step swaps the visible right pane to its source.
 describe.skipIf(!canRunRealTmux())(
   'Tier 5 behavioral — Enter swaps right pane to selected step',
   () => {
-    it('viewing a completed step shows its transcript and flips the footer', async () => {
+    it.skip('viewing a completed step shows its transcript and flips the footer', async () => {
       handle = await launchOrchWorkflow('three-step-linear', {
         script: { plan: puppet(), execute: puppet(), finalize: puppet() },
       })

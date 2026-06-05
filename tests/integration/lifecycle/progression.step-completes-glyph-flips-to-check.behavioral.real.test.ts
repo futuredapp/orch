@@ -27,8 +27,10 @@ afterEach(async () => {
   if (handle !== undefined) await handle.teardown()
 })
 
+// MIGRATED → tests-new/model/progression--live-focus-and-glyph-flip.test.ts — parent U6b.1.
+// port→model: a completed step flips to the done glyph (colour bytes → U5 screen twin).
 describe.skipIf(!canRunRealTmux())('Tier 5 behavioral — step glyph flips on complete', () => {
-  it('renders completed glyph and persists completed status after puppet completes', async () => {
+  it.skip('renders completed glyph and persists completed status after puppet completes', async () => {
     handle = await launchOrchWorkflow('three-step-linear', {
       script: { plan: puppet(), execute: puppet(), finalize: puppet() },
     })
