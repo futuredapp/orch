@@ -11,6 +11,7 @@ export default defineConfig({
     compound: 'compound/index.ts',
     'feature-loop': 'feature-loop/index.ts',
     'ask-demo': 'ask-demo/index.ts',
+    'favourite-animal': 'favourite-animal/index.ts',
     'command-tick-demo': 'command-tick-demo/index.ts',
     'command-lazygit': 'command-lazygit/index.ts',
     'file-prompts-demo': 'file-prompts-demo/index.ts',

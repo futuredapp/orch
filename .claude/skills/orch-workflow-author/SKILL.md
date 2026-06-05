@@ -55,7 +55,7 @@ Before opening an editor, produce a short Markdown summary with:
 
 - **Header line:** what the workflow is called and what it does in one sentence.
 - **Pseudocode (numbered, no TypeScript):** every `run()` call, with the step name, mode (autonomous / interactive), agent, and what it produces. Loops and parallel blocks shown as indented sub-bullets.
-- **Suggested prompts:** the actual prompt strings you plan to put in each `step.define(...)` block. These are the part the user will care most about — they encode the contract with each sub-agent.
+- **Suggested prompts:** the actual prompt text you plan to give each step. These are the part the user will care most about — they encode the contract with each sub-agent. In the finished workflow this text lives in a sibling `.md` file per step (referenced via `promptFile:`) — that's the default; show the prose here regardless so the user can sign off on it.
 
 The pseudocode block should look like:
 
@@ -73,11 +73,13 @@ new-feature(prompt)
 
 The suggested prompts should follow the best-practice rules in [`references/prompt-patterns.md`](references/prompt-patterns.md): explicit file paths, hard constraints, verification instructions, and a clear stop condition. Keep them ~3–8 sentences each.
 
-For each suggested prompt, also note **where the prompt text will live**:
+For each suggested prompt, also note **where the prompt text will live**. The default is **file-based** — a sibling `.md` per step, referenced via `promptFile:`. A workflow `.ts` file should read as the pipeline shape, not as a wall of backticked prose; long prompts inline bury the `run()` sequence and lose markdown tooling (preview, spellcheck, link-check). So:
 
-- One-liner / one-paragraph prompts → inline backticked string in `step.define({ prompt: ... })`.
-- Anything longer than ~3 sentences → sibling `.md` file referenced via `promptFile:`. Default to file-based unless the prompt is genuinely trivial. ([prompt-patterns §0](references/prompt-patterns.md#0-where-prompt-text-lives--file-based-by-default))
-- Prose that appears in two or more workflows → shared fragment under `.orch/prompts/<name>.md`, referenced via `@/.orch/prompts/<name>.md`.
+- **Default — every real prompt → sibling `.md` file** referenced via `promptFile:`, with run-time `{{vars}}` supplied on the `run(STEP, { vars })` call site. ([prompt-patterns §0](references/prompt-patterns.md#0-where-prompt-text-lives--file-based-by-default))
+- **Inline `prompt:` is the exception**, reserved for genuinely trivial prompts: one-liners, slug/done-check judges, or pure computed strings like `` `/skillname ${userPrompt}` `` that have no static prose worth extracting.
+- **Prose that appears in two or more workflows → shared fragment** under `.orch/prompts/<name>.md`, referenced via `@/.orch/prompts/<name>.md` (compose multiple fragments with `loadPrompt()`).
+
+When in doubt, file. The cost of a one-line `.md` file is essentially zero; the cost of a 30-line backticked string blocking readers from seeing the pipeline shape is real.
 
 End the proposal with: *"Want me to write it as-is, or change anything first?"* — and stop. Do not start writing the file.
 
@@ -147,9 +149,9 @@ function claudeFor(sessionName: string): Runner {
 
 // --- step definitions -------------------------------------------------------
 //
-// Default to `promptFile:` + a sibling `.md` for anything longer than ~3
-// sentences. Use inline `prompt:` only for trivial prompts. See
-// references/prompt-patterns.md §0.
+// Default: `promptFile:` + a sibling `.md`, with run-time `vars` on `run()`.
+// Inline `prompt:` is the exception — only for trivial one-liners and pure
+// computed strings (`/skillname ${userPrompt}`). See prompt-patterns.md §0.
 
 const STEP_ONE = step.define('step-one', {
   agent: claude({ bare: false, flags: ['--permission-mode', 'bypassPermissions'] }),
@@ -197,7 +199,7 @@ export default workflow('<name>', async (run, args) => {
 6. **TypeScript strict, no `any`, no `!`.** This is enforced by `bun run check`.
 7. **Interactive steps cannot have `returns:`.** Schema output only flows out of autonomous steps.
 8. **`createWorktree({ enter: true })` inside `parallel()` only works with the homogeneous form** (`parallel(items, fn)`), not the heterogeneous tuple form.
-9. **`promptFile:` and inline `prompt:` are mutually exclusive.** Setting both throws. Use one or the other per step. For composition (concatenating fragments), use `loadPrompt()` and pass the result via `prompt:`.
+9. **Default to `promptFile:`; inline `prompt:` is the exception.** Every non-trivial prompt lives in a sibling `.md` file referenced via `promptFile:`, with `{{vars}}` bound on the `run(STEP, { vars })` call site. Reserve inline `prompt:` for trivial one-liners and pure computed strings (`` `/skillname ${userPrompt}` ``). The two are **mutually exclusive** — setting both throws. For composition (concatenating fragments), use `loadPrompt()` and pass the result via `prompt:`.
 10. **`vars:` is forbidden on `step.define`.** It belongs on the `run(STEP, { vars: ... })` call site. The old form is a definition-time error (`cause: 'vars-on-define'`) — see [Typed prompt vars](../../docs/public/guides/typed-prompt-vars.md).
 11. **Schemas are structural, not validators.** A `returns:` schema declares shape and types only — `z.object`, `z.array`, `z.enum`, `z.boolean`, `z.number()` / `z.number().int()`. Never put length/format/range gates (`.min()`, `.max()`, `.length()`, `.regex()`, `.email()`, `.url()`) on a `returns:` field — those belong in the prompt. See [Keep schemas structural](#keep-schemas-structural--value-rules-go-in-the-prompt).
 
@@ -270,7 +272,7 @@ The full cheatsheet with signatures and minimal examples lives at [`references/a
 
 ## Writing good sub-agent prompts
 
-The biggest determinant of workflow quality is the prompt content of each `step.define(...)`. The rules — explicit paths, hard constraints, verification instructions, scoped exploration — are in [`references/prompt-patterns.md`](references/prompt-patterns.md). Read that file before you write any prompt longer than two sentences.
+The biggest determinant of workflow quality is the prompt content of each step. The rules — explicit paths, hard constraints, verification instructions, scoped exploration — are in [`references/prompt-patterns.md`](references/prompt-patterns.md). Read that file before you write any prompt longer than two sentences. By default that prompt text lives in a sibling `.md` file (`promptFile:`), not inline in the `.ts` — keep the workflow file readable as a pipeline.
 
 ## Modifying an existing workflow
 
