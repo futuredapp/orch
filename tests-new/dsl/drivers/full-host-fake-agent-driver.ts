@@ -4,11 +4,13 @@
 //
 // Boots the real two-pane host (`mountTmuxHost`) and drives its agent slot with
 // a fake. Two submodes (parent §4):
-//   • static (default)   — `FakeRunner.script({ events })`, one per step. Used
-//                          whenever a scenario only needs the agent to EMIT.
+//   • static (default)   — `FakeRunner.script({ events })`, one per step. Served
+//                          by the SHARED `createStaticFullHostApp` factory, which
+//                          the recorded/real drivers reuse (no copy-paste, P3-C).
 //   • live-driven        — the `scriptedFake` subprocess puppet, advanced by the
 //                          scenario via `app.agent` (type/finish). Selected ONLY
 //                          by `meta.liveDriven: true` (D-P2.3) — never inferred.
+//                          Intrinsically fake-agent-only, so it stays here.
 //
 // All real-tmux predictability rules live in `createRealTmuxFixture` /
 // `mountTmuxHost.teardown` / `fixture.dispose` (parent §5.4); this driver owns
@@ -40,6 +42,7 @@ import type {
 import { LeftPane } from '../panes/left-pane.ts'
 import { RightPane } from '../panes/right-pane.ts'
 import type { ScenarioMeta } from '../scenario.ts'
+import { createStaticFullHostApp } from './full-host-static-app.ts'
 import { createRealTmuxPaneDriver } from './real-tmux-pane-driver.ts'
 import type { Driver } from './registry.ts'
 
@@ -57,11 +60,13 @@ function isLiveSpec(spec: AgentSpec | undefined): boolean {
   return spec?.kind === 'live' || spec?.kind === 'holds-open'
 }
 
-function createFullHostFakeAgentApp(
+// ---------------------------------------------------------------------------
+// Live-driven submode (scriptedFake subprocess puppet) — fake-agent-only.
+// ---------------------------------------------------------------------------
+
+function createLiveFullHostApp(
   fixture: RealTmuxFixture,
   harness: MountedHarness,
-  fps: FakeProcessService | undefined,
-  liveDriven: boolean,
   leakBaseline: number,
 ): FullHostApp {
   let stepNames: readonly string[] = []
@@ -95,84 +100,63 @@ function createFullHostFakeAgentApp(
   const leftPane = new LeftPane(paneDeps(harness.left))
   const rightPane = new RightPane(paneDeps(harness.right))
 
-  let liveControl: LiveAgentControl | undefined
-  if (liveDriven) {
-    liveControl = {
-      async type(text: string): Promise<void> {
-        await ensureReady()
-        await ensureLiveHandle().typeAndSend(text)
-      },
-      async finish(code?: number): Promise<void> {
-        await ensureReady()
-        await ensureLiveHandle().finish(code)
-      },
-    }
+  const liveControl: LiveAgentControl = {
+    async type(text: string): Promise<void> {
+      await ensureReady()
+      await ensureLiveHandle().typeAndSend(text)
+    },
+    async finish(code?: number): Promise<void> {
+      await ensureReady()
+      await ensureLiveHandle().finish(code)
+    },
   }
 
   const app: FullHostApp = {
     async launch(spec: FullHostSpec): Promise<void> {
       stepNames = spec.steps
-      if (liveDriven !== isLiveSpec(spec.agent)) {
+      if (!isLiveSpec(spec.agent)) {
         throw new Error(
-          `${DRIVER_LABEL}: meta.liveDriven=${liveDriven} but the launch spec's agent ` +
-            'disagrees — a live() / holdsOpen() agent requires liveDriven:true, and ' +
-            'emits()/default requires liveDriven:false.',
+          `${DRIVER_LABEL}: meta.liveDriven=true but the launch spec's agent is not ` +
+            'live() / holdsOpen() — a live build requires a live agent spec.',
         )
       }
-
-      if (liveDriven) {
-        // Address the handle BEFORE starting the run so an early ack/ready signal
-        // is never missed (the canonical puppet-drive order).
-        liveHandle = harness.agent(requireFirstStep(spec.steps))
-        const items: PuppetWorkflowItem[] = spec.steps.map((name) => ({ name }))
-        runPromise = harness.runPuppetWorkflow(items)
-      } else {
-        const texts = emitsTexts(spec.agent)
-        if (fps === undefined) throw new Error(`${DRIVER_LABEL}: static build missing FakeProcessService`)
-        const steps = spec.steps.map((name) => ({
-          name,
-          agent: new FakeRunner(fps).script({
-            events: texts.map(infoLine),
-            structuredOutput: 'done',
-          }),
-        }))
-        runPromise = harness.runWorkflow(steps)
-      }
-      // Never leave the run promise unobserved — that would surface as an
-      // unhandled rejection if the workflow errors before `complete`/`teardown`.
-      runPromise.catch(() => {}).finally(() => {
-        runSettled = true
-      })
+      // Address the handle BEFORE starting the run so an early ack/ready signal
+      // is never missed (the canonical puppet-drive order).
+      liveHandle = harness.agent(requireFirstStep(spec.steps))
+      const items: PuppetWorkflowItem[] = spec.steps.map((name) => ({ name }))
+      runPromise = harness.runPuppetWorkflow(items)
+      runPromise
+        .catch(() => {})
+        .finally(() => {
+          runSettled = true
+        })
     },
 
     async complete(_step: string): Promise<void> {
-      // Static: the whole FakeRunner workflow already runs to completion; await
-      // it. Live: finish the puppet step so the run can settle, then await it.
-      if (liveDriven) {
-        await ensureReady()
-        await ensureLiveHandle().finish()
-      }
+      // Finish the puppet step so the run can settle, then await it.
+      await ensureReady()
+      await ensureLiveHandle().finish()
       await runPromise?.catch(() => {})
     },
 
     leftPane,
     rightPane,
-    ...(liveControl !== undefined ? { agent: liveControl } : {}),
+    agent: liveControl,
 
     async teardown(): Promise<void> {
       // A still-open live puppet step would hang `host.teardown()` (it waits on
       // the in-process workflow, which is parked awaiting the puppet's finish).
       // So finish the open puppet first (best-effort) to let the run settle,
-      // THEN tear the host down. Static runs already settled via `complete`.
-      if (liveDriven && !runSettled && liveHandle !== undefined) {
-        await liveControl?.finish().catch(() => {})
+      // THEN tear the host down.
+      if (!runSettled && liveHandle !== undefined) {
+        await liveControl.finish().catch(() => {})
         await runPromise?.catch(() => {})
       }
       await harness.teardown()
       await runPromise?.catch(() => {})
       await fixture.dispose()
-      // Live submode only: turn a leaked puppet into a loud failure (parent R1).
-      if (liveDriven) await assertNoLeakedEntries(leakBaseline)
+      // Turn a leaked puppet into a loud failure (parent R1).
+      await assertNoLeakedEntries(leakBaseline)
     },
   }
   return app
@@ -191,15 +175,36 @@ async function build(meta: ScenarioMeta<readonly DriverName[]>): Promise<FullHos
   const leakBaseline = await scriptedFakeEntryCount()
   const fixture = await createRealTmuxFixture({ env: {} })
 
-  // Static FakeRunner stubs its argv on a FakeProcessService; the live puppet
-  // needs the fixture's real BunProcessService (it spawns a subprocess).
-  const fps = liveDriven ? undefined : new FakeProcessService()
-  const harness = await mountTmuxHost(
-    fixture,
-    fps !== undefined ? { agentProcessService: fps } : {},
-  )
+  if (liveDriven) {
+    // The live puppet needs the fixture's real BunProcessService (it spawns a
+    // subprocess), so no agentProcessService override is passed.
+    const harness = await mountTmuxHost(fixture, {})
+    return createLiveFullHostApp(fixture, harness, leakBaseline)
+  }
 
-  return createFullHostFakeAgentApp(fixture, harness, fps, liveDriven, leakBaseline)
+  // Static FakeRunner stubs its argv on a FakeProcessService.
+  const fps = new FakeProcessService()
+  const harness = await mountTmuxHost(fixture, { agentProcessService: fps })
+
+  return createStaticFullHostApp({
+    fixture,
+    harness,
+    label: DRIVER_LABEL,
+    agentForStep: (_name, _index, spec) => {
+      if (isLiveSpec(spec.agent)) {
+        throw new Error(
+          `${DRIVER_LABEL}: a live() / holdsOpen() agent requires meta.liveDriven:true; ` +
+            'the static build cannot drive it.',
+        )
+      }
+      return {
+        agent: new FakeRunner(fps).script({
+          events: emitsTexts(spec.agent).map(infoLine),
+          structuredOutput: 'done',
+        }),
+      }
+    },
+  })
 }
 
 export const fullHostFakeAgentDriver: Driver<FullHostApp> = {

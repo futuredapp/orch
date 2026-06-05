@@ -5,6 +5,8 @@ description: Three-layer testing strategy for the orch project. Use when writing
 
 # Testing Strategy
 
+> **Two-pane host?** This skill covers the unchanged **three-layer model** for non-two-pane code. Tests of the two-pane host (`src/hosts/two-pane/**`) use the **scenario/driver DSL** — categories `model` / `screen` / `full-host` / `lifecycle` / `tmux-argv`, written once and run against the drivers they list. See the "How to write a two-pane test" section of [CLAUDE.md](../../../CLAUDE.md) and the decision rule in [`docs/testing-strategy.md`](../../../docs/testing-strategy.md). Do **not** write two-pane tests in the three-layer shape.
+
 ## The one rule
 
 Mocks appear in exactly ONE place: at the boundary where the system meets something it doesn't own — a subprocess, git, the filesystem, tmux, or the clock. Those boundaries are `*Service` interfaces in `src/services/`. Tests inject a `Fake*Service` via constructor or parameter.
@@ -91,7 +93,7 @@ If a helper doesn't exist yet, create it in `tests/helpers/` rather than inlinin
 
 Two agent doubles stand in for real `claude`/`codex`. Pick by whether the test drives the agent from inside or outside the orch process:
 
-- **`FakeRunner`** (`src/runners/fake/`, public barrel) — in-process, script fixed at construction. The default for unit, mocked-integration, and the two-pane Tier 1/2 tests.
-- **`scriptedFake`** (`src/runners/scripted-fake/`, dev-only deep import) — a subprocess fake an external driver advances step-by-step over a `.ready` → NDJSON → `.ack` control file. Only for Tier 5 lifecycle tests and the QA skill. It is *not* a flakiness remedy — for a known script `FakeRunner` is already deterministic and faster.
+- **`FakeRunner`** (`src/runners/fake/`, public barrel) — in-process, script fixed at construction. The default for unit, mocked-integration, the `model` category, and the static `full-host:fake-agent` and `recorded-agent` two-pane drivers.
+- **`scriptedFake`** (`src/runners/scripted-fake/`, dev-only deep import) — a subprocess fake an external driver advances step-by-step over a `.ready` → NDJSON → `.ack` control file. Only for the `full-host:fake-agent` **live** submode (`liveDriven: true`), the `lifecycle` driver, and the QA skill. It is *not* a flakiness remedy — for a known script `FakeRunner` is already deterministic and faster.
 
-For **explicit** requests to QA / manually verify / smoke-test / reproduce two-pane TUI behavior on screen — or to reproduce a rendering/lifecycle bug — defer to the **`orch-qa-engineer`** skill, which drives `scriptedFake` end-to-end and produces a screenshot verdict report. It is not part of `bun run check` and does not replace tiered coverage. This skill stays focused on the three-layer "mock only at the edge" rule. Full tier model and the fake comparison: [`docs/testing-strategy.md`](../../../docs/testing-strategy.md).
+For **explicit** requests to QA / manually verify / smoke-test / reproduce two-pane TUI behavior on screen — or to reproduce a rendering/lifecycle bug — defer to the **`orch-qa-engineer`** skill, which drives `scriptedFake` end-to-end and produces a screenshot verdict report. It is not part of `bun run check` and does not replace automated coverage. This skill stays focused on the three-layer "mock only at the edge" rule. Full model and the fake comparison: [`docs/testing-strategy.md`](../../../docs/testing-strategy.md).

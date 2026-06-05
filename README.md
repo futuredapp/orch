@@ -48,22 +48,26 @@ existing `.orch/` prompts before touching anything.
 Individual gates:
 
 ```bash
-bun run lint        # biome check
-bun run lint:fix    # biome check --write
-bun run format      # biome format --write
-bun run typecheck   # tsc --noEmit
-bun run test        # bun test (unit + mocked integration)
-bun run test:unit   # unit tests only
-bun run test:int    # integration tests only
-bun run test:e2e    # full e2e (real CLIs, env-gated)
+bun run lint              # biome check
+bun run lint:fix          # biome check --write
+bun run format            # biome format --write
+bun run typecheck         # tsc --noEmit
+bun run check             # the gate: lint + typecheck + all tests (except real-agent)
+bun run check:release     # everything, incl. gated real-CLI levels (which claude codex first)
+
+bun run test:two-pane:fast    # tight two-pane loop: model + tmux-argv (ms, no tmux) — the default
+bun run test:two-pane:tmux    # screen + full-host on real tmux (bounded concurrency)
+bun run test:two-pane:lifecycle  # process behaviour, serial
+bun run test                  # the whole project (legacy tree + new tree + two-pane)
 ```
 
-Real-CLI integration and e2e tests are opt-in via env vars:
+Selection is **by path only** — never run bare `bun test` (it ignores the concurrency ceiling; a preload warns you). Real-CLI levels are opt-in via env vars:
 
 ```bash
-RUN_REAL_CLAUDE=1 bun run test:int
-RUN_REAL_CODEX=1  bun run test:int
-RUN_REAL_E2E=1    bun run test:e2e
+RUN_REAL_CLAUDE=1   bun run test:int
+RUN_REAL_CODEX=1    bun run test:int
+RUN_REAL_E2E=1      bun run test:legacy:e2e
+RUN_REAL_TMUX_E2E=1 bun run test:two-pane:full:real
 ```
 
 ## Documentation

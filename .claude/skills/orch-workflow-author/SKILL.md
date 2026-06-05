@@ -288,4 +288,4 @@ The skill applies just as much when the user already has a workflow. Workflow:
 
 - Adding a new runner adapter (Aider, Amp, Ollama). Use the `runner-author` skill instead — that's a different surface (`src/runners/<name>/`).
 - Implementing a phase from `docs/plans/implementation-phases.md`. Use the `phase-implementer` skill.
-- Writing tests for an existing workflow. Use the `testing-strategy` skill — workflows are tested as Tier 1 / Tier 2 cells, not as unit tests over the workflow file directly.
+- Writing tests for an existing workflow. Use the `testing-strategy` skill — workflows are tested through the two-pane scenario/driver DSL (`full-host` for agent→pane plumbing, `model` for projection), not as unit tests over the workflow file directly.

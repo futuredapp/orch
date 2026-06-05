@@ -81,3 +81,48 @@ full-host scenario (`app.agent` + mid-stream `press`), and the lifecycle
 (greppable, never a silent green) rather than shipping untested. The
 behavioral-dsl lifecycle fixtures still resolve from `tests/fixtures/lifecycle`
 (a runtime path, not an import); they relocate in a later phase.
+
+## Phase 3
+
+Phase 3 (parent unit **U3**) completes the driver set and flips the repo onto the
+new testing model. The last two drivers are now live, both reusing a single
+extracted `createStaticFullHostApp` engine so there is no copy-paste — only the
+agent slot differs. `full-host:recorded-agent` replays a checked-in **cassette**
+(our normalised `RunnerEvent` stream, split into streamed info events + one
+terminal, validated by Zod) deterministically through `FakeRunner` on the real
+two-pane host — no CLI, no flake; `record.ts` re-records via the runner `onEvent`
+tap and `--verify`-replays. `full-host:real-agent` puts the real `ClaudeRunner`/
+`CodexRunner` in that same body, gated so it auto-skips unless tmux + the CLI +
+`RUN_REAL_TMUX_E2E=1` are present (never on the normal gate). New agent-spec
+helpers `fromCassette` / `claudeAgent` / `codexAgent` are exported from the DSL
+barrel, and the registry's last stubs are gone — the `DriverName` union is fully
+live.
+
+The migration machinery and the gate are now in place. `overlap-report.ts`
+AST-parses every `scenario({...})` (never importing a scenario file, so it
+registers zero Bun tests) and flags missing `model`↔`screen` contract twins and
+`oldTestRefs` that don't resolve in the frozen baseline; it is **non-blocking in
+U3** (U4 flips it to blocking once real ledger rows exist). The `ledger.md`
+template ships with illustrative rows only — U3 skips no old test. The full §8
+script ladder landed: atomic buckets, cumulative levels with the concurrency
+ceiling encoded as real flags (`tmux`=2, `lifecycle`=1 serial), `test:legacy`
+(incl. old e2e) kept on the gate, and `check`/`check:release` repointed onto both
+trees. A Bun preload warns on bare `bun test` (detected from the process's real
+OS-level argv via `ps`, since per-file `Bun.argv` carries no subcommand).
+
+Two things matter for next work. **(1) The convention is flipped:** every new
+two-pane behavioural test is written under `tests-new/` in the scenario/driver
+shape; new non-two-pane tests still go to their old `tests/{unit,integration,e2e}`
+home until that module relocates (U10–U13), then straight to `tests-new/` with a
+`new`-tagged ledger row. All tier-coded docs and skills (`docs/testing-strategy.md`,
+`CLAUDE.md`, `README`, and the `testing-strategy` / `runner-author` /
+`orch-acceptance-tests` / `orch-workflow-author` skills) were rewritten to the
+decision-rule model, and the repo-wide tier-grep is clean of non-historical
+references — so the autonomous migration phases that load those skills won't write
+old-shape tests. **(2) Two small gate accommodations:** the empty
+`tests-new/{unit,integration,e2e}` dirs each carry a sentinel `_pending-relocation`
+test (bun exits non-zero on a dir with no tests) — delete each the moment real
+tests relocate there; and `test:two-pane:fast` now also runs the no-tmux DSL and
+`_migration` unit tests so the whole no-tmux new suite is on the gate. The new
+tree is green (fast 24, tmux 31, lifecycle 6) and the old unit suite (1954) is
+untouched.

@@ -1,253 +1,204 @@
 # Testing strategy — orch
 
-This is the canonical reference for **where a test belongs** and **how to write it** for the two-pane host (`src/hosts/two-pane/**`). Outside this surface, follow the three-layer model in [CLAUDE.md](../CLAUDE.md#how-to-write-tests) plus the [`testing-strategy` skill](../.claude/skills/testing-strategy/SKILL.md).
+This is the canonical reference for **where a test belongs** and **how to write it**. It covers the two-pane host (`src/hosts/two-pane/**`) via the scenario/driver DSL, and everything else via the unchanged three-layer model.
 
-## The five tiers
+> **Historical note.** This supersedes the former **five-tier** model. The tiers imposed a 1-D number on a 2-D space, sanctioned copy-paste (the old "Tier 1 ↔ Tier 4" mocked+real pair), and required a hand audit to answer "which screen-tested behaviours were never proven against a real CLI?". The replacement writes each behaviour **once** as a scenario and runs it against swappable **drivers** at different fidelities. See [`docs/plans/2026-06-05-001-refactor-testing-strategy-restructure-plan.md`](plans/2026-06-05-001-refactor-testing-strategy-restructure-plan.md) for the full rationale and the migration.
 
-| Tier | Bug class it catches | Where the test lives | Boots tmux? | Boots real CLI? |
-| --- | --- | --- | --- | --- |
-| **Tier 1** | Visible right-pane / left-pane content and view state (right pane empty after `step:start`, transcript missing on replay, follow-live drops to the wrong source, banner doesn't appear). | `tests/integration/hosts/two-pane/tier-1/*.real.integration.test.ts` | Yes | No (FakeRunner) |
-| **Tier 2** | Ink projection — state→view, key→intent, footer indicators, banner rendering. | `tests/unit/hosts/two-pane/steps-view/*.test.tsx` | No | No |
-| **Tier 3** | `RealTmuxService` argv contract — tmux flags, escape rules, env passthrough. | `tests/unit/services/tmux/*.test.ts` (out of two-pane audit scope) | No (`FakeProcessService`) | No |
-| **Tier 4** | Real-CLI end-to-end on real tmux — exactly Tier 1's body with a real `ClaudeRunner` / `CodexRunner` in the agent slot. | `tests/e2e/tier-4/*.real.e2e.test.ts` | Yes | Yes (env-gated) |
-| **Tier 5** | CLI signal handlers (`SIGINT` / `SIGTERM` / `SIGHUP` to the orch process), attached-TTY input (Ctrl-C / `q` typed inside tmux), external tmux verbs (`kill-pane`, `kill-session`, `kill-server`), stdin-EOF — bug classes Tier 1 cannot reach because the in-process `TmuxHost` mount never goes through `src/cli/main.ts`. | `tests/integration/lifecycle/*.real.test.ts` | Yes | No (`ScriptedFakeRunner` — the `scriptedFake` subprocess fake, see [The two fakes](#the-two-fakes-fakerunner-vs-scriptedfake) — drives every first-batch cell via the `.ready` → NDJSON → `.ack` control contract). Real-CLI Tier 5 variants are deferred follow-up — the `canRunRealTmuxE2E('codex')` predicate is kept available but unused in this plan. |
+## The model — four layers
 
-Each tier has a unique responsibility. The "mocked + real" pair across Tier 1 and Tier 4 is the **only** sanctioned duplication: Tier 1 catches the bug class deterministically with a FakeRunner; Tier 4 proves the same body still works against the real CLI. Tier 5 is additive — Tier 1 stays the in-process default, and Tier 5 is reserved for the bug class Tier 1's harness mechanically cannot reach.
+```
+  Scenario      a plain async (app) => { ... }; Given/When/Then are await statements
+     │          lists which drivers it runs on; carries metadata (feature/risk/overlapGroup/oldTestRefs)
+     ▼
+  Pane Object   LeftPane / RightPane / SystemAssertions — SEMANTIC methods backed by
+     │          co-located chrome constants; driver-INDEPENDENT (same object at every fidelity)
+     ▼
+  Driver        one per fidelity; OWNS gating, timeouts, teardown, socket reaping,
+     │          predictability rules. Scenarios never see these.
+     ▼
+  System        src/hosts/two-pane/** under test, at the chosen fidelity
+```
 
-## The triage rule
+A scenario calls only **semantic** Pane Object methods (plus the `assertShowsContent` content escape hatch). The Pane Object asks its **driver** for a raw capability; the driver decides what that means at its fidelity — on `model` it inspects the controller's projected view-model, on `screen`/`full-host` it captures **actual bytes off real tmux**.
+
+## The categories and the decision rule
+
+This replaces "when to write at which tier." The single question:
+
+> **Is the risk in *what the controller decides to show*, or in *whether those bytes reach the real screen*, or in *process behaviour*?**
+
+| The risk is… | Category | Boots tmux? | Example |
+| --- | --- | --- | --- |
+| what the controller *decides* | `model` (the bulk) | No | footer contains quit; failed step shows ✗; selection moves on ↑↓ |
+| left/steps-pane **bytes** survive real tmux | `screen` (single steps pane) | Yes | footer placement, glyph rendering, wrapping, narrow/wide widths, escapes |
+| two-pane **plumbing / communication** | `full-host` (full host) | Yes | right pane not empty after `step:start`; transcript paints; source swap |
+| **process** behaviour (signals, teardown) | `lifecycle` (outside-in) | Yes | SIGINT/SIGTERM/SIGHUP; attached-TTY `q`; external `tmux kill-*`; persisted status |
+| adapter **argv / escaping** | `tmux-argv` (unit-speed) | No | tmux flags, escape rules, env passthrough |
+| isolated class logic, fakes at `*Service` | `unit` | No | everything non-two-pane; pure projector/model logic |
+
+Full-host **mode** is then chosen by: independent of agent content → `fake-agent`; needs *realistic* event streams → `recorded-agent`; needs the *actual binary* → `real-agent` (2–3 smokes, gated).
+
+The **triage rule** is the north star and the migration pruning filter:
 
 > **Would this test still pass if the visible pane were empty / wrong / unformatted? If yes, demote or delete.**
 
-This is the question to ask before writing a new test, and the question the audit doc (`docs/plans/2026-05-12-002-feat-tiered-testing-strategy-two-pane-audit.md`) answered for every existing two-pane test.
+## Writing a scenario
 
-## When to write at which tier
+`scenario(meta, body)` expands to **one `it()` per listed driver**, each gated/timed/torn-down by that driver. The scenario file never mentions `canRunRealTmux`, timeouts, or `afterEach`. The DSL barrel (`tests-new/dsl/index.ts`) is the **only** import surface — scenarios never name a driver or touch tmux.
 
-- **Add a new pane-map behavior (right-pane source registers, swaps, kills)** → Tier 1.
-- **Add a new keymap entry or change the footer copy** → Tier 2.
-- **Add new flags to a tmux argv** → Tier 3.
-- **Validate a new Claude/Codex CLI scenario end-to-end** → Tier 4.
-- **Reproduce a lifecycle bug that requires real CLI signal handlers, attached-TTY input, or external `tmux kill-*` verbs** → Tier 5.
-- **Refactor a Service port** → unit test on the port itself; no host tier change.
+```ts
+// tests-new/model/follow-live--returns-to-running-step.test.ts
+import { scenario } from '../dsl/index.ts'
+
+scenario({
+  name: 'pressing follow-live returns the view to the running step',
+  feature: 'follow-live',
+  drivers: ['model'],
+  overlapGroup: 'follow-live-view-mode',     // ties this to its screen contract twin
+  oldTestRefs: ['tests/integration/hosts/two-pane/tier-1/follow-live-returns-to-running-step.real.integration.test.ts'],
+}, async (app) => {
+  // given — a run paused with one step done and the next live
+  await app.launch({ steps: ['plan', 'execute'], stopAt: 'mid-step' })
+
+  // when — the user navigated away, then asked to follow the live step
+  await app.leftPane.selectStep('plan')
+  await app.leftPane.followLive()           // semantic affordance; on model it records intent, no tmux
+
+  // then — the controller re-selects the live step (decision, not bytes)
+  await app.leftPane.assertStepSelected('execute')
+})
+```
+
+The typed `app` surface is **driver-specific**: a `['model']` scenario cannot call `app.rightPane`; a `['screen']` scenario *can* call `app.resize`; a `['lifecycle']` scenario *can* call `app.press`/`app.signal`; a `['model','screen']` scenario is typed to only the **shared** `leftPane` surface. Unsupported actions are a **compile error** — `tests-new/` is in the `tsconfig` `include`, so `bun run typecheck` enforces it. The `?.` idiom is therefore **banned in scenarios**: reaching for a key absent on the chosen driver signals the wrong category.
+
+The full-host **agent slot** is declared with a fidelity-independent spec: `emits(...texts)` (static), `live()`/`holdsOpen()` (the scriptedFake live submode, requires `liveDriven: true`), `fromCassette(file)` (recorded replay), `claudeAgent(prompt)`/`codexAgent(prompt)` (the real binary).
+
+```ts
+// tests-new/full-host/recorded-agent/claude-plan-then-work.test.ts
+import { fromCassette, scenario } from '../../dsl/index.ts'
+
+scenario({
+  name: 'a recorded Claude plan→work run paints its transcript in the right pane',
+  feature: 'transcript-rendering',
+  drivers: ['full-host:recorded-agent'],
+  oldTestRefs: [],
+}, async (app) => {
+  await app.launch({ steps: ['plan'], agent: fromCassette('claude-plan-then-work.json') })
+  await app.complete('plan')
+  await app.rightPane.assertShowsContent('plan recorded')   // content the cassette authored → escape hatch
+})
+```
+
+`tmux-argv` is **not** a `scenario()` — it is a plain unit test of `RealTmuxService` argv against `FakeProcessService`, living in the taxonomy as a category that runs at unit speed:
+
+```ts
+// tests-new/tmux-argv/send-keys--escapes-metacharacters.test.ts
+import { expect, it } from 'bun:test'
+import { FakeProcessService } from '../../src/services/process/fake-process-service.ts'
+import { RealTmuxService } from '../../src/services/tmux/index.ts'
+
+it('send-keys passes a metacharacter payload literally via -l', async () => {
+  const fps = new FakeProcessService()
+  const tmux = new RealTmuxService({ processService: fps })
+  await tmux.sendKeys(paneId, '$(rm -rf /)')
+  expect(fps.lastSpawn().argv).toContain('-l')   // literal mode — no shell interpretation
+})
+```
+
+## Drivers and the registry (no central switch)
+
+A driver implements `{ build(meta), skip(), timeout }` and is added with a new file + one line in `tests-new/dsl/drivers/registry.ts`. The full set is live: `model`, `screen`, `full-host:fake-agent`, `full-host:recorded-agent`, `full-host:real-agent`, `lifecycle`. **All hard-won real-tmux predictability rules live inside the driver's `build`/`teardown`** (unique socket per run, the timeout constants, hook-signal + liveness backstop, server reaping, puppet self-reap, poll-and-resend) — they are requirements on driver implementations, never on scenario authors. The drivers that own them ship with driver-level regression tests (teardown/no-orphans, timeout/polling) under `tests-new/dsl/drivers/__tests__/`.
+
+The recorded and real full-host drivers **reuse** the same static full-host engine (`createStaticFullHostApp`); only the agent slot's `Runner` differs (a cassette-fed `FakeRunner`, or the real `ClaudeRunner`/`CodexRunner`). The swap *is* the promotion — there is no copy-paste.
+
+## Pane Objects and the chrome/content rule
+
+Expected chrome (footer hints, glyphs, labels) lives as a **co-located constant on the Pane Object**, asserted via a semantic method — **never** inline in a scenario, **never** imported from `src/`.
+
+```ts
+// tests-new/dsl/panes/left-pane.ts
+export class LeftPane {
+  private static readonly TEXT = { quitHint: 'q quit', followHint: 'f follow' } as const
+  constructor(private readonly driver: PaneDriver) {}
+
+  assertQuitHintVisible() { return this.driver.assertBottomText(LeftPane.TEXT.quitHint, { count: 1 }) }
+  assertStepSelected(step: string) { return this.driver.assertSelected(step) }
+  // the ONLY free-string method — for content the test itself authored
+  assertShowsContent(text: string) { return this.driver.assertContains(text) }
+}
+```
+
+An imported production symbol on both sides of an assertion is tautological — a co-located literal is an independent specification that goes red on a production wording typo. On `screen`/`full-host` `assertBottomText` captures actual bytes off real tmux; on `model` it asserts the controller *selected* that hint.
 
 ## The two fakes: `FakeRunner` vs `scriptedFake`
 
-Two agent doubles stand in for real Claude/Codex in the tiers above. They are **not** interchangeable — pick by whether the test drives the agent from *inside* or *outside* the orch process.
+Two agent doubles stand in for real Claude/Codex. They are **not** interchangeable — pick by whether the test drives the agent from *inside* or *outside* the orch process.
 
 | | `FakeRunner` | `scriptedFake` / `ScriptedFakeRunner` |
 | --- | --- | --- |
-| Lives in | `src/runners/fake/` — exported from the public barrel `src/runners/index.ts` | `src/runners/scripted-fake/` — **dev-only deep import**, deliberately *not* in the public barrel |
-| Process boundary | In-process; shares the test's JS context | Subprocess; orch spawns it as a child (`__entry.ts` under bun) |
-| Script binding | Constructor method chain — `new FakeRunner(fps).script({ events, structuredOutput, failWith, sessionId })` | JSON file at `ORCH_LIFECYCLE_SCRIPT`, indexed per step by `ORCH_LIFECYCLE_STEP_NAME` |
-| External driving | None — the whole script is fixed at construction | Yes — a driver appends NDJSON commands to a per-step control file, gating on a `.ready` marker and per-command `.ack` files |
-| Interactive UI | raw line-printer only | raw **or** Ink TUI (`scriptedFake({ stepName, interactive: true, interactiveUi: 'raw' \| 'ink' })`) |
-| Used by | Tiers 1 & 2, unit + mocked-integration (~53 files) | Tier 5 lifecycle tests, the real-tmux predictable-fake tests, and the `orch-qa-engineer` skill (~8 files) |
+| Lives in | `src/runners/fake/` — public barrel `src/runners/index.ts` | `src/runners/scripted-fake/` — dev-only deep import, deliberately *not* in the public barrel |
+| Process boundary | In-process; shares the test's JS context | Subprocess; orch spawns it as a child |
+| Script binding | `new FakeRunner(fps).script({ events, structuredOutput, failWith, sessionId })` | JSON file at `ORCH_LIFECYCLE_SCRIPT`, indexed per step |
+| External driving | None — the whole script is fixed at construction | Yes — a driver appends NDJSON commands, gating on `.ready` + per-command `.ack` |
+| Used by | `model`, the static `full-host:fake-agent` default, `recorded-agent` replay, unit + mocked-integration | the `full-host:fake-agent` **live** submode, the `lifecycle` driver, and the `orch-qa-engineer` skill |
 
-**When to reach for each:**
+**`FakeRunner` is the default.** Reach for `scriptedFake` (the `live()`/`holdsOpen()` specs, `liveDriven: true`) **only when something outside the orch process must drive a live run step-by-step** — e.g. interleaving agent output with a keypress mid-stream. It is **not** a flakiness remedy: for a script known at write time `FakeRunner` is already fully deterministic and faster.
 
-- **`FakeRunner` is the default.** Any test whose entire agent script is known when you write it — Tiers 1, 2, the mocked runner tests. It's cheaper (no subprocess) and fully deterministic in-process.
-- **`scriptedFake` only when something *outside* the orch process must drive a live run step-by-step** — a Tier 5 lifecycle test that interleaves agent output with signals/keypresses, or the `orch-qa-engineer` skill screenshotting panes between actions. The `.ready` → NDJSON → `.ack` contract exists to remove the agent-startup race across the process boundary; that is its reason to exist.
+## Recorded-agent cassettes
 
-> **`scriptedFake` is not a flakiness remedy.** For a script known at write time `FakeRunner` is *already* fully deterministic and faster — swapping it for `scriptedFake` only adds subprocess overhead. The documented real-tmux flakes (the two-pane-sequential-runs flake 2026-05-26, the `nav.f-snaps` flake 2026-05-29) were tmux-contention / dropped-keypress bugs, fixed by unique sockets + poll-and-resend (see *Predictability rules* below), not by changing the fake. The remaining residual is a peak-parallelism timing ceiling whose lever is real-tmux concurrency reduction.
+A cassette captures the Runner's **normalised `RunnerEvent` stream** (via the existing `onEvent` tap), never raw CLI stdout — so it never re-tests the runner parser and never drifts with CLI output formatting (raw parser fixtures stay at the runner layer). The stream is split into `events: InfoEvent[]` + a single `terminal: TerminalEvent`, because `FakeRunner.script()` synthesizes its own terminal from `structuredOutput`/`failWith`. The replay shim maps the split back into a `FakeScript`; replay is the `fake-agent` engine with a different event source.
 
-The runner surface (`scriptedFake`, `resolveControlPaths`, `encodeKey`, the `ORCH_*` env consts) is exported from `src/runners/scripted-fake/index.ts`. The drive-command vocabulary (`type_and_send`, `finish`) is documented in [`.claude/skills/orch-qa-engineer/references/fake-grammar.md`](../.claude/skills/orch-qa-engineer/references/fake-grammar.md).
+Re-record when a cassette drifts (runs a real run once through the `onEvent` tap, then `--verify` replays it CLI-free):
+
+```sh
+bun run tests-new/full-host/recorded-agent/record.ts --scenario claude-plan-then-work --runner claude --prompt '…'
+bun run tests-new/full-host/recorded-agent/record.ts --scenario claude-plan-then-work --verify
+```
+
+## Predictability rules for real-tmux drivers
+
+The tmux-booting drivers (`screen`, `full-host`, `lifecycle`) round-trip a `pane-died` hook, so they are the only place flakiness can enter. These rules live **inside the drivers** now; they were hardened after the two-pane-sequential-runs flake (2026-05-26) and the `nav.f-snaps` flake (2026-05-29):
+
+1. **Unique socket per run** via `createRealTmuxFixture` (`tests-new/_support/real-tmux/`) — allocates `orch-<runId>`, wires the SIGINT/SIGTERM stale-socket reaper, asserts you are not nested inside tmux, removes the socket on `dispose()`.
+2. **Use the real-tmux budgets, not Bun's 5s default** — `REAL_TMUX_TEST_TIMEOUT_MS` for the test, `REAL_TMUX_ASSERT_TIMEOUT_MS` for poll/assert waits. Both are distinct knobs; neither may be dropped.
+3. **No real CLI except in `full-host:real-agent`** — the agent slot is a `FakeRunner` everywhere else.
+4. **Interactive completion is hook-signal + liveness backstop**, not a bare wait — a missed `pane-died` hook resolves in ~1s via the poll, logged as `interactive-wait-hook-missed`.
+5. **Reap the tmux server, not just the process** — a subprocess-spawned run boots a detached server; teardown must `kill-server` and remove the socket, or servers accumulate to the per-uid limit.
+6. **Idempotent probe-driven keys poll-and-resend, not fire-and-forget** — a single `send-keys` for an idempotent key (`f` for snap-to-live, boundary nav) can be lost under contention or arrive before `useInput` subscribes. Capture the pane between keystrokes and re-press until the observed state matches.
+
+Ink projection tests (`model` and the `<StepsView>` unit tests) drive Ink via `ink-testing-library`; never read `lastFrame()` after a fixed `setTimeout` — use the polling helpers in `tests-new/_support/ink-frame.ts` (`waitForFrame`, `pressUntilFrame`, `waitForIntents`) and `tests-new/_support/` `manual-timer` for component timers.
+
+## Running & gating — the script ladder
+
+Selection is **by path only**: the filesystem is the manifest. Cost levels are named by nature, never by number. **Never run bare `bun test`** — it ignores the concurrency ceiling and runs both trees unbounded (a Bun preload prints a warning).
+
+| Moment | Command | Runs |
+| --- | --- | --- |
+| Tight two-pane dev loop | `bun run test:two-pane:fast` | model + tmux-argv + DSL/migration unit tests (ms, no tmux) |
+| Touched rendering / panes | `bun run test:two-pane:screen` / `:full:fake` / `:full:recorded` / `:tmux` | that bucket (seconds) |
+| Touched process lifecycle | `bun run test:two-pane:lifecycle` | lifecycle (serial, `--max-concurrency=1`) |
+| Pre-commit / the gate | `bun run check` | everything **except** real-agent |
+| Release | `bun run check:release` | **everything** (`which claude codex` first) |
+
+Concurrency is **encoded as flags**, not a comment: `--max-concurrency=2` bounds the tmux pane levels; `--max-concurrency=1` makes `lifecycle` serial. `real-agent` is unreachable except by naming `test:two-pane:full:real` (gated on `tmux` + the CLI + `RUN_REAL_TMUX_E2E=1`). During the migration `test:legacy` (incl. old `tests/e2e`) keeps the old suite on the gate; the final phase repoints the default onto `tests-new/`.
 
 ## Screen-level manual QA — the `orch-qa-engineer` skill
 
-This is **not a tier**. It writes no assertions and is not part of `bun run check` — it's a complementary, out-of-process tool for *looking at* orch on screen the way a human tester would. It drives a real two-pane tmux run against `scriptedFake` (so it's **deterministic, zero-token, no API calls**), screenshots the left (steps) and right (agent) panes, advances steps deterministically, simulates a human typing/clicking, and writes a PASS/FAIL verdict report with screenshots under `<runDir>/qa-screenshots/`.
+This is **not a driver** and **not** on `bun run check`. It drives a real two-pane tmux run against `scriptedFake` (deterministic, zero-token, no API calls), screenshots the left/right panes, advances steps, simulates a human, and writes a PASS/FAIL verdict report. Use it **only when explicitly asked** to QA / manually verify / smoke-test / reproduce two-pane TUI behaviour — a green QA session is screen-level evidence, not a regression guard. It complements the categories; it does not replace them. See [`.claude/skills/orch-qa-engineer/SKILL.md`](../.claude/skills/orch-qa-engineer/SKILL.md).
 
-Everything is driven by one in-repo CLI, `examples/qa/qa.ts` (`info` / `shot` / `steps` / `awaiting` / `send` / `keys` / `focus` / `down`), against the bundled `examples/predictable-*` fake workflows. See [`.claude/skills/orch-qa-engineer/SKILL.md`](../.claude/skills/orch-qa-engineer/SKILL.md) for the full loop.
+## Per-feature recipe (for all future work)
 
-**When to use it:**
+When you add or change a feature:
 
-> Invoke this skill **only when explicitly asked** to QA / manually verify / smoke-test / exercise / reproduce two-pane TUI behavior. It is **not** on the automated gate and does **not** replace Tier 1–5 coverage — a green QA session is screen-level evidence, not a regression guard.
+1. **Default everything to `model`/`unit`.** Fast, no tmux. Most of any feature.
+2. **Add one `screen` test only if you changed *what paints*** (Ink rendering, layout, colours, escapes; narrow/wide widths, resize).
+3. **Add one `full-host` test only if you changed *two-pane plumbing*** (agent→right pane, source swap, split). Pick the mode: independent of agent → `fake`; needs realism → `recorded`; needs the binary → `real`.
+4. **Add `lifecycle` only when the real CLI boundary matters** (signals, attached TTY, external tmux verbs, teardown/orphan risk).
+5. **Add fault injection** when the feature touches runner/output failure paths.
+6. **Vary width/resize** in `screen` when the feature touches layout/repainting.
 
-It *is* a first-class tool for **debugging a rendering or lifecycle bug, or reproducing one on-screen**, before you write the formal tier test that pins it. The relationship to the tiers: Tier 1+ prove the behavior with assertions; the QA skill lets you *see* it first, without writing a test.
+A typical feature PR: ~5 `model`/`unit`, 0–1 `screen`, 0–1 `full-host:fake-agent`; `recorded`/`real`/`lifecycle` only when the feature reaches those surfaces.
 
-## Writing a Tier 1 test — 5-line skeleton
+## Migration status
 
-```ts
-import {
-  canRunRealTmux,
-  createRealTmuxFixture,
-  mountTmuxHost,
-  REAL_TMUX_TEST_TIMEOUT_MS,
-} from '../../../../helpers/real-tmux/index.ts'
-import { FakeRunner } from '../../../../../src/runners/index.ts'
-import { FakeProcessService } from '../../../../../src/services/process/fake-process-service.ts'
-
-describe.skipIf(!canRunRealTmux())('Tier 1 — <bug class>', () => {
-  it('<the user-visible outcome the test pins>', async () => {
-    const fixture = await createRealTmuxFixture({ env: {} })
-    try {
-      const fps = new FakeProcessService()
-      const harness = await mountTmuxHost(fixture, { disableStepsView: true, agentProcessService: fps })
-      try {
-        const agent = new FakeRunner(fps).script({ events: [...], structuredOutput: 'done' })
-        await harness.runWorkflow([{ name: 'plan', agent }])
-        await harness.right.waitForText('<expected user-visible content>')
-      } finally {
-        await harness.teardown()
-      }
-    } finally {
-      await fixture.dispose()
-    }
-  }, REAL_TMUX_TEST_TIMEOUT_MS)
-})
-```
-
-The harness is the same shape Tier 4 uses — promotion is just swapping the agent slot and adjusting the env-gate predicate.
-
-## Predictability rules for real-tmux tests
-
-Real-tmux tiers (1, 4, 5) boot a tmux server and round-trip a `pane-died` hook, so they are the only place flakiness can enter. These rules keep them deterministic — they were hardened after the two-pane-sequential-runs flake (2026-05-26, see below):
-
-1. **Always go through `createRealTmuxFixture` — never hand-roll the host lifecycle.** The fixture allocates a UNIQUE socket per run (`orch-<generated-runId>`), wires the SIGINT/SIGTERM stale-socket reaper, asserts you are not nested inside tmux, and removes its socket file on `dispose()`. Hand-rolled tests with hardcoded runIds share a fixed socket name and collide ("duplicate session: orch") under the suite's parallel-file load. The only sanctioned exception is a test that genuinely spawns the CLI as a subprocess (it cannot use the in-process mount) — and it must still reap the sockets its subprocesses create.
-2. **Always pass `REAL_TMUX_TEST_TIMEOUT_MS` as the `it()` timeout.** Bun's 5s default is too tight for "boot tmux + spawn pane + hook round-trip" under load; inheriting it was the proximate cause of the flake (a generic "timed out after 5000ms" with no diagnosis). The budget lives in one constant so it is tuned in one place.
-3. **Never use a real CLI in Tiers 1/5.** The agent slot is a `FakeRunner` (deterministic, `FakeProcessService`-backed) or a `true(1)`-style runner for interactive panes. Real Claude/Codex belongs only in env-gated Tier 4.
-4. **Interactive completion is hook-signal + liveness backstop, not a bare wait.** `runInteractive` waits on the unbounded `pane-died` hook channel raced against a slow `#{pane_dead}` poll (`awaitInteractivePaneExit`). The poll never fails a live pane (preserving the human-pause contract) but short-circuits a pane that died with a lost/delayed hook — so a missed hook resolves in ~1s instead of hanging to the test timeout. A backstop hit is logged as `interactive-wait-hook-missed` in `lifecycle.ndjson`.
-5. **Reap the tmux server, not just the process.** A test that spawns the orch CLI as a subprocess (Tier 5 behavioral DSL) boots a *detached* `orch-<runId>` server; killing the orch process does NOT kill that server. Teardown must `tmux -L <socket> kill-server` and remove the socket file (the DSL's `subprocess.ts` teardown and `createRealTmuxFixture.dispose()` both do this). Without it, servers accumulate across the suite until the per-uid limit — the leak the stale-socket preload only papers over after 5 minutes.
-6. **Idempotent probe-driven keys must poll-and-resend, not fire-and-forget.** The Tier 2 `pressUntilFrame` rule (next section) also binds Tier 5 helpers that drive Ink through `ExternalTmuxProbe.pressKeyInPane`. A single `send-keys` for an idempotent key (`f` for snap-to-live, boundary nav) can be lost under suite-load contention or arrive before the `useInput` hook in the orch subprocess has subscribed — that is the exact shape of the `nav.f-snaps-selection-back-to-live` flake (2026-05-29). Helpers for those keys must capture the left pane between keystrokes and re-press until the observed state matches — see `snapToLive()` and `selectStep()` in `tests/helpers/behavioral-dsl/user-actions.ts` for the template. Fire-and-forget is only safe for keys that drive a *unique, observable* transition the calling assertion already polls for (e.g. `Escape` to close help, `Enter` on a selected row).
-
-## UI (Ink) test predictability
-
-The same patterns apply in Tier 5 when keypresses are delivered via `ExternalTmuxProbe.pressKeyInPane` instead of `ink-testing-library`'s `stdin.write` — see real-tmux predictability rule 6 above for the probe-driven analogue of `pressUntilFrame`.
-
-`<StepsView>` and `useStepsSelection` tests drive Ink via `ink-testing-library`, whose render + `useInput` subscription + keypress handling are all async. Never read `lastFrame()` after a fixed `setTimeout` — use the shared helpers in `tests/helpers/ink-frame.ts`:
-
-- **`waitForFrame(ui, predicate, { transform })`** — poll `lastFrame()` until the expected content renders (use after a state change you can observe in the frame).
-- **`pressUntilFrame(ui, key, predicate)`** — resend an *idempotent* key (boundary nav, snap-to-live) until the frame reflects it. Defeats the dropped-first-keypress race (`useInput` subscribes on a mount effect with no frame-observable signal).
-- **`waitForIntents(read, predicate)`** — poll a growing intent log after a keypress that should fire one.
-- For component timers (the banner auto-dismiss), inject a controllable timer via the `scheduleDismiss` prop and drive it with `tests/helpers/manual-timer.ts`'s `createManualTimer()` — never race a real `setTimeout(ttlMs)`.
-
-## Known residual
-
-Under *peak* full-suite parallelism (`bun test tests/unit tests/integration`, ~137 integration files at once), a single Tier-5 behavioral test can still occasionally flake on a timing budget — it passes 4/4 when the `tests/integration/lifecycle/` directory runs on its own. This is a contention ceiling, not a per-test bug; the lead to pull next is reduced concurrency for the real-tmux tiers (a serialized real-tmux test script) rather than widening individual budgets.
-
-## Writing a Tier 2 test — 5-line skeleton
-
-```ts
-import { renderToString } from 'ink'
-import { stripAnsi } from '../../../../../src/observability/index.ts'
-import { StepsView } from '../../../../../src/hosts/two-pane/steps-view/index.ts'
-
-it('renders <visible thing> for state <X>', () => {
-  const frame = stripAnsi(renderToString(<StepsView state={X} onIntent={() => {}} now={() => 0} />, { columns: 110 }))
-  expect(frame).toContain('<expected text>')
-})
-```
-
-For keypress-driven assertions, use `ink-testing-library`'s `render()` + `stdin.write(...)` (see `tests/unit/hosts/two-pane/steps-view/key-intent-mapping.test.tsx`).
-
-## Writing a Tier 5 test — 5-line skeleton
-
-```ts
-import {
-  assertOrchExits, exitedNormally, holdUntilReleased, launchOrchWorkflow,
-  pressKeyInPane, userAction, withinMs,
-} from '../../helpers/behavioral-dsl/index.ts'
-import { canRunRealTmux } from '../../helpers/real-tmux/fixture.ts'
-
-describe.skipIf(!canRunRealTmux())('Tier 5 — <bug class>', () => {
-  it('<the lifecycle invariant the test pins>', async () => {
-    await launchOrchWorkflow('two-step-linear', {
-      script: { plan: holdUntilReleased() },
-      bringToState: { kind: 'mid-step', name: 'plan' },
-    })
-    await userAction(pressKeyInPane('left', 'q'))
-    await assertOrchExits(withinMs(5_000), exitedNormally())
-  }, 30_000)
-})
-```
-
-The DSL barrel (`tests/helpers/behavioral-dsl/index.ts`) is the only file Tier 5 cells import from for harness functionality — `./internal/*` is off-limits to cells by convention. Read [`tests/helpers/behavioral-dsl/README.md`](../tests/helpers/behavioral-dsl/README.md) for the full DSL surface.
-
-## DSL surface (post 2026-05-20 rename pass)
-
-The behavioral DSL was renamed for readability after the W4 first-batch landed. Failure messages and snapshot artifacts use the **new** identifiers; older handovers and plan revisions may still reference the old names. Use this table when reading either:
-
-| Old name | New name | Notes |
-| --- | --- | --- |
-| `expectInvariantViolation` | `assertContractViolatedThroughout` | The Risk R-D sentinel — passes WHILE the bug exists, fails the moment it's fixed. |
-| `assertAllInvariants` | `assertContractedOutcome` | Direct contract assertion — fails WHILE the bug exists, passes when fixed. |
-| `cleanly()` | `exitedNormally()` | |
-| `doesNotExist()` | `tmuxIsTornDown()` | |
-| `balancedEscapes()` | `terminalRestoredCleanly()` | |
-| `hasIntactPerStepFiles()` | `stepArtifactsIntact()` | |
-| `isInState(...)` | `showsInkState(...)` | |
-| `assertTerminalState(...)` | `assertTerminalEscapeStream(...)` | |
-| `assertWorkflowState(...)` | `assertPersistedState(...)` | |
-| `typeInAttachTty(...)` | `typeIntoOrchStdin(...)` | |
-| `closeStdin()` (DSL action) | `closeOrchStdin()` | The `SpawnHandle.closeStdin` port keeps the short name. |
-
-The §6.5 contract table at `tests/helpers/behavioral-dsl/internal/invariants.ts` is unchanged — same matchers, new identifiers.
-
-## Choosing the right assertion shape
-
-Tier 5 cells pick **one of two** verbs against the §6.5 contract rows. The choice is load-bearing — it determines the cell's lifecycle on the next fix.
-
-### `assertContractedOutcome(scenario, withinMs(...))` — permanent regression test
-
-Polls until every matcher in the contract row passes; throws `InvariantAssertionFailure` if the budget expires with violations outstanding.
-
-- **Today (bug present):** the cell **FAILS** in CI with the named violations (e.g. `assertContractedOutcome("pane-q-during-run") failed with 3 violation(s): exitedNormally / tmuxIsTornDown / hasStatus("cancelled")`).
-- **When the bug is fixed:** the cell **PASSES**. Keep it as a permanent regression guard.
-- **Use when:** you want the cell to outlive the fix and continue catching regressions.
-
-This is what `q-during-fake-mid-step.real.test.ts` uses today.
-
-### `assertContractViolatedThroughout(scenario, withinMs(...))` — the Risk R-D sentinel
-
-Polls the snapshot stream; throws **immediately** if any snapshot's violation list is empty (orch reached the contracted clean state); returns success if violations persist for the full budget.
-
-- **Today (bug present):** the cell **PASSES** — the snapshot's `violations` list is never empty, so the assertion holds throughout the budget.
-- **When the bug is fixed:** the cell **FAILS** with `assertContractViolatedThroughout("…"): violation list is empty — orch reached the contracted clean state; the bug appears fixed. DELETE this cell, do not invert the assertion.`
-- **Use when:** the cell exists specifically to capture *bug evidence* (the snapshot artifact under `__snapshots__/` is the deliverable). On fix, **delete** the cell + its snapshot — do NOT invert the assertion or mark `it.skip`.
-
-The first-batch cells split: `q-during-emitting-fake-mid-step.real.test.ts` plus the three `ctrl-c-{once,twice,thrice}-in-attached-during-mid-step.real.test.ts` cells use this sentinel and must be deleted on fix; the single `q-during-fake-mid-step.real.test.ts` cell stays via `assertContractedOutcome`.
-
-## `__snapshots__/` convention
-
-`assertContractViolatedThroughout` optionally persists its captured violation snapshot to disk as the durable bug-evidence ticket. The artifact is keyed by `<scenario>.last.json` (e.g. `pane-q-during-run.last.json`, `attach-tty-ctrl-c.last.json`), committed under `tests/integration/lifecycle/__snapshots__/`, and referenced from the U11 findings doc.
-
-Default test runs are **pure** — no on-disk side effects. Set the `LIFECYCLE_SNAPSHOT_DIR` env var to opt in:
-
-```sh
-LIFECYCLE_SNAPSHOT_DIR=tests/integration/lifecycle/__snapshots__ \
-  bun test tests/integration/lifecycle/
-```
-
-Each cell that uses `assertContractViolatedThroughout` and is reached during the run overwrites its scenario's `.last.json` with a freshly captured snapshot. Refresh + commit the diff to update the bug-evidence ticket. On fix (sentinel cells fail and get deleted), delete the matching snapshot file too.
-
-## Promoting Tier 1 to Tier 4
-
-```diff
-- describe.skipIf(!canRunRealTmux())('Tier 1 — autonomous-live', () => {
--   const agent = new FakeRunner(fps).script({...})
-+ describe.skipIf(!canRunRealTmuxE2E('claude'))('Tier 4 — autonomous-live', () => {
-+   const agent = claude()
-```
-
-Everything else — fixture boot, `mountTmuxHost`, `runWorkflow`, `right.waitForText` — stays identical.
-
-## Gating
-
-- **Tier 1** auto-skips when `tmux` is not on PATH (existing `Bun.which('tmux')` convention).
-- **Tier 4** auto-skips unless `tmux` is on PATH **AND** the named CLI binary is on PATH **AND** `RUN_REAL_TMUX_E2E=1`. Developer-opt-in until a future PR adds a scheduled CI job.
-- **Tier 5** cells auto-skip on `!canRunRealTmux()` (same as Tier 1) — every first-batch cell is `ScriptedFakeRunner`-driven (the [`scriptedFake`](#the-two-fakes-fakerunner-vs-scriptedfake) subprocess fake, advanced over its `.ready` → NDJSON → `.ack` control contract), so `tmux` on PATH is the only requirement. Real-CLI Tier 5 variants are deferred follow-up; when one lands, it'll additionally require `RUN_REAL_TMUX_E2E=1` and the named CLI on PATH (same as Tier 4), via the `canRunRealTmuxE2E('codex')` / `canRunRealTmuxE2E('claude')` predicate kept available for that purpose. Tier 5 cells live under `tests/integration/lifecycle/` and are run via `bun test tests/integration/lifecycle/`; the plan's intent is to keep them off the pre-commit gate, though the current `bun test tests/unit tests/integration` script still picks them up — see plan Risk R-A for the long-term split.
-
-## Harness API surface
-
-See [`tests/helpers/real-tmux/README.md`](../tests/helpers/real-tmux/README.md) for the full API. The high points:
-
-- `createRealTmuxFixture(opts)` — boots an isolated tmux server, allocates a state base, returns a disposable handle.
-- `mountTmuxHost(fixture, opts)` — composes `createTmuxHost` against the fixture and exposes `left` / `right` pane handles + `runWorkflow` + `sendKeys`.
-- `right.capture()` / `right.captureRaw()` — ANSI-stripped or raw bytes.
-- `right.waitForText(needle, { timeoutMs })` / `right.waitFor(predicate, { timeoutMs })` — bounded polling.
-- `canRunRealTmux()` / `canRunRealTmuxE2E(cli)` — skip predicates.
-
-## Where the boundary is
-
-- Anything Tier 1 cannot prove with a FakeRunner (real interactive PTY, real network, real argv on disk) belongs in Tier 4.
-- Anything Tier 1's in-process `TmuxHost` mount cannot exercise (CLI signal handlers in `execute-with-attach.ts:64-78`, attached-TTY keypresses, external `tmux kill-*` verbs, terminal hangup) belongs in Tier 5.
-- Anything Tier 2 cannot prove with `<StepsView>` alone (controller-side state, swap ordering) belongs in Tier 1.
-- Anything Tier 3 covers (argv flags, env passthrough, escape rules) **never** belongs in Tier 1, 4, or 5 — the tmux contract is its own surface.
+The repo is mid-relocation into `tests-new/`. The old `tests/` tree stays on disk, progressively `.skip` as each behaviour's replacement lands, and is kept forever. Write new **two-pane** tests under `tests-new/` in the new shape; write new **non-two-pane** tests in their existing `tests/{unit,integration,e2e}` home until that module relocates, then straight to `tests-new/` with a `tests-new/_migration/ledger.md` row tagged `new`. The `tests-new/_migration/` ledger accounts for every old case (`port`/`merge`/`demote`/`drop`); `bun run overlap-report` flags missing `model`↔`screen` contract twins and ledger gaps against the frozen baseline.

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test'
+import { canRunRealTmux } from '@orch/test/real-tmux/index.ts'
 import { expandScenario } from '../scenario.ts'
 
 // `expandScenario` is the pure core of `scenario()`: it maps a scenario's meta
@@ -48,10 +49,10 @@ describe('expandScenario reflects each driver capability predicate', () => {
     expect(cases[0]?.skip).toBe(false)
   })
 
-  it('marks a not-yet-implemented driver (stub) as skipped rather than failing', () => {
-    // `full-host:recorded-agent` is still a stub in U2 (it lands in parent U3),
-    // so its capability predicate skips rather than crashing the suite. The U2
-    // tmux drivers (screen / full-host:fake-agent / lifecycle) are now real.
+  it('reflects a real tmux driver capability predicate (no stubs remain after U3)', () => {
+    // Every driver is live after parent U3 — `full-host:recorded-agent` is a
+    // real driver whose predicate skips only when real tmux is unavailable (D8),
+    // never because it is unimplemented. The skip tracks capability, not a stub.
     const cases = expandScenario({
       name: 'a recorded-agent behaviour',
       drivers: ['full-host:recorded-agent'],
@@ -59,6 +60,6 @@ describe('expandScenario reflects each driver capability predicate', () => {
       oldTestRefs: [],
     })
 
-    expect(cases[0]?.skip).toBe(true)
+    expect(cases[0]?.skip).toBe(!canRunRealTmux())
   })
 })

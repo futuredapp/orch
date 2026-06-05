@@ -1,2 +1,5 @@
 [test]
-preload = ["./tests/setup/cleanup-stale-tmux.ts"]
+preload = [
+  "./tests/setup/cleanup-stale-tmux.ts",
+  "./tests-new/dsl/preload-warn-bare-bun-test.ts",
+]
