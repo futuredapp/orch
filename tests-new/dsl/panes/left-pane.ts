@@ -30,6 +30,16 @@ export class LeftPane {
     return this.driver.assertBottomText(LeftPane.TEXT.quitHint, { count: 1 })
   }
 
+  /** The replay-mode footer carries the `f live` hint (live mode does not). */
+  assertFollowLiveHintVisible(): Promise<void> {
+    return this.driver.assertBottomText(LeftPane.TEXT.followHint, { count: 1 })
+  }
+
+  /** Live mode shows no `f live` hint — the inverse of the replay footer. */
+  assertFollowLiveHintHidden(): Promise<void> {
+    return this.driver.assertBottomText(LeftPane.TEXT.followHint, { count: 0 })
+  }
+
   assertStepSelected(step: string): Promise<void> {
     return this.driver.assertSelected(step)
   }

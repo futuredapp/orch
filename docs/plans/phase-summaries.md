@@ -126,3 +126,38 @@ tests relocate there; and `test:two-pane:fast` now also runs the no-tmux DSL and
 `_migration` unit tests so the whole no-tmux new suite is on the gate. The new
 tree is green (fast 24, tmux 31, lifecycle 6) and the old unit suite (1954) is
 untouched.
+
+## Phase 4
+
+Phase 4 (parent unit **U4**) is the migration tracer: it proves the whole
+strangler mechanic on the first two feature areas — `launch` and `follow-live` —
+by re-deriving their behaviour across every non-real-CLI driver (`model`,
+`screen`, `full-host:fake-agent`, `lifecycle`) and then marking the old tests
+`.skip`. The load-bearing new capability is **real-tmux keyboard navigation**:
+`selectStep` / `followLive` (which were `notImplemented` stubs in the shared
+`real-tmux-pane-driver`) now drive the committed selection by sending real
+arrow/Enter/`f` keystrokes and polling the captured pane — `selectStep` re-reads
+the frame each move so a dropped keystroke self-corrects, and `followLive`
+poll-and-resends the idempotent `f` until the live step lands. To make this work
+the single-pane `screen` fixture was made interactive (it holds the view mode in
+state and updates it from `onIntent`, mirroring the model harness), so the
+live↔replay footer flip is now proven over genuine navigation, not a synthetic
+prop. The overlap report was flipped to **blocking** (non-zero exit on any
+finding) and wired onto the gate; the eight in-area old files are now `.skip`
+with `// MIGRATED →` markers and a case-granular ledger.
+
+Two things matter for next work. **(1) Driver capability boundaries are real.**
+The navigation protocol lives once in the shared pane driver and is proven by the
+`screen` driver; the `full-host` live submode holds only a **single** step handle,
+so a multi-step "navigate to a past step then return" run hangs at teardown (the
+undriven second puppet step never settles). So full-host's U4 scenario proves the
+live mid-stream *interleave* (agent content reaching the visible right pane while
+the user acts) — its real risk per the decision rule — and multi-step live
+navigation is left for a future driver extension. **(2) The gate's only red is
+pre-existing and unrelated:** `bun run check` is green except for 5 long-standing
+`ENOENT` failures on fixture files under gitignored `.orch/` dirs
+(`file-prompts-demo`, `typed-vars`, codegen) — not touched by this phase. Lint and
+typecheck are clean; all new two-pane scenarios and driver regression tests pass
+(fast 30 + blocking overlap report, tmux 38, lifecycle 7). Multi-area old files
+(bulk left-pane rendering, pane-map/right-pane-controller, the behavioral-dsl
+launcher smoke) were deliberately left live for U5–U8.

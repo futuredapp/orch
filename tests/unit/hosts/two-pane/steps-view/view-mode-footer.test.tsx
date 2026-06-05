@@ -49,7 +49,12 @@ function replayState(stepName: string): StepsViewState {
   }
 }
 
-describe('<StepsView> view-mode footer at width 110', () => {
+// MIGRATED → tests-new/screen/follow-live--footer-flips-live-to-replay.test.ts (parent U4).
+// Per-case dispositions (3 cases):
+//   • "live mode renders ▶ live …"        → demote→screen (live footer bytes, via assertFollowLiveHintHidden)
+//   • "replay mode renders ⏸ viewing …"   → demote→screen (replay footer bytes, via assertFollowLiveHintVisible)
+//   • "flipping state live → replay …"     → port→screen (the real-navigation footer flip)
+describe.skip('<StepsView> view-mode footer at width 110', () => {
   it("live mode renders '▶ live · ⏎ view step · q quit · ? help'", () => {
     const frame = stripAnsi(
       renderToString(<StepsView state={liveState()} onIntent={NOOP} now={() => NOW} />, {

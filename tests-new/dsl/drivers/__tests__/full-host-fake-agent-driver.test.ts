@@ -136,6 +136,14 @@ describe('full-host:fake-agent driver — live submode is reachable only by expl
   )
 })
 
+// Note on navigation coverage: `selectStep`/`followLive` live in the SHARED
+// `real-tmux-pane-driver.ts` and are exercised end-to-end by the `screen`
+// driver's keystroke-navigation tests (deterministic single-pane synthetic
+// state). The full-host driver wires the same protocol to `harness.sendKeys`;
+// its own risk class is two-pane COMMUNICATION (live content reaching the
+// visible right pane), covered by the live-submode tests above and the U4.5
+// interleave scenario — not byte-level navigation (parent §6 decision rule).
+
 // Real-tmux sockets land in the tmux socket dir as `orch-*`. Delta-based, not
 // absolute: the legacy suite may leave `orch-test-*` sockets behind.
 function listOrchSockets(): string[] {

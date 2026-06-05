@@ -18,6 +18,13 @@ export { stripAnsi }
 // signal that survives — and the one the user sees.
 export const CURSOR = '▌'
 
+// The `↑/↓` preview cursor — the candidate row the user is browsing before
+// committing with `Enter`. Rendered only while it differs from the committed
+// row (`steps-view.tsx` suppresses `preview` on the committed line), so the two
+// glyphs never coincide. Used by the real-tmux navigation protocol to know
+// where the cursor currently sits when computing arrow-key deltas.
+export const PREVIEW_CURSOR = '›'
+
 const GLYPH_STATUS: Record<GlyphName, StepStatus> = {
   running: 'running',
   done: 'completed',
@@ -52,7 +59,31 @@ export function highlightedStepName(frame: string, names: readonly string[]): st
   return undefined
 }
 
+/** The step name on the preview-cursor (`›`) line, if any of `names` follows it. */
+export function previewCursorStepName(
+  frame: string,
+  names: readonly string[],
+): string | undefined {
+  for (const line of frame.split('\n')) {
+    if (!line.includes(PREVIEW_CURSOR)) continue
+    const afterCursor = line.slice(line.indexOf(PREVIEW_CURSOR) + PREVIEW_CURSOR.length)
+    const match = names.find((name) => afterCursor.includes(name))
+    if (match !== undefined) return match
+  }
+  return undefined
+}
+
 /** Whether `step`'s row renders `glyph` (step name and glyph on the same line). */
 export function rowHasGlyph(frame: string, step: string, glyph: string): boolean {
   return frame.split('\n').some((line) => line.includes(step) && line.includes(glyph))
+}
+
+/**
+ * The step currently rendering the `running` glyph — the live source the right
+ * pane follows. Falls back to `undefined` when nothing is running (a terminal
+ * frame), matching the controller's `findLive() ?? lastSelectable` rule.
+ */
+export function runningStepName(frame: string, names: readonly string[]): string | undefined {
+  const glyph = glyphChar('running')
+  return names.find((name) => rowHasGlyph(frame, name, glyph))
 }

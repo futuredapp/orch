@@ -32,10 +32,15 @@ afterEach(async () => {
   if (handle !== undefined) await handle.teardown()
 })
 
+// MIGRATED → split across tests-new/model/launch--first-step-running-and-highlighted.test.ts (glyph + highlight),
+//            tests-new/screen/launch--first-step-running-and-highlighted.test.ts (glyph bytes),
+//            tests-new/full-host/fake-agent/follow-live--right-pane-swaps-source.test.ts (live source in right pane),
+//            tests-new/lifecycle/launch--boots-to-mid-step-and-tears-down.test.ts (boot) — parent U4.
+// port: the one old case re-derives across categories by the decision rule (§6).
 describe.skipIf(!canRunRealTmux())(
   'Tier 5 behavioral — first step running + right pane live',
   () => {
-    it('shows the running glyph on the first step and the live source in the right pane', async () => {
+    it.skip('shows the running glyph on the first step and the live source in the right pane', async () => {
       handle = await launchOrchWorkflow('single-agent-step', {
         script: { work: puppet() },
       })

@@ -29,10 +29,13 @@ afterEach(async () => {
   fixturesToDispose = []
 })
 
+// MIGRATED → tests-new/full-host/fake-agent/follow-live--right-pane-swaps-source.test.ts
+//            (+ tests-new/full-host/fake-agent/follow-live--keypress-during-stream.test.ts) — parent U4.
+// port: autonomous transcript reaching the visible right pane (no caret echo).
 describe.skipIf(!tmuxAvailable)(
   'Tier 1 — autonomous step live pane shows content within a bounded window',
   () => {
-    it('right.waitForText resolves before its timeout, both transcript lines are visible, and no caret-notation echo bytes appear', async () => {
+    it.skip('right.waitForText resolves before its timeout, both transcript lines are visible, and no caret-notation echo bytes appear', async () => {
       const fixture = await createRealTmuxFixture({ env: {} })
       fixturesToDispose.push(fixture)
 

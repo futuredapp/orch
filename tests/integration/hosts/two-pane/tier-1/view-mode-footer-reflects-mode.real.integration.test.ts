@@ -31,8 +31,12 @@ afterEach(async () => {
   fixturesToDispose = []
 })
 
+// MIGRATED → tests-new/screen/follow-live--footer-flips-live-to-replay.test.ts
+//            (+ tests-new/screen/launch--header-and-step-list-render.test.ts) — parent U4.
+// demote→screen: terminal-state footer + workflow-name render is a byte-level
+// risk (screen), not full-host plumbing.
 describe.skipIf(!tmuxAvailable)('Tier 1 — view-mode footer reflects the current mode', () => {
-  it(
+  it.skip(
     'after the workflow completes, the left pane renders the terminal-state footer and the workflow name',
     async () => {
       const fixture = await createRealTmuxFixture({ env: {} })

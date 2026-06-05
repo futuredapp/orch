@@ -140,6 +140,60 @@ describe('screen driver — adversarial byte catalogue survives real tmux', () =
   }
 })
 
+// Navigation protocol over real tmux (parent U4.2, K3). These are the
+// highest-risk affordances — a keystroke race over real tmux is where every
+// historical flake lived (REGRESSION 2026-05-29 nav.f-snaps) — so they are
+// characterized at the driver level before any behaviour scenario leans on them.
+describe('screen driver — keystroke navigation over real tmux', () => {
+  it.skipIf(!tmuxAvailable)(
+    'selectStep commits the highlight to the chosen step via arrow keys + Enter',
+    async () => {
+      const app = await buildApp()
+      await app.resize(80, 24)
+      await app.launch({ steps: ['plan', 'execute'], stopAt: 'mid-step' })
+
+      // Live mode starts committed to the running step (the last one).
+      await app.leftPane.assertStepSelected('execute')
+
+      // Navigate up to the earlier step and commit it.
+      await app.leftPane.selectStep('plan')
+
+      await app.leftPane.assertStepSelected('plan')
+    },
+    REAL_TMUX_TEST_TIMEOUT_MS,
+  )
+
+  it.skipIf(!tmuxAvailable)(
+    'followLive returns the committed highlight to the live step, resending f until it lands',
+    async () => {
+      const app = await buildApp()
+      await app.resize(80, 24)
+      await app.launch({ steps: ['plan', 'execute'], stopAt: 'mid-step' })
+
+      await app.leftPane.selectStep('plan')
+      await app.leftPane.assertStepSelected('plan')
+
+      // f snaps back to the live (running) step.
+      await app.leftPane.followLive()
+
+      await app.leftPane.assertStepSelected('execute')
+    },
+    REAL_TMUX_TEST_TIMEOUT_MS,
+  )
+
+  it.skipIf(!tmuxAvailable)(
+    'selectStep to an out-of-range step name throws a clear error instead of hanging',
+    async () => {
+      const app = await buildApp()
+      await app.resize(80, 24)
+      await app.launch({ steps: ['plan', 'execute'], stopAt: 'mid-step' })
+
+      await expect(app.leftPane.selectStep('does-not-exist')).rejects.toThrow('no such step')
+    },
+    REAL_TMUX_TEST_TIMEOUT_MS,
+  )
+})
+
 // Real-tmux sockets land in the tmux socket dir as `orch-*`. Delta-based.
 function listOrchSockets(): string[] {
   const dir = `${process.env.TMUX_TMPDIR ?? '/tmp'}/tmux-${process.getuid?.() ?? 0}`

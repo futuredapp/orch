@@ -35,8 +35,13 @@ afterEach(async () => {
   if (handle !== undefined) await handle.teardown()
 })
 
+// MIGRATED → tests-new/screen/launch--header-and-step-list-render.test.ts
+//            (+ tests-new/model/launch--header-and-step-list-render.test.ts;
+//             lifecycle boot/teardown → tests-new/lifecycle/launch--boots-to-mid-step-and-tears-down.test.ts) — parent U4.
+// demote→screen+model: workflow-name/step-row/footer is rendering bytes, not
+// process behaviour (decision rule, parent §6).
 describe.skipIf(!canRunRealTmux())('Tier 5 behavioral — workflow launch render', () => {
-  it('renders workflow name, step row, and live-mode footer in the left pane', async () => {
+  it.skip('renders workflow name, step row, and live-mode footer in the left pane', async () => {
     handle = await launchOrchWorkflow('single-agent-step', {
       script: { work: puppet() },
     })

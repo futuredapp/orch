@@ -14,9 +14,11 @@
 // `snapshot.ts`, it reads SOURCE TEXT and walks the TypeScript AST instead — the
 // pure `parseScenarios(text)` core never touches the module system.
 //
-// In U3 this is NON-BLOCKING: `bun run overlap-report` prints findings and exits
-// 0. U4's plan flips it to blocking once the first real ledger rows exist
-// (parent §U3; this plan D-P3.6 / risk P3-E).
+// As of U4 this is BLOCKING: `bun run overlap-report` prints findings and exits
+// NON-ZERO when any exist, so a broken model↔screen contract or an oldTestRefs
+// entry that points at no real baseline case fails the gate (parent §U3/§U4; the
+// first real ledger rows landed in U4, so the flip is safe). It is on the `check`
+// gate and the `test:two-pane:fast` tight loop.
 
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
@@ -197,9 +199,18 @@ export function loadBaselinePaths(baselinePath: string = BASELINE_PATH): Readonl
   return new Set(baseline.files.map((f) => f.path))
 }
 
+/**
+ * The blocking gate decision (U4+): non-zero when any finding exists. Pure, so
+ * the exit-code contract is unit-testable without spawning the report or
+ * importing a scenario file.
+ */
+export function exitCodeForFindings(findings: Findings): number {
+  return findings.missingTwins.length + findings.unknownOldRefs.length > 0 ? 1 : 0
+}
+
 export function renderFindings(scenarios: readonly ScenarioRef[], findings: Findings): string {
   const lines: string[] = []
-  lines.push('overlap-report (NON-BLOCKING in U3 — U4 flips it to blocking)')
+  lines.push('overlap-report (BLOCKING — non-zero exit on any finding, U4+)')
   lines.push(`scenarios parsed: ${scenarios.length}`)
   lines.push('')
   if (findings.missingTwins.length === 0) {
@@ -225,6 +236,6 @@ if (import.meta.main) {
   const scenarios = collectScenarios()
   const findings = analyze(scenarios, loadBaselinePaths())
   process.stdout.write(`${renderFindings(scenarios, findings)}\n`)
-  // NON-BLOCKING in U3: always exit 0. U4 flips this.
-  process.exit(0)
+  // BLOCKING (U4+): a missing twin or an unresolved old-ref fails the gate.
+  process.exit(exitCodeForFindings(findings))
 }

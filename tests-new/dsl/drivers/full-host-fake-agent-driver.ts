@@ -95,6 +95,8 @@ function createLiveFullHostApp(
       stepNames: () => stepNames,
       assertTimeoutMs: REAL_TMUX_ASSERT_TIMEOUT_MS,
       driverLabel: DRIVER_LABEL,
+      // Navigation always drives the steps (left) pane; `sendKeys` targets it.
+      sendKey: (input) => harness.sendKeys(input),
     })
 
   const leftPane = new LeftPane(paneDeps(harness.left))

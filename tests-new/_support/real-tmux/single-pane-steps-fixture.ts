@@ -13,6 +13,7 @@
 import { join } from 'node:path'
 import type { PaneId } from '../../../src/services/tmux/index.ts'
 import { createRealTmuxFixture, type RealTmuxFixture } from './fixture.ts'
+import { type NamedKey, sendKeysToPane } from './keys.ts'
 import { createPaneHandle, type PaneHandle } from './pane-handle.ts'
 import type { SinglePaneStepsSpec } from './synthetic-steps-state.ts'
 
@@ -26,6 +27,12 @@ export interface SinglePaneStepsFixture {
   launch(spec: SinglePaneStepsSpec): Promise<void>
   /** Re-render the steps pane at a new geometry. */
   resize(width: number, height: number): Promise<void>
+  /**
+   * Dispatch a single keystroke (named key like `Up`/`Enter`, or literal text)
+   * to the steps pane — the navigation transport the real-tmux pane driver uses
+   * to drive `selectStep`/`followLive` over real tmux (parent U4, K1/K2).
+   */
+  sendKey(input: NamedKey | string): Promise<void>
   /** Kill the tmux server + remove the state base. Idempotent. */
   dispose(): Promise<void>
 }
@@ -91,6 +98,12 @@ export async function createSinglePaneStepsFixture(
       width = w
       height = h
       if (spec !== undefined) await recreateSession(spec)
+    },
+    async sendKey(input: NamedKey | string): Promise<void> {
+      if (paneId === undefined) {
+        throw new Error('single-pane-steps-fixture: launch(spec) must run before sendKey')
+      }
+      await sendKeysToPane({ tmux: fixture.tmux, socket: fixture.socket, target: paneId }, input)
     },
     dispose: () => fixture.dispose(),
   }

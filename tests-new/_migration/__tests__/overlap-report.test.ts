@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'bun:test'
-import { analyze, parseScenarios, type ScenarioRef } from '../overlap-report.ts'
+import {
+  analyze,
+  exitCodeForFindings,
+  parseScenarios,
+  type ScenarioRef,
+} from '../overlap-report.ts'
 
 // Unit tests for the overlap report over FIXTURE inputs (not the live tree).
 // They prove the two findings classes (missing twin, unknown old ref) and the
@@ -94,6 +99,40 @@ describe('overlap report — unknown old ref vs the frozen baseline (D12)', () =
     const findings = analyze(scenarios, BASELINE)
 
     expect(findings.unknownOldRefs).toHaveLength(0)
+  })
+})
+
+describe('overlap report — blocking gate decision (parent §U4, K5)', () => {
+  it('exits non-zero when a missing twin exists', () => {
+    const scenarios = parseScenarios(modelScenario('follow-live-view-mode'), 'model/x.test.ts')
+
+    const findings = analyze(scenarios, BASELINE)
+
+    expect(exitCodeForFindings(findings)).toBe(1)
+  })
+
+  it('exits non-zero when an old ref is unaccounted', () => {
+    const source = `
+      import { scenario } from '../dsl/index.ts'
+      scenario({
+        name: 'orphan ref', feature: 'x', drivers: ['model'],
+        oldTestRefs: ['tests/does/not/exist.test.ts'],
+      }, async () => {})
+    `
+    const findings = analyze(parseScenarios(source, 'model/z.test.ts'), BASELINE)
+
+    expect(exitCodeForFindings(findings)).toBe(1)
+  })
+
+  it('exits zero when there are no findings', () => {
+    const scenarios: ScenarioRef[] = [
+      ...parseScenarios(modelScenario('follow-live-view-mode'), 'model/x.test.ts'),
+      ...parseScenarios(screenScenario('follow-live-view-mode'), 'screen/y.test.ts'),
+    ]
+
+    const findings = analyze(scenarios, BASELINE)
+
+    expect(exitCodeForFindings(findings)).toBe(0)
   })
 })
 

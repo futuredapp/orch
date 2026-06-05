@@ -137,7 +137,10 @@ afterEach(async () => {
   await rm(tempDir, { recursive: true, force: true })
 })
 
-describe('right-pane-controller — follow-live prefers the running live source over an interactive replay', () => {
+// MIGRATED → tests-new/model/follow-live--prefers-live-over-interactive-replay.test.ts (parent U4).
+// port→model: the follow-live-over-replay preference is a controller DECISION,
+// re-derived at the projection seam (no tmux).
+describe.skip('right-pane-controller — follow-live prefers the running live source over an interactive replay', () => {
   it('after entering a past interactive step replay, pressing follow-live swaps the visible slot back to the live autonomous source', async () => {
     // ----- Arrange -----
     const tmux = new FakeTmuxService()

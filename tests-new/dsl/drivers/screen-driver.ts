@@ -38,6 +38,7 @@ function createScreenApp(fixture: SinglePaneStepsFixture): ScreenApp {
       stepNames: () => stepNames,
       assertTimeoutMs: REAL_TMUX_ASSERT_TIMEOUT_MS,
       driverLabel: DRIVER_LABEL,
+      sendKey: (input) => fixture.sendKey(input),
     }),
   )
 

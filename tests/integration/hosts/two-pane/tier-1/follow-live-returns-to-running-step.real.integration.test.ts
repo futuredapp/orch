@@ -27,6 +27,10 @@ import { canRunRealTmux } from '../../../../helpers/real-tmux/index.ts'
 const tmuxAvailable = canRunRealTmux()
 const deferred = true
 
+// MIGRATED → tests-new/full-host/fake-agent/follow-live--keypress-during-stream.test.ts
+//            (+ tests-new/model/follow-live--returns-to-running-step.test.ts) — parent U4.
+// The live-driven (scriptedFake) submode is the paused-workflow hook this
+// placeholder waited for; it unblocks the deterministic interleave assertion.
 describe.skipIf(!tmuxAvailable || deferred)(
   'Tier 1 — follow-live returns to the running step (DEFERRED — needs paused-workflow hook)',
   () => {
