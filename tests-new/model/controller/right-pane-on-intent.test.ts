@@ -1,35 +1,24 @@
-// MIGRATED → tests-new/model/controller/right-pane-on-intent.test.ts (parent U7) — replaced by plain model/* category tests; kept skipped on disk (D2).
-// triage: rewrite — intent→action mapping is Tier 2 (key-intent-mapping.test.tsx); per-kind visible outcome is Tier 1. Rewrite to assert on resulting view shape, not recorded dispatch.
-// Unit coverage for the U8 swap-based `onIntent('enter')` dispatch on the
-// pane-map controller. The legacy unit-test files
-// (right-pane-controller.test.ts, right-pane-follow-live.test.ts,
-// right-pane-resume.test.ts, right-pane-busy-gate.test.ts) covered the
-// respawn-on-rightPaneId path and were deleted with U8. The integration
-// tests under tests/integration/hosts/two-pane/ pin the end-to-end swap
-// shape; this file covers the dispatch-layer behavior that isn't naturally
-// exercised end-to-end (cached-skip, lookup-miss, warm-cache reuse, error
-// banner on dispatch failure).
+// MIGRATED ← tests/unit/hosts/two-pane/pane-map/right-pane-on-intent.test.ts (parent U7a)
+//
+// `model/controller` category (see ./README.md): plain class tests at the
+// `FakeTmuxService` seam, no `scenario()`. `onIntent('enter')` path selection is
+// a pure dispatch decision — live-vs-replay, lookup miss, ANSI-tee preference,
+// auto-advance stop, interactive-stays-replay. Regression-pin run-IDs preserved.
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
-import { Writable } from 'node:stream'
-import type { StepName } from '../../../../../src/core/types.ts'
+import type { StepName } from '../../../src/core/types.ts'
 import {
   createRightPaneController,
   type SourceKey,
-} from '../../../../../src/hosts/two-pane/pane-map/index.ts'
-import { createPaneQueue } from '../../../../../src/hosts/two-pane/pane-queue.ts'
-import type { SessionLogger } from '../../../../../src/observability/index.ts'
-import { createNullSessionLogger } from '../../../../../src/observability/index.ts'
-import { FakeTmuxService, paneId, socketName } from '../../../../../src/services/tmux/index.ts'
-import { path as toPath } from '../../../../../src/services/types.ts'
-import {
-  type RunId,
-  type RunState,
-  type StateStore,
-  type StepEntry,
-  runId as toRunId,
-} from '../../../../../src/state/index.ts'
+} from '../../../src/hosts/two-pane/pane-map/index.ts'
+import { createPaneQueue } from '../../../src/hosts/two-pane/pane-queue.ts'
+import type { SessionLogger } from '../../../src/observability/index.ts'
+import { createNullSessionLogger } from '../../../src/observability/index.ts'
+import { FakeTmuxService, paneId, socketName } from '../../../src/services/tmux/index.ts'
+import { path as toPath } from '../../../src/services/types.ts'
+import { type RunId, type StepEntry, runId as toRunId } from '../../../src/state/index.ts'
+import { bufferStream, capturingLogger, flush, makeStep, makeStore } from './_support.ts'
 
 const RUN_ID: RunId = toRunId('r-2026-05-11-200000-oi')
 const RIGHT_PANE = paneId('%1')
@@ -37,79 +26,6 @@ const LEFT_PANE = paneId('%0')
 const SOCKET = socketName('orch-main-on-intent')
 
 const stepName = (s: string): StepName => s as StepName
-
-function bufferStream(): NodeJS.WritableStream {
-  return new Writable({
-    write(_c, _e, cb) {
-      cb()
-    },
-  }) as unknown as NodeJS.WritableStream
-}
-
-function makeStep(overrides: Partial<StepEntry> & Pick<StepEntry, 'name'>): StepEntry {
-  return {
-    name: overrides.name,
-    value: overrides.value ?? null,
-    startedAt: 1000,
-    endedAt: 2000,
-    artifacts: [],
-    validations: [],
-    transcriptEventCount: 0,
-    transcriptTruncated: false,
-    ...(overrides.mode !== undefined ? { mode: overrides.mode } : {}),
-    ...(overrides.transcriptPath !== undefined ? { transcriptPath: overrides.transcriptPath } : {}),
-  }
-}
-
-function makeStore(steps: Record<string, StepEntry>): StateStore {
-  const state: RunState = {
-    schemaVersion: 5,
-    id: RUN_ID,
-    status: 'running',
-    workflowName: 'demo',
-    startedAt: 0,
-    steps,
-  }
-  return {
-    loadRun: async (rid) => (rid === RUN_ID ? state : undefined),
-    saveStep: async () => {
-      throw new Error('not implemented')
-    },
-    initRun: async () => {
-      throw new Error('not implemented')
-    },
-    setStatus: async () => {
-      throw new Error('not implemented')
-    },
-    setArgs: async () => {
-      throw new Error('not implemented')
-    },
-    runDir: (rid) => toPath(`/runs/${rid}`),
-  }
-}
-
-interface CapturedLog {
-  readonly logger: SessionLogger
-  readonly entries: Array<{ readonly category: string; readonly record: unknown }>
-}
-
-function capturingLogger(): CapturedLog {
-  const base = createNullSessionLogger({ runId: RUN_ID })
-  const entries: CapturedLog['entries'] = []
-  const logger: SessionLogger = {
-    ...base,
-    append: async (category, record): Promise<void> => {
-      entries.push({ category, record })
-    },
-  }
-  return { logger, entries }
-}
-
-async function flush(): Promise<void> {
-  for (let i = 0; i < 8; i++) {
-    await new Promise((r) => setTimeout(r, 0))
-  }
-}
 
 async function makeController(opts: {
   readonly tempDir: string
@@ -130,7 +46,7 @@ async function makeController(opts: {
     leftPaneId: LEFT_PANE,
     rightPaneId: RIGHT_PANE,
     paneQueue: queue,
-    stateStore: makeStore(opts.steps),
+    stateStore: makeStore(RUN_ID, opts.steps),
     runId: RUN_ID,
     stateDir: toPath(stateDir),
     cwd: toPath(opts.tempDir),
@@ -153,7 +69,7 @@ afterEach(async () => {
   await rm(tempDir, { recursive: true, force: true })
 })
 
-describe.skip('right-pane-controller onIntent("enter")', () => {
+describe('right-pane-controller onIntent("enter")', () => {
   it('warm-caches the replay pane: re-enter on the same step does not create a second per-source session', async () => {
     const { tmux, controller, stateDir } = await makeController({
       tempDir,
@@ -179,7 +95,7 @@ describe.skip('right-pane-controller onIntent("enter")', () => {
   })
 
   it('flips viewMode to replay on successful enter', async () => {
-    const captured = capturingLogger()
+    const captured = capturingLogger(RUN_ID)
     const { tmux, controller } = await makeController({
       tempDir,
       steps: {
@@ -204,7 +120,7 @@ describe.skip('right-pane-controller onIntent("enter")', () => {
   })
 
   it('does nothing for an unknown stepName (lookup miss)', async () => {
-    const captured = capturingLogger()
+    const captured = capturingLogger(RUN_ID)
     const { tmux, controller } = await makeController({
       tempDir,
       steps: {},
@@ -242,7 +158,7 @@ describe.skip('right-pane-controller onIntent("enter")', () => {
       leftPaneId: LEFT_PANE,
       rightPaneId: RIGHT_PANE,
       paneQueue: queue,
-      stateStore: makeStore({
+      stateStore: makeStore(RUN_ID, {
         plan: makeStep({ name: 'plan', mode: 'autonomous' }),
       }),
       runId: RUN_ID,
@@ -304,7 +220,7 @@ describe.skip('right-pane-controller onIntent("enter")', () => {
     // right pane stayed on the past replay. A `live:<step>` source is already
     // registered for the running step; dispatchEnter must reuse it instead of
     // routing through the replay path.
-    const captured = capturingLogger()
+    const captured = capturingLogger(RUN_ID)
     const tmux = new FakeTmuxService()
     const queue = createPaneQueue()
     const stateDir = `${tempDir}/state`
@@ -318,7 +234,7 @@ describe.skip('right-pane-controller onIntent("enter")', () => {
       leftPaneId: LEFT_PANE,
       rightPaneId: RIGHT_PANE,
       paneQueue: queue,
-      stateStore: makeStore({
+      stateStore: makeStore(RUN_ID, {
         'write-riddle': makeStep({
           name: 'write-riddle',
           mode: 'interactive',
@@ -436,7 +352,7 @@ describe.skip('right-pane-controller onIntent("enter")', () => {
     // to the last step while the right pane shows the stale leftover pane.
     // A completed step (persisted, hence found by lookupStep) must always
     // replay, pinned — never masquerade as live.
-    const captured = capturingLogger()
+    const captured = capturingLogger(RUN_ID)
     const { tmux, controller } = await makeController({
       tempDir,
       steps: {

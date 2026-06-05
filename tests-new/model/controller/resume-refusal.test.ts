@@ -1,7 +1,8 @@
-// MIGRATED → tests-new/model/controller/resume-refusal.test.ts (parent U7) — replaced by plain model/* category tests; kept skipped on disk (D2).
-// U5 mechanics + branch-ordering coverage for the right-pane controller's
-// resume-refusal dispatch. The full text variants per R8/R9/R10/R11 are
-// finalized in U9; this file asserts the dispatch shape:
+// MIGRATED ← tests/unit/hosts/two-pane/pane-map/resume-refusal.test.ts (parent U7b)
+//
+// `model/controller` category (see ./README.md): plain class tests at the
+// `FakeTmuxService` seam, no `scenario()`. Branch-selection DECISIONS — which
+// refusal text surfaces per registry/runner/session-id state. The dispatch shape:
 //   - registry undefined           → R10 "no runner wired"
 //   - registry + no entry + no runnerName → R8 "pre-dates the resume feature"
 //   - registry + no entry + runnerName    → R11 "not ready yet"
@@ -10,42 +11,26 @@
 //     → three distinct refusal strings (R9 dispatch)
 //   - registry + runner + sessionId → happy path (no refusal)
 //
-// Each test writes the visible refusal text to the per-step `.replay/` file
-// (mirrors `resume-failure-mocked.integration.test.ts`'s assertion shape).
-//
-// Triage: this test would fail if the visible pane content were empty / wrong
-// for any of the eight refusal branches, so it passes the testing-strategy
-// "would this still pass if the pane content were wrong?" gate.
+// Each test writes the visible refusal text to the per-step `.replay/` file, so
+// it would fail if that content were empty/wrong — it passes the triage gate.
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { mkdir, mkdtemp, rm } from 'node:fs/promises'
-import { Writable } from 'node:stream'
-import { createResumeRegistry } from '../../../../../src/core/resume-registry.ts'
-import { stepName as toStepName } from '../../../../../src/core/types.ts'
-import { createRightPaneController } from '../../../../../src/hosts/two-pane/pane-map/index.ts'
-import { createPaneQueue } from '../../../../../src/hosts/two-pane/pane-queue.ts'
-import { defineRunner, type Runner, type RunnerContext } from '../../../../../src/runners/index.ts'
-import { FakeTmuxService, paneId, socketName } from '../../../../../src/services/tmux/index.ts'
-import { path as toPath } from '../../../../../src/services/types.ts'
-import {
-  type RunId,
-  type RunState,
-  type StateStore,
-  type StepEntry,
-  runId as toRunId,
-} from '../../../../../src/state/index.ts'
+import { createResumeRegistry } from '../../../src/core/resume-registry.ts'
+import { stepName as toStepName } from '../../../src/core/types.ts'
+import { createRightPaneController } from '../../../src/hosts/two-pane/pane-map/index.ts'
+import { createPaneQueue } from '../../../src/hosts/two-pane/pane-queue.ts'
+import { defineRunner, type Runner, type RunnerContext } from '../../../src/runners/index.ts'
+import { FakeTmuxService, paneId, socketName } from '../../../src/services/tmux/index.ts'
+import { path as toPath } from '../../../src/services/types.ts'
+import { type RunId, type StepEntry, runId as toRunId } from '../../../src/state/index.ts'
+import { bufferStream, flush, makeStore } from './_support.ts'
 
 const RUN_ID: RunId = toRunId('r-2026-05-13-100000-r5')
 const RIGHT_PANE = paneId('%1')
 
-function bufferStream(): NodeJS.WritableStream {
-  return new Writable({
-    write(_c, _e, cb) {
-      cb()
-    },
-  }) as unknown as NodeJS.WritableStream
-}
-
+// Local builder: every refusal-branch step is interactive (mode is forced),
+// which the shared `makeStep` leaves caller-controlled.
 function makeStep(overrides: Partial<StepEntry> & Pick<StepEntry, 'name'>): StepEntry {
   return {
     name: overrides.name,
@@ -62,33 +47,6 @@ function makeStep(overrides: Partial<StepEntry> & Pick<StepEntry, 'name'>): Step
     ...(overrides.sessionIdCaptureError !== undefined
       ? { sessionIdCaptureError: overrides.sessionIdCaptureError }
       : {}),
-  }
-}
-
-function makeStore(steps: Record<string, StepEntry>): StateStore {
-  const state: RunState = {
-    schemaVersion: 5,
-    id: RUN_ID,
-    status: 'running',
-    workflowName: 'demo',
-    startedAt: 0,
-    steps,
-  }
-  return {
-    loadRun: async (rid) => (rid === RUN_ID ? state : undefined),
-    saveStep: async () => {
-      throw new Error('not implemented')
-    },
-    initRun: async () => {
-      throw new Error('not implemented')
-    },
-    setStatus: async () => {
-      throw new Error('not implemented')
-    },
-    setArgs: async () => {
-      throw new Error('not implemented')
-    },
-    runDir: (rid) => toPath(`/runs/${rid}`),
   }
 }
 
@@ -133,10 +91,6 @@ function makeNonResumableRunner(name = 'fake-no-resume'): Runner {
   })
 }
 
-async function flush(): Promise<void> {
-  for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0))
-}
-
 let tempDir: string
 
 beforeEach(async () => {
@@ -164,7 +118,7 @@ async function runEnterAndReadReplay(opts: FixtureOpts): Promise<string> {
     leftPaneId: paneId('%0'),
     rightPaneId: RIGHT_PANE,
     paneQueue: createPaneQueue(),
-    stateStore: makeStore({ [opts.step.name]: opts.step }),
+    stateStore: makeStore(RUN_ID, { [opts.step.name]: opts.step }),
     runId: RUN_ID,
     stateDir: toPath(stateDir),
     cwd: toPath(tempDir),
@@ -182,7 +136,7 @@ async function runEnterAndReadReplay(opts: FixtureOpts): Promise<string> {
   return await Bun.file(`${stateDir}/.replay/${opts.step.name}.txt`).text()
 }
 
-describe.skip('right-pane refusal branch dispatch', () => {
+describe('right-pane refusal branch dispatch', () => {
   it('R10: omitting resumeRegistry refuses with "no runner wired"', async () => {
     const replay = await runEnterAndReadReplay({
       step: makeStep({ name: 'work', sessionId: 'sess-1', runnerName: 'fake' }),
@@ -278,8 +232,7 @@ describe.skip('right-pane refusal branch dispatch', () => {
   it("defensive: registry hit + runner.resumeCommand but no sessionId and no captureError refuses with 'no captured sessionId'", async () => {
     // U8 normally writes either { sessionId } or { sessionIdCaptureError } on
     // failure — never neither. This branch is the defensive catch for old
-    // state files written by a partial implementation, or for runners that
-    // declare `resumeCommand` but never produce a session id.
+    // state files written by a partial implementation.
     const reg = createResumeRegistry()
     reg.register(toStepName('work'), makeResumableRunner('codex'))
     const replay = await runEnterAndReadReplay({
@@ -310,7 +263,7 @@ describe.skip('right-pane refusal branch dispatch', () => {
       leftPaneId: paneId('%0'),
       rightPaneId: RIGHT_PANE,
       paneQueue: createPaneQueue(),
-      stateStore: makeStore({
+      stateStore: makeStore(RUN_ID, {
         work: makeStep({ name: 'work', sessionId: 'sess-real', runnerName: 'codex' }),
       }),
       runId: RUN_ID,
@@ -357,7 +310,7 @@ describe.skip('right-pane refusal branch dispatch', () => {
       leftPaneId: paneId('%0'),
       rightPaneId: RIGHT_PANE,
       paneQueue: createPaneQueue(),
-      stateStore: makeStore({
+      stateStore: makeStore(RUN_ID, {
         design: makeStep({ name: 'design', sessionId: 'sess-A', runnerName: 'claude' }),
         implement: makeStep({ name: 'implement', sessionId: 'sess-B', runnerName: 'claude' }),
       }),

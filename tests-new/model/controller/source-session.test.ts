@@ -1,4 +1,9 @@
-// MIGRATED → tests-new/model/controller/source-session.test.ts (parent U7) — replaced by plain model/* category tests; kept skipped on disk (D2).
+// MIGRATED ← tests/unit/hosts/two-pane/pane-map/source-session.test.ts (parent U7a)
+//
+// `model/controller` category (see ./README.md): plain class tests at the
+// `FakeTmuxService` seam, no `scenario()`. This file relocates the
+// source-session helper coverage verbatim — pure relocation + import-path fix.
+//
 // Unit coverage for the source-session helper module — the per-source tmux
 // session substrate that replaces the historical single `orch-scratch`
 // session. Pinned behaviors:
@@ -19,17 +24,17 @@ import {
   SOURCE_SESSION_PREFIX,
   sanitizeSessionName,
   teardownSourceSession,
-} from '../../../../../src/hosts/two-pane/pane-map/source-session.ts'
+} from '../../../src/hosts/two-pane/pane-map/source-session.ts'
 import {
   FakeTmuxService,
   paneId,
   socketName,
   TmuxCommandError,
-} from '../../../../../src/services/tmux/index.ts'
+} from '../../../src/services/tmux/index.ts'
 
 const SOCKET = socketName('orch-test')
 
-describe.skip('sanitizeSessionName', () => {
+describe('sanitizeSessionName', () => {
   it('maps the colon separator in a live source key to a dash and prefixes orch-src-', () => {
     expect(sanitizeSessionName('live:command:assign-roles-1')).toBe(
       'orch-src-live-command-assign-roles-1',
@@ -83,7 +88,7 @@ describe.skip('sanitizeSessionName', () => {
   })
 })
 
-describe.skip('createSourceSession', () => {
+describe('createSourceSession', () => {
   it('records exactly one createSession call with the expected session name, command, width, and height', async () => {
     const tmux = new FakeTmuxService()
     tmux.nextCreateSessionPaneId(paneId('%101'))
@@ -165,7 +170,7 @@ describe.skip('createSourceSession', () => {
   })
 })
 
-describe.skip('teardownSourceSession', () => {
+describe('teardownSourceSession', () => {
   it('issues exactly one killSession against the handled session', async () => {
     const tmux = new FakeTmuxService()
     tmux.nextCreateSessionPaneId(paneId('%300'))

@@ -1,22 +1,23 @@
-// MIGRATED → tests-new/model/projector/subworkflow-boundary-projection.test.ts (parent U7) — replaced by plain model/* category tests; kept skipped on disk (D2).
-// AE8 + AE11 pin: projector emits `subworkflow-enter`/`subworkflow-exit`
-// boundary rows derived from `StepEntry.subPath` transitions across persisted
-// steps, layered with the live sub overlay for in-flight stepless subs and
-// terminal-state synthesis. Pure projector tests — no Ink, no tail. Asserts on
-// row sequence and depth so an implementer who fumbles the gutter math or the
-// transition-detection loop trips a failing test.
+// MIGRATED ← tests/unit/hosts/two-pane/steps-view/subworkflow-boundary-projection.test.ts (parent U7c)
+//
+// `model/projector` category: plain `projectStepsView` tests on pure data — no
+// Ink, no tmux, the same non-`scenario()` shape as `model/controller`. AE8 +
+// AE11 pin: the projector emits `subworkflow-enter`/`subworkflow-exit` boundary
+// rows derived from `StepEntry.subPath` transitions, layered with the live sub
+// overlay and terminal-state synthesis. Asserts the row sequence and depth so a
+// fumbled gutter-math / transition-detection loop trips a failing test.
 
 import { describe, expect, it } from 'bun:test'
 import type {
   LiveOverlay,
   StepRow,
   SubworkflowOverlay,
-} from '../../../../../src/hosts/two-pane/steps-view/index.ts'
+} from '../../../src/hosts/two-pane/steps-view/index.ts'
 import {
   projectStepsView,
   subworkflowOverlayKey,
-} from '../../../../../src/hosts/two-pane/steps-view/index.ts'
-import { makeRunState, makeStepEntry } from '../../../../helpers/make-step-entry.ts'
+} from '../../../src/hosts/two-pane/steps-view/index.ts'
+import { makeRunState, makeStepEntry } from './_support.ts'
 
 const HEADER = { workflowName: 'demo', runIdFallback: 'r-2026-06-01-100000-aa' }
 const EMPTY_OVERLAY: ReadonlyMap<string, LiveOverlay> = new Map()
@@ -31,7 +32,7 @@ function rowSummary(row: StepRow): string {
   return row.name
 }
 
-describe.skip('projectStepsView — subworkflow boundary rows (AE8, AE11)', () => {
+describe('projectStepsView — subworkflow boundary rows (AE8, AE11)', () => {
   it('emits ▼-sub / children / ✓-sub between parent-A and parent-B (AE8)', () => {
     const run = makeRunState({
       status: 'running',

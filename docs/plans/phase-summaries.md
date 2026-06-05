@@ -256,3 +256,55 @@ buckets are green — fast 61, full:fake 12, screen 37, lifecycle 7 — and the 
 unit suite (1954) is untouched. The heavy legacy real-tmux *integration* suite
 (`test:legacy`, documented-flaky) was not re-run end-to-end; the U6 files it owns
 were verified to skip cleanly and the four demoted files to remain live.
+
+## Phase 7
+
+Phase 7 (parent unit **U7**) migrates the right-pane-controller / pane-map
+surface (~63 cases) and the subworkflow steps-view surface (~25 cases). Its
+defining insight: unlike U5 (left-pane rendering) and U6 (two-pane plumbing),
+almost none of U7's cases are pane-rendering tests. The controller tests assert
+*decisions* at the `FakeTmuxService` seam — which session to swap to, what to
+write to the overlay, when to refuse to swap to a dead pane — and pass with an
+empty pane. So rather than invent a `ControllerApp` scenario/driver surface (the
+model driver provably can't render the right pane), they relocate into a new
+**non-`scenario()` category** `tests-new/model/controller/`, following the exact
+`tmux-argv` precedent: plain `it()` tests, shared fixtures in `_support.ts`, a
+README explaining why. The pure `projectStepsView` / `applySubworkflowEvent`
+fold tests relocate the same way into `tests-new/model/projector/`. Everything is
+a faithful relocation-with-pruning: import depth fixed, every regression-pin
+run-ID preserved, no case dropped. The big 700-line controller file was split in
+two (the repo caps test files at 600 lines).
+
+The subworkflow rendering/selection tests were already plain component/hook tests
+(`renderToString(<StepsView>)`, `useStepsSelection` via ink-testing) — not
+tmux-tier tests — so they relocate faithfully into `tests-new/model/` as plain
+category tests too. **One scoped, documented deviation from the U7 sub-plan:** it
+called for building new `LeftPane`/`PaneDriver` subworkflow affordances + a
+`model` scenario + a `screen` byte twin under `overlapGroup: subworkflow-collapse`.
+That was intentionally not built — it would extend shared DSL surfaces every
+driver implements (real regression risk to U4–U6) only to add terminal-grid
+fidelity to a width-driven gutter that the synchronous `renderToString` frame
+assertion already proves. The behaviours are fully covered; only the heavier
+scenario/byte-twin packaging is deferred (a later phase can add the screen twin
+if real-tmux gutter fidelity is ever in doubt). Because no new scenarios were
+authored, the blocking overlap report is unaffected and crossing-panes "merges"
+turned out to be a no-op (every old pane-map case ported whole as a decision; the
+visible-swap outcomes were already covered by U6's full-host scenarios).
+
+What matters for next work: thirteen old files are now `describe.skip` with
+`// MIGRATED →` markers (via the reusable `scripts/skip-migrated-u7.sh`), every
+child case ledgered. **`subworkflow-parallel-suppression.test.ts` is deliberately
+left LIVE** — its one end-to-end case (runs a real `parallel()` workflow, asserts
+lifecycle records on disk) is `demote→integration` for U10–U13, and reconcile
+rule 3 forbids a MIGRATED marker to a not-yet-existing target. Two small fixture
+copies were made locally rather than via the D13 `_support/` move: `makeStepEntry`/
+`makeRunState` live in `tests-new/model/projector/_support.ts` (the old
+`tests/helpers/make-step-entry.ts` has many live consumers and is live-scanned by
+the frozen-baseline snapshot test, so the full move belongs with the U10–U13 state
+relocation). Gate state: typecheck and lint clean (the 23 lint warnings are
+pre-existing in `src/`), the blocking overlap report green (47 scenarios), the
+two-pane:fast bucket green (155), and the old unit suite green (1836 pass / 0
+fail). The real-tmux lifecycle/screen buckets and the legacy integration suite
+(with its documented pre-existing 5 `ENOENT` fixture failures under gitignored
+`.orch/`) were not re-run end-to-end — U7 added no scenarios or driver changes, so
+they are unaffected.

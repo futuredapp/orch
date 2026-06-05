@@ -1,4 +1,8 @@
-// MIGRATED → tests-new/model/controller/right-pane-controller-failure-recovery.test.ts (parent U7) — replaced by plain model/* category tests; kept skipped on disk (D2).
+// MIGRATED ← tests/unit/hosts/two-pane/pane-map/right-pane-controller-failure-recovery.test.ts (parent U7b)
+//
+// `model/controller` category (see ./README.md): plain class tests at the
+// `FakeTmuxService` seam, no `scenario()`. Error-containment DECISIONS.
+//
 // Regression coverage for two bugs observed in run r-2026-05-21-141104-5n
 // and r-2026-05-22-135756-tc:
 //
@@ -16,30 +20,21 @@
 // **Bug A (capacity / "no space for new pane") was removed by the
 // per-source-tmux-sessions refactor — see
 // docs/plans/2026-05-22-001-refactor-per-source-tmux-sessions-plan.md.**
-// The spawn path no longer calls `split-window`, so the capacity-rotation
-// branch and its tests are gone. The retained tests below still pin Bug B
-// (stderr bleed → banner-only surface) and Bug C (suppressCompletionBanner).
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { mkdir, mkdtemp, rm } from 'node:fs/promises'
-import { Writable } from 'node:stream'
-import type { StepName } from '../../../../../src/core/types.ts'
-import { createRightPaneController } from '../../../../../src/hosts/two-pane/pane-map/index.ts'
-import { createPaneQueue } from '../../../../../src/hosts/two-pane/pane-queue.ts'
+import type { StepName } from '../../../src/core/types.ts'
+import { createRightPaneController } from '../../../src/hosts/two-pane/pane-map/index.ts'
+import { createPaneQueue } from '../../../src/hosts/two-pane/pane-queue.ts'
 import {
   FakeTmuxService,
   paneId,
   socketName,
   TmuxCommandError,
-} from '../../../../../src/services/tmux/index.ts'
-import { path as toPath } from '../../../../../src/services/types.ts'
-import {
-  type RunId,
-  type RunState,
-  type StateStore,
-  type StepEntry,
-  runId as toRunId,
-} from '../../../../../src/state/index.ts'
+} from '../../../src/services/tmux/index.ts'
+import { path as toPath } from '../../../src/services/types.ts'
+import { type RunId, type StepEntry, runId as toRunId } from '../../../src/state/index.ts'
+import { capturingStderr, type CapturingStderr, flush, makeStep, makeStore } from './_support.ts'
 
 const RUN_ID: RunId = toRunId('r-2026-05-21-141104-5n')
 const RIGHT_PANE = paneId('%1')
@@ -47,70 +42,6 @@ const LEFT_PANE = paneId('%0')
 const SOCKET = socketName('orch-main-fr')
 
 const stepName = (s: string): StepName => s as StepName
-
-function makeStep(overrides: Partial<StepEntry> & Pick<StepEntry, 'name'>): StepEntry {
-  return {
-    name: overrides.name,
-    value: overrides.value ?? null,
-    startedAt: 1000,
-    endedAt: 2000,
-    artifacts: [],
-    validations: [],
-    transcriptEventCount: 0,
-    transcriptTruncated: false,
-    ...(overrides.mode !== undefined ? { mode: overrides.mode } : {}),
-    ...(overrides.transcriptPath !== undefined ? { transcriptPath: overrides.transcriptPath } : {}),
-  }
-}
-
-function makeStore(steps: Record<string, StepEntry>): StateStore {
-  const state: RunState = {
-    schemaVersion: 5,
-    id: RUN_ID,
-    status: 'running',
-    workflowName: 'demo',
-    startedAt: 0,
-    steps,
-  }
-  return {
-    loadRun: async (rid) => (rid === RUN_ID ? state : undefined),
-    saveStep: async () => {
-      throw new Error('not implemented')
-    },
-    initRun: async () => {
-      throw new Error('not implemented')
-    },
-    setStatus: async () => {
-      throw new Error('not implemented')
-    },
-    setArgs: async () => {
-      throw new Error('not implemented')
-    },
-    runDir: (rid) => toPath(`/runs/${rid}`),
-  }
-}
-
-interface CapturingStderr {
-  readonly stream: NodeJS.WritableStream
-  readonly chunks: string[]
-}
-
-function capturingStderr(): CapturingStderr {
-  const chunks: string[] = []
-  const stream = new Writable({
-    write(chunk, _enc, cb) {
-      chunks.push(chunk.toString())
-      cb()
-    },
-  }) as unknown as NodeJS.WritableStream
-  return { stream, chunks }
-}
-
-async function flush(): Promise<void> {
-  for (let i = 0; i < 8; i++) {
-    await new Promise((r) => setTimeout(r, 0))
-  }
-}
 
 let tempDir: string
 
@@ -142,7 +73,7 @@ async function makeHarness(steps: Record<string, StepEntry>): Promise<Harness> {
     leftPaneId: LEFT_PANE,
     rightPaneId: RIGHT_PANE,
     paneQueue: queue,
-    stateStore: makeStore(steps),
+    stateStore: makeStore(RUN_ID, steps),
     runId: RUN_ID,
     stateDir: toPath(stateDir),
     cwd: toPath(tempDir),
@@ -159,7 +90,7 @@ async function makeHarness(steps: Record<string, StepEntry>): Promise<Harness> {
 // Bug B — stderr bleed (still pinned under the per-source design)
 // ---------------------------------------------------------------------------
 
-describe.skip('right-pane-controller failed replay dispatch — stderr bleed (Bug B)', () => {
+describe('right-pane-controller failed replay dispatch — stderr bleed (Bug B)', () => {
   it('does not write to opts.stderr when registerSource throws during dispatchEnter', async () => {
     const h = await makeHarness({
       'commit:c1': makeStep({ name: 'commit:c1', value: { sha: 'abc' } }),
@@ -215,7 +146,7 @@ describe.skip('right-pane-controller failed replay dispatch — stderr bleed (Bu
 // `suppressCompletionBanner` option lets the host say "don't emit the
 // completion toast for this source — I have a durable error banner instead."
 
-describe.skip('right-pane-controller unregisterSource: suppressCompletionBanner (Bug C)', () => {
+describe('right-pane-controller unregisterSource: suppressCompletionBanner (Bug C)', () => {
   it('still emits the completion banner by default (the live → replay info toast)', async () => {
     const h = await makeHarness({})
 
@@ -257,7 +188,3 @@ describe.skip('right-pane-controller unregisterSource: suppressCompletionBanner 
     await h.controller.stop()
   })
 })
-
-// Helper kept for future tests that distinguish live vs replay keys by step
-// name typing.
-void stepName

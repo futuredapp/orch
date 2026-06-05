@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/model/controller/right-pane-controller-replay-dead-pane.test.ts (parent U7) — replaced by plain model/* category tests; kept skipped on disk (D2).
 // Reproducing coverage for Issue 3 — replay swaps to a torn-down pane:
 //
 //   replay failed for check-1-1 — TmuxCommandError:
@@ -138,7 +139,7 @@ function liveOwnedPanes(
   return owned
 }
 
-describe('right-pane-controller pane-map: replay after the source session was torn down', () => {
+describe.skip('right-pane-controller pane-map: replay after the source session was torn down', () => {
   it('does not swap-pane to the dead pane of a completed step whose per-source session was killed', async () => {
     // Arrange: a completed command step persisted in the run, plus the live
     // source it produced. The live pane is %5 in session orch-src-live-check-1-1.

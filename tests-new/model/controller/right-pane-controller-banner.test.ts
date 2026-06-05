@@ -1,65 +1,26 @@
-// MIGRATED → tests-new/model/controller/right-pane-controller-banner.test.ts (parent U7) — replaced by plain model/* category tests; kept skipped on disk (D2).
-// triage: rewrite — banner+view-mode bug class now covered at Tier 2 (banner-rendering.test.tsx, view-mode-footer.test.tsx). Keep only controller-internal slices (seq ordering, mid-emit state) Tier 2 cannot reach.
-// Controller-side coverage for the U4 banner + view-mode surface.
+// MIGRATED ← tests/unit/hosts/two-pane/pane-map/right-pane-controller-banner.test.ts (parent U7b)
 //
-// `emitBanner`, `setViewMode`, and `onIntent({type:'dismiss-banner'})` all
-// write a snapshot to the TUI overlay IPC channel. The renderer's tail picks
-// it up; this file asserts the wire-format the controller writes.
+// `model/controller` category (see ./README.md): plain class tests at the
+// `FakeTmuxService` seam, no `scenario()`. This file asserts the controller's
+// WIRE-FORMAT decision — the snapshot `emitBanner` / `setViewMode` /
+// `dismiss-banner` write to the TUI overlay IPC channel. Distinct from the
+// overlay *codec* parse/serialize tests (relocated in U10–U13): here we assert
+// what the controller writes, not how the overlay (de)serializes it.
 
 import { describe, expect, it } from 'bun:test'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
-import { Writable } from 'node:stream'
-import { createRightPaneController } from '../../../../../src/hosts/two-pane/pane-map/index.ts'
-import { createPaneQueue } from '../../../../../src/hosts/two-pane/pane-queue.ts'
-import { parseTuiOverlayLine } from '../../../../../src/hosts/two-pane/steps-view/index.ts'
-import { FakeTmuxService, paneId, socketName } from '../../../../../src/services/tmux/index.ts'
-import { path as toPath } from '../../../../../src/services/types.ts'
-import {
-  type RunId,
-  type RunState,
-  type StateStore,
-  runId as toRunId,
-} from '../../../../../src/state/index.ts'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { createRightPaneController } from '../../../src/hosts/two-pane/pane-map/index.ts'
+import { createPaneQueue } from '../../../src/hosts/two-pane/pane-queue.ts'
+import { parseTuiOverlayLine } from '../../../src/hosts/two-pane/steps-view/index.ts'
+import { FakeTmuxService, paneId, socketName } from '../../../src/services/tmux/index.ts'
+import { path as toPath } from '../../../src/services/types.ts'
+import { type RunId, runId as toRunId } from '../../../src/state/index.ts'
+import { bufferStream, makeStore, readOverlayLines } from './_support.ts'
 
 const RUN_ID: RunId = toRunId('r-2026-05-11-200000-pm')
 const RIGHT_PANE = paneId('%7')
 const LEFT_PANE = paneId('%0')
 const SOCKET = socketName('orch-main-test')
-
-function bufferStream(): NodeJS.WritableStream {
-  return new Writable({
-    write(_c, _e, cb) {
-      cb()
-    },
-  }) as unknown as NodeJS.WritableStream
-}
-
-function makeStore(): StateStore {
-  const state: RunState = {
-    schemaVersion: 5,
-    id: RUN_ID,
-    status: 'running',
-    workflowName: 'demo',
-    startedAt: 0,
-    steps: {},
-  }
-  return {
-    loadRun: async (rid) => (rid === RUN_ID ? state : undefined),
-    saveStep: async () => {
-      throw new Error('not implemented')
-    },
-    initRun: async () => {
-      throw new Error('not implemented')
-    },
-    setStatus: async () => {
-      throw new Error('not implemented')
-    },
-    setArgs: async () => {
-      throw new Error('not implemented')
-    },
-    runDir: (rid) => toPath(`/runs/${rid}`),
-  }
-}
 
 async function makeController(): Promise<{
   readonly controller: ReturnType<typeof createRightPaneController>
@@ -76,7 +37,7 @@ async function makeController(): Promise<{
     leftPaneId: LEFT_PANE,
     rightPaneId: RIGHT_PANE,
     paneQueue: queue,
-    stateStore: makeStore(),
+    stateStore: makeStore(RUN_ID, {}),
     runId: RUN_ID,
     stateDir: toPath(tempDir),
     cwd: toPath(tempDir),
@@ -89,16 +50,7 @@ async function makeController(): Promise<{
   return { controller, tempDir, overlayPath }
 }
 
-async function readOverlayLines(path: string): Promise<readonly string[]> {
-  try {
-    const text = await readFile(path, 'utf8')
-    return text.split('\n').filter((l) => l.length > 0)
-  } catch {
-    return []
-  }
-}
-
-describe.skip('right-pane-controller emitBanner', () => {
+describe('right-pane-controller emitBanner', () => {
   it('writes a snapshot with a fresh monotonic seq on every call', async () => {
     const { controller, tempDir, overlayPath } = await makeController()
     try {
@@ -147,7 +99,7 @@ describe.skip('right-pane-controller emitBanner', () => {
         leftPaneId: LEFT_PANE,
         rightPaneId: RIGHT_PANE,
         paneQueue: queue,
-        stateStore: makeStore(),
+        stateStore: makeStore(RUN_ID, {}),
         runId: RUN_ID,
         stateDir: toPath(tempDir),
         cwd: toPath(tempDir),
@@ -170,7 +122,7 @@ describe.skip('right-pane-controller emitBanner', () => {
   })
 })
 
-describe.skip('right-pane-controller setViewMode', () => {
+describe('right-pane-controller setViewMode', () => {
   it('writes a snapshot with the new view-mode and no banner change', async () => {
     const { controller, tempDir, overlayPath } = await makeController()
     try {
@@ -187,7 +139,7 @@ describe.skip('right-pane-controller setViewMode', () => {
   })
 })
 
-describe.skip('right-pane-controller dismiss-banner intent', () => {
+describe('right-pane-controller dismiss-banner intent', () => {
   it('clears the in-memory banner and writes a snapshot with banner: null', async () => {
     const { controller, tempDir, overlayPath } = await makeController()
     try {

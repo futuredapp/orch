@@ -1,16 +1,17 @@
-// MIGRATED → tests-new/model/projector/applySubworkflowEvent.test.ts (parent U7) — replaced by plain model/* category tests; kept skipped on disk (D2).
-// Unit tests for `applySubworkflowEvent` — the subworkflow boundary overlay
-// fold used by the steps-view model. These tests pin full-path identity so
-// sibling nested subworkflows with the same leaf name do not share status.
+// MIGRATED ← tests/unit/hosts/two-pane/steps-view/applySubworkflowEvent.test.ts (parent U7c)
+//
+// `model/projector` category: pure fold logic, no Ink, no tmux. Pins full-path
+// identity so sibling nested subworkflows with the same leaf name do not share
+// status, `insideParallel` preservation, and invalid-event rejection.
 
 import { describe, expect, it } from 'bun:test'
 import {
   applySubworkflowEvent,
   type SubworkflowOverlay,
   subworkflowOverlayKey,
-} from '../../../../../src/hosts/two-pane/steps-view/index.ts'
+} from '../../../src/hosts/two-pane/steps-view/index.ts'
 
-describe.skip('applySubworkflowEvent', () => {
+describe('applySubworkflowEvent', () => {
   it('keys sibling nested subworkflows by full subPath, not leaf name', () => {
     const overlay = new Map<string, SubworkflowOverlay>()
 

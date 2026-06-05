@@ -1,69 +1,30 @@
-// MIGRATED → tests-new/model/controller/right-pane-controller-interactive-dead-pane.test.ts (parent U7) — replaced by plain model/* category tests; kept skipped on disk (D2).
+// MIGRATED ← tests/unit/hosts/two-pane/pane-map/right-pane-controller-interactive-dead-pane.test.ts (parent U7b)
+//
+// `model/controller` category (see ./README.md): plain class tests at the
+// `FakeTmuxService` seam, no `scenario()`. Dead-pane DECISIONS — the risk is
+// "did the controller decide not to swap to a dead pane", asserted at the fake's
+// ownership seam (passes with an empty pane), NOT a full-host rendering test.
+//
 // Reproducing coverage for run r-2026-05-25-171216-nu — the post-completion
 // crash that drew tmux's "can't find pane: %29" stack over the still-running
-// TUI ("both the TUI and the CLI error were visible at once; I could still
-// move the step cursor").
-//
-// The mechanism (confirmed against the controller, no mocks of internals):
-//
-//   1. After the run completes, the user presses Enter on a past *interactive*
-//      agent step. `dispatchEnter` finds no live/interactive source in the map
-//      and takes the replay path, which `replayKeyFor` maps back to an
-//      `interactive:<step>` key (interactive steps resume as a pty). It
-//      registers a fresh per-source session whose pane (here %29) runs the
-//      resume command, and swaps it into the visible slot.
-//   2. The user navigates away to another step. Pane %29 is swapped to the
-//      hidden slot. The resume process inside it exits on its own (the agent
-//      CLI quits / finishes) — tmux destroys pane %29 with it. Crucially, NO
-//      `unregisterSource` runs for this revisit-registered interactive source,
-//      so the `panes` map still holds `interactive:<step>` → dead pane %29.
-//   3. The user presses Enter on that same step again. `dispatchEnter` hits the
-//      `liveExists || interactiveExists` short-circuit (the stale entry is
-//      still in the map), SKIPS the `invalidateSourceIfSessionGone` guard that
-//      the replay branch performs, and issues `swapPane(src=%29, dst=<visible>)`
-//      — a swap to a pane that no longer exists. Real tmux answers "can't find
-//      pane: %29".
-//
-// `FakeTmuxService.swapPane` does NOT validate pane existence (it only throws
-// when the whole socket is `markSocketLost`), so the bug is silent under the
-// fake unless we assert the invariant explicitly. We assert it the same way
-// the sibling `right-pane-controller-replay-dead-pane` test does: every
-// `swapPane` the controller issues must reference a `src` pane still owned by a
-// live session in the fake's pane-ownership table. The fake already models
-// per-session pane ownership and clears it on `killSession`, so no fake change
-// is needed — the seam (`*Service` edge) is the only thing stubbed.
-//
-// FAILS today: the short-circuit reuses the stale interactive entry and swaps
-// to dead pane %29. PASSES once fixed: the short-circuit must validate the
-// cached source's session is still alive before swapping (re-registering a
-// fresh source when it is gone), mirroring the replay branch.
+// TUI. A revisit-registered interactive resume pane (%29) exits on its own; no
+// `unregisterSource` runs, so a stale `interactive:<step>` entry survives. The
+// next Enter short-circuits, skips the liveness guard, and swaps to dead %29.
+// The fix must validate the cached source's session before swapping.
 
 import { describe, expect, it } from 'bun:test'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
-import { Writable } from 'node:stream'
-import type { StepName } from '../../../../../src/core/types.ts'
+import type { StepName } from '../../../src/core/types.ts'
 import {
   createRightPaneController,
   type SourceKey,
   sanitizeSessionName,
-} from '../../../../../src/hosts/two-pane/pane-map/index.ts'
-import { createPaneQueue } from '../../../../../src/hosts/two-pane/pane-queue.ts'
-import type { SessionLogger } from '../../../../../src/observability/index.ts'
-import { createNullSessionLogger } from '../../../../../src/observability/index.ts'
-import {
-  FakeTmuxService,
-  paneId,
-  type SocketName,
-  socketName,
-} from '../../../../../src/services/tmux/index.ts'
-import { path as toPath } from '../../../../../src/services/types.ts'
-import {
-  type RunId,
-  type RunState,
-  type StateStore,
-  type StepEntry,
-  runId as toRunId,
-} from '../../../../../src/state/index.ts'
+} from '../../../src/hosts/two-pane/pane-map/index.ts'
+import { createPaneQueue } from '../../../src/hosts/two-pane/pane-queue.ts'
+import { FakeTmuxService, paneId, socketName } from '../../../src/services/tmux/index.ts'
+import { path as toPath } from '../../../src/services/types.ts'
+import { type RunId, type StepEntry, runId as toRunId } from '../../../src/state/index.ts'
+import { bufferStream, capturingLogger, flush, liveOwnedPanes, makeStep, makeStore } from './_support.ts'
 
 const RUN_ID: RunId = toRunId('r-2026-05-25-171216-nu')
 const RIGHT_PANE = paneId('%6')
@@ -75,93 +36,7 @@ const FRESH_PANE = paneId('%30')
 
 const stepName = (s: string): StepName => s as StepName
 
-function bufferStream(): NodeJS.WritableStream {
-  return new Writable({
-    write(_c, _e, cb) {
-      cb()
-    },
-  }) as unknown as NodeJS.WritableStream
-}
-
-function makeStep(overrides: Partial<StepEntry> & Pick<StepEntry, 'name'>): StepEntry {
-  return {
-    name: overrides.name,
-    value: overrides.value ?? null,
-    startedAt: 1000,
-    endedAt: 2000,
-    artifacts: [],
-    validations: [],
-    transcriptEventCount: 0,
-    transcriptTruncated: false,
-    ...(overrides.mode !== undefined ? { mode: overrides.mode } : {}),
-  } as unknown as StepEntry
-}
-
-function makeStore(steps: Record<string, StepEntry>): StateStore {
-  const state: RunState = {
-    schemaVersion: 5,
-    id: RUN_ID,
-    status: 'completed',
-    workflowName: 'tic-tac-toe',
-    startedAt: 0,
-    steps,
-  }
-  return {
-    loadRun: async (rid) => (rid === RUN_ID ? state : undefined),
-    saveStep: async () => {
-      throw new Error('not implemented')
-    },
-    initRun: async () => {
-      throw new Error('not implemented')
-    },
-    setStatus: async () => {
-      throw new Error('not implemented')
-    },
-    setArgs: async () => {
-      throw new Error('not implemented')
-    },
-    runDir: (rid) => toPath(`/runs/${rid}`),
-  }
-}
-
-interface CapturedLog {
-  readonly logger: SessionLogger
-  readonly entries: Array<{ readonly category: string; readonly record: unknown }>
-}
-
-function capturingLogger(): CapturedLog {
-  const base = createNullSessionLogger({ runId: RUN_ID })
-  const entries: CapturedLog['entries'] = []
-  const logger: SessionLogger = {
-    ...base,
-    append: async (category, record): Promise<void> => {
-      entries.push({ category, record })
-    },
-  }
-  return { logger, entries }
-}
-
-async function flush(): Promise<void> {
-  for (let i = 0; i < 12; i++) {
-    await new Promise((r) => setTimeout(r, 0))
-  }
-}
-
-function liveOwnedPanes(
-  tmux: FakeTmuxService,
-  socket: SocketName,
-  sessions: readonly string[],
-): Set<string> {
-  const owned = new Set<string>()
-  for (const session of sessions) {
-    for (const pane of tmux.paneIdsForSession(socket, session)) {
-      owned.add(String(pane))
-    }
-  }
-  return owned
-}
-
-describe.skip('right-pane-controller pane-map: revisiting an interactive step whose resume pane died out-of-band', () => {
+describe('right-pane-controller pane-map: revisiting an interactive step whose resume pane died out-of-band', () => {
   it('does not swap-pane to the dead resume pane of a cached interactive source', async () => {
     // Arrange: a completed interactive agent step persisted in the run, plus a
     // revisit-registered interactive resume source whose pane is %29.
@@ -179,7 +54,7 @@ describe.skip('right-pane-controller pane-map: revisiting an interactive step wh
       leftPaneId: LEFT_PANE,
       rightPaneId: RIGHT_PANE,
       paneQueue: createPaneQueue(),
-      stateStore: makeStore(steps),
+      stateStore: makeStore(RUN_ID, steps, 'completed'),
       runId: RUN_ID,
       stateDir: toPath(tempDir),
       cwd: toPath(tempDir),
@@ -221,7 +96,7 @@ describe.skip('right-pane-controller pane-map: revisiting an interactive step wh
 
     // Act: the user presses Enter on the interactive step again.
     controller.onIntent({ type: 'enter', stepName: 'move-1-9-codex' })
-    await flush()
+    await flush(12)
 
     // Assert: the revisit must not swap to the dead resume pane %29. The fix
     // re-registers a fresh source (whose createSession repopulates the
@@ -255,10 +130,8 @@ describe.skip('right-pane-controller pane-map: revisiting an interactive step wh
     // try/catch, and onIntent fires it as `void dispatchEnter(...)`, so a swap
     // failure becomes an unhandled rejection that Node writes to fd-2 — the
     // TTY shared with the tmux client. A swap failure on this path must instead
-    // be contained and surfaced as a user-facing error banner (the controller's
-    // standing "never write to fd-2" contract), the same way the replay branch
-    // already handles its failures.
-    const captured = capturingLogger()
+    // be contained and surfaced as a user-facing error banner.
+    const captured = capturingLogger(RUN_ID)
     const tmux = new FakeTmuxService()
     const tempDir = await mkdtemp('/tmp/orch-interactive-dead-pane-banner-')
     const controller = createRightPaneController({
@@ -267,9 +140,13 @@ describe.skip('right-pane-controller pane-map: revisiting an interactive step wh
       leftPaneId: LEFT_PANE,
       rightPaneId: RIGHT_PANE,
       paneQueue: createPaneQueue(),
-      stateStore: makeStore({
-        'move-1-9-codex': makeStep({ name: 'move-1-9-codex', mode: 'interactive' }),
-      }),
+      stateStore: makeStore(
+        RUN_ID,
+        {
+          'move-1-9-codex': makeStep({ name: 'move-1-9-codex', mode: 'interactive' }),
+        },
+        'completed',
+      ),
       runId: RUN_ID,
       stateDir: toPath(tempDir),
       cwd: toPath(tempDir),
@@ -298,11 +175,10 @@ describe.skip('right-pane-controller pane-map: revisiting an interactive step wh
 
     // Act: revisit the interactive step. The short-circuit's swap will fail.
     controller.onIntent({ type: 'enter', stepName: 'move-1-9-codex' })
-    await flush()
+    await flush(12)
 
     // Assert: the failure is contained as an error banner, not an escaped
-    // rejection. Today the short-circuit throws past dispatchEnter's try/catch,
-    // so no banner is emitted.
+    // rejection.
     const errorBanner = captured.entries
       .filter((e) => e.category === 'lifecycle')
       .map(
@@ -316,13 +192,11 @@ describe.skip('right-pane-controller pane-map: revisiting an interactive step wh
   })
 
   it('does not swap-pane to a dead source when the user presses follow-live (f)', async () => {
-    // The same defect class in a second, not-yet-reported location. `followLive`
-    // (the `f` key) walks the liveSources list and `showSource`s the chosen key
-    // with NO liveness check and NO try/catch — and onIntent fires it as
-    // `void followLive()`. A runner that died (its per-source session torn down)
-    // leaves a stale entry in liveSources; pressing `f` swaps to its dead pane,
-    // crashing exactly like the Enter path did. This confirms the missing
-    // guard is a recurring pattern, not localized to dispatchEnter.
+    // The same defect class in a second location. `followLive` (the `f` key)
+    // walks the liveSources list and `showSource`s the chosen key with NO
+    // liveness check and NO try/catch. A runner that died (its per-source
+    // session torn down) leaves a stale entry; pressing `f` swaps to its dead
+    // pane, crashing exactly like the Enter path did.
     const tmux = new FakeTmuxService()
     const tempDir = await mkdtemp('/tmp/orch-followlive-dead-pane-')
     const interactiveSession = sanitizeSessionName('interactive:move-1-9-codex')
@@ -334,9 +208,13 @@ describe.skip('right-pane-controller pane-map: revisiting an interactive step wh
       leftPaneId: LEFT_PANE,
       rightPaneId: RIGHT_PANE,
       paneQueue: createPaneQueue(),
-      stateStore: makeStore({
-        'move-1-9-codex': makeStep({ name: 'move-1-9-codex', mode: 'interactive' }),
-      }),
+      stateStore: makeStore(
+        RUN_ID,
+        {
+          'move-1-9-codex': makeStep({ name: 'move-1-9-codex', mode: 'interactive' }),
+        },
+        'completed',
+      ),
       runId: RUN_ID,
       stateDir: toPath(tempDir),
       cwd: toPath(tempDir),
@@ -372,7 +250,7 @@ describe.skip('right-pane-controller pane-map: revisiting an interactive step wh
 
     // Act: the user presses `f` to follow live.
     controller.onIntent({ type: 'follow-live' })
-    await flush()
+    await flush(12)
 
     // Assert: follow-live must not swap to the dead interactive pane %29.
     const owned = liveOwnedPanes(tmux, SOCKET, [interactiveSession, placeholderSession])
@@ -392,13 +270,11 @@ describe.skip('right-pane-controller pane-map: revisiting an interactive step wh
   it('recovers by re-registering when the cached interactive pane died but its session is still alive (remain-on-exit)', async () => {
     // The real production condition: tmux runs with `remain-on-exit on`, so when
     // the interactive resume pty exits, its pane lingers dead inside a session
-    // that `hasSession` still reports as ALIVE. The session-granular guard
-    // cannot drop it, so the swap is attempted and tmux answers "can't find
-    // pane". The controller must catch that, forget the stale source, and
-    // re-register a fresh one — surfacing the step content, not a crash and not
-    // an error banner. `move-1-9-codex` is a completed (persisted) step, so the
-    // recovery now lives on the replay path (`replay-pane-stale-refresh`).
-    const captured = capturingLogger()
+    // that `hasSession` still reports as ALIVE. The session-granular guard cannot
+    // drop it, so the swap is attempted and tmux answers "can't find pane". The
+    // controller must catch that, forget the stale source, and re-register a
+    // fresh one — surfacing the step content, not a crash and not an error banner.
+    const captured = capturingLogger(RUN_ID)
     const tmux = new FakeTmuxService()
     const tempDir = await mkdtemp('/tmp/orch-remain-on-exit-')
     await writeFile(`${tempDir}/resume.ansi`, 'resume transcript\n', 'utf8')
@@ -408,9 +284,13 @@ describe.skip('right-pane-controller pane-map: revisiting an interactive step wh
       leftPaneId: LEFT_PANE,
       rightPaneId: RIGHT_PANE,
       paneQueue: createPaneQueue(),
-      stateStore: makeStore({
-        'move-1-9-codex': makeStep({ name: 'move-1-9-codex', mode: 'interactive' }),
-      }),
+      stateStore: makeStore(
+        RUN_ID,
+        {
+          'move-1-9-codex': makeStep({ name: 'move-1-9-codex', mode: 'interactive' }),
+        },
+        'completed',
+      ),
       runId: RUN_ID,
       stateDir: toPath(tempDir),
       cwd: toPath(tempDir),
@@ -450,7 +330,7 @@ describe.skip('right-pane-controller pane-map: revisiting an interactive step wh
 
     // Act: the user presses Enter on the interactive step again.
     controller.onIntent({ type: 'enter', stepName: 'move-1-9-codex' })
-    await flush()
+    await flush(12)
 
     // The stale source was detected via the swap failure and refreshed.
     const refresh = captured.entries

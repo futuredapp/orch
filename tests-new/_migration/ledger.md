@@ -198,3 +198,74 @@
 | lifecycle/progression.per-step-artifacts-land-on-disk.behavioral.real.test.ts | writes session.json and events.ndjson for each completed step | → U10–U13 | demote→integration | Disk persistence, not rendering — passes if the pane is empty. File stays LIVE. |
 | lifecycle/resume.cached-steps-replay-with-cached-glyph.behavioral.real.test.ts | cached plan survives across runs; execute re-runs and the resumed run completes | → U10–U13 | demote→integration | Resume orchestration (cached-plan survival, runner re-invocation). The cached-glyph RENDER overlaps U8 cached-colour; the orchestration is the dominant risk. File stays LIVE. |
 | lifecycle/command.output-streams-to-right-pane-and-exit-code-recorded.behavioral.real.test.ts | command stdout streams to disk and state.json records exitCode 0 | → U10–U13 | demote→integration | The OLD case asserts disk streaming + `state.json` exitCode — both persistence/orchestration ("passes if the pane is empty"). The full-host harness runs agent steps only; a non-agent command step that streams to the right pane needs host-fixture infrastructure (a `command(...)` step + tmux pipe-pane capture) that does not exist in `tests-new/_support/real-tmux/` and is beyond U6's scenario-authoring scope. The visible command-output-to-pane behaviour is deferred to whichever phase adds command-step support; the persistence assertion relocates in U10–U13. File stays LIVE. |
+
+## Migrated cases — right-pane-controller / pane-map decisions (parent U7a + U7b)
+
+> **`model/controller` is a non-`scenario()` category** (the `tmux-argv` precedent;
+> see `tests-new/model/controller/README.md`). These cases assert controller
+> DECISIONS at the `FakeTmuxService` seam — which session to swap to, what to
+> write to the overlay, when to refuse to swap to a dead pane — and pass with an
+> empty pane (triage rule answers **yes**). They are therefore plain `it()` tests,
+> not `model`/`screen`/`full-host` scenarios, and carry no `scenario()` meta or
+> `oldTestRefs` for the overlap report to check; this ledger is their accounting.
+> Every relocated file imports the **same `src/` symbols** as its baseline
+> original (import-path parity, parent R10). All cases ported faithfully; no
+> regression-pin run-ID was pruned. The visible-swap *outcomes* these decisions
+> drive were already re-derived as U6 full-host scenarios (see U7d merges below).
+
+| Old file | Old case | New file (path) | Disposition | Reason |
+|---|---|---|---|---|
+| pane-map/right-pane-controller.test.ts | (all 20 cases: registerSource ×5, showSource ×4, unregisterSource ×3, follow-live auto-advance ×1, teardownSessions ×2, followLive ×3, concurrent registerSource race ×2) | model/controller/right-pane-controller-sources.test.ts (registerSource/showSource/unregisterSource) **+** model/controller/right-pane-controller-lifecycle.test.ts (auto-advance/teardown/followLive/race) | port | Controller decisions at the `FakeTmuxService` seam. Split into two files because the 700-line original exceeds the repo's 600-line test-file cap; both halves share `right-pane-controller-fixture.ts`. Regression pins r-2026-05-22-170039-0o (race) and r-2026-05-29-104450-sx (auto-advance) preserved. The visible swap is covered by U6 full-host scenarios; the *decision* (which session) stays here. |
+| pane-map/right-pane-on-intent.test.ts | (all 8 cases: warm-cache, viewMode-flip, lookup-miss, ANSI-tee preference, follow-live placeholder, live-not-replay, auto-advance-stop, interactive-stays-replay) | model/controller/right-pane-on-intent.test.ts | port | Pure `onIntent('enter')` dispatch decisions. Regression pins r-2026-05-11-215044-tv, r-2026-05-27-154145-nk, r-2026-05-29-104450-sx preserved. |
+| pane-map/source-session.test.ts | (all 13 cases: sanitizeSessionName ×7, createSourceSession ×4, teardownSourceSession ×2) | model/controller/source-session.test.ts | port | Pure helper logic (relocation + import fix only). |
+| pane-map/right-pane-controller-banner.test.ts | (all 6 cases: emitBanner ×3, setViewMode ×1, dismiss-banner ×2) | model/controller/right-pane-controller-banner.test.ts | port | Controller wire-format DECISION (what it writes to the overlay) — distinct from the overlay *codec* parse/serialize tests, which are U10–U13. |
+| pane-map/right-pane-controller-failure-recovery.test.ts | (all 4 cases: Bug B stderr-bleed ×2, Bug C suppressCompletionBanner ×2) | model/controller/right-pane-controller-failure-recovery.test.ts | port | Error-containment decisions. Regression pins r-2026-05-21-141104-5n (Bug B) and r-2026-05-22-135756-tc (Bug C) preserved. |
+| pane-map/right-pane-controller-session-lost.test.ts | (all 4 cases: register throws + no bleed, no ghost entry, unregister no bleed, canonical macOS error shape) | model/controller/right-pane-controller-session-lost.test.ts | port | Error-containment decisions. Regression pin r-2026-05-22-093650-j0 preserved. |
+| pane-map/right-pane-controller-interactive-dead-pane.test.ts | (all 4 cases: no-swap to dead resume pane, swap-failure→error banner, no-swap on follow-live, recover by re-register) | model/controller/right-pane-controller-interactive-dead-pane.test.ts | port | Dead-pane decisions asserted at the fake's ownership seam (passes with an empty pane) — NOT full-host. Regression pin r-2026-05-25-171216-nu preserved. |
+| pane-map/right-pane-controller-replay-dead-pane.test.ts | does-not-swap to the dead pane of a torn-down per-source session (1 case) | model/controller/right-pane-controller-replay-dead-pane.test.ts | port | Same dead-pane decision class. Regression pin Issue 3 preserved. |
+| pane-map/resume-refusal.test.ts | (all 10 cases: R10, R8, R11, unsupported-runner, R9 ambiguous/empty/error, defensive no-sessionId, happy path, F6 step-keyed lookup) | model/controller/resume-refusal.test.ts | port | Branch-selection decisions. Regression pins R8–R11 / R9 / F6 preserved. |
+
+## Migrated cases — subworkflow surface (parent U7c)
+
+> **Triage applied per case, not per the directional table.** The old subworkflow
+> tests are NOT tmux-tier tests — they are plain component/hook/projector tests
+> (`projectStepsView` on pure data, `useStepsSelection` via ink-testing,
+> `renderToString(<StepsView>)`). They relocate faithfully into the non-`scenario()`
+> `model` / `model/projector` categories (the `tmux-argv` / `model/controller`
+> precedent), needing no new scenario/driver affordances. **Scoped deviation from
+> U7c.1's affordance plan:** boundary-row emission and parallel-suppression are
+> proven at the projector seam (the row IS emitted); boundary-selection is a
+> selection DECISION over `useStepsSelection`; the collapse gutter is the one
+> genuine *rendering* case and is proven by a synchronous `renderToString` frame
+> assertion. A `screen` byte twin (and the new `LeftPane`/`PaneDriver` collapse
+> affordance + `overlapGroup: subworkflow-collapse`) was intentionally **not**
+> built: it would add terminal-grid fidelity to a width-driven gutter that
+> `renderToString` already exercises, at the cost of a risky shared-DSL extension
+> touching every driver. The behaviours are fully covered; only the heavier
+> scenario/byte-twin packaging is deferred (a later phase may add the screen twin
+> if real-tmux gutter fidelity is ever in doubt).
+
+| Old file | Old case | New file (path) | Disposition | Reason |
+|---|---|---|---|---|
+| steps-view/subworkflow-boundary-projection.test.ts | (all 8 cases: ▼/✓ between parents, additive gutter stacking, deepest-first close, in-flight stepless ▼, ✗ terminal synthesis, summary-total exclusion, sibling same-leaf separation, live-overlay subPath) | model/projector/subworkflow-boundary-projection.test.ts | port | Pure `projectStepsView` invariants on pure data. The ▼/✓ boundary-row *emission* (the row appearing) is proven here at the projection seam; no separate `model` render twin is needed (renders only what the projector emits). |
+| steps-view/applySubworkflowEvent.test.ts | (all 3 cases: full-subPath keying, insideParallel preservation, invalid-event rejection) | model/projector/applySubworkflowEvent.test.ts | port | Pure fold logic (relocation + import fix). |
+| steps-view/subworkflow-parallel-suppression.test.ts | suppresses sub-of-parallel (AE9); suppresses transitively (AE13); does NOT suppress sequential (negative control) | model/projector/subworkflow-parallel-suppression.test.ts | port | The 3 pure-projector suppression invariants. |
+| steps-view/subworkflow-parallel-suppression.test.ts | keeps insideParallel on lifecycle records for suppressed homogeneous sub boundaries | → U10–U13 | demote→integration | Runs a real `parallel()` workflow (`parent.execute(deps)`) and asserts persisted lifecycle records — execution/persistence, NOT projection ("passes if the pane is empty"). **File stays LIVE** (reconcile rule 3: the one demote target does not yet exist). |
+| steps-view/subworkflow-collapse.test.tsx | (all 4 cases: compact `│4 ` at width 50/depth 4; depth-4 boundary uses depth-3 compact form; stacked-bar at width 80/depth 4; stacked-bar at depth 3/width 50) | model/subworkflow--collapse-gutter.test.tsx | port | The genuine *rendering* case: a synchronous `renderToString(<StepsView>)` frame assertion of the compact-gutter chrome at the AE12 width/depth conditions. Plain `model` render test (no `scenario()`); the `│N ` token is the co-located spec, asserted directly. |
+| steps-view/subworkflow-boundary-selection.test.tsx | (all 6 cases: ↑ skips ✓ exit→child-2; ↓ skips ✓ exit→parent-B; committedName never a boundary; ↑ no-op when only boundaries above; only-boundaries→selected=none; ⏎ on boundary emits no intent) | model/subworkflow--boundary-selection.test.tsx | port | Selection DECISIONS over `useStepsSelection` / `<StepsView>` (read hook state, pass with an empty pane). Plain `model` hook/component test via ink-testing-library. |
+
+### U7d — crossing-panes merges (§7 discovery outcome)
+
+> **No `oldTestRefs` merge into U6 full-host scenarios was required.** The parent
+> §4 anticipated splitting some pane-map cases into a `model/controller` *decision*
+> half plus a *visible-swap* half that merges into U6's
+> `nav--enter-swaps-right-pane-to-transcript` /
+> `multi-source--each-source-swaps-distinct-content` /
+> `replay--revisit-shows-same-transcript`. In practice every old pane-map case
+> asserts a controller decision at the `FakeTmuxService` seam (recorded tmux calls
+> / projected state) — there is no separate visible-swap assertion embedded in any
+> case to peel off — so each ported whole as a `model/controller` decision (no case
+> dispositioned `merge`). The user-visible swap *outcomes* those decisions drive
+> are already covered by the three U6 full-host scenarios above; no new full-host
+> scenario was needed (the §7 default expectation of zero new full-host scenarios
+> held). No U6 scenario file was edited.

@@ -1,20 +1,24 @@
-// MIGRATED → tests-new/model/subworkflow--collapse-gutter.test.tsx (parent U7) — replaced by plain model/* category tests; kept skipped on disk (D2).
-// AE12 pin: depth-overflow collapse. When effective depth >= 4 AND paneCols
-// < 60, the gutter prefix collapses from stacked `│ │ │ │ ` to the compact
-// token `│N `. Boundary rows for a depth-d sub use the depth-(d-1) compact
-// form. Stacked form at width 80 and at depth 3 with width 50 is the negative
-// case the AE12 spec calls out.
+// MIGRATED ← tests/unit/hosts/two-pane/steps-view/subworkflow-collapse.test.tsx (parent U7c)
 //
-// Uses `renderToString` (Ink 7) so each frame is synchronous and deterministic,
-// matching the pattern from steps-view.test.tsx. To stress the narrow-pane
-// branch we override `process.stdout.columns` for the duration of the call —
-// `useStdout` ultimately falls back to it under `renderToString`.
+// `model` category, plain render test (not a `scenario()`): a synchronous
+// `renderToString(<StepsView>)` over hand-built `StepRow`s — no tmux. This is
+// the one genuinely *rendering* subworkflow risk (does the gutter survive at
+// depth/width), so the exact compact-token chrome (`│4 `) is the spec asserted
+// directly on the rendered frame, the same way `tmux-argv` / `model/controller`
+// hold their own literals. The full Ink projection→string path is exercised; a
+// `screen` byte twin would only add terminal-grid fidelity to a width-driven
+// gutter and is intentionally not authored (renderToString proves the bytes).
+//
+// AE12 pin: when effective depth >= 4 AND paneCols < 60, the gutter prefix
+// collapses from stacked `│ │ │ │ ` to the compact token `│N `. Boundary rows
+// for a depth-d sub use the depth-(d-1) compact form. Stacked form at width 80
+// and at depth 3 with width 50 are the negative cases AE12 calls out.
 
 import { describe, expect, it } from 'bun:test'
 import { renderToString } from 'ink'
-import type { StepRow, StepsViewState } from '../../../../../src/hosts/two-pane/steps-view/index.ts'
-import { StepsView } from '../../../../../src/hosts/two-pane/steps-view/index.ts'
-import { stripAnsi } from '../../../../../src/observability/index.ts'
+import type { StepRow, StepsViewState } from '../../src/hosts/two-pane/steps-view/index.ts'
+import { StepsView } from '../../src/hosts/two-pane/steps-view/index.ts'
+import { stripAnsi } from '../../src/observability/index.ts'
 
 const NOOP = (): void => {}
 
@@ -66,7 +70,7 @@ function frameAt(steps: readonly StepRow[], paneCols: number): string {
   }
 }
 
-describe.skip('<StepsView> depth-overflow collapse (AE12)', () => {
+describe('<StepsView> depth-overflow collapse (AE12)', () => {
   it('renders the compact `│4 ` token for depth-4 step rows at pane width 50', () => {
     const frame = frameAt(chainSteps(), 50)
     const planLine = frame.split('\n').find((l) => l.includes('plan'))

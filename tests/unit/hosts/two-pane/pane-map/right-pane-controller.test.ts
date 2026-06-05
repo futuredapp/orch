@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/model/controller/right-pane-controller-{sources,lifecycle}.test.ts (parent U7) — replaced by plain model/* category tests; kept skipped on disk (D2).
 // triage: rewrite — register/show/unregister visible-pane outcomes now covered at Tier 1 (autonomous-live-pane-shows-content, replay-revisit-reuses-pane). Keep idempotency + missing-source paths Tier 1 cannot fail-isolate.
 // Unit coverage for the pane-map public methods on the right-pane
 // controller. The legacy `onIntent` path stays covered by the existing
@@ -98,7 +99,7 @@ async function cleanup(tempDir: string): Promise<void> {
   await rm(tempDir, { recursive: true, force: true })
 }
 
-describe('right-pane-controller pane-map: registerSource', () => {
+describe.skip('right-pane-controller pane-map: registerSource', () => {
   it('creates a per-source tmux session whose initial pane runs the file-tail argv', async () => {
     const { tmux, controller, tempDir } = await makeController()
 
@@ -234,7 +235,7 @@ describe('right-pane-controller pane-map: registerSource', () => {
   })
 })
 
-describe('right-pane-controller pane-map: showSource', () => {
+describe.skip('right-pane-controller pane-map: showSource', () => {
   it('issues swapPane(src=entry.paneId, dst=visible) and updates the visible pane id', async () => {
     const { tmux, controller, tempDir } = await makeController()
 
@@ -331,7 +332,7 @@ describe('right-pane-controller pane-map: showSource', () => {
   })
 })
 
-describe('right-pane-controller pane-map: unregisterSource', () => {
+describe.skip('right-pane-controller pane-map: unregisterSource', () => {
   it('transforms a live key into a replay key without killing the per-source session', async () => {
     const { tmux, controller, tempDir } = await makeController()
 
@@ -413,7 +414,7 @@ describe('right-pane-controller pane-map: unregisterSource', () => {
 // rule: while the user is tracking the live edge, completing the watched step
 // must carry the view forward to the next step that starts. Completion is not
 // a navigation, so it must not drop the user out of follow-live.
-describe('right-pane-controller pane-map: follow-live auto-advance', () => {
+describe.skip('right-pane-controller pane-map: follow-live auto-advance', () => {
   it('auto-advances the visible pane to the next live step when the current live step completes', async () => {
     const { tmux, controller, tempDir } = await makeController()
 
@@ -446,7 +447,7 @@ describe('right-pane-controller pane-map: follow-live auto-advance', () => {
   })
 })
 
-describe('right-pane-controller pane-map: teardownSessions', () => {
+describe.skip('right-pane-controller pane-map: teardownSessions', () => {
   it('issues one killSession per registered source and clears the map', async () => {
     const { tmux, controller, tempDir } = await makeController()
 
@@ -509,7 +510,7 @@ describe('right-pane-controller pane-map: teardownSessions', () => {
   })
 })
 
-describe('right-pane-controller pane-map: followLive', () => {
+describe.skip('right-pane-controller pane-map: followLive', () => {
   it('prefers rollup over live sources when both are registered', async () => {
     const { tmux, controller, tempDir } = await makeController()
 
@@ -587,7 +588,7 @@ describe('right-pane-controller pane-map: followLive', () => {
 // original right pane id — chaining is broken and the user sees the first
 // live source's content stuck in the visible slot regardless of what step
 // the workflow has progressed to.
-describe('right-pane-controller pane-map: concurrent registerSource race', () => {
+describe.skip('right-pane-controller pane-map: concurrent registerSource race', () => {
   it('chains dst across concurrent registerSource calls so each swap targets the previously-visible pane id', async () => {
     const { tmux, controller, tempDir } = await makeController()
 

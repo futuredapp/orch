@@ -1,15 +1,14 @@
-// MIGRATED → tests-new/model/subworkflow--boundary-selection.test.tsx (parent U7) — replaced by plain model/* category tests; kept skipped on disk (D2).
-// AE10 pin: the `↑/↓` preview cursor skips `▼`/`✓`/`✗` boundary rows; `⏎` on a
-// boundary row is a no-op (no `enter` intent). Also covers the
-// selection-skip-terminal and selection-skip-empty edge cases the design-lens
-// review pinned: when no selectable row exists in the requested direction the
-// cursor stays put; when only boundary rows exist `selectedName` is `undefined`
-// and every key is a no-op.
+// MIGRATED ← tests/unit/hosts/two-pane/steps-view/subworkflow-boundary-selection.test.tsx (parent U7c)
 //
-// These tests drive `useStepsSelection` directly via a thin Harness (same
-// pattern as `selection.test.tsx`) so each keystroke is single-shot and
-// deterministic — `pressUntilFrame` would walk the cursor too far past the
-// AE10 mid-list landing positions.
+// `model` category, plain hook/component test (not a `scenario()`): drives
+// `useStepsSelection` / `<StepsView>` via ink-testing-library — no tmux. These
+// are selection DECISIONS (which row the cursor lands on, whether Enter emits an
+// intent), read from hook state, so they pass with an empty pane — the risk is
+// the decision, not the bytes.
+//
+// AE10 pin: the `↑/↓` preview cursor skips `▼`/`✓`/`✗` boundary rows; `⏎` on a
+// boundary row is a no-op (no `enter` intent). Also covers selection-skip-terminal
+// and selection-skip-empty edge cases.
 
 import { describe, expect, it } from 'bun:test'
 import { Box, Text, useInput } from 'ink'
@@ -19,13 +18,13 @@ import type {
   StepRow,
   StepsViewIntent,
   StepsViewState,
-} from '../../../../../src/hosts/two-pane/steps-view/index.ts'
+} from '../../src/hosts/two-pane/steps-view/index.ts'
 import {
   type StepsSelection,
   StepsView,
   useStepsSelection,
-} from '../../../../../src/hosts/two-pane/steps-view/index.ts'
-import { pressUntilFrame, waitForFrame, waitForIntents } from '../../../../helpers/ink-frame.ts'
+} from '../../src/hosts/two-pane/steps-view/index.ts'
+import { pressUntilFrame, waitForFrame, waitForIntents } from '../_support/ink-frame.ts'
 
 const ARROW_UP = '\x1b[A'
 const ENTER = '\r'
@@ -120,16 +119,16 @@ function liveState(steps: readonly StepRow[]): StepsViewState {
   }
 }
 
-describe.skip('useStepsSelection — boundary-row skip (AE10)', () => {
+describe('useStepsSelection — boundary-row skip (AE10)', () => {
   it('↑ from the committed live row (parent-B) skips the ✓ exit and lands on child-2', async () => {
     let handle: HarnessHandle | undefined
     const ui = render(<Harness steps={PANE_STEPS} expose={(h) => (handle = h)} />)
     await waitForFrame(ui, (f) => f.includes('selected=parent-B'))
 
     // Driving the hook directly defeats ink-testing-library's stdin race
-    // (useInput's callback can capture a stale closure mid-effect-cycle). We
-    // already prove arrow-key delivery wires through to `moveUp/moveDown` in
-    // the broader selection.test.tsx — here the assertion is the skip rule.
+    // (useInput's callback can capture a stale closure mid-effect-cycle). The
+    // broader selection.test.tsx proves arrow-key delivery wires through to
+    // moveUp/moveDown; here the assertion is the skip rule.
     handle?.selection.moveUp()
     const frame = await waitForFrame(ui, (f) => f.includes('selected=child-2'))
 
@@ -223,7 +222,7 @@ describe.skip('useStepsSelection — boundary-row skip (AE10)', () => {
   })
 })
 
-describe.skip('<StepsView> Enter on a boundary row is a no-op', () => {
+describe('<StepsView> Enter on a boundary row is a no-op', () => {
   it('⏎ while the cursor is forced onto a boundary row emits no `enter` intent', async () => {
     const intents: StepsViewIntent[] = []
     // Pane of pure boundary rows — selectedName resolves to `undefined`, so
