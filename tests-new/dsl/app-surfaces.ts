@@ -8,6 +8,7 @@
 // a `model+screen` scenario is typed to only the SHARED `leftPane` surface.
 // See `scenario.ts` for the `SharedApp` machinery that enforces this.
 
+import type { AgentSpec } from './agent-spec.ts'
 import type { LeftPane } from './panes/left-pane.ts'
 import type { RightPane } from './panes/right-pane.ts'
 import type { SystemAssertions } from './panes/system-assertions.ts'
@@ -36,8 +37,30 @@ export interface LaunchSpec {
 
 export type ModelSpec = LaunchSpec
 export type ScreenSpec = LaunchSpec
-export type FullHostSpec = LaunchSpec
-export type LifecycleSpec = LaunchSpec
+
+/** Full-host launch spec — adds the agent slot (defaults to an empty `emits()`). */
+export interface FullHostSpec extends LaunchSpec {
+  readonly agent?: AgentSpec
+}
+
+/** Lifecycle launch spec — adds the agent slot (e.g. `holdsOpen()`). */
+export interface LifecycleSpec extends LaunchSpec {
+  readonly agent?: AgentSpec
+}
+
+/**
+ * Live-driven agent control, exposed on `FullHostApp.agent` ONLY when the
+ * scenario opts in via `liveDriven: true`. Lets a scenario interleave agent
+ * output with user actions (parent §9.5). Absent (undefined) on a static build,
+ * so a static scenario touching `app.agent.type` is a type error — the parent's
+ * "unsupported action = type error" rule (D-P2.3).
+ */
+export interface LiveAgentControl {
+  /** Type-and-send a line as the live step's agent, awaiting its durable ack. */
+  type(text: string): Promise<void>
+  /** Finish the live step (optional non-zero code for a headless instance). */
+  finish(code?: number): Promise<void>
+}
 
 /** The minimum every app provides — the registry tears down via this. */
 export interface AppBase {
@@ -63,6 +86,13 @@ export interface FullHostApp extends AppBase {
   readonly leftPane: LeftPane
   /** Transcript / two-pane communication. */
   readonly rightPane: RightPane
+  /**
+   * Live-driven agent control — present only on a `liveDriven` build, undefined
+   * otherwise (parent §9.5, D-P2.3). The full mid-stream interleave scenario is
+   * deferred to the migration unit that needs it (parent U4/U6); U2 ships the
+   * capability + a reachability proof.
+   */
+  readonly agent?: LiveAgentControl
 }
 
 export interface LifecycleApp extends AppBase {

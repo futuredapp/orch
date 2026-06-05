@@ -49,9 +49,12 @@ describe('expandScenario reflects each driver capability predicate', () => {
   })
 
   it('marks a not-yet-implemented driver (stub) as skipped rather than failing', () => {
+    // `full-host:recorded-agent` is still a stub in U2 (it lands in parent U3),
+    // so its capability predicate skips rather than crashing the suite. The U2
+    // tmux drivers (screen / full-host:fake-agent / lifecycle) are now real.
     const cases = expandScenario({
-      name: 'a lifecycle behaviour',
-      drivers: ['lifecycle'],
+      name: 'a recorded-agent behaviour',
+      drivers: ['full-host:recorded-agent'],
       feature: 'demo',
       oldTestRefs: [],
     })

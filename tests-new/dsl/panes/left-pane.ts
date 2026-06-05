@@ -44,6 +44,11 @@ export class LeftPane {
     return this.driver.assertContains(text)
   }
 
+  /** Chrome/hygiene: the pane shows no caret-notation echo bytes. */
+  assertNoCaretEcho(): Promise<void> {
+    return this.driver.assertNoCaretEcho()
+  }
+
   // --- affordances ----------------------------------------------------------
 
   selectStep(step: string): Promise<void> {

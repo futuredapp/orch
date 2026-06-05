@@ -6,6 +6,8 @@
 // Drivers, the registry, and frame-parsing internals are NOT part of the public
 // surface — scenarios never name a driver type or touch a `PaneDriver`.
 
+export type { AgentSpec } from './agent-spec.ts'
+export { emits, holdsOpen, live } from './agent-spec.ts'
 export type {
   DriverName,
   FullHostApp,
@@ -13,6 +15,7 @@ export type {
   LaunchSpec,
   LifecycleApp,
   LifecycleSpec,
+  LiveAgentControl,
   ModelApp,
   ModelSpec,
   ScreenApp,

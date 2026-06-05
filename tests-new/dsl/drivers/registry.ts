@@ -11,7 +11,10 @@
 
 import type { AppBase, DriverName } from '../app-surfaces.ts'
 import type { ScenarioMeta } from '../scenario.ts'
+import { fullHostFakeAgentDriver } from './full-host-fake-agent-driver.ts'
+import { lifecycleDriver } from './lifecycle-driver.ts'
 import { modelDriver } from './model-driver.ts'
+import { screenDriver } from './screen-driver.ts'
 import { makeStubDriver } from './stub-driver.ts'
 
 export interface Driver<App extends AppBase> {
@@ -25,9 +28,9 @@ export interface Driver<App extends AppBase> {
 
 export const DRIVERS = {
   model: modelDriver,
-  screen: makeStubDriver('screen', 'parent U2'),
-  'full-host:fake-agent': makeStubDriver('full-host:fake-agent', 'parent U2'),
+  screen: screenDriver,
+  'full-host:fake-agent': fullHostFakeAgentDriver,
   'full-host:recorded-agent': makeStubDriver('full-host:recorded-agent', 'parent U3'),
   'full-host:real-agent': makeStubDriver('full-host:real-agent', 'parent U3'),
-  lifecycle: makeStubDriver('lifecycle', 'parent U2'),
+  lifecycle: lifecycleDriver,
 } satisfies Record<DriverName, Driver<AppBase>>

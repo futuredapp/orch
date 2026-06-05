@@ -12,6 +12,13 @@
 /** Step status glyph a row can render. Maps to the production glyph at the driver. */
 export type GlyphName = 'running' | 'done' | 'failed'
 
+/**
+ * Caret-notation sequences that betray the legacy pty echo-doubling bug. A
+ * clean right pane (file-tail model) never emits these. Shared so every driver's
+ * `assertNoCaretEcho` pins the same set.
+ */
+export const CARET_ECHO_TOKENS = ['^[', '^M', '^J'] as const
+
 export interface PaneDriver {
   /**
    * Assert the chrome `literal` appears `count` times in the pane's bottom
@@ -28,4 +35,11 @@ export interface PaneDriver {
   selectStep(step: string): Promise<void>
   /** Drive the pane to follow the live step (snap-to-live). */
   followLive(): Promise<void>
+  /**
+   * Assert the pane shows no caret-notation echo bytes (`^[`, `^M`, `^J`) — the
+   * calling card of the legacy pty doubling bug. Only meaningful on a real-tmux
+   * driver, where the bytes actually round-trip a terminal; on `model` it holds
+   * trivially over the rendered frame.
+   */
+  assertNoCaretEcho(): Promise<void>
 }

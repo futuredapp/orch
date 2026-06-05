@@ -36,3 +36,48 @@ buckets. Two known background facts to carry forward: the shared tmux socket dir
 already holds ~133 leaked `orch-*` sockets from the legacy real-tmux suite (the
 flakiness root cause U2's drivers must fix), and the baseline must never be
 regenerated against the mutating tree.
+
+## Phase 2
+
+Phase 2 (parent unit **U2**) builds the three drivers that boot **real tmux**, so
+a behaviour written once as a `scenario(meta, body)` can now run at byte-level
+fidelity. `full-host:fake-agent` boots the full two-pane host with a `FakeRunner`
+(static, default) or a `scriptedFake` puppet (live, opt-in via `meta.liveDriven`);
+`lifecycle` wraps a real `orch` subprocess via the behavioral-dsl engine behind
+the typed `LifecycleApp` (signals, key presses, exit/teardown/persisted-status
+assertions); and `screen` (the net-new, highest-risk piece) extracts a dedicated
+**single steps-pane** fixture that renders the real `StepsView` Ink component into
+one tmux pane and asserts captured bytes. All three are wired into the driver
+registry, replacing their U1 stubs (`recorded-agent`/`real-agent` stay stubs for
+U3). Every hard-won real-tmux predictability rule (unique socket, server reaping,
+both timeout constants, poll-and-resend for the idempotent `f` key, leaked-puppet
+sentinel) lives inside the drivers; each driver ships **regression tests first**
+(no-orphans/teardown/timeout/poll), then one tracer, plus the adversarial byte
+catalogue on `screen` (ANSI/CR/NUL/wide-glyph/long-line payloads survive without
+corrupting the pane). New script buckets `test:two-pane:{screen,full:fake,tmux,
+lifecycle}` encode the concurrency ceiling (`tmux`=2, `lifecycle`=1 serial),
+measured and confirmed stable with zero socket/puppet accumulation.
+
+The shared real-tmux harness and behavioral-dsl engine **moved** to
+`tests-new/_support/` (D13). Reality differed from the plan's "barrel-only shim"
+assumption: ~33 old files deep-import `real-tmux/fixture.ts` plus other internals,
+so `scripts/move-test-infra-to-support.sh` leaves a re-export shim at **every**
+deep-imported old path. Because both helper trees sit exactly three dirs deep
+before and after, all relative imports to `src/` are preserved unchanged. The old
+suite stays green through the shims (verified: 1954 old unit tests + sampled old
+real-tmux/lifecycle integration tests) — U2 skips no old test and adds no ledger
+rows.
+
+Two things matter for next work. **(1)** One honest deviation: the lifecycle
+tracer asserts `exitedNormally` + `tmuxTornDown` but **not**
+`persistedStatus('cancelled')` — on current `main` neither SIGINT nor a `q`
+quit-intent persists a `cancelled` status (the run stays `running`; a pre-existing
+gap, empirically confirmed, flagged for a later phase). `persistedStatus` itself
+is implemented and covered against a planted state. **(2)** Affordances deferred
+to the first migration that needs them (parent U4+): `selectStep`/`followLive`
+over the real-tmux `screen`/`full-host` pane driver, the full live-interleave
+full-host scenario (`app.agent` + mid-stream `press`), and the lifecycle
+`leftPane`/`rightPane` snapshot-backed reads — all throw `notImplemented`
+(greppable, never a silent green) rather than shipping untested. The
+behavioral-dsl lifecycle fixtures still resolve from `tests/fixtures/lifecycle`
+(a runtime path, not an import); they relocate in a later phase.

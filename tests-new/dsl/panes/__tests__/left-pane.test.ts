@@ -30,6 +30,9 @@ class CapturingPaneDriver implements PaneDriver {
   followLive(): Promise<void> {
     return Promise.resolve()
   }
+  assertNoCaretEcho(): Promise<void> {
+    return Promise.resolve()
+  }
 }
 
 describe('LeftPane chrome literals are co-located and independent of src/', () => {

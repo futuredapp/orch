@@ -15,11 +15,9 @@
 
 import { createElement, type ReactElement, useCallback, useEffect, useState } from 'react'
 import { render } from 'ink-testing-library'
-import { stepGlyphView, stripAnsi } from '../../../src/observability/index.ts'
 import type {
   RunHeader,
   StepRow,
-  StepStatus,
   StepsViewIntent,
   StepsViewState,
   ViewMode,
@@ -28,26 +26,22 @@ import { StepsView } from '../../../src/hosts/two-pane/steps-view/index.ts'
 import { pressUntilFrame, waitForFrame } from '@orch/test/ink-frame.ts'
 import type { DriverName, ModelApp, ModelSpec } from '../app-surfaces.ts'
 import { LeftPane } from '../panes/left-pane.ts'
-import type { GlyphName, PaneDriver } from '../panes/pane-driver.ts'
+import { CARET_ECHO_TOKENS, type PaneDriver } from '../panes/pane-driver.ts'
 import type { ScenarioMeta } from '../scenario.ts'
+import {
+  glyphChar,
+  highlightedStepName,
+  occurrences,
+  rowHasGlyph,
+  stripAnsi,
+} from './frame-text.ts'
 import type { Driver } from './registry.ts'
 
 // Deterministic clock for `<StepRow>` elapsed math — keeps frames stable.
 const NOW = 5_000
 const MODEL_TIMEOUT_MS = 10_000
 
-// The committed (right-pane-tracking) row renders this cursor glyph. Cyan/bold
-// are ANSI styling stripped from the frame, so the cursor is the only selection
-// signal that survives — and the one the user sees.
-const CURSOR = '▌'
-
 const LIVE_VIEW: ViewMode = { mode: 'live' }
-
-const GLYPH_STATUS: Record<GlyphName, StepStatus> = {
-  running: 'running',
-  done: 'completed',
-  failed: 'failed',
-}
 
 type Instance = ReturnType<typeof render>
 
@@ -114,33 +108,6 @@ function computeLiveName(spec: ModelSpec): string | undefined {
   return spec.steps[spec.steps.length - 1]
 }
 
-// --- frame parsing helpers --------------------------------------------------
-
-function highlightedStepName(frame: string, names: readonly string[]): string | undefined {
-  for (const line of frame.split('\n')) {
-    if (!line.includes(CURSOR)) continue
-    const afterCursor = line.slice(line.indexOf(CURSOR) + CURSOR.length)
-    const match = names.find((name) => afterCursor.includes(name))
-    if (match !== undefined) return match
-  }
-  return undefined
-}
-
-function occurrences(haystack: string, needle: string): number {
-  if (needle.length === 0) return 0
-  let count = 0
-  let idx = haystack.indexOf(needle)
-  while (idx !== -1) {
-    count += 1
-    idx = haystack.indexOf(needle, idx + needle.length)
-  }
-  return count
-}
-
-function rowHasGlyph(frame: string, step: string, glyph: string): boolean {
-  return frame.split('\n').some((line) => line.includes(step) && line.includes(glyph))
-}
-
 // --- the app ----------------------------------------------------------------
 
 function createModelApp(): ModelApp {
@@ -171,7 +138,7 @@ function createModelApp(): ModelApp {
       })
     },
     async assertGlyph(step, glyph): Promise<void> {
-      const wanted = stepGlyphView(GLYPH_STATUS[glyph]).char
+      const wanted = glyphChar(glyph)
       await waitForFrame(requireUi(), (f) => rowHasGlyph(f, step, wanted), { transform: stripAnsi })
     },
     async selectStep(step): Promise<void> {
@@ -191,6 +158,16 @@ function createModelApp(): ModelApp {
       await pressUntilFrame(instance, 'f', (f) => highlightedStepName(f, stepNames) === target, {
         transform: stripAnsi,
       })
+    },
+    async assertNoCaretEcho(): Promise<void> {
+      // The Ink-rendered frame is not a real terminal, so caret-notation echo
+      // cannot occur here — the assertion holds trivially over the projection
+      // seam. Byte hygiene is only PROVEN on the real-tmux drivers (R5).
+      const frame = stripAnsi(requireUi().lastFrame() ?? '')
+      const offender = CARET_ECHO_TOKENS.find((token) => frame.includes(token))
+      if (offender !== undefined) {
+        throw new Error(`model driver: rendered frame unexpectedly contains caret echo ${offender}`)
+      }
     },
   }
 
