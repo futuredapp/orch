@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/core/prompt-file/caller-dir.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -7,7 +6,7 @@ import { PromptFileError } from '../../../../src/core/prompt-file/errors.ts'
 
 const THIS_DIR = dirname(fileURLToPath(import.meta.url))
 
-describe.skip('callerDir', () => {
+describe('callerDir', () => {
   it('returns the directory of the test file itself when called directly', () => {
     const dir = callerDir(callerDir)
 
@@ -23,7 +22,7 @@ describe.skip('callerDir', () => {
   // against hand-crafted stacks without depending on engine quirks.
 })
 
-describe.skip('parseCallerDir', () => {
+describe('parseCallerDir', () => {
   it('returns the dir of the frame immediately after the named skip frame', () => {
     const stack =
       'Error\n' +
@@ -88,7 +87,7 @@ describe.skip('parseCallerDir', () => {
   })
 })
 
-describe.skip('callerDir failure path', () => {
+describe('callerDir failure path', () => {
   it('throws PromptFileError(cause:read-failed) when the stack has no parseable frames', () => {
     // Force the no-frame branch by intercepting the stack getter on the
     // single Error instance that `callerDir` constructs. We patch the

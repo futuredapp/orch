@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/cli/execute-with-attach.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { executeWithAttach } from '../../../src/cli/commands/execute-with-attach.ts'
 import { EXIT } from '../../../src/cli/main.ts'
@@ -69,7 +68,7 @@ function bufferStream(): { stream: NodeJS.WritableStream; text: () => string } {
   return { stream, text: () => chunks.join('') }
 }
 
-describe.skip('executeWithAttach (unit)', () => {
+describe('executeWithAttach (unit)', () => {
   it('writes the two-line success summary on the success path', async () => {
     const host = fakeHost()
     const stderr = bufferStream()

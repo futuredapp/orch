@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/hosts/two-pane/kind-details.test.ts (parent U14) — demote-relocated (pane-agnostic unit); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { renderKindDetails } from '../../../../src/hosts/two-pane/kind-details.tsx'
 import type { StepRow } from '../../../../src/hosts/two-pane/steps-view/index.ts'
@@ -7,7 +6,7 @@ import type { StepRow } from '../../../../src/hosts/two-pane/steps-view/index.ts
 // the result straight into `tmux sendKeys`, so we test the formatting itself
 // without spinning up an Ink tree.
 
-describe.skip('renderKindDetails for commit kind', () => {
+describe('renderKindDetails for commit kind', () => {
   it('renders the SHA on a CommitResult-shaped value', () => {
     const step: StepRow = {
       kind: 'commit',
@@ -37,7 +36,7 @@ describe.skip('renderKindDetails for commit kind', () => {
   })
 })
 
-describe.skip('renderKindDetails for worktree kind', () => {
+describe('renderKindDetails for worktree kind', () => {
   it('renders path / branch / fromRef from a WorktreeResult-shaped value', () => {
     const step: StepRow = {
       kind: 'worktree',
@@ -55,7 +54,7 @@ describe.skip('renderKindDetails for worktree kind', () => {
   })
 })
 
-describe.skip('renderKindDetails for ask kind', () => {
+describe('renderKindDetails for ask kind', () => {
   it('shows the cancelled marker when the prompt was cancelled', () => {
     const step: StepRow = {
       kind: 'ask',

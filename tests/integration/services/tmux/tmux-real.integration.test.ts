@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/integration/services/tmux/tmux-real.integration.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Gated real tmux tests. Each test creates its own socket and kills the
 // server in `afterEach` — tests run in parallel by bun test, so separate
 // sockets prevent cross-contamination.
@@ -6,6 +5,7 @@
 import { afterEach, describe, expect, it } from 'bun:test'
 import { realpath } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
+import { allocateSocketName } from '@orch/test/real-tmux/index.ts'
 import { BunFsService } from '../../../../src/services/fs/index.ts'
 import { BunProcessService } from '../../../../src/services/process/index.ts'
 import {
@@ -17,7 +17,6 @@ import {
   TmuxCommandError,
 } from '../../../../src/services/tmux/index.ts'
 import { path } from '../../../../src/services/types.ts'
-import { allocateSocketName } from '../../../helpers/real-tmux/index.ts'
 
 const canRun = Bun.which('tmux') !== null
 
@@ -47,7 +46,7 @@ afterEach(async () => {
   sockets = []
 })
 
-describe.skip('RealTmuxService against a real tmux server', () => {
+describe.skipIf(!canRun)('RealTmuxService against a real tmux server', () => {
   it('creates a session, splits a pane, and returns a valid tmux pane id', async () => {
     const tmux = new RealTmuxService({ processService: new BunProcessService() })
     const socket = newSocket('split')
@@ -559,7 +558,7 @@ const runShell = async (
   return { stdout, exitCode }
 }
 
-describe.skip('initOrchSession strict-sandbox lockdown on real tmux', () => {
+describe.skipIf(!canRun)('initOrchSession strict-sandbox lockdown on real tmux', () => {
   const initStrict = async (socket: SocketName) => {
     const tmux = new RealTmuxService({ processService: new BunProcessService() })
     await initOrchSession(tmux, new BunFsService(), {

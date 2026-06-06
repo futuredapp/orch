@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/integration/runners/scripted-fake/two-step-linear.smoke.test.ts (parent U11) — relocated verbatim (import paths only); kept skipped on disk (D2).
 /**
  * Smoke: the `tier5-two-step-linear` fixture workflow runs end-to-end
  * in-process when both steps are scripted as `instant-ok`.
@@ -13,6 +12,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import * as nodePath from 'node:path'
+import { createFakeHost } from '@orch/test/fake-host.ts'
+import wf from '@orch/test/fixtures/lifecycle/two-step-linear.ts'
 import {
   ORCH_LIFECYCLE_SCRIPT_ENV,
   type ScriptedFakeScriptFile,
@@ -26,8 +27,6 @@ import {
 } from '../../../../src/services/index.ts'
 import { FakePromptService } from '../../../../src/services/prompt/index.ts'
 import { FileStateStore, type RunId } from '../../../../src/state/index.ts'
-import wf from '../../../../tests/fixtures/lifecycle/two-step-linear.ts'
-import { createFakeHost } from '../../../helpers/fake-host.ts'
 
 const RUN_ID = 'r-2026-05-20-100000-t5' as RunId
 
@@ -48,7 +47,7 @@ afterEach(async () => {
   await rm(workDir, { recursive: true, force: true })
 })
 
-describe.skip('tier5-two-step-linear fixture (in-process smoke)', () => {
+describe('tier5-two-step-linear fixture (in-process smoke)', () => {
   it('runs both steps to completion when scripted as instant-ok × 2', async () => {
     const script: ScriptedFakeScriptFile = {
       steps: {

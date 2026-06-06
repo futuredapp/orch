@@ -1,6 +1,6 @@
-// MIGRATED → tests-new/integration/core/workflow.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { afterEach, describe, expect, it } from 'bun:test'
 import * as fs from 'node:fs/promises'
+import { createFakeHost } from '@orch/test/fake-host.ts'
 import { z } from 'zod'
 import { step } from '../../../src/core/step.ts'
 import { StepError, type WorkflowDeps, workflow } from '../../../src/core/workflow.ts'
@@ -14,7 +14,6 @@ import {
 } from '../../../src/services/index.ts'
 import { FakePromptService } from '../../../src/services/prompt/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
-import { createFakeHost } from '../../helpers/fake-host.ts'
 
 let tmpDir: string
 
@@ -50,7 +49,7 @@ function makeIntegrationDeps(overrides?: {
   }
 }
 
-describe.skip('workflow (integration)', () => {
+describe('workflow (integration)', () => {
   it('four-step fake workflow runs end-to-end and persists all steps in state.json', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-wf-test-')
     const fps = new FakeProcessService()

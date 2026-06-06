@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/integration/cli/run-builtin.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Handler-level integration tests for the `orch::` built-in resolver branch in
 // loadWorkflow. These drive the real loadConfig + dynamic import() path against
 // a temp `.orch/` so the resolver contract is proven end-to-end: an orch::
@@ -55,7 +54,7 @@ async function captureStderr<T>(fn: () => Promise<T>): Promise<{ result: T; stde
   }
 }
 
-describe.skip('loadWorkflow — orch:: built-in resolution', () => {
+describe('loadWorkflow — orch:: built-in resolution', () => {
   it('loads the packaged built-in and never consults config.workflows for an orch:: name', async () => {
     // The map would shadow the name with a non-existent module if it were
     // consulted — proving the orch:: branch bypasses it entirely.

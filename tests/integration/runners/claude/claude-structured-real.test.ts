@@ -1,5 +1,5 @@
-// MIGRATED → tests-new/integration/runners/claude/claude-structured-real.test.ts (parent U11) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
+import { createFakeHost } from '@orch/test/fake-host.ts'
 import { z } from 'zod'
 import { schema } from '../../../../src/core/schema.ts'
 import { step } from '../../../../src/core/step.ts'
@@ -12,7 +12,6 @@ import { BunProcessService } from '../../../../src/services/process/index.ts'
 import { FakePromptService } from '../../../../src/services/prompt/index.ts'
 import { path } from '../../../../src/services/types.ts'
 import { FileStateStore, type RunId } from '../../../../src/state/index.ts'
-import { createFakeHost } from '../../../helpers/fake-host.ts'
 
 const canRun = process.env.RUN_REAL_CLAUDE === '1' && Bun.which('claude') !== null
 
@@ -40,7 +39,7 @@ function makeDeps(): WorkflowDeps {
   }
 }
 
-describe.skip('ClaudeRunner real CLI — structured output', () => {
+describe.skipIf(!canRun)('ClaudeRunner real CLI — structured output', () => {
   it('real Claude with --json-schema returns Zod-parsed, type-safe value', async () => {
     // `bare: false` so the CLI can use the dev machine's keychain auth.
     const runner = claude({ bare: false })

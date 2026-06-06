@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/core/run-workflow.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // U5 — `runWorkflow` primitive. Behavioral coverage for the seven
 // acceptance scenarios AE1-AE7 and the depth / host-error edge cases.
 //
@@ -8,6 +7,7 @@
 // touching a real CLI.
 
 import { describe, expect, it } from 'bun:test'
+import { createFakeHost } from '@orch/test/fake-host.ts'
 import { SubworkflowDepthError } from '../../../src/core/errors.ts'
 import { parallel } from '../../../src/core/parallel.ts'
 import { runWorkflow } from '../../../src/core/run-workflow.ts'
@@ -36,7 +36,6 @@ import {
 } from '../../../src/services/index.ts'
 import { FakePromptService } from '../../../src/services/prompt/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
-import { createFakeHost } from '../../helpers/fake-host.ts'
 
 const rid = (s: string): RunId => s as RunId
 
@@ -132,7 +131,7 @@ function recordedLifecycleEvents(deps: WorkflowDeps): StepLifecycleEvent[] {
     .map((r) => r.event)
 }
 
-describe.skip('runWorkflow — outside-scope guard (R2)', () => {
+describe('runWorkflow — outside-scope guard (R2)', () => {
   it('throws when called outside any active workflow execution', async () => {
     const sub = workflow('sub', async () => {})
     await expect(runWorkflow(sub, {})).rejects.toThrow(
@@ -141,7 +140,7 @@ describe.skip('runWorkflow — outside-scope guard (R2)', () => {
   })
 })
 
-describe.skip('runWorkflow — sub-frame and lifecycle events (R7, R8, R14, R15)', () => {
+describe('runWorkflow — sub-frame and lifecycle events (R7, R8, R14, R15)', () => {
   it('emits subworkflow:enter before sub steps, subworkflow:exit after, both with depth 1', async () => {
     const deps = makeDeps()
     const PLAN = step.define('plan', { agent: silentRunner(deps, 'r1'), prompt: 'x' })
@@ -186,7 +185,7 @@ describe.skip('runWorkflow — sub-frame and lifecycle events (R7, R8, R14, R15)
   })
 })
 
-describe.skip('runWorkflow — error propagation (R10, AE1)', () => {
+describe('runWorkflow — error propagation (R10, AE1)', () => {
   it("sub error propagates as a 'failed' parent classification and emits subworkflow:exit with outcome failed", async () => {
     const deps = makeDeps()
 
@@ -204,7 +203,7 @@ describe.skip('runWorkflow — error propagation (R10, AE1)', () => {
   })
 })
 
-describe.skip('runWorkflow — depth guard (R21)', () => {
+describe('runWorkflow — depth guard (R21)', () => {
   it('throws SubworkflowDepthError at the bound (default 8)', async () => {
     const deps = makeDeps()
 
@@ -240,7 +239,7 @@ describe.skip('runWorkflow — depth guard (R21)', () => {
   })
 })
 
-describe.skip('runWorkflow — typed args (R5, AE5)', () => {
+describe('runWorkflow — typed args (R5, AE5)', () => {
   it('passes the typed args object into the sub body', async () => {
     interface ShipArgs extends WorkflowArgs {
       readonly prompt: string
@@ -263,7 +262,7 @@ describe.skip('runWorkflow — typed args (R5, AE5)', () => {
   })
 })
 
-describe.skip('runWorkflow — parallel composition (AE6, R8, R13)', () => {
+describe('runWorkflow — parallel composition (AE6, R8, R13)', () => {
   it('two sibling runWorkflow calls inside a homogeneous parallel block report depth 1 and insideParallel', async () => {
     const deps = makeDeps()
 
@@ -294,7 +293,7 @@ describe.skip('runWorkflow — parallel composition (AE6, R8, R13)', () => {
   })
 })
 
-describe.skip('runWorkflow — host enter-throw vs exit-throw asymmetry (R10)', () => {
+describe('runWorkflow — host enter-throw vs exit-throw asymmetry (R10)', () => {
   it('host throw on subworkflow:enter propagates, logs host-error and failed exit, and the sub body does NOT run', async () => {
     const logger = new RecordingLifecycleLogger(rid('r-2026-05-28-110000-enter'))
     const deps = makeDeps({ logger })
@@ -372,7 +371,7 @@ describe.skip('runWorkflow — host enter-throw vs exit-throw asymmetry (R10)', 
   })
 })
 
-describe.skip('runWorkflow — resume collision detection (R20)', () => {
+describe('runWorkflow — resume collision detection (R20)', () => {
   it('does not replay the first cached sub invocation for a second same-sub call after resume', async () => {
     const deps = makeDeps({ runId: rid('r-2026-05-28-110000-ab') })
     const PLAN = step.define('plan', { agent: silentRunner(deps, 'resume-collision'), prompt: 'x' })

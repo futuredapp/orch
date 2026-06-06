@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/integration/core/ask-lifecycle.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Behavioural tests for the lifecycle visibility of `ask()` steps.
 //
 // User-observable invariant: while an `ask()` prompt is waiting for input,
@@ -16,6 +15,7 @@
 
 import { afterEach, describe, expect, it } from 'bun:test'
 import * as fs from 'node:fs/promises'
+import { createFakeHost } from '@orch/test/fake-host.ts'
 import { ask } from '../../../src/core/ask.ts'
 import type { StepLifecycleEvent } from '../../../src/core/workflow.ts'
 import { type WorkflowDeps, workflow } from '../../../src/core/workflow.ts'
@@ -29,7 +29,6 @@ import {
 import type { PromptCtx, PromptResult, PromptSpec } from '../../../src/services/prompt/index.ts'
 import { FakePromptService } from '../../../src/services/prompt/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
-import { createFakeHost } from '../../helpers/fake-host.ts'
 
 let tmpDir: string
 
@@ -59,7 +58,7 @@ function makeDeps(overrides: DepsOverrides = {}): WorkflowDeps {
   }
 }
 
-describe.skip('ask step — lifecycle visibility (pins the disappearing-prompt bug)', () => {
+describe('ask step — lifecycle visibility (pins the disappearing-prompt bug)', () => {
   it('emits a step:start event for the ask step before the prompt is awaited so the TUI can show a row for it', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-ask-lifecycle-')
 

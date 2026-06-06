@@ -1,11 +1,10 @@
-// MIGRATED → tests-new/unit/runners/codex/parse-events.test.ts (parent U11) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { codex, parseCodexLine } from '../../../../src/runners/codex/index.ts'
 import type { TerminalEvent } from '../../../../src/runners/types.ts'
 import { FakeFsService } from '../../../../src/services/fs/fake-fs-service.ts'
 import { FakeProcessService } from '../../../../src/services/process/fake-process-service.ts'
 
-describe.skip('parseCodexLine', () => {
+describe('parseCodexLine', () => {
   it('surfaces thread.started as a session-started info event with sessionId in payload', () => {
     // Phase 3: parseCodexLine synthesizes a `session-started` event for any
     // `thread.started` line carrying a `thread_id` so the workflow executor
@@ -140,7 +139,7 @@ describe.skip('parseCodexLine', () => {
   })
 })
 
-describe.skip('extractStructuredOutput', () => {
+describe('extractStructuredOutput', () => {
   function makeDeps(): { fs: FakeFsService; ps: FakeProcessService } {
     const fs = new FakeFsService()
     const ps = new FakeProcessService()

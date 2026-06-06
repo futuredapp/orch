@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/integration/examples/subworkflows-smoke.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // U10 smoke pin: every subworkflow example file loads cleanly, exports a
 // WorkflowExecutor with the expected `name`, and the registry in
 // `examples/orch.config.ts` resolves every entry. Then a fake-runner workflow
@@ -11,6 +10,7 @@
 // silent fake runner cloned from `tests/unit/core/run-workflow.test.ts`.
 
 import { describe, expect, it } from 'bun:test'
+import { createFakeHost } from '@orch/test/fake-host.ts'
 import branchIsolated from '../../../examples/branch-isolated/index.ts'
 import complexFeature from '../../../examples/complex-feature/index.ts'
 import feature from '../../../examples/feature/index.ts'
@@ -32,7 +32,6 @@ import {
 } from '../../../src/services/index.ts'
 import { FakePromptService } from '../../../src/services/prompt/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
-import { createFakeHost } from '../../helpers/fake-host.ts'
 
 const rid = (s: string): RunId => s as RunId
 
@@ -87,7 +86,7 @@ function lifecycleEvents(deps: WorkflowDeps): readonly StepLifecycleEvent[] {
     .map((r) => r.event)
 }
 
-describe.skip('subworkflow examples — module load + registry shape', () => {
+describe('subworkflow examples — module load + registry shape', () => {
   it('each example exports a default WorkflowExecutor with the expected name', () => {
     expect(feature.name).toBe('feature')
     expect(simpleFeature.name).toBe('simple-feature')
@@ -129,7 +128,7 @@ describe.skip('subworkflow examples — module load + registry shape', () => {
   })
 })
 
-describe.skip('subworkflow examples — runWorkflow end-to-end with fake runner', () => {
+describe('subworkflow examples — runWorkflow end-to-end with fake runner', () => {
   it('parent + sub composition emits enter/exit and runs sub step under the sub-path cache key', async () => {
     const deps = makeDeps()
     const PLAN = step.define('plan', { agent: silentRunner(deps, 'r1'), prompt: 'plan-it' })

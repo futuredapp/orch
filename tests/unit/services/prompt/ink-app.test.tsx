@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/services/prompt/ink-app.test.tsx (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { afterEach, describe, expect, it } from 'bun:test'
 import { cleanup, render } from 'ink-testing-library'
 import { AskApp } from '../../../../src/services/prompt/ink-app.tsx'
@@ -100,7 +99,7 @@ async function waitForFrame(
   )
 }
 
-describe.skip('AskApp', () => {
+describe('AskApp', () => {
   // ink-testing-library's `cleanup()` unmounts any orphan instance and
   // resets module-level state. Each test calls `ui.unmount()` explicitly,
   // but a defensive `cleanup` between tests prevents one test's stdin

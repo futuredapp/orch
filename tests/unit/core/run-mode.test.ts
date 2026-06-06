@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/core/run-mode.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import {
   detectCi,
@@ -8,7 +7,7 @@ import {
   SINGLE_PANE_DEFERRED_MESSAGE,
 } from '../../../src/core/run-mode.ts'
 
-describe.skip('resolveRunMode', () => {
+describe('resolveRunMode', () => {
   it('prefers the explicit flag when supplied', () => {
     const result = resolveRunMode({
       flag: 'plain',
@@ -142,7 +141,7 @@ describe.skip('resolveRunMode', () => {
   })
 })
 
-describe.skip('isRunMode', () => {
+describe('isRunMode', () => {
   it('accepts known modes', () => {
     expect(isRunMode('plain')).toBe(true)
     expect(isRunMode('single-pane')).toBe(true)
@@ -155,7 +154,7 @@ describe.skip('isRunMode', () => {
   })
 })
 
-describe.skip('detectCi', () => {
+describe('detectCi', () => {
   it('returns true for CI=true', () => {
     expect(detectCi({ CI: 'true' })).toBe(true)
   })

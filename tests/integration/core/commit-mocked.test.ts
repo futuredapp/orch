@@ -1,6 +1,6 @@
-// MIGRATED → tests-new/integration/core/commit-mocked.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { afterEach, describe, expect, it } from 'bun:test'
 import * as fs from 'node:fs/promises'
+import { createFakeHost } from '@orch/test/fake-host.ts'
 import { commit } from '../../../src/core/commit.ts'
 import { step } from '../../../src/core/step.ts'
 import { type WorkflowDeps, workflow } from '../../../src/core/workflow.ts'
@@ -14,7 +14,6 @@ import {
 } from '../../../src/services/index.ts'
 import { FakePromptService } from '../../../src/services/prompt/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
-import { createFakeHost } from '../../helpers/fake-host.ts'
 
 let tmpDir: string
 
@@ -51,7 +50,7 @@ function makeDeps(overrides?: {
   }
 }
 
-describe.skip('commit step integration (mocked)', () => {
+describe('commit step integration (mocked)', () => {
   it('agent step + commit step round-trip persists correct state shape', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-commit-test-')
     const fps = new FakeProcessService()

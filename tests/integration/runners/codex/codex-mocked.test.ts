@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/integration/runners/codex/codex-mocked.test.ts (parent U11) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -14,7 +13,7 @@ function ctxFor(prompt: string, overrides?: Partial<RunnerContext>): RunnerConte
 }
 
 function loadFixtureLines(name: string): string[] {
-  const filePath = resolve(import.meta.dir, '../../../fixtures/codex', name)
+  const filePath = resolve(import.meta.dir, '../../../_support/fixtures/codex', name)
   return readFileSync(filePath, 'utf-8')
     .split('\n')
     .filter((l) => l.trim() !== '')
@@ -32,7 +31,7 @@ function makeDeps(): {
   return { fs, ps, clock }
 }
 
-describe.skip('CodexRunner mocked integration', () => {
+describe('CodexRunner mocked integration', () => {
   it('round-trips simple-success.jsonl through runRunner with correct events and terminal', async () => {
     const { fs, ps, clock } = makeDeps()
     const runner = codex({}, { fs, ps })

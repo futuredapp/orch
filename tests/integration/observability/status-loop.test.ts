@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/integration/observability/status-loop.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import type { StepName } from '../../../src/core/index.ts'
 import type { StepLifecycleEvent } from '../../../src/core/workflow.ts'
@@ -40,7 +39,7 @@ async function flushMicrotasks(): Promise<void> {
 // applyEvent — pure state transitions
 // ---------------------------------------------------------------------------
 
-describe.skip('applyEvent', () => {
+describe('applyEvent', () => {
   it('moves a step from absent to running when step:start fires with autonomous mode', () => {
     const live = new Map<string, { status: string; mode?: string; startedAt?: number }>()
     applyEvent(live as Parameters<typeof applyEvent>[0], stepStart('plan', 'autonomous'), 1000)
@@ -90,7 +89,7 @@ describe.skip('applyEvent', () => {
 // startStatusLoop — renders through FakeTmuxService
 // ---------------------------------------------------------------------------
 
-describe.skip('startStatusLoop', () => {
+describe('startStatusLoop', () => {
   it('sends a clear-and-redraw sendKeys payload whenever a step:start event arrives', async () => {
     const tmux = new FakeTmuxService()
     const clock = new FakeClock(1000)

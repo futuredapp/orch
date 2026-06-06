@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/integration/observability/session-logger-baseline.integration.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // ---------------------------------------------------------------------------
 // Phase 2 baseline hook-in integration — drives the real workflow executor
 // plus a FileSessionLogger and asserts every baseline log file lands with the
@@ -111,7 +110,7 @@ async function makeRig(opts: RigOptions = {}): Promise<Rig> {
   return { logger, clock, deps, runner }
 }
 
-describe.skip('session-logger baseline hook-ins (integration)', () => {
+describe('session-logger baseline hook-ins (integration)', () => {
   it('FakeRunner-driven workflow writes spawns.ndjson with correct argv, envKeys and mode', async () => {
     const rig = await makeRig()
     const demo = step.define('demo', { agent: rig.runner, prompt: 'hi' })

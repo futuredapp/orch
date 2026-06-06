@@ -1,6 +1,6 @@
-// MIGRATED → tests-new/integration/core/resume.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { afterEach, describe, expect, it } from 'bun:test'
 import * as fs from 'node:fs/promises'
+import { createFakeHost } from '@orch/test/fake-host.ts'
 import { commit } from '../../../src/core/commit.ts'
 import { ResumeError, RunNotFoundError } from '../../../src/core/errors.ts'
 import { ParallelError, parallel } from '../../../src/core/parallel.ts'
@@ -16,7 +16,6 @@ import {
 } from '../../../src/services/index.ts'
 import { FakePromptService } from '../../../src/services/prompt/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
-import { createFakeHost } from '../../helpers/fake-host.ts'
 
 let tmpDir: string
 
@@ -53,7 +52,7 @@ function makeDeps(overrides?: {
   }
 }
 
-describe.skip('resume (integration)', () => {
+describe('resume (integration)', () => {
   it('four-step crash at step 3, resume completes all steps with memoization', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-resume-test-')
     const sharedRunId = 'r-2026-04-13-447523-5f' as RunId

@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/core/parallel-inherits-subworkflow-fields.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // U3 — parallel() branchStore propagation. Asserts that a hypothetical
 // `runWorkflow` invocation inside a parallel branch would see the parent's
 // `subworkflowPath`, `subCallId`, `runFnRef`, `loggerRef`, and
@@ -19,7 +18,7 @@ const dummyRunFn = (() => {
   throw new Error('test placeholder — runFnRef should not be invoked here')
 }) as unknown as RunFn
 
-describe.skip('parallel() branchStore — subworkflow field propagation', () => {
+describe('parallel() branchStore — subworkflow field propagation', () => {
   it('propagates runFnRef into every branch so runWorkflow inside the branch can read it', async () => {
     const observed: Array<RunFn | undefined> = []
 

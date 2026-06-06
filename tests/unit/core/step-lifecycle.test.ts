@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/core/step-lifecycle.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // The lifecycle trio (`step:start → step:complete | step:failed`), the
 // parallel branch-update supplement, and the duration source all live behind
 // `withStepLifecycle`. Before the envelope these were hand-emitted at four
@@ -7,13 +6,13 @@
 // integration suites — they no longer carry lifecycle logic to test.
 
 import { describe, expect, it } from 'bun:test'
+import { createFakeHost, type FakeHost } from '@orch/test/fake-host.ts'
 import { executionContext } from '../../../src/core/execution-context.ts'
 import { withStepLifecycle } from '../../../src/core/step-lifecycle.ts'
 import { type StepName, stepName } from '../../../src/core/types.ts'
 import type { StepLifecycleEvent } from '../../../src/core/workflow.ts'
 import { FakeClock } from '../../../src/services/index.ts'
 import type { StepEntry } from '../../../src/state/index.ts'
-import { createFakeHost, type FakeHost } from '../../helpers/fake-host.ts'
 
 const KEY = stepName('plan')
 
@@ -52,7 +51,7 @@ function insideParallel<T>(run: () => Promise<T>): Promise<T> {
   return executionContext.run({ parallelDepth: 1, workflowCwd: undefined }, run)
 }
 
-describe.skip('withStepLifecycle', () => {
+describe('withStepLifecycle', () => {
   it('emits step:start then step:complete with the wall-clock duration when the body resolves', async () => {
     const host = createFakeHost()
     const clock = new FakeClock(1000)

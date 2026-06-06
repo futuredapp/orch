@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/integration/runners/codex/codex-real.test.ts (parent U11) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { codex, isTerminalEvent, runRunner } from '../../../../src/runners/index.ts'
 import type { RunnerContext } from '../../../../src/runners/types.ts'
@@ -13,7 +12,7 @@ function ctxFor(prompt: string): RunnerContext {
   return { cwd: path(process.cwd()), env: {}, prompt, extraArgs: [] }
 }
 
-describe.skip('CodexRunner real CLI', () => {
+describe.skipIf(!canRun)('CodexRunner real CLI', () => {
   it('runs "Reply with exactly: OK" and receives a turn-complete result', async () => {
     const ps = new BunProcessService()
     const fs = new BunFsService()

@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/cli/tail-lines.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Unit tests for `tailLines` (PR B — `--follow`'s inline tail loop).
 //
 // `tailLines` is the ~20-line helper inside `src/cli/commands/logs.ts` that
@@ -28,7 +27,7 @@ const collect = (signal: AbortSignal, file: string): Promise<string[]> => {
   })()
 }
 
-describe.skip('tailLines', () => {
+describe('tailLines', () => {
   it('yields one line for each newline-terminated chunk written between ticks', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-tail-newline-')
     const file = join(tmpDir, 'events.ndjson')

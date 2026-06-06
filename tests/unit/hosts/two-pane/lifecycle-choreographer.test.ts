@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/hosts/two-pane/lifecycle-choreographer.test.ts (parent U14) — demote-relocated (pane-agnostic unit); kept skipped on disk (D2).
 // Unit coverage for the LifecycleChoreographer — the right-pane choreography
 // extracted from `tmux-host.ts`'s inline `onLifecycleEvent`. Every event type
 // is exercised through recording fakes (no tmux); the cross-event tests pin
@@ -10,6 +9,11 @@
 // testing-strategy "would this still pass if the behaviour were wrong?" gate.
 
 import { describe, expect, it } from 'bun:test'
+import {
+  createRecordingCollaborators,
+  type RecordingCollaborators,
+  type RejectionPlan,
+} from '@orch/test/recording-lifecycle-collaborators.ts'
 import { stepName } from '../../../../src/core/types.ts'
 import {
   createLifecycleChoreographer,
@@ -20,11 +24,6 @@ import { createNullSessionLogger, type SessionLogger } from '../../../../src/obs
 import { FakeClock } from '../../../../src/services/clock/index.ts'
 import { path as toPath } from '../../../../src/services/types.ts'
 import { type RunId, runId as toRunId } from '../../../../src/state/index.ts'
-import {
-  createRecordingCollaborators,
-  type RecordingCollaborators,
-  type RejectionPlan,
-} from '../../../helpers/recording-lifecycle-collaborators.ts'
 
 const RUN_ID: RunId = toRunId('r-2026-05-26-000000-aa')
 const LOGS_DIR = '/runs/r-2026-05-26-000000-aa/logs'
@@ -60,7 +59,7 @@ function buildChoreographer(
   })
 }
 
-describe.skip('LifecycleChoreographer — step:start', () => {
+describe('LifecycleChoreographer — step:start', () => {
   it('opens the tee, writes the starting marker, then registers a live file-tail source for an autonomous step', async () => {
     const rec = createRecordingCollaborators()
     const choreographer = buildChoreographer(rec)
@@ -109,7 +108,7 @@ describe.skip('LifecycleChoreographer — step:start', () => {
   })
 })
 
-describe.skip('LifecycleChoreographer — step:cached', () => {
+describe('LifecycleChoreographer — step:cached', () => {
   it('emits a single cached-no-transcript info banner', async () => {
     const rec = createRecordingCollaborators()
     const choreographer = buildChoreographer(rec)
@@ -124,7 +123,7 @@ describe.skip('LifecycleChoreographer — step:cached', () => {
   })
 })
 
-describe.skip('LifecycleChoreographer — step:complete', () => {
+describe('LifecycleChoreographer — step:complete', () => {
   it('unregisters the live source before closing the tee', async () => {
     const rec = createRecordingCollaborators()
     const choreographer = buildChoreographer(rec)
@@ -143,7 +142,7 @@ describe.skip('LifecycleChoreographer — step:complete', () => {
   })
 })
 
-describe.skip('LifecycleChoreographer — step:failed', () => {
+describe('LifecycleChoreographer — step:failed', () => {
   it('writes the failure summary, unregisters with the completion banner suppressed, emits the error, then closes the tee', async () => {
     const rec = createRecordingCollaborators()
     const choreographer = buildChoreographer(rec)
@@ -195,7 +194,7 @@ describe.skip('LifecycleChoreographer — step:failed', () => {
   })
 })
 
-describe.skip('LifecycleChoreographer — parallel block', () => {
+describe('LifecycleChoreographer — parallel block', () => {
   it('opens the rollup tee and registers a rollup file-tail source on parallel-start', async () => {
     const rec = createRecordingCollaborators()
     const choreographer = buildChoreographer(rec)
@@ -276,7 +275,7 @@ describe.skip('LifecycleChoreographer — parallel block', () => {
   })
 })
 
-describe.skip('LifecycleChoreographer — FIFO serialization', () => {
+describe('LifecycleChoreographer — FIFO serialization', () => {
   it("settles an earlier event's full effect sequence before a later event's begins", async () => {
     const rec = createRecordingCollaborators()
     const choreographer = buildChoreographer(rec)
@@ -328,7 +327,7 @@ describe.skip('LifecycleChoreographer — FIFO serialization', () => {
   })
 })
 
-describe.skip('LifecycleChoreographer — no controller', () => {
+describe('LifecycleChoreographer — no controller', () => {
   it('still runs the tee effects and never throws when no controller is wired', async () => {
     const rec = createRecordingCollaborators()
     const choreographer = buildChoreographer(rec, { controllerless: true })

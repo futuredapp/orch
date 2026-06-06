@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/runners/codex/build-command.test.ts (parent U11) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { CodexVersionError, codex } from '../../../../src/runners/codex/index.ts'
 import type { RunnerContext } from '../../../../src/runners/types.ts'
@@ -23,7 +22,7 @@ function makeDeps(): { fs: FakeFsService; ps: FakeProcessService } {
   return { fs, ps }
 }
 
-describe.skip('codex() factory', () => {
+describe('codex() factory', () => {
   it('returns a runner with name "codex" and structuredOutput true', () => {
     const deps = makeDeps()
     const runner = codex({}, deps)
@@ -41,7 +40,7 @@ describe.skip('codex() factory', () => {
   })
 })
 
-describe.skip('buildCommand', () => {
+describe('buildCommand', () => {
   it('produces correct default argv (exec, json, full-auto, skip-git-repo-check, ephemeral, -- separator)', async () => {
     const deps = makeDeps()
     const runner = codex({}, deps)
@@ -166,7 +165,7 @@ describe.skip('buildCommand', () => {
   })
 })
 
-describe.skip('buildCommand flag denylist', () => {
+describe('buildCommand flag denylist', () => {
   it('rejects --yolo in flags', async () => {
     const deps = makeDeps()
     const runner = codex({ flags: ['--yolo'] }, deps)
@@ -229,7 +228,7 @@ describe.skip('buildCommand flag denylist', () => {
   })
 })
 
-describe.skip('checkCodexVersion (via buildCommand)', () => {
+describe('checkCodexVersion (via buildCommand)', () => {
   it('resolves when version is sufficient', async () => {
     const deps = makeDeps()
     const runner = codex({}, deps)
@@ -313,7 +312,7 @@ describe.skip('checkCodexVersion (via buildCommand)', () => {
   })
 })
 
-describe.skip('buildCommand interactive mode', () => {
+describe('buildCommand interactive mode', () => {
   it('builds the default interactive argv with --full-auto, --no-alt-screen, the -- separator, and the prompt', async () => {
     const deps = makeDeps()
     const runner = codex({}, deps)

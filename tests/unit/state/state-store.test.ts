@@ -1,8 +1,7 @@
-// MIGRATED → tests-new/unit/state/state-store.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
+import { makeStepEntry } from '@orch/test/make-step-entry.ts'
 import { FakeFsService, type FsService, type Path, path } from '../../../src/services/index.ts'
 import { FileStateStore, type RunId, runId, type StepEntry } from '../../../src/state/index.ts'
-import { makeStepEntry } from '../../helpers/make-step-entry.ts'
 
 const rid = (s: string): RunId => runId(s)
 
@@ -79,7 +78,7 @@ class RecordingFsService implements FsService {
   }
 }
 
-describe.skip('FileStateStore', () => {
+describe('FileStateStore', () => {
   it('runDir resolves <basePath>/<runId> without touching the filesystem', () => {
     const { store } = makeStore()
     const id = rid('r-2026-06-01-090000-aa')

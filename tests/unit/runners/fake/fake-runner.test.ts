@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/runners/fake/fake-runner.test.ts (parent U11) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import {
   FakeRunner,
@@ -32,7 +31,7 @@ async function collectEvents(
   return { events, exitCode }
 }
 
-describe.skip('FakeRunner', () => {
+describe('FakeRunner', () => {
   it('emits the configured info events followed by a turn-complete terminal event', async () => {
     const fps = new FakeProcessService()
     const fr = new FakeRunner(fps)

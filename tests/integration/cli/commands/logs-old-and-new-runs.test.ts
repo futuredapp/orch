@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/integration/cli/commands/logs-old-and-new-runs.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // ---------------------------------------------------------------------------
 // `orch logs <runId>` — backwards-compatible read path.
 // ---------------------------------------------------------------------------
@@ -13,6 +12,7 @@
 import { afterEach, describe, expect, it } from 'bun:test'
 import * as fs from 'node:fs/promises'
 import { join } from 'node:path'
+import { makeStepEntry } from '@orch/test/make-step-entry.ts'
 import { logsCmd } from '../../../../src/cli/commands/logs.ts'
 import type { CliDeps } from '../../../../src/cli/deps.ts'
 import { EXIT } from '../../../../src/cli/main.ts'
@@ -26,7 +26,6 @@ import {
 } from '../../../../src/services/index.ts'
 import { FakeConfirmService, FakePromptService } from '../../../../src/services/prompt/index.ts'
 import { FileRunRegistry, FileStateStore, type RunId } from '../../../../src/state/index.ts'
-import { makeStepEntry } from '../../../helpers/make-step-entry.ts'
 
 let tmpDir: string
 
@@ -78,7 +77,7 @@ function captureStdout(): OutCapture {
 
 const TERMINAL_LINE = '{"kind":"terminal","type":"turn-complete","data":null}\n'
 
-describe.skip('orch logs — backwards-compat read path', () => {
+describe('orch logs — backwards-compat read path', () => {
   it('reads a NEW run with transcriptPath at logs/agents/<step>/events.ndjson', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-logs-newrun-')
     const deps = makeDeps()

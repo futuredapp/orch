@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/integration/cli/single-pane-no-terminal-clear.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Regression test — `--mode=single-pane` (deferred to v2) must not emit
 // terminal-reset escape codes on stdout when it fails fast.
 //
@@ -54,7 +53,7 @@ async function runCliWithForcedTty(argv: string[]): Promise<{
   }
 }
 
-describe.skip('CLI does not clear the user terminal on fast-error exit', () => {
+describe('CLI does not clear the user terminal on fast-error exit', () => {
   it('--mode=single-pane fails fast with the deferral message and writes nothing to stdout (no alt-screen-exit)', async () => {
     const { exitCode, stdout, stderr } = await runCliWithForcedTty([
       'run',

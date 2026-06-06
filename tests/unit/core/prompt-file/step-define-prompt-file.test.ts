@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/core/prompt-file/step-define-prompt-file.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { afterEach, describe, expect, it } from 'bun:test'
 import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -27,7 +26,7 @@ afterEach(() => {
 // new shape: define stores the raw template, and the workflow-level cache-key
 // behavior + run-time substitution live in workflow-vars-cache-key.test.ts.
 
-describe.skip('step.define with promptFile (raw template)', () => {
+describe('step.define with promptFile (raw template)', () => {
   it('stores the raw, unsubstituted file contents in the prompt field', () => {
     __setPromptFileReader(
       new FakePromptFileReader(PROJ_ROOT, {
@@ -125,7 +124,7 @@ describe.skip('step.define with promptFile (raw template)', () => {
   })
 })
 
-describe.skip('step.define interactive overload with promptFile', () => {
+describe('step.define interactive overload with promptFile', () => {
   it('accepts promptFile on the interactive overload and stores the raw template', () => {
     __setPromptFileReader(
       new FakePromptFileReader(PROJ_ROOT, {
@@ -162,7 +161,7 @@ describe.skip('step.define interactive overload with promptFile', () => {
   })
 })
 
-describe.skip('R23: vars on step.define is rejected at define time', () => {
+describe('R23: vars on step.define is rejected at define time', () => {
   it('throws PromptFileError with cause "vars-on-define" when vars is set with promptFile', () => {
     __setPromptFileReader(
       new FakePromptFileReader(PROJ_ROOT, {

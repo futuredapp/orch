@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/core/errors.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import type { AskStepConfig } from '../../../src/core/ask.ts'
 import {
@@ -10,7 +9,7 @@ import {
 } from '../../../src/core/errors.ts'
 import { stepName } from '../../../src/core/types.ts'
 
-describe.skip('AskParallelError', () => {
+describe('AskParallelError', () => {
   it('carries the step name and a hoist-above-or-fan-in remediation', () => {
     const err = new AskParallelError(stepName('ask:continue'))
 
@@ -22,7 +21,7 @@ describe.skip('AskParallelError', () => {
   })
 })
 
-describe.skip('AutoStopUnsupportedError', () => {
+describe('AutoStopUnsupportedError', () => {
   it('names the step and runner and points at the supporting runners', () => {
     const err = new AutoStopUnsupportedError(stepName('brainstorm'), 'my-runner')
 
@@ -37,7 +36,7 @@ describe.skip('AutoStopUnsupportedError', () => {
   })
 })
 
-describe.skip('AskNoDefaultError', () => {
+describe('AskNoDefaultError', () => {
   it('synthesizes the suggested defaultWhenNoninteractive from the actual config', () => {
     const config: AskStepConfig = {
       kind: 'ask',
@@ -72,7 +71,7 @@ describe.skip('AskNoDefaultError', () => {
   })
 })
 
-describe.skip('StepNameCollisionError', () => {
+describe('StepNameCollisionError', () => {
   it('includes the colliding step name and both sub-paths in its message', () => {
     const err = new StepNameCollisionError(
       stepName('plan'),
@@ -117,7 +116,7 @@ describe.skip('StepNameCollisionError', () => {
   })
 })
 
-describe.skip('SubworkflowDepthError', () => {
+describe('SubworkflowDepthError', () => {
   it('includes the depth, max, and chain in its message', () => {
     const err = new SubworkflowDepthError(9, 8, ['a', 'b', 'c'])
 

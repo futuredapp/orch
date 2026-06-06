@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/core/run-step-once-collision.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // U4 R20 — `StepNameCollisionError` detection in `runStepOnce`. `runWorkflow`
 // (U5) is the real producer of sub frames and `subCallId` tokens; this
 // suite simulates that frame via `executionContext.run(...)` so the
@@ -7,6 +6,7 @@
 // invocation) lives in U5's tests.
 
 import { describe, expect, it } from 'bun:test'
+import { createFakeHost } from '@orch/test/fake-host.ts'
 import { executionContext } from '../../../src/core/execution-context.ts'
 import { step } from '../../../src/core/step.ts'
 import { type WorkflowDeps, workflow } from '../../../src/core/workflow.ts'
@@ -20,7 +20,6 @@ import {
 } from '../../../src/services/index.ts'
 import { FakePromptService } from '../../../src/services/prompt/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
-import { createFakeHost } from '../../helpers/fake-host.ts'
 
 const rid = (s: string): RunId => s as RunId
 
@@ -67,7 +66,7 @@ function silentRunner(deps: WorkflowDeps, name: string): Runner {
   })
 }
 
-describe.skip('runStepOnce — sub-aware cache key', () => {
+describe('runStepOnce — sub-aware cache key', () => {
   it('keys a step run inside a sub under `<sub>>name` when the ALS frame carries a subPath', async () => {
     const deps = makeDeps()
     const PLAN = step.define('plan', { agent: silentRunner(deps, 'r1'), prompt: 'x' })

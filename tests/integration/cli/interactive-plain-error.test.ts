@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/integration/cli/interactive-plain-error.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Phase B — interactive step declared under --mode=plain must exit with the
 // brainstorm's message and a CONFIG_ERROR code, *before* any runner spawn.
 // Drives the real CLI entry point so the full mapRunError path is exercised.
@@ -52,7 +51,7 @@ async function runCli(
   }
 }
 
-describe.skip('interactive step under --mode=plain', () => {
+describe('interactive step under --mode=plain', () => {
   it('exits CONFIG_ERROR with "use --mode=two-pane" pointing at the step name', async () => {
     const { exitCode, stderr } = await runCli(
       ['run', 'interactive-plain', '--mode=plain'],

@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/runners/claude/claude-auto-stop.test.ts (parent U11) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { claude } from '../../../../src/runners/claude/index.ts'
 import type { RunnerContext } from '../../../../src/runners/index.ts'
@@ -24,7 +23,7 @@ async function readJson(fs: FakeFsService, p: Path): Promise<Record<string, unkn
   return JSON.parse(await fs.readFile(p)) as Record<string, unknown>
 }
 
-describe.skip('claude().prepareAutoStop with no pre-existing settings', () => {
+describe('claude().prepareAutoStop with no pre-existing settings', () => {
   it('writes Stop and StopFailure hooks whose command is exactly the signal-only one-liner', async () => {
     const fs = new FakeFsService()
     const runner = claude({}, { fs })
@@ -59,7 +58,7 @@ describe.skip('claude().prepareAutoStop with no pre-existing settings', () => {
   })
 })
 
-describe.skip('claude().prepareAutoStop with a pre-existing user settings file', () => {
+describe('claude().prepareAutoStop with a pre-existing user settings file', () => {
   it('preserves the user hooks and appends the two injected hooks (no clobber)', async () => {
     const fs = new FakeFsService()
     await fs.mkdir(path('/work/.claude'), { recursive: true })
@@ -80,7 +79,7 @@ describe.skip('claude().prepareAutoStop with a pre-existing user settings file',
   })
 })
 
-describe.skip('claude().prepareAutoStop cleanup', () => {
+describe('claude().prepareAutoStop cleanup', () => {
   it('removes the file it wrote when no settings existed before', async () => {
     const fs = new FakeFsService()
     const runner = claude({}, { fs })

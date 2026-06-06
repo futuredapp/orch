@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/services/process/raw-streams.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { BunProcessService } from '../../../../src/services/process/bun-process-service.ts'
 import { FakeProcessService } from '../../../../src/services/process/fake-process-service.ts'
@@ -19,7 +18,7 @@ const env = { PATH: process.env.PATH ?? '' }
 // BunProcessService — real subprocess raw-streams behavior
 // ───────────────────────────────────────────────────────────────────────────
 
-describe.skip('BunProcessService — rawStreams opt-in', () => {
+describe('BunProcessService — rawStreams opt-in', () => {
   it('omits writeStdin and stdoutBytes from the handle when rawStreams is omitted (back-compat probe)', async () => {
     const svc = new BunProcessService()
 
@@ -163,7 +162,7 @@ describe.skip('BunProcessService — rawStreams opt-in', () => {
 
 const dummyOpts = { cwd: path('/tmp'), env: {} } as const
 
-describe.skip('FakeProcessService — rawStreams opt-in', () => {
+describe('FakeProcessService — rawStreams opt-in', () => {
   it('omits writeStdin and stdoutBytes when rawStreams is omitted, even if stdoutBytes is configured on the response', async () => {
     const fake = new FakeProcessService()
     fake.when(['cmd']).respondWith({ stdoutBytes: Buffer.from('hi\n'), exitCode: 0 })

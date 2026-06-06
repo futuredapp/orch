@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/integration/codegen/codegen-fixture.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -11,7 +10,7 @@ import { path } from '../../../src/services/types.ts'
 // (which delegates to Bun.Glob) rather than the in-memory fake, so this
 // test catches glob-syntax / encoding mismatches the fake would mask.
 
-describe.skip('runCodegen — real-fs integration', () => {
+describe('runCodegen — real-fs integration', () => {
   let projectRoot: string
   const fs = new BunFsService()
 

@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/integration/cli/main-dispatch.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // CLI-level dispatch tests for the `init` and `new` config-free commands.
 //
 // These exercise the full Bun.argv → parseArgv → main() → handler path so
@@ -35,7 +34,7 @@ async function runCli(
   }
 }
 
-describe.skip('config-free dispatch — init and new', () => {
+describe('config-free dispatch — init and new', () => {
   it('orch init exits 0 and does not print the [orch] mode=... banner', async () => {
     const { exitCode, stderr } = await runCli(['init'])
 
@@ -70,7 +69,7 @@ describe.skip('config-free dispatch — init and new', () => {
   }, 10_000)
 })
 
-describe.skip('config-free dispatch — regressions for non-init commands', () => {
+describe('config-free dispatch — regressions for non-init commands', () => {
   it('unknown command still exits 2 with "Unknown command:" message', async () => {
     const { exitCode, stderr } = await runCli(['fnord'])
 

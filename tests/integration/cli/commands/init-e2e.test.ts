@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/integration/cli/commands/init-e2e.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Subprocess-level smoke tests for `orch init` and `orch new`. These run
 // the real CLI binary via Bun.spawn against a tmpdir cwd, asserting on the
 // observable side effects (exit code + on-disk files). The handler-level
@@ -28,7 +27,7 @@ async function runCli(
   return { exitCode, stdout, stderr }
 }
 
-describe.skip('orch init — end-to-end', () => {
+describe('orch init — end-to-end', () => {
   it('scaffolds the .orch/ tree and writes .gitignore in a fresh tmpdir', async () => {
     const tmp = await fs.mkdtemp('/tmp/orch-init-e2e-')
     try {

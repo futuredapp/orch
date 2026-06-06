@@ -1,3 +1,0 @@
-{"type":"system","subtype":"init","session_id":"sess-so-001","uuid":"uuid-so-001"}
-{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Generating structured output..."}]},"session_id":"sess-so-001","uuid":"uuid-so-002"}
-{"type":"result","subtype":"success","result":"{\"title\":\"Analysis\",\"items\":[\"risk-a\",\"risk-b\"],\"count\":2}","structured_output":{"title":"Analysis","items":["risk-a","risk-b"],"count":2},"session_id":"sess-so-001","duration_ms":1500,"duration_api_ms":1300,"is_error":false,"num_turns":1,"total_cost_usd":0.01,"usage":{"input_tokens":200,"output_tokens":50,"cache_creation_input_tokens":0,"cache_read_input_tokens":0},"uuid":"uuid-so-003"}

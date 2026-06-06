@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/hosts/two-pane/steps-view/tail-state-json.test.ts (parent U14) — demote-relocated (pure logic); kept skipped on disk (D2).
 // Unit tests for `tailStateJson` against real fs in a tempdir.
 //
 // Per the plan we skip burst-coalescing tests — those are too flaky in CI.
@@ -25,7 +24,7 @@ afterEach(async () => {
 
 const wait = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
-describe.skip('tailStateJson', () => {
+describe('tailStateJson', () => {
   it('fires onChange exactly once when start() is called against an existing file (leading-edge)', async () => {
     const filePath = `${tmpDir}/state.json`
     await fs.writeFile(filePath, '{"hello":1}')

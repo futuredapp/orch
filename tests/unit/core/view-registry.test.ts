@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/core/view-registry.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import type { AgentStepConfig } from '../../../src/core/step.ts'
 import { stepName } from '../../../src/core/types.ts'
@@ -15,7 +14,7 @@ function agentConfig(overrides: Partial<AgentStepConfig> = {}): AgentStepConfig 
   return { kind: 'agent', agent: makeRunner(), ...overrides }
 }
 
-describe.skip('resolveView', () => {
+describe('resolveView', () => {
   it('returns silent when stepConfig.silent is true, bypassing mode checks', () => {
     const resolution = resolveView({
       stepConfig: agentConfig({ silent: true }),

@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/hosts/tmux-host-attach-foreground.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Unit tests for TmuxHost.attachForeground and the nested-tmux guard. Drives
 // the host with a FakeTmuxService + FakeProcessService and asserts the
 // spawnForeground argv and teardown-aware exit handling.
@@ -71,7 +70,7 @@ function makeCaptureLogger(): {
   }
 }
 
-describe.skip('TmuxHost.attachForeground', () => {
+describe('TmuxHost.attachForeground', () => {
   it('composes tmux -L <socket> attach-session -t <session> via spawnForeground', async () => {
     const { host, processService } = await buildHostWithAttach()
     const expectedArgv = ['tmux', '-L', `orch-${RUN_ID}`, 'attach-session', '-t', 'orch']
@@ -164,7 +163,7 @@ describe.skip('TmuxHost.attachForeground', () => {
   })
 })
 
-describe.skip('createTmuxHost — nested-tmux guard', () => {
+describe('createTmuxHost — nested-tmux guard', () => {
   it('throws HostCreationError with the nested-tmux guidance when $TMUX is non-empty', async () => {
     const tmux = new FakeTmuxService()
     tmux.setListPanesResult(['%0'])

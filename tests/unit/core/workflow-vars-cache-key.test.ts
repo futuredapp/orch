@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/core/workflow-vars-cache-key.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 /**
  * Tests U2's cache-key fold and run-time substitution behavior:
  *
@@ -12,6 +11,7 @@
  */
 
 import { describe, expect, it } from 'bun:test'
+import { createFakeHost } from '@orch/test/fake-host.ts'
 import { step } from '../../../src/core/step.ts'
 import { type WorkflowDeps, workflow } from '../../../src/core/workflow.ts'
 import { defineRunner, type Runner, type RunnerContext } from '../../../src/runners/index.ts'
@@ -24,7 +24,6 @@ import {
 } from '../../../src/services/index.ts'
 import { FakePromptService } from '../../../src/services/prompt/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
-import { createFakeHost } from '../../helpers/fake-host.ts'
 
 const rid = (s: string): RunId => s as RunId
 const BASE = path('/runs')
@@ -81,7 +80,7 @@ function promptCapturingRunner(deps: WorkflowDeps, name: string): PromptCapture 
   return { runner, prompts }
 }
 
-describe.skip('workflow run() with RunOverrides.vars — cache-key fold', () => {
+describe('workflow run() with RunOverrides.vars — cache-key fold', () => {
   it('AE3: distinct vars produce distinct cache entries inside the same run', async () => {
     const deps = makeDeps()
     const cap = promptCapturingRunner(deps, 'pc1')
@@ -169,7 +168,7 @@ describe.skip('workflow run() with RunOverrides.vars — cache-key fold', () => 
   })
 })
 
-describe.skip('workflow run() with RunOverrides.vars — substitution timing', () => {
+describe('workflow run() with RunOverrides.vars — substitution timing', () => {
   it('substitutes the template at run() time, not at step.define time', async () => {
     const deps = makeDeps()
     const cap = promptCapturingRunner(deps, 'pc6')

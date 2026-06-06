@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/integration/hosts/two-pane/transcript-replay-memory.smoke.test.ts
 // Phase 4 memory smoke test: replay a 10MB synthetic transcript and assert
 // that resident-set growth stays under 120MB (≈12× the input).
 //
@@ -23,7 +22,7 @@ afterEach(async () => {
   if (tmpDir) await fs.rm(tmpDir, { recursive: true, force: true })
 })
 
-describe.skip('transcript replay — memory smoke', () => {
+describe('transcript replay — memory smoke', () => {
   it('keeps resident-set growth under 120MB on a 10MB synthetic transcript', async () => {
     const transcriptPath = `${tmpDir}/big.ndjson`
 

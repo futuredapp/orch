@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/e2e/steps-tui-e2e.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Phase 4 e2e: full Steps TUI loop against a real Claude CLI in a real tmux.
 //
 // Gated on `RUN_REAL_CLAUDE=1` AND `tmux -V`. Auto-skips otherwise. The shape:
@@ -29,7 +28,7 @@ import {
 import { path as toPath } from '../../src/services/types.ts'
 import { FileStateStore, type RunId } from '../../src/state/index.ts'
 
-const _canRun =
+const canRun =
   process.env.RUN_REAL_CLAUDE === '1' && Bun.which('tmux') !== null && Bun.which('claude') !== null
 
 let tmpDir: string
@@ -38,7 +37,7 @@ afterEach(async () => {
   if (tmpDir) await fs.rm(tmpDir, { recursive: true, force: true })
 })
 
-describe.skip('steps-tui e2e (real Claude + real tmux)', () => {
+describe.skipIf(!canRun)('steps-tui e2e (real Claude + real tmux)', () => {
   it('runs a tiny Claude flow under the steps view, then quits via intent', async () => {
     tmpDir = await fs.mkdtemp(join(tmpdir(), 'orch-steps-tui-e2e-'))
     const runIdVal = 'r-2026-05-05-200000-ee' as RunId

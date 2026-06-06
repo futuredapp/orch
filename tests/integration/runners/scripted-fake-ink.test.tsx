@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/integration/runners/scripted-fake-ink.test.tsx (parent U11) — relocated verbatim (import paths only); kept skipped on disk (D2).
 /**
  * Integration: the Ink interactive view (`ink-view.tsx`) — the human/dev UI for
  * the predictable fake. Verifies the two things the raw entry can't give a
@@ -110,7 +109,7 @@ async function buildWiring(key: string): Promise<Wiring> {
   }
 }
 
-describe.skip('ink-view — manual typing echoes and submits', () => {
+describe('ink-view — manual typing echoes and submits', () => {
   it('echoes characters into the input prompt before Enter is pressed', async () => {
     const w = await buildWiring('plan')
     const ui = render(
@@ -152,7 +151,7 @@ describe.skip('ink-view — manual typing echoes and submits', () => {
   })
 })
 
-describe.skip('ink-view — channel parity with a scripted driver', () => {
+describe('ink-view — channel parity with a scripted driver', () => {
   it('renders a control type_and_send into the same list + render log and acks it', async () => {
     const w = await buildWiring('execute')
     const ui = render(
@@ -182,7 +181,7 @@ describe.skip('ink-view — channel parity with a scripted driver', () => {
   })
 })
 
-describe.skip('ink-view — finish terminates the step', () => {
+describe('ink-view — finish terminates the step', () => {
   it('resolves the finished deferred when the user submits "q"', async () => {
     const w = await buildWiring('report')
     const ui = render(

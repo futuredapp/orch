@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/hosts/two-pane/steps-view/applyLifecycleEvent.test.ts (parent U14) — demote-relocated (pure logic); kept skipped on disk (D2).
 // Unit tests for `applyLifecycleEvent` — the per-line fold the model uses to
 // keep its overlay in sync with the tail of `lifecycle.ndjson`.
 //
@@ -12,7 +11,7 @@ import {
   type LiveOverlay,
 } from '../../../../../src/hosts/two-pane/steps-view/index.ts'
 
-describe.skip('applyLifecycleEvent', () => {
+describe('applyLifecycleEvent', () => {
   it('records a step:start as running with startedAt and the supplied mode', () => {
     const overlay = new Map<string, LiveOverlay>()
 

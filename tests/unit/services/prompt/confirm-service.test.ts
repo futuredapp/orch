@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/services/prompt/confirm-service.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { PassThrough } from 'node:stream'
 import {
@@ -8,7 +7,7 @@ import {
   ReadlineConfirmService,
 } from '../../../../src/services/prompt/index.ts'
 
-describe.skip('parseYesNo', () => {
+describe('parseYesNo', () => {
   it('returns the default when input is the empty string', () => {
     expect(parseYesNo('', true)).toBe(true)
     expect(parseYesNo('', false)).toBe(false)
@@ -40,14 +39,14 @@ describe.skip('parseYesNo', () => {
   })
 })
 
-describe.skip('confirmSuffix', () => {
+describe('confirmSuffix', () => {
   it('uppercases the default side', () => {
     expect(confirmSuffix(true)).toBe('[Y/n]')
     expect(confirmSuffix(false)).toBe('[y/N]')
   })
 })
 
-describe.skip('ReadlineConfirmService', () => {
+describe('ReadlineConfirmService', () => {
   // Deliver each scripted answer in response to a prompt write on the output
   // stream. Using `input.end()` up-front (or writing all lines as a batch)
   // races with readline's line-buffering on PassThrough; tying the response
@@ -110,7 +109,7 @@ describe.skip('ReadlineConfirmService', () => {
   })
 })
 
-describe.skip('FakeConfirmService', () => {
+describe('FakeConfirmService', () => {
   it('returns scripted answers in FIFO order', async () => {
     const svc = new FakeConfirmService([true, false])
     expect(await svc.confirm('q1', false)).toBe(true)

@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/integration/core/prompt-file-workflow.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { afterEach, describe, expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
@@ -23,6 +22,22 @@ const REPO_ROOT = resolve(dirname(THIS_FILE), '..', '..', '..')
 const EXAMPLE_ROOT = resolve(REPO_ROOT, 'examples')
 const WORKFLOW_DIR = resolve(EXAMPLE_ROOT, 'file-prompts-demo')
 
+// Fixture CONTENT lives here (tracked, non-`.orch` so git keeps it). The virtual
+// `@/.orch/prompts/...` map keys below are in-memory FakePromptFileReader keys,
+// not disk reads — only the bytes are sourced from these tracked files.
+const SUPPORT_FIXTURES = resolve(dirname(THIS_FILE), '..', '..', '_support', 'fixtures')
+const SESSION_CONTEXT_FILE = resolve(
+  SUPPORT_FIXTURES,
+  'prompt-file-workflows',
+  'session-context.md',
+)
+const BROKEN_FIXTURE_FILE = resolve(
+  SUPPORT_FIXTURES,
+  'prompt-file-workflows',
+  'broken-typo',
+  'broken.md',
+)
+
 function realFile(p: string): string {
   return readFileSync(p, 'utf8')
 }
@@ -32,9 +47,7 @@ function freshExampleReader(): FakePromptFileReader {
     [`${WORKFLOW_DIR}/slug.md`]: realFile(`${WORKFLOW_DIR}/slug.md`),
     [`${WORKFLOW_DIR}/research.md`]: realFile(`${WORKFLOW_DIR}/research.md`),
     [`${WORKFLOW_DIR}/summarize.md`]: realFile(`${WORKFLOW_DIR}/summarize.md`),
-    [`${EXAMPLE_ROOT}/.orch/prompts/session-context.md`]: realFile(
-      `${EXAMPLE_ROOT}/.orch/prompts/session-context.md`,
-    ),
+    [`${EXAMPLE_ROOT}/.orch/prompts/session-context.md`]: realFile(SESSION_CONTEXT_FILE),
   })
 }
 
@@ -46,7 +59,7 @@ afterEach(() => {
   __setPromptFileReader(undefined)
 })
 
-describe.skip('file-prompts-demo workflow loads with the real .md files', () => {
+describe('file-prompts-demo workflow loads with the real .md files', () => {
   it('imports the workflow module without throwing — step.define calls live inside the workflow body, so module load is purely the workflow() factory call', async () => {
     const mod = await import('../../../examples/file-prompts-demo/index.ts')
 
@@ -55,7 +68,7 @@ describe.skip('file-prompts-demo workflow loads with the real .md files', () => 
   })
 })
 
-describe.skip('file-prompts-demo step.define stores raw templates (post-U2)', () => {
+describe('file-prompts-demo step.define stores raw templates (post-U2)', () => {
   it('slug step holds the raw template (substitution deferred to run())', () => {
     __setPromptFileReader(freshExampleReader())
 
@@ -102,12 +115,12 @@ describe.skip('file-prompts-demo step.define stores raw templates (post-U2)', ()
   })
 })
 
-describe.skip('file-prompts-demo regression: broken fixture surfaces typos at run-time', () => {
+describe('file-prompts-demo regression: broken fixture surfaces typos at run-time', () => {
   it('a workflow .md with a typo throws PromptFileError naming BOTH placeholder and key — but at run() not define()', async () => {
     const fixtureDir = resolve(REPO_ROOT, 'tests/fixtures/prompt-file-workflows/broken-typo')
     __setPromptFileReader(
       new FakePromptFileReader(REPO_ROOT, {
-        [`${fixtureDir}/broken.md`]: realFile(`${fixtureDir}/broken.md`),
+        [`${fixtureDir}/broken.md`]: realFile(BROKEN_FIXTURE_FILE),
       }),
     )
 

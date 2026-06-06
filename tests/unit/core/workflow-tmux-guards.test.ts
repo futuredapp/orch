@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/core/workflow-tmux-guards.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Host-seam forwarding — the executor no longer carries `onEvent` / `tmuxActive`
 // callbacks; every runner event now travels through `host.onRunnerEvent`.
 // This file used to pin the deleted tmuxActive interactive refusal; that guard
@@ -6,6 +5,7 @@
 // verifies the host seam still hears every runner event for an autonomous step.
 
 import { describe, expect, it } from 'bun:test'
+import { createFakeHost, type FakeHost } from '@orch/test/fake-host.ts'
 import { step } from '../../../src/core/step.ts'
 import type { WorkflowDeps } from '../../../src/core/workflow.ts'
 import { workflow } from '../../../src/core/workflow.ts'
@@ -19,7 +19,6 @@ import {
 } from '../../../src/services/index.ts'
 import { FakePromptService } from '../../../src/services/prompt/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
-import { createFakeHost, type FakeHost } from '../../helpers/fake-host.ts'
 
 const rid = (s: string): RunId => s as RunId
 const BASE = path('/runs')
@@ -49,7 +48,7 @@ function makeDeps(overrides?: {
   }
 }
 
-describe.skip('host runner-event forwarding', () => {
+describe('host runner-event forwarding', () => {
   it('fires host.onRunnerEvent for every parsed runner event in order', async () => {
     const deps = makeDeps()
     const agent = new FakeRunner(deps.processService)

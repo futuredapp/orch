@@ -2,6 +2,7 @@
 // state: each test calls makeDeps()/makeRecordingRunner() fresh and scripts its
 // own command responses on the returned FakeProcessService.
 
+import { createFakeHost, type FakeHost } from '@orch/test/fake-host.ts'
 import type { WorkflowDeps } from '../../../src/core/index.ts'
 import { defineRunner, type Runner, type RunnerContext } from '../../../src/runners/index.ts'
 import {
@@ -14,7 +15,6 @@ import {
 import { FakePromptService } from '../../../src/services/prompt/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
 import { ARTIFACT_PATH } from '../../../src/workflows/phased-build/decide-prompt.ts'
-import { createFakeHost, type FakeHost } from '../../helpers/fake-host.ts'
 
 export type PhasedBuildDeps = WorkflowDeps & {
   host: FakeHost

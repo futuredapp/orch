@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/hosts/two-pane/steps-view/start-steps-view.test.ts (parent U14) — demote-relocated (pure logic); kept skipped on disk (D2).
 // Unit tests for `startStepsView`.
 //
 // We drive the parent-side factory against:
@@ -14,6 +13,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import * as fs from 'node:fs/promises'
 import { Writable } from 'node:stream'
+import { createFakeHost } from '@orch/test/fake-host.ts'
 import { createPaneQueue } from '../../../../../src/hosts/two-pane/pane-queue.ts'
 import {
   StepsIntentSchema,
@@ -24,7 +24,6 @@ import { FakeTmuxService, paneId, socketName } from '../../../../../src/services
 import { path as toPath } from '../../../../../src/services/types.ts'
 import type { RunId } from '../../../../../src/state/index.ts'
 import { runId as toRunId } from '../../../../../src/state/index.ts'
-import { createFakeHost } from '../../../../helpers/fake-host.ts'
 
 let tmpDir: string
 
@@ -74,7 +73,7 @@ async function makeStateDir(): Promise<{ stateDir: string; intentsPath: string }
   return { stateDir, intentsPath }
 }
 
-describe.skip('startStepsView', () => {
+describe('startStepsView', () => {
   it('records intentsStartOffset = 0 for a fresh state dir and spawns the runner script onto the left pane', async () => {
     const h = makeHarness()
     h.host.setInteractiveResult({ exitCode: 0, durationMs: 0 })
@@ -315,7 +314,7 @@ describe.skip('startStepsView', () => {
   })
 })
 
-describe.skip('StepsIntentSchema', () => {
+describe('StepsIntentSchema', () => {
   it('parses {type: "dismiss-banner"} successfully', () => {
     expect(() => StepsIntentSchema.parse({ type: 'dismiss-banner' })).not.toThrow()
   })

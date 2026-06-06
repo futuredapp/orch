@@ -1,7 +1,7 @@
-// MIGRATED → tests-new/integration/core/validators-workflow.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { afterEach, describe, expect, it } from 'bun:test'
 import * as fs from 'node:fs/promises'
 import * as nodePath from 'node:path'
+import { createFakeHost } from '@orch/test/fake-host.ts'
 import { step } from '../../../src/core/step.ts'
 import { type WorkflowDeps, workflow } from '../../../src/core/workflow.ts'
 import { FakeRunner } from '../../../src/runners/index.ts'
@@ -21,7 +21,6 @@ import {
   ValidationError,
   type Validator,
 } from '../../../src/validators/index.ts'
-import { createFakeHost } from '../../helpers/fake-host.ts'
 
 let tmpDir: string
 
@@ -48,7 +47,7 @@ function makeDeps(cwd: string, basePath: string): WorkflowDeps {
   }
 }
 
-describe.skip('workflow + validators (full pipeline integration)', () => {
+describe('workflow + validators (full pipeline integration)', () => {
   it('throws ValidationError and leaves no StepEntry when fileProduced fails against a real temp dir', async () => {
     tmpDir = await fs.mkdtemp(nodePath.join('/tmp', 'orch-vw-'))
     const cwd = await fs.mkdtemp(nodePath.join('/tmp', 'orch-vw-cwd-'))

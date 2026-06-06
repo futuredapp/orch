@@ -1,7 +1,7 @@
-// MIGRATED → tests-new/integration/core/commit-real.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { afterEach, describe, expect, it } from 'bun:test'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
+import { createFakeHost } from '@orch/test/fake-host.ts'
 import { commit } from '../../../src/core/commit.ts'
 import { type WorkflowDeps, workflow } from '../../../src/core/workflow.ts'
 import {
@@ -13,7 +13,6 @@ import {
 } from '../../../src/services/index.ts'
 import { FakePromptService } from '../../../src/services/prompt/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
-import { createFakeHost } from '../../helpers/fake-host.ts'
 
 const canRun = Bun.which('git') !== null
 
@@ -77,7 +76,7 @@ async function makeDeps(
   }
 }
 
-describe.skip('commit step with real git', () => {
+describe.skipIf(!canRun)('commit step with real git', () => {
   it('creates a commit and returns the new HEAD SHA', async () => {
     const repoDir = await tempGitRepo()
     const deps = await makeDeps(repoDir)

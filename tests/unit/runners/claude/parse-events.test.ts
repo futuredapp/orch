@@ -1,9 +1,8 @@
-// MIGRATED → tests-new/unit/runners/claude/parse-events.test.ts (parent U11) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { claude, parseClaudeLine } from '../../../../src/runners/claude/index.ts'
 import type { TerminalEvent } from '../../../../src/runners/types.ts'
 
-describe.skip('parseClaudeLine', () => {
+describe('parseClaudeLine', () => {
   it('parses a success result into a turn-complete TerminalEvent with envelope in data', () => {
     const line = JSON.stringify({
       type: 'result',
@@ -265,7 +264,7 @@ describe.skip('parseClaudeLine', () => {
   })
 })
 
-describe.skip('extractStructuredOutput', () => {
+describe('extractStructuredOutput', () => {
   it('returns the result text from a success terminal event', () => {
     const runner = claude()
     const finalEvent: TerminalEvent = {
@@ -412,7 +411,7 @@ describe.skip('extractStructuredOutput', () => {
   })
 })
 
-describe.skip('parseResultEnvelope — error_max_structured_output_retries', () => {
+describe('parseResultEnvelope — error_max_structured_output_retries', () => {
   it('routes error_max_structured_output_retries to error terminal event', () => {
     const line = JSON.stringify({
       type: 'result',

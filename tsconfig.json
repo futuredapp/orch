@@ -25,8 +25,8 @@
       "@orch/services/*": ["./src/services/*"],
       "@orch/state/*": ["./src/state/*"],
       "@orch/validators/*": ["./src/validators/*"],
-      "@orch/test/*": ["./tests-new/_support/*"]
+      "@orch/test/*": ["./tests/_support/*"]
     }
   },
-  "include": ["src", "tests", "tests-new", "examples"]
+  "include": ["src", "tests", "examples"]
 }

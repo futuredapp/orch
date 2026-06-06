@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/integration/workflows/phased-build-input.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // U2 — buildPhasedWorkflow factory + input handling (R4, R10, AE5).
 
 import { describe, expect, it } from 'bun:test'
@@ -14,7 +13,7 @@ import {
 
 const ONE_PHASE = [PHASE_DELIMITER, 'Only phase', 'do the thing']
 
-describe.skip('buildPhasedWorkflow — input resolution (AE5)', () => {
+describe('buildPhasedWorkflow — input resolution (AE5)', () => {
   it('loads an existing file as the plan text handed to the decide step', async () => {
     const deps = makeDeps({ prompt: '/plans/my-plan.md' })
     const { runner, prompts } = makeRecordingRunner()
@@ -45,7 +44,7 @@ describe.skip('buildPhasedWorkflow — input resolution (AE5)', () => {
   })
 })
 
-describe.skip('buildPhasedWorkflow — empty resolved plan', () => {
+describe('buildPhasedWorkflow — empty resolved plan', () => {
   it('halts before the decide step when an existing file is empty', async () => {
     const deps = makeDeps({ prompt: '/plans/empty.md' })
     const { runner, prompts } = makeRecordingRunner()
@@ -60,7 +59,7 @@ describe.skip('buildPhasedWorkflow — empty resolved plan', () => {
   })
 })
 
-describe.skip('buildPhasedWorkflow — usage guard', () => {
+describe('buildPhasedWorkflow — usage guard', () => {
   it('throws a clear usage error before any agent step when the argument is missing', async () => {
     const deps = makeDeps()
     const { runner, prompts } = makeRecordingRunner()
@@ -82,7 +81,7 @@ describe.skip('buildPhasedWorkflow — usage guard', () => {
   })
 })
 
-describe.skip('buildPhasedWorkflow — single-source factory (R4)', () => {
+describe('buildPhasedWorkflow — single-source factory (R4)', () => {
   it('produces executors with distinct names but identical step structure from one factory', () => {
     const cc = buildPhasedWorkflow('work-cc', makeRecordingRunner().runner)
     const codex = buildPhasedWorkflow('work-codex', makeRecordingRunner().runner)

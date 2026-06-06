@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/cli/commands/init-templates.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import {
   CONFIG_TEMPLATE,
@@ -19,7 +18,7 @@ function isSyntacticallyValid(source: string, loader: 'ts' = 'ts'): boolean {
   }
 }
 
-describe.skip('init templates', () => {
+describe('init templates', () => {
   it('all four templates parse as valid TypeScript', () => {
     expect(isSyntacticallyValid(CONFIG_TEMPLATE)).toBe(true)
     expect(isSyntacticallyValid(STEPS_TEMPLATE)).toBe(true)

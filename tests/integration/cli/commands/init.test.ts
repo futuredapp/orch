@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/integration/cli/commands/init.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Handler-level integration tests for `orch init`. The CLI plumbing is
 // covered by tests/integration/cli/main-dispatch.test.ts (subprocess) and
 // tests/integration/cli/commands/init-e2e.test.ts (full Bun.spawn). These
@@ -61,7 +60,7 @@ function makeDeps(overrides: DepsOverrides = {}): CliDeps {
   }
 }
 
-describe.skip('initCmd — F1 clean-project flow', () => {
+describe('initCmd — F1 clean-project flow', () => {
   it('creates the canonical .orch/ tree and .gitignore when neither exists', async () => {
     const fs = new FakeFsService()
     await fs.mkdir(path('/proj'), { recursive: true })
@@ -143,7 +142,7 @@ async function seedExistingOrch(fs: FakeFsService): Promise<void> {
   await fs.writeFile(path('/proj/.orch/state/r-2026-05-15-abc/state.json'), '{}')
 }
 
-describe.skip('initCmd — F2 re-init flow', () => {
+describe('initCmd — F2 re-init flow', () => {
   it('AE1 (R7): declining the replace prompt exits 0 and leaves files untouched', async () => {
     const fs = new FakeFsService()
     await seedExistingOrch(fs)
@@ -308,7 +307,7 @@ function captureStderr(): CapturedIO {
   }
 }
 
-describe.skip('initCmd — zod-import warning', () => {
+describe('initCmd — zod-import warning', () => {
   it('clean F1 init prints no zod warning (scaffold files use orch)', async () => {
     const fs = new FakeFsService()
     await fs.mkdir(path('/proj'), { recursive: true })
@@ -383,7 +382,7 @@ describe.skip('initCmd — zod-import warning', () => {
   })
 })
 
-describe.skip('initCmd — R2 self-detection guard', () => {
+describe('initCmd — R2 self-detection guard', () => {
   it('refuses to run when cwd looks like the orch source repo', async () => {
     const fs = new FakeFsService()
     await fs.mkdir(path('/repo'), { recursive: true })

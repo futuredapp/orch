@@ -1,8 +1,7 @@
-// MIGRATED → tests-new/unit/services/git/fake-git-service.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { FakeGitService, path } from '../../../../src/services/index.ts'
 
-describe.skip('FakeGitService.headSha', () => {
+describe('FakeGitService.headSha', () => {
   it('returns the scripted SHA for the matching cwd', async () => {
     const git = new FakeGitService()
     git.setHeadSha(path('/repo/a'), 'abc1234')
@@ -28,7 +27,7 @@ describe.skip('FakeGitService.headSha', () => {
   })
 })
 
-describe.skip('FakeGitService.hasDiffSince', () => {
+describe('FakeGitService.hasDiffSince', () => {
   it('returns the scripted boolean for the matching (cwd, baseline) pair', async () => {
     const git = new FakeGitService()
     git.setHasDiff(path('/repo'), 'abc1234', true)
@@ -54,7 +53,7 @@ describe.skip('FakeGitService.hasDiffSince', () => {
   })
 })
 
-describe.skip('FakeGitService.diffSinceSha', () => {
+describe('FakeGitService.diffSinceSha', () => {
   it('returns the scripted diff text for the matching (cwd, baseline) pair', async () => {
     const git = new FakeGitService()
     git.setDiff(path('/repo'), 'abc1234', 'src/foo.ts\nsrc/bar.ts\n')
@@ -71,7 +70,7 @@ describe.skip('FakeGitService.diffSinceSha', () => {
   })
 })
 
-describe.skip('FakeGitService.isClean', () => {
+describe('FakeGitService.isClean', () => {
   it('returns the scripted boolean for the matching cwd', async () => {
     const git = new FakeGitService()
     git.setIsClean(path('/repo'), true)
@@ -93,7 +92,7 @@ describe.skip('FakeGitService.isClean', () => {
   })
 })
 
-describe.skip('FakeGitService.stageAll', () => {
+describe('FakeGitService.stageAll', () => {
   it('is a no-op that resolves without error', async () => {
     const git = new FakeGitService()
 
@@ -101,7 +100,7 @@ describe.skip('FakeGitService.stageAll', () => {
   })
 })
 
-describe.skip('FakeGitService.commit', () => {
+describe('FakeGitService.commit', () => {
   it('returns the scripted SHA for the matching cwd', async () => {
     const git = new FakeGitService()
     git.setCommitSha(path('/repo'), 'deadbeef1234')
@@ -118,7 +117,7 @@ describe.skip('FakeGitService.commit', () => {
   })
 })
 
-describe.skip('FakeGitService.repoRoot', () => {
+describe('FakeGitService.repoRoot', () => {
   it('returns the scripted repo root for the matching cwd', async () => {
     const git = new FakeGitService()
     git.setRepoRoot(path('/repo/sub'), path('/repo'))
@@ -144,7 +143,7 @@ describe.skip('FakeGitService.repoRoot', () => {
   })
 })
 
-describe.skip('FakeGitService.branchExists', () => {
+describe('FakeGitService.branchExists', () => {
   it('returns the scripted boolean per (cwd, branch) pair', async () => {
     const git = new FakeGitService()
     git.setBranchExists(path('/repo'), 'feat/foo', true)
@@ -163,7 +162,7 @@ describe.skip('FakeGitService.branchExists', () => {
   })
 })
 
-describe.skip('FakeGitService.worktreePathExists', () => {
+describe('FakeGitService.worktreePathExists', () => {
   it('returns the scripted boolean per (cwd, path) pair', async () => {
     const git = new FakeGitService()
     git.setWorktreePathExists(path('/repo'), path('/wt/a'), true)
@@ -182,7 +181,7 @@ describe.skip('FakeGitService.worktreePathExists', () => {
   })
 })
 
-describe.skip('FakeGitService.addWorktree', () => {
+describe('FakeGitService.addWorktree', () => {
   it('throws a loud error when addWorktree has not been allowed for the cwd', async () => {
     const git = new FakeGitService()
 

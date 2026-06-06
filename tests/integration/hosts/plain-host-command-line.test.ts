@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/integration/hosts/plain-host-command-line.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // plain host: `onCommandLine` rendering — text and JSON formats.
 
 import { describe, expect, it } from 'bun:test'
@@ -21,7 +20,7 @@ function bufferStream(): { stream: NodeJS.WritableStream; text: () => string } {
 
 const RUN_ID = 'r-2026-05-05-100000-pc' as RunId
 
-describe.skip('PlainHost.onCommandLine — text format', () => {
+describe('PlainHost.onCommandLine — text format', () => {
   it('writes [<step>] line to stdout for stdout stream', () => {
     const stdout = bufferStream()
     const stderr = bufferStream()
@@ -67,7 +66,7 @@ describe.skip('PlainHost.onCommandLine — text format', () => {
   })
 })
 
-describe.skip('PlainHost.onCommandLine — json format', () => {
+describe('PlainHost.onCommandLine — json format', () => {
   it('emits an NDJSON command-line envelope on stdout', () => {
     const stdout = bufferStream()
     const stderr = bufferStream()

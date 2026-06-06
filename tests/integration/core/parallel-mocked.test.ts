@@ -1,5 +1,5 @@
-// MIGRATED → tests-new/integration/core/parallel-mocked.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
+import { createFakeHost } from '@orch/test/fake-host.ts'
 import { z } from 'zod'
 import { ParallelError, parallel } from '../../../src/core/parallel.ts'
 import { schema } from '../../../src/core/schema.ts'
@@ -16,7 +16,6 @@ import {
 } from '../../../src/services/index.ts'
 import { FakePromptService } from '../../../src/services/prompt/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
-import { createFakeHost } from '../../helpers/fake-host.ts'
 
 const rid = (s: string): RunId => s as RunId
 const BASE = path('/runs')
@@ -48,7 +47,7 @@ function makeDeps(overrides?: {
   }
 }
 
-describe.skip('parallel — mocked integration', () => {
+describe('parallel — mocked integration', () => {
   it('heterogeneous parallel persists both step entries', async () => {
     const deps = makeDeps()
 

@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/core/command.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import {
   type CommandResult,
@@ -13,7 +12,7 @@ import { stepName } from '../../../src/core/types.ts'
 // Factory validation
 // ---------------------------------------------------------------------------
 
-describe.skip('command() factory — name validation', () => {
+describe('command() factory — name validation', () => {
   it('rejects an empty step name', () => {
     expect(() => command('', { argv: ['true'], onFailure: 'halt' })).toThrow()
   })
@@ -66,7 +65,7 @@ describe.skip('command() factory — name validation', () => {
   })
 })
 
-describe.skip('command() factory — argv validation', () => {
+describe('command() factory — argv validation', () => {
   it('rejects argv that is empty', () => {
     expect(() => command('tests', { argv: [], onFailure: 'halt' })).toThrow(/empty/)
   })
@@ -88,7 +87,7 @@ describe.skip('command() factory — argv validation', () => {
   })
 })
 
-describe.skip('command() factory — onFailure validation', () => {
+describe('command() factory — onFailure validation', () => {
   it('rejects an unknown onFailure value', () => {
     expect(() =>
       command('tests', {
@@ -124,7 +123,7 @@ describe.skip('command() factory — onFailure validation', () => {
   })
 })
 
-describe.skip('command() factory — env / cwd / pane validation', () => {
+describe('command() factory — env / cwd / pane validation', () => {
   it('rejects env values containing null bytes', () => {
     expect(() =>
       command('tests', { argv: ['true'], onFailure: 'halt', env: { K: 'a\0b' } }),
@@ -138,7 +137,7 @@ describe.skip('command() factory — env / cwd / pane validation', () => {
   })
 })
 
-describe.skip('command() factory — Step shape', () => {
+describe('command() factory — Step shape', () => {
   it('returns a frozen Step', () => {
     const s = command('freeze', { argv: ['true'], onFailure: 'halt' })
 
@@ -163,7 +162,7 @@ describe.skip('command() factory — Step shape', () => {
 // CommandResultSchema (Zod)
 // ---------------------------------------------------------------------------
 
-describe.skip('CommandResultSchema', () => {
+describe('CommandResultSchema', () => {
   it('accepts a well-formed CommandResult', () => {
     const parsed = CommandResultSchema.safeParse({
       exitCode: 0,
@@ -213,7 +212,7 @@ describe.skip('CommandResultSchema', () => {
 // onCacheHit branch for 'command'
 // ---------------------------------------------------------------------------
 
-describe.skip('onCacheHit — command kind', () => {
+describe('onCacheHit — command kind', () => {
   it('succeeds for a well-formed cached value', () => {
     const value: CommandResult = { exitCode: 0, stdout: 'a\n', stderr: '', durationMs: 1 }
 
@@ -253,7 +252,7 @@ describe.skip('onCacheHit — command kind', () => {
 // tail()
 // ---------------------------------------------------------------------------
 
-describe.skip('tail()', () => {
+describe('tail()', () => {
   it('returns the entire string when n exceeds the line count', () => {
     expect(tail('a\nb\nc\n', 10)).toBe('a\nb\nc\n')
   })

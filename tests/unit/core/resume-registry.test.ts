@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/core/resume-registry.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { createResumeRegistry } from '../../../src/core/resume-registry.ts'
 import { stepName } from '../../../src/core/types.ts'
@@ -18,7 +17,7 @@ function makeRunner(name: string): Runner {
   }) as Runner
 }
 
-describe.skip('ResumeRegistry', () => {
+describe('ResumeRegistry', () => {
   it('returns an empty registry from createResumeRegistry()', () => {
     const reg = createResumeRegistry()
 

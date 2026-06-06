@@ -1,5 +1,5 @@
-// MIGRATED → tests-new/unit/core/workflow-validators.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
+import { createFakeHost } from '@orch/test/fake-host.ts'
 import { step } from '../../../src/core/step.ts'
 import { StepError, type WorkflowDeps, workflow } from '../../../src/core/workflow.ts'
 import { FakeRunner } from '../../../src/runners/index.ts'
@@ -17,7 +17,6 @@ import {
   type Validator,
   type ValidatorResult,
 } from '../../../src/validators/index.ts'
-import { createFakeHost } from '../../helpers/fake-host.ts'
 
 const rid = (s: string): RunId => s as RunId
 const BASE = path('/runs')
@@ -77,7 +76,7 @@ function failingValidator(name: string, reason: string, hint?: string): Validato
   }
 }
 
-describe.skip('workflow validator wiring', () => {
+describe('workflow validator wiring', () => {
   it('captures preRunSnapshot.headSha before the runner is invoked when a validator needs it', async () => {
     const deps = makeDeps()
     deps.gitService.setHeadSha(deps.cwd, 'abc1234')

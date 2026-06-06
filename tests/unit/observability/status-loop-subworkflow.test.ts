@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/observability/status-loop-subworkflow.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // U6 — `applyEvent` early-returns on subworkflow boundary events and
 // host-error records. The per-step status rollup is not affected by these
 // events; the two-pane host consumes them via its own choreographer.
@@ -11,7 +10,7 @@ import type { StepStatusRecord } from '../../../src/observability/status-pane.ts
 // stays focused on `applyEvent` behavior without exporting an internal alias.
 type LiveEntry = Omit<StepStatusRecord, 'name'>
 
-describe.skip('applyEvent — subworkflow events do not mutate the per-step rollup', () => {
+describe('applyEvent — subworkflow events do not mutate the per-step rollup', () => {
   it('subworkflow:enter does not register a new live entry', () => {
     const live = new Map<string, LiveEntry>()
 

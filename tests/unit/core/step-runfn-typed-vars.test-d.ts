@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/core/step-runfn-typed-vars.test-d.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Compile-time tests for U4 — `Step<TResult, TVars>` threading through
 // `step.define` overloads, `RunFn` overloads, and `RunOverrides<V>`. Each row
 // is one behavior; failures land at `tsc --noEmit` time.
@@ -7,12 +6,12 @@
 // The `fakeRunner` and `dummyRun` declarations are existentially typed via
 // `declare` so we don't have to import a real Runner implementation.
 
+import type { Equal, Expect } from '@orch/test/type-assertions.ts'
 import type { Step } from '../../../src/core/step.ts'
 import { step } from '../../../src/core/step.ts'
 import type { InteractiveResult } from '../../../src/core/types.ts'
 import type { RunFn } from '../../../src/core/workflow.ts'
 import type { Runner } from '../../../src/runners/index.ts'
-import type { Equal, Expect } from '../../helpers/type-assertions.ts'
 
 // A fake Runner reference. We don't run anything — just feed it to step.define.
 declare const fakeRunner: Runner

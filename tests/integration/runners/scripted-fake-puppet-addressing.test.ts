@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/integration/runners/scripted-fake-puppet-addressing.test.ts (parent U11) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // U3 — headless puppet addressing: the entry resolves its control transport at
 // run time from the threaded step key under the run state dir, emits a `.ready`
 // marker once idle, keeps the per-sequence `.ack`, and lets a baked
@@ -101,7 +100,7 @@ async function freshTmp(): Promise<string> {
   return mkdtemp(nodePath.join(tmpdir(), 'orch-u3-'))
 }
 
-describe.skip('U3 — derived control path under the run state dir (R7)', () => {
+describe('U3 — derived control path under the run state dir (R7)', () => {
   it('resolves <runStateDir>/test-control/<key>.ndjson for a simple key', async () => {
     const runStateDir = await freshTmp()
     seqCounter = 0
@@ -146,7 +145,7 @@ describe.skip('U3 — derived control path under the run state dir (R7)', () => 
   })
 })
 
-describe.skip('U3 — ack confirmation (R12, AE6)', () => {
+describe('U3 — ack confirmation (R12, AE6)', () => {
   it('writes a matching <seq>.ack for each appended command', async () => {
     const runStateDir = await freshTmp()
     seqCounter = 0
@@ -188,7 +187,7 @@ describe.skip('U3 — ack confirmation (R12, AE6)', () => {
   })
 })
 
-describe.skip('U3 — readiness marker (R13, AE5)', () => {
+describe('U3 — readiness marker (R13, AE5)', () => {
   it('writes the .ready marker once the instance is idle-waiting', async () => {
     const runStateDir = await freshTmp()
     seqCounter = 0
@@ -225,7 +224,7 @@ describe.skip('U3 — readiness marker (R13, AE5)', () => {
   })
 })
 
-describe.skip('U3 — cursor-from-0 tail', () => {
+describe('U3 — cursor-from-0 tail', () => {
   it('processes a command appended to the control file before the agent starts', async () => {
     const runStateDir = await freshTmp()
     seqCounter = 0
@@ -244,7 +243,7 @@ describe.skip('U3 — cursor-from-0 tail', () => {
   })
 })
 
-describe.skip('U3 — baked controlPath wins (backward compat)', () => {
+describe('U3 — baked controlPath wins (backward compat)', () => {
   it('uses the baked path and ignores the threaded key when both are present', async () => {
     const runStateDir = await freshTmp()
     seqCounter = 0

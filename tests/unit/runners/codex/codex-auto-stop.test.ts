@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/runners/codex/codex-auto-stop.test.ts (parent U11) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { codex } from '../../../../src/runners/codex/index.ts'
 import type { RunnerContext } from '../../../../src/runners/index.ts'
@@ -38,7 +37,7 @@ function makeCodex(fs: FakeFsService) {
   return codex({}, { fs, ps: new FakeProcessService() })
 }
 
-describe.skip('codex().prepareAutoStop reuses a stable CODEX_HOME', () => {
+describe('codex().prepareAutoStop reuses a stable CODEX_HOME', () => {
   it('points CODEX_HOME at a stable sibling of the real home, not a fresh temp dir', async () => {
     const fs = new FakeFsService()
     await seedRealCodexHome(fs)
@@ -80,7 +79,7 @@ describe.skip('codex().prepareAutoStop reuses a stable CODEX_HOME', () => {
   })
 })
 
-describe.skip('codex().prepareAutoStop inherits the real home without copying credentials', () => {
+describe('codex().prepareAutoStop inherits the real home without copying credentials', () => {
   it('symlinks every real-home entry except config.toml and hooks.json', async () => {
     const fs = new FakeFsService()
     await seedRealCodexHome(fs)
@@ -105,7 +104,7 @@ describe.skip('codex().prepareAutoStop inherits the real home without copying cr
   })
 })
 
-describe.skip('codex().prepareAutoStop writes the Stop hook as a single representation', () => {
+describe('codex().prepareAutoStop writes the Stop hook as a single representation', () => {
   it('registers the signal-only Stop hook in hooks.json, not config.toml', async () => {
     const fs = new FakeFsService()
     await seedRealCodexHome(fs)
@@ -189,7 +188,7 @@ describe.skip('codex().prepareAutoStop writes the Stop hook as a single represen
   })
 })
 
-describe.skip('codex().prepareAutoStop config.toml handling', () => {
+describe('codex().prepareAutoStop config.toml handling', () => {
   it('enables the hooks feature and disables the startup update check', async () => {
     const fs = new FakeFsService()
     await fs.mkdir(REAL_HOME, { recursive: true })

@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/validators/file-produced.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { stepName } from '../../../src/core/types.ts'
 import { FakeFsService, FakeGitService, path } from '../../../src/services/index.ts'
@@ -17,7 +16,7 @@ function makeCtx(): { ctx: ValidatorCtx; services: ValidatorServices; fs: FakeFs
   }
 }
 
-describe.skip('fileProduced', () => {
+describe('fileProduced', () => {
   it('carries a name that embeds the glob for clear failure messages', () => {
     const v = fileProduced('**/*.md')
 

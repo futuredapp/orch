@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/services/process/line-framer.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { frameLines } from '../../../../src/services/process/line-framer.ts'
 
@@ -20,7 +19,7 @@ async function* bytes(...chunks: string[]): AsyncGenerator<Uint8Array> {
   }
 }
 
-describe.skip('frameLines', () => {
+describe('frameLines', () => {
   it('splits a single chunk into one yield per newline-delimited line', async () => {
     const lines = await collect(frameLines(bytes('hello\nworld\n')))
 

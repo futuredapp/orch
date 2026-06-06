@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/cli/commands/scaffold.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import {
   appendWorkflowToManifest,
@@ -11,7 +10,7 @@ import {
 } from '../../../../src/cli/commands/scaffold.ts'
 import { FakeFsService, path } from '../../../../src/services/index.ts'
 
-describe.skip('writeOrchTree', () => {
+describe('writeOrchTree', () => {
   it('creates the workflows + state directories and scaffolds the four files', async () => {
     const fs = new FakeFsService()
     await fs.mkdir(path('/proj'), { recursive: true })
@@ -36,7 +35,7 @@ describe.skip('writeOrchTree', () => {
   })
 })
 
-describe.skip('ensureGitignoreLine', () => {
+describe('ensureGitignoreLine', () => {
   it('creates the file with exactly one line + trailing newline when absent', async () => {
     const fs = new FakeFsService()
     await fs.mkdir(path('/proj'), { recursive: true })
@@ -87,7 +86,7 @@ describe.skip('ensureGitignoreLine', () => {
   })
 })
 
-describe.skip('removeOrchTree', () => {
+describe('removeOrchTree', () => {
   it('rejects paths that do not end with /.orch', async () => {
     const fs = new FakeFsService()
     await fs.mkdir(path('/proj/state'), { recursive: true })
@@ -111,7 +110,7 @@ describe.skip('removeOrchTree', () => {
   })
 })
 
-describe.skip('preservingReinitFiles', () => {
+describe('preservingReinitFiles', () => {
   it('returns every .ts file in workflows/ except hello.ts', async () => {
     const fs = new FakeFsService()
     await fs.mkdir(path('/proj/.orch/workflows'), { recursive: true })
@@ -146,7 +145,7 @@ describe.skip('preservingReinitFiles', () => {
   })
 })
 
-describe.skip('appendWorkflowToManifest', () => {
+describe('appendWorkflowToManifest', () => {
   const baseManifest = `import { defineConfig } from 'orch'
 
 export const config = defineConfig({
@@ -231,7 +230,7 @@ export const config = defineConfig({
   })
 })
 
-describe.skip('sourceImportsZodDirectly', () => {
+describe('sourceImportsZodDirectly', () => {
   it('detects a named import from single-quoted zod', () => {
     expect(sourceImportsZodDirectly("import { z } from 'zod'\n")).toBe(true)
   })
@@ -273,7 +272,7 @@ describe.skip('sourceImportsZodDirectly', () => {
   })
 })
 
-describe.skip('findDirectZodImports', () => {
+describe('findDirectZodImports', () => {
   it('returns an empty list when no workflow imports zod', async () => {
     const fs = new FakeFsService()
     await fs.mkdir(path('/proj/.orch/workflows'), { recursive: true })

@@ -1,7 +1,7 @@
-// MIGRATED → tests-new/integration/runners/claude/claude-structured-mocked.test.ts (parent U11) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { createFakeHost } from '@orch/test/fake-host.ts'
 import { z } from 'zod'
 import { SchemaValidationError, schema } from '../../../../src/core/schema.ts'
 import { step } from '../../../../src/core/step.ts'
@@ -18,13 +18,12 @@ import {
 import { FakePromptService } from '../../../../src/services/prompt/index.ts'
 import { FileStateStore, type RunId } from '../../../../src/state/index.ts'
 import { check } from '../../../../src/validators/index.ts'
-import { createFakeHost } from '../../../helpers/fake-host.ts'
 
 const rid = (s: string): RunId => s as RunId
 const BASE = path('/runs')
 
 function loadFixtureLines(name: string): string[] {
-  const filePath = resolve(import.meta.dir, '../../../fixtures/claude', name)
+  const filePath = resolve(import.meta.dir, '../../../_support/fixtures/claude', name)
   return readFileSync(filePath, 'utf-8')
     .split('\n')
     .filter((l) => l.trim() !== '')
@@ -58,7 +57,7 @@ const researchSchema = z.object({
   count: z.number(),
 })
 
-describe.skip('ClaudeRunner structured output — mocked integration', () => {
+describe('ClaudeRunner structured output — mocked integration', () => {
   it('full round-trip: schema step through ClaudeRunner with structured-output-success fixture', async () => {
     const deps = makeDeps()
     const runner = claude()

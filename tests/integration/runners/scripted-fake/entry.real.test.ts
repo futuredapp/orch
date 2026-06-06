@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/integration/runners/scripted-fake/entry.real.test.ts (parent U11) — relocated verbatim (import paths only); kept skipped on disk (D2).
 /**
  * Integration: exercise `src/runners/scripted-fake/__entry.ts` as a real
  * subprocess via `BunProcessService.spawn` for every `StepScript` variant.
@@ -86,7 +85,7 @@ afterEach(async () => {
   await rm(workDir, { recursive: true, force: true })
 })
 
-describe.skip('scripted-fake __entry.ts (real subprocess)', () => {
+describe('scripted-fake __entry.ts (real subprocess)', () => {
   it('emits a turn-complete event and exits 0 for an instant-ok step', async () => {
     const scriptPath = await writeScript(workDir, {
       steps: { plan: { kind: 'instant-ok' } },

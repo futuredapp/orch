@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/validators/check.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { stepName } from '../../../src/core/types.ts'
 import { FakeFsService, FakeGitService, path } from '../../../src/services/index.ts'
@@ -19,7 +18,7 @@ function makeCtx(value: unknown = undefined): {
   }
 }
 
-describe.skip('check return-shape normalization', () => {
+describe('check return-shape normalization', () => {
   it('returns ok for a bare `true`', async () => {
     const { services, ctx } = makeCtx()
     const v = check(() => true)

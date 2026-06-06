@@ -1,9 +1,8 @@
-// MIGRATED → tests-new/unit/validators/validation-error.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { stepName } from '../../../src/core/types.ts'
 import { fail, ok, ValidationError, type ValidationFailure } from '../../../src/validators/index.ts'
 
-describe.skip('ValidationError', () => {
+describe('ValidationError', () => {
   it('renders every failure in the message with name and reason', () => {
     const failures: ReadonlyArray<ValidationFailure> = [
       { name: 'fileProduced(*.md)', reason: 'no files matched' },
@@ -45,7 +44,7 @@ describe.skip('ValidationError', () => {
   })
 })
 
-describe.skip('ok / fail result helpers', () => {
+describe('ok / fail result helpers', () => {
   it('ok() produces a passing ValidatorResult', () => {
     expect(ok()).toEqual({ ok: true })
   })

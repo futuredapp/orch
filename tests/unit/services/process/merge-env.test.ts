@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/services/process/merge-env.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // The shared `mergeEnv` helper is the single source of truth for the
 // passthrough contract used by every runner. The contract is tested ONCE
 // here; per-runner tests stay focused on runner-specific extras
@@ -7,7 +6,7 @@
 import { describe, expect, it } from 'bun:test'
 import { mergeEnv } from '../../../../src/services/process/merge-env.ts'
 
-describe.skip('mergeEnv passthrough', () => {
+describe('mergeEnv passthrough', () => {
   it('passes arbitrary keys from processEnv through verbatim', () => {
     const env = mergeEnv(
       {
@@ -50,7 +49,7 @@ describe.skip('mergeEnv passthrough', () => {
   })
 })
 
-describe.skip('mergeEnv precedence', () => {
+describe('mergeEnv precedence', () => {
   it('lets extras override processEnv on conflict', () => {
     const env = mergeEnv({ FORCE_COLOR: '0' }, { FORCE_COLOR: '3' }, {})
 

@@ -1,5 +1,5 @@
-// MIGRATED → tests-new/unit/core/interactive-mode.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
+import { createFakeHost, type FakeHost } from '@orch/test/fake-host.ts'
 import {
   InteractiveParallelError,
   RunnerCapabilityError,
@@ -26,7 +26,6 @@ import {
 } from '../../../src/services/index.ts'
 import { FakePromptService } from '../../../src/services/prompt/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
-import { createFakeHost, type FakeHost } from '../../helpers/fake-host.ts'
 
 const rid = (s: string): RunId => s as RunId
 const BASE = path('/runs')
@@ -83,7 +82,7 @@ function makeNonInteractiveRunner(): Runner {
   })
 }
 
-describe.skip('interactive mode resolution', () => {
+describe('interactive mode resolution', () => {
   it('resolves to interactive when step config has mode interactive', async () => {
     const deps = makeDeps({
       generateSessionId: () => '11111111-1111-1111-1111-111111111111',
@@ -149,7 +148,7 @@ describe.skip('interactive mode resolution', () => {
   })
 })
 
-describe.skip('interactive parallel guard', () => {
+describe('interactive parallel guard', () => {
   it('throws InteractiveParallelError when interactive step runs inside parallel context', async () => {
     const deps = makeDeps({
       onInteractive: async () => ({
@@ -183,7 +182,7 @@ describe.skip('interactive parallel guard', () => {
   })
 })
 
-describe.skip('runner capability guard', () => {
+describe('runner capability guard', () => {
   it('throws RunnerCapabilityError when runner does not support interactive', async () => {
     const deps = makeDeps()
     const agent = makeNonInteractiveRunner()
@@ -209,7 +208,7 @@ describe.skip('runner capability guard', () => {
   })
 })
 
-describe.skip('interactive step non-zero exit', () => {
+describe('interactive step non-zero exit', () => {
   it('throws StepError when interactive session exits non-zero', async () => {
     const deps = makeDeps({
       onInteractive: async () => ({
@@ -239,7 +238,7 @@ describe.skip('interactive step non-zero exit', () => {
   })
 })
 
-describe.skip('interactive step caching on resume', () => {
+describe('interactive step caching on resume', () => {
   it('caches a completed interactive step and skips it on resume', async () => {
     const sharedFs = new FakeFsService()
     const sharedRunId = rid('r-2026-04-13-320115-3u')
@@ -308,7 +307,7 @@ describe.skip('interactive step caching on resume', () => {
   })
 })
 
-describe.skip('host lifecycle events', () => {
+describe('host lifecycle events', () => {
   it('emits step:start and step:complete for a successful interactive step', async () => {
     const deps = makeDeps({
       generateSessionId: () => '44444444-4444-4444-4444-444444444444',
@@ -370,7 +369,7 @@ describe.skip('host lifecycle events', () => {
   })
 })
 
-describe.skip('execution-context', () => {
+describe('execution-context', () => {
   it('returns 0 when outside any parallel context', () => {
     expect(currentParallelDepth()).toBe(0)
   })

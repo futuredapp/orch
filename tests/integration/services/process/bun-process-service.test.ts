@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/integration/services/process/bun-process-service.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { BunProcessService } from '../../../../src/services/process/bun-process-service.ts'
 import { ProcessSpawnError } from '../../../../src/services/process/process-service.ts'
@@ -15,7 +14,7 @@ async function collect(iter: AsyncIterable<string>): Promise<string[]> {
 const cwd = path(process.cwd())
 const env = { PATH: process.env.PATH ?? '' }
 
-describe.skip('BunProcessService', () => {
+describe('BunProcessService', () => {
   it('yields a single line "hello" and exits with code 0 when running sh -c "echo hello"', async () => {
     const svc = new BunProcessService()
 

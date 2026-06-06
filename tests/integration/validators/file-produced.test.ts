@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/integration/validators/file-produced.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { afterEach, describe, expect, it } from 'bun:test'
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
@@ -26,7 +25,7 @@ function makeCtx(cwd: string): { ctx: ValidatorCtx; services: ValidatorServices 
   }
 }
 
-describe.skip('fileProduced (integration, real BunFsService)', () => {
+describe('fileProduced (integration, real BunFsService)', () => {
   it('returns ok when a matching file exists under a real temp dir', async () => {
     tmpDir = await fs.mkdtemp(nodePath.join(os.tmpdir(), 'orch-fp-'))
     await fs.writeFile(nodePath.join(tmpDir, 'notes.md'), '# hello')

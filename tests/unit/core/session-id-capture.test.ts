@@ -1,5 +1,5 @@
-// MIGRATED → tests-new/unit/core/session-id-capture.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
+import { createFakeHost } from '@orch/test/fake-host.ts'
 import { step } from '../../../src/core/step.ts'
 import type { WorkflowDeps } from '../../../src/core/workflow.ts'
 import { workflow } from '../../../src/core/workflow.ts'
@@ -18,7 +18,6 @@ import {
 } from '../../../src/services/index.ts'
 import { FakePromptService } from '../../../src/services/prompt/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
-import { createFakeHost } from '../../helpers/fake-host.ts'
 
 const rid = (s: string): RunId => s as RunId
 const BASE = path('/runs')
@@ -66,7 +65,7 @@ function runnerWithResume(): Runner {
   return new FakeRunner(new FakeProcessService()).withResumeCommand()
 }
 
-describe.skip('workflow executor — sessionId capture (Phase 3)', () => {
+describe('workflow executor — sessionId capture (Phase 3)', () => {
   it('writes StepEntry.sessionId for an interactive step whose runner declares resumeCommand', async () => {
     const deps = makeDeps()
     const agent = runnerWithResume()

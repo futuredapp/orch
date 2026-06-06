@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/integration/cli/interactivity-flag.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Tests the --interactive / --noninteractive flag parser via parseArgv. The
 // flag itself is parsed early, before any host wiring, so a unit-style import
 // of the parser is the right shape.
@@ -6,7 +5,7 @@
 import { describe, expect, it } from 'bun:test'
 import { ArgvError, parseArgv } from '../../../src/cli/main.ts'
 
-describe.skip('parseArgv interactivity flags', () => {
+describe('parseArgv interactivity flags', () => {
   it('defaults to interactive when no flag is supplied', () => {
     const { interactivity } = parseArgv(['run', 'name'])
 

@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/core/runner-addressing.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // U1 — the executor threads the run-time-derived step key, the resolved run
 // state dir, and orch's own pid into the runner's `ctx.env` at spawn, on BOTH
 // the autonomous and interactive paths, identically. These addressing values
@@ -10,6 +9,7 @@
 // path from.
 
 import { describe, expect, it } from 'bun:test'
+import { createFakeHost } from '@orch/test/fake-host.ts'
 import { runWorkflow } from '../../../src/core/run-workflow.ts'
 import { step } from '../../../src/core/step.ts'
 import { type WorkflowDeps, workflow } from '../../../src/core/workflow.ts'
@@ -29,7 +29,6 @@ import {
 } from '../../../src/services/index.ts'
 import { FakePromptService } from '../../../src/services/prompt/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
-import { createFakeHost } from '../../helpers/fake-host.ts'
 
 const RUN_ID = 'r-2026-06-01-090000-aa' as RunId
 const BASE_PATH = '/runs'
@@ -88,7 +87,7 @@ function capturingRunner(deps: WorkflowDeps, name: string): CapturingRunner {
   return { runner, contexts }
 }
 
-describe.skip('U1 — executor threads addressing values into ctx.env (autonomous path)', () => {
+describe('U1 — executor threads addressing values into ctx.env (autonomous path)', () => {
   it('exposes the derived key, run state dir, and parent pid to buildCommand', async () => {
     const deps = makeDeps()
     const cap = capturingRunner(deps, 'r1')
@@ -145,7 +144,7 @@ describe.skip('U1 — executor threads addressing values into ctx.env (autonomou
   })
 })
 
-describe.skip('U1 — executor threads addressing values into ctx.env (interactive path)', () => {
+describe('U1 — executor threads addressing values into ctx.env (interactive path)', () => {
   it('exposes the same addressing values, identical in shape to the autonomous path', async () => {
     const deps = makeDeps({ host: createFakeHost({ mode: 'two-pane' }) })
     const cap = capturingRunner(deps, 'r1')
@@ -163,7 +162,7 @@ describe.skip('U1 — executor threads addressing values into ctx.env (interacti
   })
 })
 
-describe.skip('U1 — real runners ignore the addressing env (argv unchanged)', () => {
+describe('U1 — real runners ignore the addressing env (argv unchanged)', () => {
   it('claude builds identical argv with and without the addressing env present', async () => {
     const runner = claude()
     const base: RunnerContext = {

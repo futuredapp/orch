@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/hosts/parallel-rollup.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Unit tests for the compact parallel rollup renderer + aggregator used by
 // the tmux host's right pane when a `parallel(...)` step is active.
 
@@ -9,7 +8,7 @@ import {
   renderRollupLines,
 } from '../../../src/hosts/two-pane/parallel-rollup.ts'
 
-describe.skip('createRollupAggregator', () => {
+describe('createRollupAggregator', () => {
   it('starts with no branches and runningCount 0', () => {
     const agg = createRollupAggregator()
     expect(agg.snapshot()).toEqual([])
@@ -52,7 +51,7 @@ describe.skip('createRollupAggregator', () => {
   })
 })
 
-describe.skip('renderRollupLines', () => {
+describe('renderRollupLines', () => {
   it('renders the "parallel branches:" header + one line per branch', () => {
     const lines = renderRollupLines([
       {

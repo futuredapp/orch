@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/config/load-config.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import {
   ConfigLoadError,
@@ -11,7 +10,7 @@ import {
 } from '../../../src/config/index.ts'
 import { type Path, path } from '../../../src/services/index.ts'
 
-describe.skip('defineConfig', () => {
+describe('defineConfig', () => {
   it('returns the config unchanged as a typed identity function', () => {
     const input = { workflows: { deploy: './workflows/deploy.ts' } }
 
@@ -21,7 +20,7 @@ describe.skip('defineConfig', () => {
   })
 })
 
-describe.skip('resolveWorkflow', () => {
+describe('resolveWorkflow', () => {
   const config: OrchestratorConfig = {
     workflows: {
       deploy: './workflows/deploy.ts',
@@ -89,7 +88,7 @@ describe.skip('resolveWorkflow', () => {
   })
 })
 
-describe.skip('findConfigPath', () => {
+describe('findConfigPath', () => {
   function fakeExistsFor(present: ReadonlyArray<string>) {
     const set = new Set(present)
     return async (p: Path): Promise<boolean> => set.has(p)
@@ -144,7 +143,7 @@ describe.skip('findConfigPath', () => {
   })
 })
 
-describe.skip('loadConfig', () => {
+describe('loadConfig', () => {
   // loadConfig uses dynamic import, which cannot be easily unit-tested
   // with FakeFsService. These cases are covered by integration tests.
   // Here we verify ConfigLoadError is constructable and carries configPath.
@@ -158,7 +157,7 @@ describe.skip('loadConfig', () => {
   })
 })
 
-describe.skip('resolvePromptsConfig', () => {
+describe('resolvePromptsConfig', () => {
   it('returns the documented defaults when prompts is omitted', () => {
     const config: OrchestratorConfig = { workflows: {} }
 

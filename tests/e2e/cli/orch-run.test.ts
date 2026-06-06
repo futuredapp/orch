@@ -1,9 +1,8 @@
-// MIGRATED → tests-new/e2e/cli/orch-run.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 
 const SKIP = !process.env.RUN_REAL_E2E
 
-describe.skip('orch CLI (e2e)', () => {
+describe('orch CLI (e2e)', () => {
   it.skipIf(SKIP)('orch --help exits 0 and prints usage', async () => {
     const result = Bun.spawnSync(['bun', 'run', 'src/cli/main.ts', '--help'])
 

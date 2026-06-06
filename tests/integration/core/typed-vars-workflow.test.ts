@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/integration/core/typed-vars-workflow.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // End-to-end integration test for typed-prompt-vars (U10 / Phase 3 cap).
 //
 // Exercises all three contract sources documented in the plan:
@@ -14,7 +13,9 @@
 import { describe, expect, it } from 'bun:test'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { createFakeHost } from '@orch/test/fake-host.ts'
 import { runCodegen } from '../../../src/codegen/index.ts'
 import { FakePromptFileReader } from '../../../src/core/prompt-file/fake-prompt-file-reader.ts'
 import { __setPromptFileReader } from '../../../src/core/prompt-file/prompt-file-reader.ts'
@@ -31,10 +32,23 @@ import {
 } from '../../../src/services/index.ts'
 import { FakePromptService } from '../../../src/services/prompt/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
-import { createFakeHost } from '../../helpers/fake-host.ts'
 
 const FIXTURE_DIR = join(process.cwd(), 'tests/fixtures/typed-vars/reusable-step-workflow')
+// Virtual path: used ONLY as the FakePromptFileReader map key and the tmp-copy
+// target name. It is never read from disk (it sits under gitignored `.orch/`).
 const FIXTURE_PROMPT_PATH = `${FIXTURE_DIR}/.orch/prompts/brainstorm.md`
+// On-disk content path: tracked, non-`.orch`, resolved relative to this test
+// file so it survives the eventual tests-new/ → tests/ rename.
+const FIXTURE_CONTENT_PATH = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  '..',
+  '..',
+  '_support',
+  'fixtures',
+  'typed-vars',
+  'reusable-step-workflow',
+  'brainstorm.md',
+)
 
 function rid(s: string): RunId {
   return s as RunId
@@ -92,7 +106,7 @@ function capturingRunner(deps: WorkflowDeps, name: string): Capture {
   }
 }
 
-describe.skip('typed-vars: reusable step across multiple run() calls', () => {
+describe('typed-vars: reusable step across multiple run() calls', () => {
   it('inline {{topic}} literal: distinct vars produce distinct cache entries', async () => {
     const deps = makeDeps()
     const cap = capturingRunner(deps, 'tv1')
@@ -117,7 +131,7 @@ describe.skip('typed-vars: reusable step across multiple run() calls', () => {
 
   it('promptFile path: substitution happens at run() time, file is read at define()', async () => {
     const reader = new FakePromptFileReader(FIXTURE_DIR, {
-      [FIXTURE_PROMPT_PATH]: await readFile(FIXTURE_PROMPT_PATH, 'utf8'),
+      [FIXTURE_PROMPT_PATH]: await readFile(FIXTURE_CONTENT_PATH, 'utf8'),
     })
     __setPromptFileReader(reader)
 
@@ -178,13 +192,13 @@ describe.skip('typed-vars: reusable step across multiple run() calls', () => {
   })
 })
 
-describe.skip('typed-vars: cold-clone codegen produces the right augmentation', () => {
+describe('typed-vars: cold-clone codegen produces the right augmentation', () => {
   it('runCodegen against the reusable-step fixture emits a valid sidecar', async () => {
     const tmp = await mkdtemp(join(tmpdir(), 'orch-typed-vars-cold-'))
     try {
       const bunFs = new BunFsService()
       await bunFs.mkdir(path(`${tmp}/.orch/prompts`), { recursive: true })
-      const source = await readFile(FIXTURE_PROMPT_PATH, 'utf8')
+      const source = await readFile(FIXTURE_CONTENT_PATH, 'utf8')
       await writeFile(`${tmp}/.orch/prompts/brainstorm.md`, source)
 
       const result = await runCodegen(

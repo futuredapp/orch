@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/runners/claude/build-command.test.ts (parent U11) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { claude } from '../../../../src/runners/claude/index.ts'
 import type { RunnerContext } from '../../../../src/runners/types.ts'
@@ -14,7 +13,7 @@ function ctxFor(prompt: string, overrides?: Partial<RunnerContext>): RunnerConte
   }
 }
 
-describe.skip('claude() factory', () => {
+describe('claude() factory', () => {
   it('returns a runner with name "claude", structuredOutput true, and interactive true', () => {
     const runner = claude()
 
@@ -41,7 +40,7 @@ describe.skip('claude() factory', () => {
   })
 })
 
-describe.skip('buildCommand', () => {
+describe('buildCommand', () => {
   it('produces correct argv with defaults (bare, stream-json, verbose, no-session-persistence)', async () => {
     const runner = claude()
     const cmd = await runner.buildCommand(ctxFor('hello world'))
@@ -152,7 +151,7 @@ describe.skip('buildCommand', () => {
   })
 })
 
-describe.skip('buildCommand interactive mode', () => {
+describe('buildCommand interactive mode', () => {
   it('produces interactive argv with session-id and -- flag terminator', async () => {
     const runner = claude()
     const cmd = await runner.buildCommand(
@@ -240,7 +239,7 @@ describe.skip('buildCommand interactive mode', () => {
   })
 })
 
-describe.skip('claude() flag denylist', () => {
+describe('claude() flag denylist', () => {
   it('rejects --settings in flags', () => {
     const runner = claude({ flags: ['--settings', '/tmp/evil.json'] })
 

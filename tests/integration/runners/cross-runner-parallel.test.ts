@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/integration/runners/cross-runner-parallel.test.ts (parent U11) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { parallel } from '../../../src/core/index.ts'
 import { claude, codex, isTerminalEvent, runRunner } from '../../../src/runners/index.ts'
@@ -18,7 +17,7 @@ function ctxFor(prompt: string): RunnerContext {
   return { cwd: path(process.cwd()), env: {}, prompt, extraArgs: [] }
 }
 
-describe.skip('Cross-runner parallel: ClaudeRunner + CodexRunner', () => {
+describe.skipIf(!canRun)('Cross-runner parallel: ClaudeRunner + CodexRunner', () => {
   it('runs both runners in parallel and both return turn-complete', async () => {
     const ps = new BunProcessService()
     const fs = new BunFsService()

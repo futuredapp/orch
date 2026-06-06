@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/observability/redact.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import {
   envKeys,
@@ -7,7 +6,7 @@ import {
   redactReproduceCommand,
 } from '../../../src/observability/redact.ts'
 
-describe.skip('isSecretKey', () => {
+describe('isSecretKey', () => {
   it('flags ANTHROPIC-prefixed env keys as secret', () => {
     expect(isSecretKey('ANTHROPIC_API_KEY')).toBe(true)
     expect(isSecretKey('ANTHROPIC_BASE_URL')).toBe(true)
@@ -33,7 +32,7 @@ describe.skip('isSecretKey', () => {
   })
 })
 
-describe.skip('envKeys', () => {
+describe('envKeys', () => {
   it('returns a sorted list of env keys with no values', () => {
     const env = { PATH: '/usr/bin', HOME: '/home/me', NODE_ENV: 'test' }
     expect(envKeys(env)).toEqual(['HOME', 'NODE_ENV', 'PATH'])
@@ -44,7 +43,7 @@ describe.skip('envKeys', () => {
   })
 })
 
-describe.skip('redactEnvValues', () => {
+describe('redactEnvValues', () => {
   it('drops ANTHROPIC_API_KEY value', () => {
     const env = { ANTHROPIC_API_KEY: 'sk-ant-xxx', PATH: '/usr/bin' }
     expect(redactEnvValues(env)).toEqual({ ANTHROPIC_API_KEY: '***', PATH: '/usr/bin' })
@@ -78,7 +77,7 @@ describe.skip('redactEnvValues', () => {
   })
 })
 
-describe.skip('redactReproduceCommand', () => {
+describe('redactReproduceCommand', () => {
   it('redacts values inside reproduce commands', () => {
     const cmd = 'ANTHROPIC_API_KEY=sk-ant-xxx PATH=/usr/bin claude -p "hi"'
     expect(redactReproduceCommand(cmd)).toBe('ANTHROPIC_API_KEY=*** PATH=/usr/bin claude -p "hi"')

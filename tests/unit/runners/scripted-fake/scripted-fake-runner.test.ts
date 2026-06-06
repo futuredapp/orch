@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/runners/scripted-fake/scripted-fake-runner.test.ts (parent U11) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { scriptedFake } from '../../../../src/runners/scripted-fake/index.ts'
 import type { RunnerContext } from '../../../../src/runners/types.ts'
@@ -14,7 +13,7 @@ function ctxFor(overrides: Partial<RunnerContext> = {}): RunnerContext {
   }
 }
 
-describe.skip('scriptedFake()', () => {
+describe('scriptedFake()', () => {
   it('refuses an empty stepName at construction time', () => {
     expect(() => scriptedFake({ stepName: '' })).toThrow(/stepName/)
   })

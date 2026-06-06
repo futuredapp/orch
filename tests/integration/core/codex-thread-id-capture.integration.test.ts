@@ -1,5 +1,5 @@
-// MIGRATED → tests-new/integration/core/codex-thread-id-capture.integration.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
+import { createFakeHost, type FakeHost } from '@orch/test/fake-host.ts'
 import { step } from '../../../src/core/step.ts'
 import type { WorkflowDeps } from '../../../src/core/workflow.ts'
 import { workflow } from '../../../src/core/workflow.ts'
@@ -14,7 +14,6 @@ import {
 } from '../../../src/services/index.ts'
 import { FakePromptService } from '../../../src/services/prompt/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
-import { createFakeHost, type FakeHost } from '../../helpers/fake-host.ts'
 
 const rid = (s: string): RunId => s as RunId
 const BASE = path('/runs')
@@ -58,7 +57,7 @@ function captureReturning(
   })
 }
 
-describe.skip('workflow.execute — codex-style captureSessionId integration', () => {
+describe('workflow.execute — codex-style captureSessionId integration', () => {
   it('replaces the orch UUID with the captured thread_id when capture succeeds', async () => {
     const deps = makeDeps()
 

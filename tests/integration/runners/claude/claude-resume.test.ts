@@ -1,7 +1,7 @@
-// MIGRATED → tests-new/integration/runners/claude/claude-resume.test.ts (parent U11) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { createFakeHost } from '@orch/test/fake-host.ts'
 import { step } from '../../../../src/core/step.ts'
 import type { WorkflowDeps } from '../../../../src/core/workflow.ts'
 import { workflow } from '../../../../src/core/workflow.ts'
@@ -15,13 +15,12 @@ import {
 } from '../../../../src/services/index.ts'
 import { FakePromptService } from '../../../../src/services/prompt/index.ts'
 import { FileStateStore, type RunId } from '../../../../src/state/index.ts'
-import { createFakeHost } from '../../../helpers/fake-host.ts'
 
 const rid = (s: string): RunId => s as RunId
 const BASE = path('/runs')
 
 function loadFixtureLines(name: string): string[] {
-  const filePath = resolve(import.meta.dir, '../../../fixtures/claude', name)
+  const filePath = resolve(import.meta.dir, '../../../_support/fixtures/claude', name)
   return readFileSync(filePath, 'utf-8')
     .split('\n')
     .filter((l) => l.trim() !== '')
@@ -49,7 +48,7 @@ function makeDeps(overrides?: {
   }
 }
 
-describe.skip('ClaudeRunner crash+resume (mocked)', () => {
+describe('ClaudeRunner crash+resume (mocked)', () => {
   it('step 1 memoized on resume, step 2 re-runs with success fixture', async () => {
     const runner = claude()
     const sharedFs = new FakeFsService()

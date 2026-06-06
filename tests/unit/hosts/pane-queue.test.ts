@@ -1,9 +1,8 @@
-// MIGRATED → tests-new/unit/hosts/pane-queue.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { createPaneQueue } from '../../../src/hosts/two-pane/pane-queue.ts'
 import { paneId } from '../../../src/services/tmux/index.ts'
 
-describe.skip('PaneQueue', () => {
+describe('PaneQueue', () => {
   it('preserves submission order for a single pane even when ops resolve out of order', async () => {
     const queue = createPaneQueue()
     const pane = paneId('%1')

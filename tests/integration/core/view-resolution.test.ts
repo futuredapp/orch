@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/integration/core/view-resolution.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Phase B — end-to-end check that resolveView's silent short-circuit reaches
 // the host. A two-step FakeRunner workflow with one silent step should show
 // only the other step's transcript output on stdout; lifecycle events still
@@ -33,7 +32,7 @@ function bufferStream(): { stream: NodeJS.WritableStream; text: () => string } {
 
 const RUN_ID = 'r-2026-04-23-419108-97' as RunId
 
-describe.skip('view resolution under --mode=plain', () => {
+describe('view resolution under --mode=plain', () => {
   it('suppresses runner events for silent steps but still fires lifecycle events', async () => {
     const fs = new FakeFsService()
     const processService = new FakeProcessService()
@@ -148,7 +147,7 @@ describe.skip('view resolution under --mode=plain', () => {
   })
 })
 
-describe.skip('view resolution error surfacing', () => {
+describe('view resolution error surfacing', () => {
   it('raises ViewResolutionError for an interactive step under --mode=plain when no onInteractive handler is wired', async () => {
     const fs = new FakeFsService()
     const processService = new FakeProcessService()

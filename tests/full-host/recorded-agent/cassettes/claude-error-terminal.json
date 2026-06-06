@@ -1,0 +1,25 @@
+{
+  "eventSchema": "RunnerEvent",
+  "events": [
+    {
+      "kind": "info",
+      "payload": {
+        "text": "running the migration"
+      },
+      "type": "assistant"
+    }
+  ],
+  "prompt": "Run the database migration",
+  "recordedAt": "2026-06-06T12:00:00Z",
+  "runner": "claude",
+  "runnerVersion": "fixture",
+  "scenarioId": "claude-error-terminal",
+  "schemaVersion": 1,
+  "sourceCommand": ["claude", "--bare", "-p"],
+  "terminal": {
+    "kind": "terminal",
+    "message": "migration failed: constraint violation",
+    "type": "error"
+  },
+  "workflowName": "migrate"
+}

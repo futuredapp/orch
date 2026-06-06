@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/integration/runners/claude/claude-real.test.ts (parent U11) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { claude, isTerminalEvent, runRunner } from '../../../../src/runners/index.ts'
 import type { RunnerContext } from '../../../../src/runners/types.ts'
@@ -12,7 +11,7 @@ function ctxFor(prompt: string): RunnerContext {
   return { cwd: path(process.cwd()), env: {}, prompt, extraArgs: [] }
 }
 
-describe.skip('ClaudeRunner real CLI', () => {
+describe.skipIf(!canRun)('ClaudeRunner real CLI', () => {
   it('runs "Reply with exactly: OK" and receives a success result with intermediate events', async () => {
     // `bare: false` so the CLI can use the dev machine's keychain auth.
     // `--bare` would force ANTHROPIC_API_KEY, which Claude Pro users don't have.

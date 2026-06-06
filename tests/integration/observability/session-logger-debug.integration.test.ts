@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/integration/observability/session-logger-debug.integration.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // ---------------------------------------------------------------------------
 // Phase 3 `--debug` integration — drives the executor with a debug-enabled
 // FileSessionLogger and asserts every heavy-capture file lands under
@@ -136,7 +135,7 @@ function makeRig(opts: RigOptions): Rig {
   return { logger, clock, deps, runner, processService }
 }
 
-describe.skip('session-logger --debug hook-ins (integration)', () => {
+describe('session-logger --debug hook-ins (integration)', () => {
   it('writes raw agent stdout to agents/<step>/raw_output.ndjson regardless of debug', async () => {
     const rig = makeRig({ debug: true })
     rig.runner.script({

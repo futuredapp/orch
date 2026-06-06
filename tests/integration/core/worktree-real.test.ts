@@ -1,8 +1,9 @@
-// MIGRATED → tests-new/integration/core/worktree-real.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { afterEach, describe, expect, it } from 'bun:test'
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as nodePath from 'node:path'
+import { createFakeHost } from '@orch/test/fake-host.ts'
+import { createTempGitRepo, type TempGitRepo } from '@orch/test/temp-git-repo.ts'
 import { commit } from '../../../src/core/commit.ts'
 import { type WorkflowDeps, workflow } from '../../../src/core/workflow.ts'
 import { createWorktree, type WorktreeResult } from '../../../src/core/worktree.ts'
@@ -17,8 +18,6 @@ import {
 } from '../../../src/services/index.ts'
 import { FakePromptService } from '../../../src/services/prompt/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
-import { createFakeHost } from '../../helpers/fake-host.ts'
-import { createTempGitRepo, type TempGitRepo } from '../../helpers/temp-git-repo.ts'
 
 const canRun = Bun.which('git') !== null
 
@@ -114,7 +113,7 @@ async function git(cwd: Path | string, argv: readonly string[]): Promise<string>
   return out.stdout
 }
 
-describe.skip('createWorktree — real git', () => {
+describe.skipIf(!canRun)('createWorktree — real git', () => {
   it('creates a worktree at the sibling default with branch off HEAD; git worktree list reflects it', async () => {
     const repo = await makeRepo()
 

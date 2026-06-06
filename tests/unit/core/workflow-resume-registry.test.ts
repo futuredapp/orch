@@ -1,5 +1,5 @@
-// MIGRATED → tests-new/unit/core/workflow-resume-registry.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
+import { createFakeHost } from '@orch/test/fake-host.ts'
 import { createResumeRegistry } from '../../../src/core/resume-registry.ts'
 import { step } from '../../../src/core/step.ts'
 import { stepName } from '../../../src/core/types.ts'
@@ -15,7 +15,6 @@ import {
 } from '../../../src/services/index.ts'
 import { FakePromptService } from '../../../src/services/prompt/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
-import { createFakeHost } from '../../helpers/fake-host.ts'
 
 const SESSION_ID = '99999999-9999-4999-8999-999999999999'
 const BASE = path('/runs')
@@ -59,7 +58,7 @@ function runnerWithResume(name = 'fake'): Runner {
   }) as Runner
 }
 
-describe.skip('workflow executor — resume registry registration and runnerName persistence', () => {
+describe('workflow executor — resume registry registration and runnerName persistence', () => {
   it('writes StepEntry.runnerName for an interactive agent step', async () => {
     const deps = makeDeps()
     const agent = runnerWithResume('claude')

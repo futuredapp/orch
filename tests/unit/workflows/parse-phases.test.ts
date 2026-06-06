@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/workflows/parse-phases.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import {
   ARTIFACT_PATH,
@@ -10,7 +9,7 @@ function block(title: string, description = ''): string {
   return `${PHASE_DELIMITER}\n${title}${description ? `\n${description}` : ''}`
 }
 
-describe.skip('parsePhases — well-formed artifacts (AE4)', () => {
+describe('parsePhases — well-formed artifacts (AE4)', () => {
   it('returns a single phase for a one-block artifact without padding it', () => {
     const text = block('Wire the resolver', 'Add the orch:: branch')
 
@@ -47,7 +46,7 @@ describe.skip('parsePhases — well-formed artifacts (AE4)', () => {
   })
 })
 
-describe.skip('parsePhases — soft cap above four (decision 3)', () => {
+describe('parsePhases — soft cap above four (decision 3)', () => {
   it('returns all blocks and emits a warning when more than four phases parse', () => {
     const warnings: string[] = []
     const text = [block('p1'), block('p2'), block('p3'), block('p4'), block('p5')].join('\n')
@@ -69,7 +68,7 @@ describe.skip('parsePhases — soft cap above four (decision 3)', () => {
   })
 })
 
-describe.skip('parsePhases — validation halts on empty or malformed input (R8)', () => {
+describe('parsePhases — validation halts on empty or malformed input (R8)', () => {
   it('throws PhaseParseError on an empty string', () => {
     expect(() => parsePhases('')).toThrow(PhaseParseError)
   })
@@ -89,7 +88,7 @@ describe.skip('parsePhases — validation halts on empty or malformed input (R8)
   })
 })
 
-describe.skip('parsePhases — robustness of the deterministic format', () => {
+describe('parsePhases — robustness of the deterministic format', () => {
   it('ignores a preamble before the first delimiter', () => {
     const text = `some notes the agent wrote first\n${block('Real phase', 'body')}`
 
@@ -136,7 +135,7 @@ describe.skip('parsePhases — robustness of the deterministic format', () => {
   })
 })
 
-describe.skip('decide-prompt — shared format contract', () => {
+describe('decide-prompt — shared format contract', () => {
   it('exposes a fixed artifact path under .orch/', () => {
     expect(ARTIFACT_PATH).toBe('.orch/phased-build-phases.md')
   })

@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/core/step.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { z } from 'zod'
 import { executionContext } from '../../../src/core/execution-context.ts'
@@ -12,7 +11,7 @@ function makeFakeRunner(): FakeRunner {
   return new FakeRunner(new FakeProcessService())
 }
 
-describe.skip('step.define', () => {
+describe('step.define', () => {
   it('returns a frozen Step with the given name and config', () => {
     const agent = makeFakeRunner()
     const config = { agent, prompt: 'do the thing' }
@@ -237,7 +236,7 @@ describe.skip('step.define', () => {
   })
 })
 
-describe.skip('onCacheHit — kind-agnostic dispatch', () => {
+describe('onCacheHit — kind-agnostic dispatch', () => {
   it('agent kind without returns is a no-op', () => {
     const agent = makeFakeRunner()
     const config: StepConfig = { kind: 'agent', agent }

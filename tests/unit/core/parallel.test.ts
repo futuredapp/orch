@@ -1,8 +1,7 @@
-// MIGRATED → tests-new/unit/core/parallel.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
+import type { Equal, Expect } from '@orch/test/type-assertions.ts'
 import type { AwaitedTuple, SettledEntry } from '../../../src/core/parallel.ts'
 import { ParallelError, parallel } from '../../../src/core/parallel.ts'
-import type { Equal, Expect } from '../../helpers/type-assertions.ts'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -20,7 +19,7 @@ function rejectWith(error: unknown): Promise<never> {
 // Heterogeneous
 // ---------------------------------------------------------------------------
 
-describe.skip('parallel (heterogeneous)', () => {
+describe('parallel (heterogeneous)', () => {
   it('two promises return values in order', async () => {
     const [a, b] = await parallel([Promise.resolve('hello'), Promise.resolve(42)])
 
@@ -92,7 +91,7 @@ describe.skip('parallel (heterogeneous)', () => {
 // Homogeneous
 // ---------------------------------------------------------------------------
 
-describe.skip('parallel (homogeneous)', () => {
+describe('parallel (homogeneous)', () => {
   it('maps callback and returns results in order', async () => {
     const result = await parallel([1, 2, 3], async (n) => n * 10)
 
@@ -152,7 +151,7 @@ describe.skip('parallel (homogeneous)', () => {
 // Concurrency
 // ---------------------------------------------------------------------------
 
-describe.skip('parallel (concurrency)', () => {
+describe('parallel (concurrency)', () => {
   it('concurrency cap is never exceeded', async () => {
     let active = 0
     let maxActive = 0
@@ -256,7 +255,7 @@ describe.skip('parallel (concurrency)', () => {
 // Validation
 // ---------------------------------------------------------------------------
 
-describe.skip('parallel (validation)', () => {
+describe('parallel (validation)', () => {
   it('concurrency 0 throws RangeError', async () => {
     await expect(parallel([1], async (n) => n, { concurrency: 0 })).rejects.toThrow(RangeError)
   })
@@ -274,7 +273,7 @@ describe.skip('parallel (validation)', () => {
 // Nesting
 // ---------------------------------------------------------------------------
 
-describe.skip('parallel (nesting)', () => {
+describe('parallel (nesting)', () => {
   it('inner ParallelError appears in outer settled array', async () => {
     let caught: unknown
     try {
@@ -302,7 +301,7 @@ describe.skip('parallel (nesting)', () => {
 // Compile-time type assertions
 // ---------------------------------------------------------------------------
 
-describe.skip('parallel (types)', () => {
+describe('parallel (types)', () => {
   it('AwaitedTuple resolves [Promise<string>, Promise<number>] to [string, number]', () => {
     type _1 = Expect<Equal<AwaitedTuple<[Promise<string>, Promise<number>]>, [string, number]>>
   })
@@ -324,7 +323,7 @@ describe.skip('parallel (types)', () => {
 // Error shape
 // ---------------------------------------------------------------------------
 
-describe.skip('ParallelError', () => {
+describe('ParallelError', () => {
   it('message includes failure count', () => {
     const settled: SettledEntry[] = [
       { status: 'ok', value: 1 },

@@ -1,6 +1,7 @@
 // Shared test helpers for worktree executor tests. Lives under tests/ so it
 // stays out of the prod barrel.
 
+import { createFakeHost, type FakeHost } from '@orch/test/fake-host.ts'
 import type { Path, RunId } from '../../../src/core/types.ts'
 import { path } from '../../../src/core/types.ts'
 import type { WorkflowDeps } from '../../../src/core/workflow.ts'
@@ -13,7 +14,6 @@ import {
 } from '../../../src/services/index.ts'
 import { FakePromptService } from '../../../src/services/prompt/index.ts'
 import { FileStateStore } from '../../../src/state/index.ts'
-import { createFakeHost, type FakeHost } from '../../helpers/fake-host.ts'
 
 const rid = (s: string): RunId => s as RunId
 

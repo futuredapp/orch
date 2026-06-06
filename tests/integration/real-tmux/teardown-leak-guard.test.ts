@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/integration/real-tmux/teardown-leak-guard.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // U6 — teardown hygiene + leaked-process guard (R14).
 //
 // Two layers:
@@ -15,15 +14,6 @@ import { mkdtemp, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import * as nodePath from 'node:path'
 import {
-  ORCH_PARENT_PID_ENV,
-  ORCH_RUN_STATE_DIR_ENV,
-  ORCH_STEP_KEY_ENV,
-  resolveControlPaths,
-  scriptedFake,
-} from '../../../src/runners/scripted-fake/index.ts'
-import { BunProcessService } from '../../../src/services/process/index.ts'
-import { path as toPath } from '../../../src/services/types.ts'
-import {
   assertNoLeakedEntries,
   canRunRealTmux,
   createRealTmuxFixture,
@@ -32,7 +22,16 @@ import {
   REAL_TMUX_TEST_TIMEOUT_MS,
   type RealTmuxFixture,
   scriptedFakeEntryCount,
-} from '../../helpers/real-tmux/index.ts'
+} from '@orch/test/real-tmux/index.ts'
+import {
+  ORCH_PARENT_PID_ENV,
+  ORCH_RUN_STATE_DIR_ENV,
+  ORCH_STEP_KEY_ENV,
+  resolveControlPaths,
+  scriptedFake,
+} from '../../../src/runners/scripted-fake/index.ts'
+import { BunProcessService } from '../../../src/services/process/index.ts'
+import { path as toPath } from '../../../src/services/types.ts'
 
 const REPO_ROOT = nodePath.resolve(import.meta.dir, '../../..')
 const tmuxAvailable = canRunRealTmux()
@@ -64,7 +63,7 @@ async function fileExists(path: string): Promise<boolean> {
   }
 }
 
-describe.skip('U6 teardown leak guard (real tmux)', () => {
+describe.skipIf(!tmuxAvailable)('U6 teardown leak guard (real tmux)', () => {
   it(
     'reaps every fake child after an interactive + headless run',
     async () => {
@@ -115,7 +114,7 @@ describe.skip('U6 teardown leak guard (real tmux)', () => {
   )
 })
 
-describe.skip('U6 interactive self-reap (subprocess, ORCH_PARENT_PID not process.ppid)', () => {
+describe('U6 interactive self-reap (subprocess, ORCH_PARENT_PID not process.ppid)', () => {
   let runStateDir: string
   let killables: Array<{ kill(): void }> = []
 

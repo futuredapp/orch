@@ -1,5 +1,0 @@
-{"type":"thread.started","thread_id":"thread-002"}
-{"type":"turn.started"}
-{"type":"item.started","item":{"id":"item-002","type":"agent_message"}}
-{"type":"item.completed","item":{"id":"item-002","type":"agent_message","text":"{\"title\":\"Analysis\",\"items\":[\"risk-a\",\"risk-b\"],\"count\":2}"}}
-{"type":"turn.completed","usage":{"input_tokens":100,"output_tokens":30}}

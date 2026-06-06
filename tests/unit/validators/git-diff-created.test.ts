@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/validators/git-diff-created.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { stepName } from '../../../src/core/types.ts'
 import { FakeFsService, FakeGitService, path } from '../../../src/services/index.ts'
@@ -26,7 +25,7 @@ function makeCtxWithBaseline(baseline: string | undefined): {
   }
 }
 
-describe.skip('gitDiffCreated', () => {
+describe('gitDiffCreated', () => {
   it('declares headSha as a capability need so the executor captures a baseline', () => {
     const v = gitDiffCreated()
 

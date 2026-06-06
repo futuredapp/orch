@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/integration/observability/resume-per-step-folder.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // ---------------------------------------------------------------------------
 // resume-per-step-folder — asserts that a resumed step's per-step folder
 // reflects only the latest attempt. The transcript sidecar, raw stdout
@@ -24,7 +23,7 @@ async function readSafely(fs: FakeFsService, p: ReturnType<typeof path>): Promis
   }
 }
 
-describe.skip('resume truncates per-step append-only files', () => {
+describe('resume truncates per-step append-only files', () => {
   it('events.ndjson reflects only the latest attempt after resume', async () => {
     const fs = new FakeFsService()
     const step = stepName('demo')

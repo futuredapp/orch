@@ -1,10 +1,9 @@
-// MIGRATED → tests-new/unit/codegen/discover-prompts.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { discoverPrompts, expandBraces } from '../../../src/codegen/discover-prompts.ts'
 import { FakeFsService } from '../../../src/services/fs/fake-fs-service.ts'
 import { path } from '../../../src/services/types.ts'
 
-describe.skip('expandBraces', () => {
+describe('expandBraces', () => {
   it('passes a non-brace pattern through unchanged', () => {
     expect(expandBraces('*.md')).toEqual(['*.md'])
   })
@@ -25,7 +24,7 @@ describe.skip('expandBraces', () => {
   })
 })
 
-describe.skip('discoverPrompts', () => {
+describe('discoverPrompts', () => {
   async function withSeededFs(seed: readonly string[]): Promise<FakeFsService> {
     const fs = new FakeFsService()
     await fs.mkdir(path('/proj'), { recursive: true })

@@ -1,5 +1,6 @@
-// MIGRATED → tests-new/unit/core/schema-validation.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
+import { createFakeHost } from '@orch/test/fake-host.ts'
+import type { Equal, Expect } from '@orch/test/type-assertions.ts'
 import { z } from 'zod'
 import { SchemaValidationError, schema } from '../../../src/core/schema.ts'
 import { step } from '../../../src/core/step.ts'
@@ -21,8 +22,6 @@ import {
 import { FakePromptService } from '../../../src/services/prompt/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
 import { check } from '../../../src/validators/index.ts'
-import { createFakeHost } from '../../helpers/fake-host.ts'
-import type { Equal, Expect } from '../../helpers/type-assertions.ts'
 
 const rid = (s: string): RunId => s as RunId
 const BASE = path('/runs')
@@ -80,7 +79,7 @@ function noSchemaRunner(fps: FakeProcessService): Runner {
   })
 }
 
-describe.skip('executor capability check', () => {
+describe('executor capability check', () => {
   it('step with returns on a runner that does not support structured output throws at step start', async () => {
     const deps = makeDeps()
     const runner = noSchemaRunner(deps.processService)
@@ -140,7 +139,7 @@ describe.skip('executor capability check', () => {
   })
 })
 
-describe.skip('executor Zod validation', () => {
+describe('executor Zod validation', () => {
   it('valid structured output is Zod-parsed and returned', async () => {
     const deps = makeDeps()
     const fr = new FakeRunner(deps.processService)
@@ -282,7 +281,7 @@ describe.skip('executor Zod validation', () => {
   })
 })
 
-describe.skip('cache-hit re-validation', () => {
+describe('cache-hit re-validation', () => {
   it('re-validates cached value when schema is present', async () => {
     const sharedRunId = rid('r-2026-04-12-408036-se')
     const fs = new FakeFsService()
@@ -353,7 +352,7 @@ function _checkPlainRun(run: RunFn) {
   return run(PLAIN_STEP)
 }
 
-describe.skip('RunFn generic type inference', () => {
+describe('RunFn generic type inference', () => {
   it('end-to-end: define step with schema, script FakeRunner, run, destructure typed result', async () => {
     const deps = makeDeps()
     const fr = new FakeRunner(deps.processService)

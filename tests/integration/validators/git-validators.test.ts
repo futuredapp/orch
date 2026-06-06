@@ -1,7 +1,7 @@
-// MIGRATED → tests-new/integration/validators/git-validators.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { afterEach, describe, expect, it } from 'bun:test'
 import * as fs from 'node:fs/promises'
 import * as nodePath from 'node:path'
+import { createTempGitRepo, type TempGitRepo } from '@orch/test/temp-git-repo.ts'
 import { stepName } from '../../../src/core/types.ts'
 import { BunFsService, BunGitService, BunProcessService } from '../../../src/services/index.ts'
 import {
@@ -10,7 +10,6 @@ import {
   type ValidatorCtx,
   type ValidatorServices,
 } from '../../../src/validators/index.ts'
-import { createTempGitRepo, type TempGitRepo } from '../../helpers/temp-git-repo.ts'
 
 let repo: TempGitRepo | undefined
 
@@ -37,7 +36,7 @@ function ctxWithBaseline(r: TempGitRepo, baseline: string): ValidatorCtx {
   }
 }
 
-describe.skip('gitDiffCreated + gitCommitCreated (integration, real BunGitService)', () => {
+describe('gitDiffCreated + gitCommitCreated (integration, real BunGitService)', () => {
   it('gitDiffCreated fails on a clean repo then passes after an unstaged edit', async () => {
     repo = await createTempGitRepo()
     const services = makeServices()
@@ -111,7 +110,7 @@ describe.skip('gitDiffCreated + gitCommitCreated (integration, real BunGitServic
   })
 })
 
-describe.skip('createTempGitRepo helper', () => {
+describe('createTempGitRepo helper', () => {
   it('produces a path that exists and a commit SHA shaped like hex', async () => {
     repo = await createTempGitRepo()
 

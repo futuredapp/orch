@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/integration/cli/commands/new.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Handler-level integration tests for `orch new`. The CLI plumbing is
 // covered by tests/integration/cli/main-dispatch.test.ts (subprocess). These
 // tests run against FakeFsService with a pre-scaffolded `.orch/` so each
@@ -67,7 +66,7 @@ async function withInitializedOrch(): Promise<{ fs: FakeFsService; deps: CliDeps
   return { fs, deps }
 }
 
-describe.skip('newCmd — F3 happy path', () => {
+describe('newCmd — F3 happy path', () => {
   it('creates the workflow file and appends to the manifest', async () => {
     const { fs, deps } = await withInitializedOrch()
 
@@ -103,7 +102,7 @@ describe.skip('newCmd — F3 happy path', () => {
   })
 })
 
-describe.skip('newCmd — R10 require .orch/', () => {
+describe('newCmd — R10 require .orch/', () => {
   it('exits 2 with a "No .orch/ found" message when .orch/ is absent', async () => {
     const fs = new FakeFsService()
     await fs.mkdir(path('/proj'), { recursive: true })
@@ -116,7 +115,7 @@ describe.skip('newCmd — R10 require .orch/', () => {
   })
 })
 
-describe.skip('newCmd — R11 name validation (AE6)', () => {
+describe('newCmd — R11 name validation (AE6)', () => {
   it('rejects an uppercase name with a kebab-case error', async () => {
     const { fs, deps } = await withInitializedOrch()
 
@@ -162,7 +161,7 @@ describe.skip('newCmd — R11 name validation (AE6)', () => {
   })
 })
 
-describe.skip('newCmd — R12 no overwrite (AE7)', () => {
+describe('newCmd — R12 no overwrite (AE7)', () => {
   it('exits 2 when the workflow file already exists and leaves it unchanged', async () => {
     const { fs, deps } = await withInitializedOrch()
     await fs.writeFile(path('/proj/.orch/workflows/build.ts'), 'user-content')
@@ -174,7 +173,7 @@ describe.skip('newCmd — R12 no overwrite (AE7)', () => {
   })
 })
 
-describe.skip('newCmd — manifest regex mismatch surface', () => {
+describe('newCmd — manifest regex mismatch surface', () => {
   it('writes the workflow file but exits 2 with a clear "config has been edited" message', async () => {
     const { fs, deps } = await withInitializedOrch()
     // User reshapes the manifest in a way the regex can't reach.
@@ -192,7 +191,7 @@ describe.skip('newCmd — manifest regex mismatch surface', () => {
   })
 })
 
-describe.skip('newCmd — R2 self-detection guard', () => {
+describe('newCmd — R2 self-detection guard', () => {
   it('refuses to run inside the orch source repository', async () => {
     const fs = new FakeFsService()
     await fs.mkdir(path('/repo'), { recursive: true })

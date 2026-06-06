@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/core/workflow-name-validation.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Runtime tests for U2 — workflow name validation and module-private body
 // handle. The compile-time generic-typing scenarios live in
 // `workflow-typing.test-d.ts`; this file covers behaviors that need real
@@ -7,7 +6,7 @@
 import { describe, expect, it } from 'bun:test'
 import { bodyHandle, workflow } from '../../../src/core/workflow.ts'
 
-describe.skip('workflow() name validation', () => {
+describe('workflow() name validation', () => {
   it('accepts names matching the existing alphabet', () => {
     expect(() => workflow('simple-feature', async () => {})).not.toThrow()
     expect(() => workflow('s', async () => {})).not.toThrow()
@@ -43,7 +42,7 @@ describe.skip('workflow() name validation', () => {
   })
 })
 
-describe.skip('workflow() body handle', () => {
+describe('workflow() body handle', () => {
   it('hides the symbol-keyed body from Object.keys', () => {
     const executor = workflow('hidden', async () => {})
 

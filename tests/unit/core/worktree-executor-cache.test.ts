@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/core/worktree-executor-cache.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { step } from '../../../src/core/step.ts'
 import { workflow } from '../../../src/core/workflow.ts'
@@ -10,7 +9,7 @@ import {
   setupRepoRoot,
 } from './_worktree-test-helpers.ts'
 
-describe.skip('createWorktree() — memoization', () => {
+describe('createWorktree() — memoization', () => {
   it('step is memoized — second invocation returns cached WorktreeResult without calling git', async () => {
     const deps = makeDeps()
     setupRepoRoot(deps.gitService)

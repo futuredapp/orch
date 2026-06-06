@@ -1,6 +1,6 @@
-// MIGRATED → tests-new/e2e/resume-real-claude.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { afterEach, describe, expect, it } from 'bun:test'
 import * as fs from 'node:fs/promises'
+import { createFakeHost } from '@orch/test/fake-host.ts'
 import { step } from '../../src/core/step.ts'
 import { type WorkflowDeps, workflow } from '../../src/core/workflow.ts'
 import { claude, FakeRunner } from '../../src/runners/index.ts'
@@ -14,9 +14,8 @@ import {
 } from '../../src/services/index.ts'
 import { FakePromptService } from '../../src/services/prompt/index.ts'
 import { FileStateStore, type RunId } from '../../src/state/index.ts'
-import { createFakeHost } from '../helpers/fake-host.ts'
 
-const _canRun = process.env.RUN_REAL_CLAUDE === '1' && Bun.which('claude') !== null
+const canRun = process.env.RUN_REAL_CLAUDE === '1' && Bun.which('claude') !== null
 
 let tmpDir: string
 
@@ -26,7 +25,7 @@ afterEach(async () => {
   }
 })
 
-describe.skip('resume with real Claude (e2e)', () => {
+describe.skipIf(!canRun)('resume with real Claude (e2e)', () => {
   it('real Claude result survives memoization across a resume boundary', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-resume-e2e-')
     const runIdVal = 'r-2026-04-13-143160-11' as RunId

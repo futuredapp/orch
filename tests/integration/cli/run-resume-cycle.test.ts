@@ -1,6 +1,6 @@
-// MIGRATED → tests-new/integration/cli/run-resume-cycle.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { afterEach, describe, expect, it } from 'bun:test'
 import * as fs from 'node:fs/promises'
+import { makeStepEntry } from '@orch/test/make-step-entry.ts'
 import { runsCmd } from '../../../src/cli/commands/runs.ts'
 import { statusCmd } from '../../../src/cli/commands/status.ts'
 import type { CliDeps } from '../../../src/cli/deps.ts'
@@ -15,7 +15,6 @@ import {
 } from '../../../src/services/index.ts'
 import { FakeConfirmService, FakePromptService } from '../../../src/services/prompt/index.ts'
 import { FileRunRegistry, FileStateStore, type RunId } from '../../../src/state/index.ts'
-import { makeStepEntry } from '../../helpers/make-step-entry.ts'
 
 let tmpDir: string
 
@@ -45,7 +44,7 @@ function makeDeps(): CliDeps {
   }
 }
 
-describe.skip('CLI run-resume cycle (integration)', () => {
+describe('CLI run-resume cycle (integration)', () => {
   it('v3 state is written with workflowName and timestamps after initRun + setStatus', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-cycle-test-')
     const deps = makeDeps()

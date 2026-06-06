@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/runners/scripted-fake/script-loader.test.ts (parent U11) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import {
   loadScriptedFakeScript,
@@ -17,7 +16,7 @@ async function writeScript(fs: FakeFsService, body: unknown): Promise<void> {
   await fs.writeFile(path(SCRIPT_PATH), JSON.stringify(body))
 }
 
-describe.skip('loadScriptedFakeScript', () => {
+describe('loadScriptedFakeScript', () => {
   it('reads, parses, and validates a well-formed script file', async () => {
     const fs = new FakeFsService()
     const wanted: ScriptedFakeScriptFile = {
@@ -88,7 +87,7 @@ describe.skip('loadScriptedFakeScript', () => {
   })
 })
 
-describe.skip('resolveStepScript', () => {
+describe('resolveStepScript', () => {
   it('returns the StepScript for the named step', () => {
     const file: ScriptedFakeScriptFile = {
       steps: {

@@ -1,8 +1,7 @@
-// MIGRATED → tests-new/unit/core/commit.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { commit } from '../../../src/core/commit.ts'
 
-describe.skip('commit() factory', () => {
+describe('commit() factory', () => {
   it('derives step name from message: after research becomes commit:after-research', () => {
     const s = commit('after research')
 

@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/integration/cli/two-pane-tty-guard.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // two-pane TTY guard — exercises the mode-resolver + host-creation guards
 // that the CLI installs to keep users out of broken auto-attach states:
 //
@@ -28,7 +27,7 @@ function bufferStderr(): NodeJS.WritableStream {
   }) as unknown as NodeJS.WritableStream
 }
 
-describe.skip('two-pane TTY guard (resolveRunMode)', () => {
+describe('two-pane TTY guard (resolveRunMode)', () => {
   it('exits with RunModeError when --mode=two-pane and no TTY and no --no-attach', () => {
     let caught: unknown
     try {
@@ -60,7 +59,7 @@ describe.skip('two-pane TTY guard (resolveRunMode)', () => {
   })
 })
 
-describe.skip('two-pane nested-tmux guard (createTmuxHost)', () => {
+describe('two-pane nested-tmux guard (createTmuxHost)', () => {
   it('rejects host creation inside a nested tmux session with actionable guidance', async () => {
     const tmux = new FakeTmuxService()
     tmux.setListPanesResult(['%0'])

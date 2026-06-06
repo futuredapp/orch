@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/core/prompt-file/promptfile-registry.test-d.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Compile-time tests for U5 — the `PromptFileRegistry` augmentation pattern.
 //
 // Simulates the augmentation that `orch types` (U7/U8) generates next to each
@@ -6,11 +5,11 @@
 // in for the auto-generated sidecar; `step.define({ promptFile: '@/…' })`
 // then resolves `TVars` via `PromptFileRegistry[TPath]`.
 
+import type { Equal, Expect } from '@orch/test/type-assertions.ts'
 import type { Step } from '../../../../src/core/step.ts'
 import { step } from '../../../../src/core/step.ts'
 import type { RunFn } from '../../../../src/core/workflow.ts'
 import type { Runner } from '../../../../src/runners/index.ts'
-import type { Equal, Expect } from '../../../helpers/type-assertions.ts'
 
 declare module 'orch' {
   interface PromptFileRegistry {

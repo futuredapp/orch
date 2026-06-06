@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/core/worktree-executor-postcreate.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { step } from '../../../src/core/step.ts'
 import type { Path } from '../../../src/core/types.ts'
@@ -11,7 +10,7 @@ import {
   type TestDeps,
 } from './_worktree-test-helpers.ts'
 
-describe.skip('createWorktree() — postCreate hook', () => {
+describe('createWorktree() — postCreate hook', () => {
   it('runs each sugar line via /bin/sh -c with ORIGIN and TARGET in env', async () => {
     const deps = makeDeps()
     scriptHappyWorktree(deps, 'feat/foo')

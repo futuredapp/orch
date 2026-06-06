@@ -1,11 +1,10 @@
-// MIGRATED → tests-new/unit/state/run-id.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { FakeClock } from '../../../src/services/index.ts'
 import { generateRunId, RUN_ID_PATTERN, type RunId, runId } from '../../../src/state/index.ts'
 
 const rid = (s: string): RunId => s as RunId
 
-describe.skip('generateRunId', () => {
+describe('generateRunId', () => {
   it('produces r-YYYY-MM-DD-HHMMSS-xx format', () => {
     const clock = new FakeClock(1712700000000)
 
@@ -56,7 +55,7 @@ describe.skip('generateRunId', () => {
   })
 })
 
-describe.skip('runId', () => {
+describe('runId', () => {
   it('validates correct format', () => {
     const valid = 'r-2026-04-10-143052-7k'
 

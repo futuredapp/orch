@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/integration/real-tmux/agent-handle.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // U5 — the real-tmux per-instance handle `agent(labelPath)`. A test obtains a
 // handle by the author's label and drives exactly that predictable-fake
 // instance through its control file, gating every step on a durable on-disk
@@ -13,7 +12,7 @@ import {
   mountTmuxHost,
   REAL_TMUX_TEST_TIMEOUT_MS,
   type RealTmuxFixture,
-} from '../../helpers/real-tmux/index.ts'
+} from '@orch/test/real-tmux/index.ts'
 
 const tmuxAvailable = canRunRealTmux()
 
@@ -44,7 +43,7 @@ async function exists(path: string): Promise<boolean> {
   }
 }
 
-describe.skip('U5 — agent(labelPath) handle', () => {
+describe.skipIf(!tmuxAvailable)('U5 — agent(labelPath) handle', () => {
   it(
     'resolves a control file under the run state dir for the given key (R8)',
     async () => {

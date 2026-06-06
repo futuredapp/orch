@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/cli/logs-command.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Unit tests for `orch logs` (PR B — --latest, --step, --follow).
 //
 // The command is wired against fakes at the `*Service` ports per
@@ -10,6 +9,7 @@
 import { afterEach, describe, expect, it } from 'bun:test'
 import * as fs from 'node:fs/promises'
 import { join } from 'node:path'
+import { makeStepEntry } from '@orch/test/make-step-entry.ts'
 import { logsCmd } from '../../../src/cli/commands/logs.ts'
 import type { CliDeps } from '../../../src/cli/deps.ts'
 import { type CliOpts, EXIT } from '../../../src/cli/main.ts'
@@ -23,7 +23,6 @@ import {
 } from '../../../src/services/index.ts'
 import { FakeConfirmService, FakePromptService } from '../../../src/services/prompt/index.ts'
 import { FileRunRegistry, FileStateStore, type RunId } from '../../../src/state/index.ts'
-import { makeStepEntry } from '../../helpers/make-step-entry.ts'
 
 let tmpDir: string
 
@@ -129,7 +128,7 @@ async function seedRun(
 // --latest
 // ---------------------------------------------------------------------------
 
-describe.skip('orch logs --latest', () => {
+describe('orch logs --latest', () => {
   it('resolves to the most recent run id from the registry', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-logs-latest-')
     const deps = makeDeps()
@@ -184,7 +183,7 @@ describe.skip('orch logs --latest', () => {
 // --step (exact match)
 // ---------------------------------------------------------------------------
 
-describe.skip('orch logs <runId> --step <name>', () => {
+describe('orch logs <runId> --step <name>', () => {
   it('prints only the named step when --step is an exact match', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-logs-step-match-')
     const deps = makeDeps()
@@ -249,7 +248,7 @@ describe.skip('orch logs <runId> --step <name>', () => {
 // --follow
 // ---------------------------------------------------------------------------
 
-describe.skip('orch logs <runId> --follow', () => {
+describe('orch logs <runId> --follow', () => {
   it('exits 2 with a hint pointing at --step when --follow is missing --step', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-logs-follow-no-step-')
     const deps = makeDeps()

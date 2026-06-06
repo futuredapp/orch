@@ -1,5 +1,5 @@
-// MIGRATED → tests-new/unit/core/workflow-auto-stop.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
+import { createFakeHost, type FakeHost } from '@orch/test/fake-host.ts'
 import { AutoStopUnsupportedError } from '../../../src/core/errors.ts'
 import { step } from '../../../src/core/step.ts'
 import type { WorkflowDeps } from '../../../src/core/workflow.ts'
@@ -19,7 +19,6 @@ import {
 } from '../../../src/services/index.ts'
 import { FakePromptService } from '../../../src/services/prompt/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
-import { createFakeHost, type FakeHost } from '../../helpers/fake-host.ts'
 
 const BASE = path('/runs')
 
@@ -67,7 +66,7 @@ function makeAutoStopRunner(prepEnv: Readonly<Record<string, string>> = {}): {
   return { runner, state }
 }
 
-describe.skip('interactive auto-stop fail-fast', () => {
+describe('interactive auto-stop fail-fast', () => {
   it('throws AutoStopUnsupportedError before any host spawn when the runner lacks prepareAutoStop', async () => {
     const deps = makeDeps()
     const agent = new FakeRunner(deps.processService as FakeProcessService, {
@@ -90,7 +89,7 @@ describe.skip('interactive auto-stop fail-fast', () => {
   })
 })
 
-describe.skip('interactive auto-stop wiring', () => {
+describe('interactive auto-stop wiring', () => {
   it('calls prepareAutoStop once and passes autoStop:true to the host', async () => {
     const deps = makeDeps()
     const { runner, state } = makeAutoStopRunner()

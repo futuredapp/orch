@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/hosts/host-registry.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Regression test for the right-pane-controller wiring: the `HostFactoryInputs`
 // contract must include `stateStore`, otherwise the two-pane factory has no
 // way to thread it into `createTmuxHost` and Enter-to-inspect intents are
@@ -48,7 +47,7 @@ function makeNoopStateStore(rid: RunId): StateStore {
   }
 }
 
-describe.skip('HostFactoryInputs contract', () => {
+describe('HostFactoryInputs contract', () => {
   it('accepts a `stateStore` field — required by the two-pane right-pane controller', () => {
     const rid = toRunId('r-2026-05-06-200000-a1')
     // Compile-time guarantee: this assignment fails to type-check if
@@ -69,7 +68,7 @@ describe.skip('HostFactoryInputs contract', () => {
   })
 })
 
-describe.skip('RegisterBuiltinHostsDeps.tmuxOverrides contract', () => {
+describe('RegisterBuiltinHostsDeps.tmuxOverrides contract', () => {
   it('accepts a `transcriptRenderer` field — required for formatted ⏎ inspect on completed steps', () => {
     // Compile-time guarantee: this assignment fails to type-check if
     // `transcriptRenderer` is not part of `TmuxHostOptions` (and thus the
@@ -87,7 +86,7 @@ describe.skip('RegisterBuiltinHostsDeps.tmuxOverrides contract', () => {
   })
 })
 
-describe.skip('HostFactoryInputs.resumeRegistry contract', () => {
+describe('HostFactoryInputs.resumeRegistry contract', () => {
   it('accepts a `resumeRegistry` field — same live reference the workflow executor receives', () => {
     const rid = toRunId('r-2026-05-13-200000-a2')
     const resumeRegistry = createResumeRegistry()
@@ -111,7 +110,7 @@ describe.skip('HostFactoryInputs.resumeRegistry contract', () => {
   })
 })
 
-describe.skip('two-pane ORCH_TMUX_SOCKET bridge', () => {
+describe('two-pane ORCH_TMUX_SOCKET bridge', () => {
   const ENV_KEY = 'ORCH_TMUX_SOCKET'
   const originalEnv = process.env[ENV_KEY]
 

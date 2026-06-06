@@ -1,10 +1,9 @@
-// MIGRATED → tests-new/unit/services/fs/symlink.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { BunFsService } from '../../../../src/services/fs/bun-fs-service.ts'
 import { FakeFsService } from '../../../../src/services/fs/fake-fs-service.ts'
 import { path } from '../../../../src/services/index.ts'
 
-describe.skip('FakeFsService.symlink', () => {
+describe('FakeFsService.symlink', () => {
   it('creates a link that exists() reports true and that resolves to the target on read', async () => {
     const fs = new FakeFsService()
     await fs.mkdir(path('/a'), { recursive: true })
@@ -29,7 +28,7 @@ describe.skip('FakeFsService.symlink', () => {
   })
 })
 
-describe.skip('BunFsService.symlink', () => {
+describe('BunFsService.symlink', () => {
   it('creates a real symlink that exists() reports true and that resolves to the target', async () => {
     const fs = new BunFsService()
     const dir = await fs.tempDir('orch-symlink-')

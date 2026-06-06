@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/hosts/plain/plain-host-subworkflow-divider.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // U6 — plain host arms for `subworkflow:enter` / `subworkflow:exit` /
 // `host-error`. Sequential composition renders a one-line boundary; parallel
 // composition suppresses the boundary (R16).
@@ -44,7 +43,7 @@ function makeJsonHost() {
   return { host, stdout: outBuf, stderr: errBuf }
 }
 
-describe.skip('plain host (text) — subworkflow divider', () => {
+describe('plain host (text) — subworkflow divider', () => {
   it('renders an enter divider for sequential composition', () => {
     const { host, stdout } = makeTextHost()
     host.onLifecycleEvent({ type: 'subworkflow:enter', name: 'simple-feature', depth: 1 })
@@ -123,7 +122,7 @@ describe.skip('plain host (text) — subworkflow divider', () => {
   })
 })
 
-describe.skip('plain host (json) — subworkflow records', () => {
+describe('plain host (json) — subworkflow records', () => {
   it('emits a subworkflow.enter JSON record', () => {
     const { host, stdout } = makeJsonHost()
     host.onLifecycleEvent({ type: 'subworkflow:enter', name: 'sub', depth: 1 })

@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/integration/state/run-registry.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { afterEach, describe, expect, it } from 'bun:test'
 import * as fs from 'node:fs/promises'
 import { BunFsService, path } from '../../../src/services/index.ts'
@@ -14,7 +13,7 @@ afterEach(async () => {
   }
 })
 
-describe.skip('FileRunRegistry (integration)', () => {
+describe('FileRunRegistry (integration)', () => {
   it('lists runs from a real temp directory', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-registry-test-')
     const bunFs = new BunFsService()

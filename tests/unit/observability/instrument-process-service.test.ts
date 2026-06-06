@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/observability/instrument-process-service.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // ---------------------------------------------------------------------------
 // Unit tests — instrumentProcessService wrapper.
 // ---------------------------------------------------------------------------
@@ -64,7 +63,7 @@ function makeRecordingLogger(debug: boolean): RecordingLogger {
   return Object.assign(base, { records }) as RecordingLogger
 }
 
-describe.skip('instrumentProcessService', () => {
+describe('instrumentProcessService', () => {
   it('returns the base service unchanged when debug is false', () => {
     const base = new FakeProcessService()
     const logger = makeRecordingLogger(false)

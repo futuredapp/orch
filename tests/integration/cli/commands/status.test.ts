@@ -1,6 +1,6 @@
-// MIGRATED → tests-new/integration/cli/commands/status.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { afterEach, describe, expect, it } from 'bun:test'
 import * as fs from 'node:fs/promises'
+import { makeStepEntry } from '@orch/test/make-step-entry.ts'
 import { statusCmd } from '../../../../src/cli/commands/status.ts'
 import type { CliDeps } from '../../../../src/cli/deps.ts'
 import { EXIT } from '../../../../src/cli/main.ts'
@@ -14,7 +14,6 @@ import {
 } from '../../../../src/services/index.ts'
 import { FakeConfirmService, FakePromptService } from '../../../../src/services/prompt/index.ts'
 import { FileRunRegistry, FileStateStore, type RunId } from '../../../../src/state/index.ts'
-import { makeStepEntry } from '../../../helpers/make-step-entry.ts'
 
 let tmpDir: string
 
@@ -44,7 +43,7 @@ function makeDeps(): CliDeps {
   }
 }
 
-describe.skip('statusCmd (integration)', () => {
+describe('statusCmd (integration)', () => {
   it('returns EXIT.CONFIG_ERROR when no id argument is given', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-status-test-')
     const deps = makeDeps()

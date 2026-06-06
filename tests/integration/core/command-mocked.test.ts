@@ -1,6 +1,6 @@
-// MIGRATED → tests-new/integration/core/command-mocked.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { afterEach, describe, expect, it } from 'bun:test'
 import * as fs from 'node:fs/promises'
+import { createFakeHost, type FakeHost } from '@orch/test/fake-host.ts'
 import { type CommandResult, command } from '../../../src/core/command.ts'
 import { StepError } from '../../../src/core/errors.ts'
 import { parallel } from '../../../src/core/parallel.ts'
@@ -16,7 +16,6 @@ import {
 } from '../../../src/services/index.ts'
 import { FakePromptService } from '../../../src/services/prompt/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
-import { createFakeHost, type FakeHost } from '../../helpers/fake-host.ts'
 
 // ---------------------------------------------------------------------------
 // Setup
@@ -80,7 +79,7 @@ function commandLines(host: FakeHost, step?: string): readonly { stream: string;
 // Tests
 // ---------------------------------------------------------------------------
 
-describe.skip('command() — mocked integration: capture + streaming', () => {
+describe('command() — mocked integration: capture + streaming', () => {
   it('runs argv through ProcessService and captures stdout in the result', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-command-test-')
     const deps = makeDeps()
@@ -177,7 +176,7 @@ describe.skip('command() — mocked integration: capture + streaming', () => {
 // Failure semantics
 // ---------------------------------------------------------------------------
 
-describe.skip('command() — mocked integration: failure semantics', () => {
+describe('command() — mocked integration: failure semantics', () => {
   it("throws StepError on non-zero exit when onFailure is 'halt'", async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-command-test-')
     const deps = makeDeps()
@@ -251,7 +250,7 @@ describe.skip('command() — mocked integration: failure semantics', () => {
 // Persistence + cache
 // ---------------------------------------------------------------------------
 
-describe.skip('command() — mocked integration: state persistence + cache', () => {
+describe('command() — mocked integration: state persistence + cache', () => {
   it('persists the CommandResult to state.json after success', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-command-test-')
     const deps = makeDeps()
@@ -326,7 +325,7 @@ describe.skip('command() — mocked integration: state persistence + cache', () 
 // Cwd resolution
 // ---------------------------------------------------------------------------
 
-describe.skip('command() — mocked integration: cwd', () => {
+describe('command() — mocked integration: cwd', () => {
   it('resolves cwd to currentCwd (deps.cwd) when config.cwd is absent', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-command-test-')
     const deps = makeDeps({ cwd: path('/some/repo') })
@@ -401,7 +400,7 @@ describe.skip('command() — mocked integration: cwd', () => {
 // Env merge
 // ---------------------------------------------------------------------------
 
-describe.skip('command() — mocked integration: env', () => {
+describe('command() — mocked integration: env', () => {
   it('merges process.env with config.env (config.env wins)', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-command-test-')
     const deps = makeDeps()
@@ -444,7 +443,7 @@ describe.skip('command() — mocked integration: env', () => {
 // Parallel composition
 // ---------------------------------------------------------------------------
 
-describe.skip('command() — mocked integration: parallel', () => {
+describe('command() — mocked integration: parallel', () => {
   it('composes inside parallel(items, fn) without sharing capture buffers across branches', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-command-test-')
     const deps = makeDeps()
@@ -470,7 +469,7 @@ describe.skip('command() — mocked integration: parallel', () => {
 // Override rejection
 // ---------------------------------------------------------------------------
 
-describe.skip('command() — mocked integration: override rejection', () => {
+describe('command() — mocked integration: override rejection', () => {
   it('rejects prompt overrides', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-command-test-')
     const deps = makeDeps()

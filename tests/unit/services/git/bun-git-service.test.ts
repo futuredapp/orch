@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/services/git/bun-git-service.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import {
   BunGitService,
@@ -13,7 +12,7 @@ function makeGit(): { git: BunGitService; proc: FakeProcessService } {
   return { git, proc }
 }
 
-describe.skip('BunGitService.headSha', () => {
+describe('BunGitService.headSha', () => {
   it('spawns `git rev-parse HEAD --` in the given cwd and returns stdout trimmed', async () => {
     const { git, proc } = makeGit()
     proc.when(['git', 'rev-parse', 'HEAD']).respondWith({
@@ -38,7 +37,7 @@ describe.skip('BunGitService.headSha', () => {
   })
 })
 
-describe.skip('BunGitService.hasDiffSince', () => {
+describe('BunGitService.hasDiffSince', () => {
   it('returns false when `git diff --quiet` exits 0 (clean)', async () => {
     const { git, proc } = makeGit()
     proc.when(['git', 'diff', '--quiet', 'abc1234', '--']).respondWith({ exitCode: 0 })
@@ -71,7 +70,7 @@ describe.skip('BunGitService.hasDiffSince', () => {
   })
 })
 
-describe.skip('BunGitService.diffSinceSha', () => {
+describe('BunGitService.diffSinceSha', () => {
   it('uses --name-only and returns raw stdout', async () => {
     const { git, proc } = makeGit()
     proc.when(['git', 'diff', '--name-only', 'abc1234', '--']).respondWith({
@@ -94,7 +93,7 @@ describe.skip('BunGitService.diffSinceSha', () => {
   })
 })
 
-describe.skip('BunGitService env hardening', () => {
+describe('BunGitService env hardening', () => {
   it('invokes git with the argv shape documented by the port (captured per command)', async () => {
     // Sanity check: all three methods push the `--` separator so that a
     // poisoned SHA cannot be reinterpreted as a flag or a path.
@@ -111,7 +110,7 @@ describe.skip('BunGitService env hardening', () => {
   })
 })
 
-describe.skip('BunGitService.isClean', () => {
+describe('BunGitService.isClean', () => {
   it('returns true when git status --porcelain stdout is empty', async () => {
     const { git, proc } = makeGit()
     proc.when(['git', 'status', '--porcelain']).respondWith({
@@ -153,7 +152,7 @@ describe.skip('BunGitService.isClean', () => {
   })
 })
 
-describe.skip('BunGitService.stageAll', () => {
+describe('BunGitService.stageAll', () => {
   it('spawns git add . with correct argv and cwd', async () => {
     const { git, proc } = makeGit()
     proc.when(['git', 'add', '.']).respondWith({ exitCode: 0 })
@@ -174,7 +173,7 @@ describe.skip('BunGitService.stageAll', () => {
   })
 })
 
-describe.skip('BunGitService.commit', () => {
+describe('BunGitService.commit', () => {
   it('spawns git commit -m then git rev-parse HEAD and returns the SHA', async () => {
     const { git, proc } = makeGit()
     proc.when(['git', 'commit', '-m', 'checkpoint']).respondWith({ exitCode: 0 })
@@ -210,7 +209,7 @@ describe.skip('BunGitService.commit', () => {
   })
 })
 
-describe.skip('BunGitService.redactStderr', () => {
+describe('BunGitService.redactStderr', () => {
   it('strips credential URLs from GitCommandError stderr', async () => {
     const { git, proc } = makeGit()
     proc.when(['git', 'rev-parse', 'HEAD']).respondWith({
@@ -230,7 +229,7 @@ describe.skip('BunGitService.redactStderr', () => {
   })
 })
 
-describe.skip('BunGitService.repoRoot', () => {
+describe('BunGitService.repoRoot', () => {
   it('returns the absolute path from git rev-parse --show-toplevel', async () => {
     const { git, proc } = makeGit()
     proc.when(['git', 'rev-parse', '--show-toplevel']).respondWith({
@@ -275,7 +274,7 @@ describe.skip('BunGitService.repoRoot', () => {
   })
 })
 
-describe.skip('BunGitService.branchExists', () => {
+describe('BunGitService.branchExists', () => {
   it('returns true when git show-ref --verify --quiet exits 0', async () => {
     const { git, proc } = makeGit()
     proc
@@ -304,7 +303,7 @@ describe.skip('BunGitService.branchExists', () => {
   })
 })
 
-describe.skip('BunGitService.worktreePathExists', () => {
+describe('BunGitService.worktreePathExists', () => {
   it('returns true when the path appears as a worktree line in --porcelain output', async () => {
     const { git, proc } = makeGit()
     proc.when(['git', 'worktree', 'list', '--porcelain']).respondWith({
@@ -362,7 +361,7 @@ describe.skip('BunGitService.worktreePathExists', () => {
   })
 })
 
-describe.skip('BunGitService.addWorktree', () => {
+describe('BunGitService.addWorktree', () => {
   it('spawns git worktree add -b <branch> -- <path> <fromRef> and resolves to undefined', async () => {
     const { git, proc } = makeGit()
     proc

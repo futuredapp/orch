@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/services/fs/fake-fs-service.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { FakeClock } from '../../../../src/services/clock/index.ts'
 import { FakeFsService } from '../../../../src/services/fs/fake-fs-service.ts'
@@ -12,7 +11,7 @@ async function collectAsync(iter: AsyncIterable<unknown>): Promise<unknown[]> {
   return result
 }
 
-describe.skip('FakeFsService', () => {
+describe('FakeFsService', () => {
   it('round-trips writeFile and readFile for a single path', async () => {
     const fs = new FakeFsService()
     await fs.mkdir(path('/data'), { recursive: true })

@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/integration/workflows/phased-build-decide.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // U3 — decide-phases step + emit/parse/validate contract (R6, R7, R8, AE3, AE4).
 
 import { describe, expect, it } from 'bun:test'
@@ -28,7 +27,7 @@ const PRE_PHASED_INPUT = [
   'input phase 5',
 ].join('\n')
 
-describe.skip('decide-phases — fresh decision overrides any pre-written phases (AE3, R6)', () => {
+describe('decide-phases — fresh decision overrides any pre-written phases (AE3, R6)', () => {
   it('uses the freshly-emitted artifact, not the phase structure in the input plan', async () => {
     const deps = makeDeps({ prompt: PRE_PHASED_INPUT })
     const { runner, prompts } = makeRecordingRunner()
@@ -60,7 +59,7 @@ describe.skip('decide-phases — fresh decision overrides any pre-written phases
   })
 })
 
-describe.skip('decide-phases — step shape (R5)', () => {
+describe('decide-phases — step shape (R5)', () => {
   it('runs the decide step interactively with autoStop enabled', async () => {
     const deps = makeDeps({ prompt: 'inline' })
     const { runner } = makeRecordingRunner()
@@ -76,7 +75,7 @@ describe.skip('decide-phases — step shape (R5)', () => {
   })
 })
 
-describe.skip('decide-phases — empty artifact halts the run (R8, R-4 guard)', () => {
+describe('decide-phases — empty artifact halts the run (R8, R-4 guard)', () => {
   it('halts when the read-back is empty (a decide step that wrote nothing)', async () => {
     const deps = makeDeps({ prompt: 'inline' })
     const { runner, prompts } = makeRecordingRunner()

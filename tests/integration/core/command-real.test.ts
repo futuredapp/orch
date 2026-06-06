@@ -1,9 +1,9 @@
-// MIGRATED → tests-new/integration/core/command-real.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // command() — real BunProcessService integration. Auto-skips when `bun` is
 // not on PATH (matches the pattern worktree's real-git tests use).
 
 import { afterEach, describe, expect, it } from 'bun:test'
 import * as fs from 'node:fs/promises'
+import { createFakeHost } from '@orch/test/fake-host.ts'
 import { type CommandResult, command, tail } from '../../../src/core/command.ts'
 import { StepError } from '../../../src/core/errors.ts'
 import { type WorkflowDeps, workflow } from '../../../src/core/workflow.ts'
@@ -16,7 +16,6 @@ import {
 } from '../../../src/services/index.ts'
 import { FakePromptService } from '../../../src/services/prompt/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
-import { createFakeHost } from '../../helpers/fake-host.ts'
 
 const BUN_BIN = (Bun as unknown as { which?: (s: string) => string | null }).which?.('bun') ?? null
 const SHELL_BIN = (Bun as unknown as { which?: (s: string) => string | null }).which?.('sh') ?? null
@@ -52,7 +51,7 @@ interface Box<T> {
   value?: T
 }
 
-describe.skip('command() — real BunProcessService', () => {
+describe('command() — real BunProcessService', () => {
   if (BUN_BIN === null) {
     it.skip('skipped: bun binary not found on PATH', () => {})
     return

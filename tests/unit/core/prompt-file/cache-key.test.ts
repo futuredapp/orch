@@ -1,8 +1,7 @@
-// MIGRATED → tests-new/unit/core/prompt-file/cache-key.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { canonicalJson, stableHashHex } from '../../../../src/core/prompt-file/cache-key.ts'
 
-describe.skip('stableHashHex', () => {
+describe('stableHashHex', () => {
   it('returns empty string for empty vars (sentinel for no participation in key)', () => {
     expect(stableHashHex({})).toBe('')
   })
@@ -74,7 +73,7 @@ describe.skip('stableHashHex', () => {
   })
 })
 
-describe.skip('canonicalJson', () => {
+describe('canonicalJson', () => {
   it('emits keys in ASCII-sorted order, no whitespace, no surrounding spaces', () => {
     expect(canonicalJson({ b: 'two', a: 'one' })).toBe('{"a":"one","b":"two"}')
   })

@@ -1,10 +1,10 @@
-// MIGRATED → tests-new/unit/core/workflow-parallel-lifecycle.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Tests the U7 lifecycle events: `step:parallel-start` and
 // `step:parallel-complete` fire around every `parallel(...)` call, with a
 // deterministic block id, and bracket the inner branches' `step:start` /
 // `step:complete` events in correct order.
 
 import { describe, expect, it } from 'bun:test'
+import { createFakeHost, type FakeHost } from '@orch/test/fake-host.ts'
 import { parallel } from '../../../src/core/parallel.ts'
 import { step } from '../../../src/core/step.ts'
 import type { StepLifecycleEvent, WorkflowDeps } from '../../../src/core/workflow.ts'
@@ -19,7 +19,6 @@ import {
 } from '../../../src/services/index.ts'
 import { FakePromptService } from '../../../src/services/prompt/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
-import { createFakeHost, type FakeHost } from '../../helpers/fake-host.ts'
 
 const rid = (s: string): RunId => s as RunId
 const BASE = path('/runs')
@@ -53,7 +52,7 @@ function lifecycle(host: FakeHost): readonly StepLifecycleEvent[] {
     .map((r) => r.event)
 }
 
-describe.skip('parallel() block lifecycle events', () => {
+describe('parallel() block lifecycle events', () => {
   it('emits one step:parallel-start before the first branch and one step:parallel-complete after the last branch', async () => {
     const deps = makeDeps()
 

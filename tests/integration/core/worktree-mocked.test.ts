@@ -1,6 +1,6 @@
-// MIGRATED → tests-new/integration/core/worktree-mocked.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { afterEach, describe, expect, it } from 'bun:test'
 import * as fs from 'node:fs/promises'
+import { createFakeHost } from '@orch/test/fake-host.ts'
 import { parallel } from '../../../src/core/parallel.ts'
 import { step } from '../../../src/core/step.ts'
 import { type WorkflowDeps, workflow } from '../../../src/core/workflow.ts'
@@ -20,7 +20,6 @@ import {
 } from '../../../src/services/index.ts'
 import { FakePromptService } from '../../../src/services/prompt/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
-import { createFakeHost } from '../../helpers/fake-host.ts'
 
 // ---------------------------------------------------------------------------
 // Setup
@@ -105,7 +104,7 @@ function scriptHappyWorktree(
 // Tests
 // ---------------------------------------------------------------------------
 
-describe.skip('createWorktree — mocked integration', () => {
+describe('createWorktree — mocked integration', () => {
   it('createWorktree(enter: true) followed by an agent step persists both StepEntry rows with expected shape', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-worktree-test-')
     const deps = makeDeps()

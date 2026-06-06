@@ -1,10 +1,9 @@
-// MIGRATED → tests-new/unit/core/ask-types.test-d.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Compile-time tests for the const-generic and discriminated-union shape of
 // `ask()`. No runtime assertions — failures land at `tsc --noEmit` time.
 
+import type { Equal, Expect } from '@orch/test/type-assertions.ts'
 import { type AskInput, type AskResult, ask } from '../../../src/core/ask.ts'
 import type { Step } from '../../../src/core/step.ts'
-import type { Equal, Expect } from '../../helpers/type-assertions.ts'
 
 // ---------------------------------------------------------------------------
 // (1) The two branches of `AskResult` narrow correctly on `cancelled`.

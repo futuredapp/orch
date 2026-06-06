@@ -1,4 +1,3 @@
-// MIGRATED → tests-new/unit/cli/banner.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Banner / hint tests for `orch run` startup output (PR B).
 //
 // `buildBanner` is the existing one-liner that names the resolved mode and
@@ -18,7 +17,7 @@ const resolution = (mode: RunModeResolution['mode']): RunModeResolution => ({
   reason: '--mode override',
 })
 
-describe.skip('buildBanner', () => {
+describe('buildBanner', () => {
   it('renders the resolved mode, source, and reason on a single line', () => {
     const out = buildBanner(resolution('two-pane'))
 
@@ -28,7 +27,7 @@ describe.skip('buildBanner', () => {
   })
 })
 
-describe.skip('buildTwoPaneLogsHint', () => {
+describe('buildTwoPaneLogsHint', () => {
   it('returns the in-pane scroll + orch logs hint for two-pane non-JSON runs', () => {
     const out = buildTwoPaneLogsHint(resolution('two-pane'), 'text')
 
