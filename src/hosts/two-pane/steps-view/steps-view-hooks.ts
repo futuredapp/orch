@@ -60,6 +60,15 @@ export interface StepsSelection {
 
 const LIVE_VIEW: ViewMode = { mode: 'live' }
 
+// `selectedName` and `isUserDriven` must always change together — updating them
+// in two separate `useState` calls lets an intermediate render (selectedName
+// changed, isUserDriven still false) trigger the effect's else-branch and reset
+// the selection back. A single merged state object makes every move atomic.
+interface PreviewCursor {
+  readonly selectedName: string | undefined
+  readonly isUserDriven: boolean
+}
+
 export function useStepsSelection(
   steps: readonly StepRow[],
   view: ViewMode = LIVE_VIEW,
@@ -68,8 +77,21 @@ export function useStepsSelection(
   // replay it is the pinned step; in live it is the running step (or the last
   // known step when nothing is live).
   const committedName = committedFromView(steps, view)
-  const [selectedName, setSelectedName] = useState<string | undefined>(undefined)
-  const [isUserDriven, setIsUserDriven] = useState(false)
+  const [cursor, setCursor] = useState<PreviewCursor>({
+    selectedName: undefined,
+    isUserDriven: false,
+  })
+  const { selectedName, isUserDriven } = cursor
+
+  // Mirror the latest cursor and steps into refs so `move` always reads current
+  // values even when called from a closure captured before the most recent render
+  // (e.g. the expose-handle pattern in tests where `handle.selection.moveUp()` is
+  // called right after `waitForFrame` sees the new frame but before Ink has flushed
+  // the matching expose-effect).
+  const cursorRef = useRef(cursor)
+  cursorRef.current = cursor
+  const stepsRef = useRef(steps)
+  stepsRef.current = steps
 
   useEffect(() => {
     if (isUserDriven && selectedName !== undefined) {
@@ -77,29 +99,36 @@ export function useStepsSelection(
       // hand control back to the committed (right-pane) row.
       const stillThere = steps.some((s) => s.name === selectedName)
       if (!stillThere) {
-        setSelectedName(committedName)
-        setIsUserDriven(false)
+        setCursor({ selectedName: committedName, isUserDriven: false })
       }
       return
     }
-    // Not user-driven: the preview cursor tracks the committed row so an idle
-    // left pane always points at what the right pane shows — including when the
-    // controller auto-advances `view` to the next step without a keypress.
-    setSelectedName(committedName)
+    // Not user-driven: track the committed row. Use a functional update so a
+    // stale effect scheduled before the user pressed ↑/↓ does not overwrite the
+    // cursor: if `prev.isUserDriven` is already true, the user moved between
+    // when this effect was scheduled and when it ran — leave the cursor alone.
+    setCursor((prev) => {
+      if (prev.isUserDriven) return prev
+      if (prev.selectedName === committedName) return prev
+      return { selectedName: committedName, isUserDriven: false }
+    })
   }, [steps, isUserDriven, selectedName, committedName])
 
   const move = (delta: number): void => {
-    if (steps.length === 0) return
+    const currentSteps = stepsRef.current
+    if (currentSteps.length === 0) return
+    const currentSelectedName = cursorRef.current.selectedName
     const currentIdx =
-      selectedName === undefined ? -1 : steps.findIndex((s) => s.name === selectedName)
+      currentSelectedName === undefined
+        ? -1
+        : currentSteps.findIndex((s) => s.name === currentSelectedName)
     // Scan past boundary rows in the requested direction (R24); if no
     // selectable row exists, stay put (no-op delta).
-    const nextIdx = nextSelectableIndex(steps, currentIdx, delta)
+    const nextIdx = nextSelectableIndex(currentSteps, currentIdx, delta)
     if (nextIdx === currentIdx) return
-    const target = steps[nextIdx]
+    const target = currentSteps[nextIdx]
     if (target === undefined) return
-    setSelectedName(target.name)
-    setIsUserDriven(true)
+    setCursor({ selectedName: target.name, isUserDriven: true })
   }
 
   return {
@@ -109,8 +138,7 @@ export function useStepsSelection(
     moveUp: () => move(-1),
     moveDown: () => move(1),
     snapToLive: () => {
-      setSelectedName(committedName)
-      setIsUserDriven(false)
+      setCursor({ selectedName: committedName, isUserDriven: false })
     },
   }
 }

@@ -85,6 +85,24 @@ export function runningStepName(frame: string, names: readonly string[]): string
   return names.find((name) => rowHasGlyph(frame, name, glyph))
 }
 
+export type ArrowDirection = 'up' | 'down' | 'done'
+
+/**
+ * Decide which arrow key moves a preview cursor toward `target`.
+ * Unknown current positions are treated as before the first row, matching the
+ * drivers' historical self-correction behavior after a missed/blank frame.
+ */
+export function computeArrowDirection(
+  current: string | undefined,
+  target: string,
+  names: readonly string[],
+): ArrowDirection {
+  if (current === target) return 'done'
+  const currentIdx = current === undefined ? -1 : names.indexOf(current)
+  const targetIdx = names.indexOf(target)
+  return currentIdx < targetIdx ? 'down' : 'up'
+}
+
 /** Whether `frame` (already stripped) renders a row for `step`. */
 export function rowVisible(frame: string, step: string): boolean {
   return frame.split('\n').some((line) => line.includes(step))

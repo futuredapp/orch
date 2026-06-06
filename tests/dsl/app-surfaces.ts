@@ -142,6 +142,17 @@ export interface FullHostApp extends AppBase {
   readonly agent?: LiveAgentControl
 }
 
+/**
+ * The pane surface available on the lifecycle driver. Only focus assertion is
+ * backed today — all other LeftPane/RightPane methods route to `notImplemented()`
+ * until subprocess-snapshot pane reads are implemented (parent U4+).
+ * §6.1: unsupported actions are caught by types first; runtime errors are
+ * acceptable as defense-in-depth only.
+ */
+export interface LifecyclePaneView {
+  assertFocused(): Promise<void>
+}
+
 export interface LifecycleApp extends AppBase {
   launch(spec: LifecycleSpec): Promise<void>
   press(pane: 'left' | 'right', key: string): Promise<void>
@@ -161,8 +172,8 @@ export interface LifecycleApp extends AppBase {
   quitIntent(): Promise<void>
   /** Click on a pane to move focus across the divider. LIFECYCLE-ONLY (real focus). */
   click(pane: 'left' | 'right'): Promise<void>
-  readonly leftPane: LeftPane
-  readonly rightPane: RightPane
+  readonly leftPane: LifecyclePaneView
+  readonly rightPane: LifecyclePaneView
   /** Exit / teardown / persisted status. */
   readonly system: SystemAssertions
 }

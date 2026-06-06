@@ -170,14 +170,16 @@ describe('buildCommand flag denylist', () => {
     const deps = makeDeps()
     const runner = codex({ flags: ['--yolo'] }, deps)
 
-    expect(runner.buildCommand(ctxFor('hi'))).rejects.toThrow(/flag "--yolo" is on the denylist/)
+    await expect(runner.buildCommand(ctxFor('hi'))).rejects.toThrow(
+      /flag "--yolo" is on the denylist/,
+    )
   })
 
   it('rejects --dangerously-bypass-approvals-and-sandbox in flags', async () => {
     const deps = makeDeps()
     const runner = codex({ flags: ['--dangerously-bypass-approvals-and-sandbox'] }, deps)
 
-    expect(runner.buildCommand(ctxFor('hi'))).rejects.toThrow(
+    await expect(runner.buildCommand(ctxFor('hi'))).rejects.toThrow(
       /flag "--dangerously-bypass-approvals-and-sandbox" is on the denylist/,
     )
   })
@@ -186,7 +188,7 @@ describe('buildCommand flag denylist', () => {
     const deps = makeDeps()
     const runner = codex({}, deps)
 
-    expect(
+    await expect(
       runner.buildCommand(ctxFor('hi', { extraArgs: ['--config', '/tmp/evil.toml'] })),
     ).rejects.toThrow(/flag "--config" is on the denylist/)
   })
@@ -195,7 +197,7 @@ describe('buildCommand flag denylist', () => {
     const deps = makeDeps()
     const runner = codex({}, deps)
 
-    expect(
+    await expect(
       runner.buildCommand(ctxFor('hi', { extraArgs: ['--sandbox', 'danger-full-access'] })),
     ).rejects.toThrow(/flag "--sandbox" is on the denylist/)
   })
@@ -204,7 +206,7 @@ describe('buildCommand flag denylist', () => {
     const deps = makeDeps()
     const runner = codex({}, deps)
 
-    expect(
+    await expect(
       runner.buildCommand(ctxFor('hi', { extraArgs: ['-c', 'approval_policy="never"'] })),
     ).rejects.toThrow(/flag "-c" is on the denylist/)
   })
@@ -213,7 +215,7 @@ describe('buildCommand flag denylist', () => {
     const deps = makeDeps()
     const runner = codex({ flags: ['--approval-mode', 'never'] }, deps)
 
-    expect(runner.buildCommand(ctxFor('hi'))).rejects.toThrow(
+    await expect(runner.buildCommand(ctxFor('hi'))).rejects.toThrow(
       /flag "--approval-mode" is on the denylist/,
     )
   })
@@ -222,7 +224,7 @@ describe('buildCommand flag denylist', () => {
     const deps = makeDeps()
     const runner = codex({ flags: ['--config=/tmp/evil.toml'] }, deps)
 
-    expect(runner.buildCommand(ctxFor('hi'))).rejects.toThrow(
+    await expect(runner.buildCommand(ctxFor('hi'))).rejects.toThrow(
       /flag "--config=\/tmp\/evil.toml" is on the denylist/,
     )
   })
@@ -244,7 +246,7 @@ describe('checkCodexVersion (via buildCommand)', () => {
     ps.when(['codex', '--version']).respondWith({ stdout: ['codex 0.117.0'], exitCode: 0 })
     const runner = codex({}, { fs, ps })
 
-    expect(runner.buildCommand(ctxFor('test'))).rejects.toThrow(CodexVersionError)
+    await expect(runner.buildCommand(ctxFor('test'))).rejects.toThrow(CodexVersionError)
   })
 
   it('throws CodexVersionError with actionable message for old version', async () => {
@@ -253,7 +255,7 @@ describe('checkCodexVersion (via buildCommand)', () => {
     ps.when(['codex', '--version']).respondWith({ stdout: ['codex 0.117.0'], exitCode: 0 })
     const runner = codex({}, { fs, ps })
 
-    expect(runner.buildCommand(ctxFor('test'))).rejects.toThrow(
+    await expect(runner.buildCommand(ctxFor('test'))).rejects.toThrow(
       /Upgrade with: npm i -g @openai\/codex/,
     )
   })
@@ -264,7 +266,7 @@ describe('checkCodexVersion (via buildCommand)', () => {
     ps.when(['codex', '--version']).respondWith({ stdout: ['unknown'], exitCode: 0 })
     const runner = codex({}, { fs, ps })
 
-    expect(runner.buildCommand(ctxFor('test'))).rejects.toThrow(CodexVersionError)
+    await expect(runner.buildCommand(ctxFor('test'))).rejects.toThrow(CodexVersionError)
   })
 
   it('only checks version once across multiple buildCommand calls', async () => {
@@ -422,7 +424,7 @@ describe('buildCommand interactive mode', () => {
     const deps = makeDeps()
     const runner = codex({}, deps)
 
-    expect(
+    await expect(
       runner.buildCommand(
         ctxFor('test', {
           mode: 'interactive',
@@ -436,7 +438,7 @@ describe('buildCommand interactive mode', () => {
     const deps = makeDeps()
     const runner = codex({ flags: ['--config', 'evil.toml'] }, deps)
 
-    expect(runner.buildCommand(ctxFor('test', { mode: 'interactive' }))).rejects.toThrow(
+    await expect(runner.buildCommand(ctxFor('test', { mode: 'interactive' }))).rejects.toThrow(
       /flag "--config" is on the denylist/,
     )
   })

@@ -39,12 +39,11 @@ The full phased roadmap lives at [`docs/plans/implementation-phases.md`](docs/pl
 - Every runner gets TWO integration tests (mocked + real).
 - `mock.module`, `vi.mock`, `jest.mock` are banned inside tests for `src/core/`, `src/state/`, `src/validators/`, and `src/runners/`.
 - **Default test command: `bun run test:two-pane:fast`** (model + tmux-argv + DSL unit tests; no tmux, milliseconds). **Never run bare `bun test`** — selection is by path only (the filesystem is the manifest); a bare run ignores the concurrency ceiling and runs both trees unbounded. A Bun preload prints a warning if you do. The gate is `bun run check`; `bun run check:release` additionally runs the gated real-CLI levels.
-- **During-migration routing** (the test tree is mid-relocation into `tests-new/`): write new **two-pane** behavioural tests under `tests-new/` in the new shape. Write new **non-two-pane** tests in their existing `tests/{unit,integration,e2e}` home for now (the whole tree relocates to `tests-new/` later) — unless that module has already been relocated, in which case write straight to `tests-new/` and add a `tests-new/_migration/ledger.md` row tagged `new`.
 
 ## How to write a two-pane test
 
 - Read [`docs/testing-strategy.md`](docs/testing-strategy.md) for the scenario/driver DSL and the decision rule.
-- A two-pane test is a `scenario(meta, body)` written **once** and run against the drivers it lists. The DSL is the only import surface (`import { scenario, emits, fromCassette, claudeAgent } from 'tests-new/dsl/index.ts'`); scenario files never name a driver, touch tmux, or mention timeouts.
+- A two-pane test is a `scenario(meta, body)` written **once** and run against the drivers it lists. The DSL is the only import surface (`import { scenario, emits, fromCassette, claudeAgent } from 'tests/dsl/index.ts'`); scenario files never name a driver, touch tmux, or mention timeouts.
 - Pick the category by **where the risk is**:
   - `model` — what the controller *decides* to show (no tmux, fast, the bulk).
   - `screen` — whether those bytes *survive real tmux* (single steps pane).
@@ -53,7 +52,7 @@ The full phased roadmap lives at [`docs/plans/implementation-phases.md`](docs/pl
   - `tmux-argv` — adapter *argv / escaping* (unit-speed, no tmux).
 - Scenarios call only semantic Pane Object methods (+ the `assertShowsContent` content escape hatch). Chrome literals live **co-located on the Pane Object**, never inline in a scenario and never imported from `src/`.
 - Triage rule (the north star): *"Would this test still pass if the visible pane were empty / wrong / unformatted? If yes, demote or delete."*
-- Run it: `bun run test:two-pane:fast` for the tight loop; `:screen` / `:full:fake` / `:tmux` when you touched rendering or panes; `:lifecycle` for process behaviour. **Never bare `bun test`.** The drivers and the real-tmux harness live under [`tests-new/dsl/`](tests-new/dsl/) and [`tests-new/_support/real-tmux/`](tests-new/_support/real-tmux/README.md).
+- Run it: `bun run test:two-pane:fast` for the tight loop; `:screen` / `:full:fake` / `:tmux` when you touched rendering or panes; `:lifecycle` for process behaviour. **Never bare `bun test`.** The drivers and the real-tmux harness live under [`tests/dsl/`](tests/dsl/) and [`tests/_support/real-tmux/`](tests/_support/real-tmux/README.md).
 - For black-box, screen-level QA or reproducing a rendering/lifecycle bug on screen, the `orch-qa-engineer` skill drives the `scriptedFake` subprocess fake end-to-end (deterministic, zero-token). It is **not** a driver and **not** on the `bun run check` gate — it complements the categories, it doesn't replace them.
 
 ## How to update user docs

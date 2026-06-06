@@ -5,5 +5,6 @@ export const config = defineConfig({
     'new-feature': 'workflows/new-feature/index.ts',
     'tic-tac-toe': 'workflows/tic-tac-toe/index.ts',
     'execute-plan': 'workflows/execute-plan/index.ts',
+    'do-work': 'workflows/do-work/index.ts',
   },
 })

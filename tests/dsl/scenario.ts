@@ -12,7 +12,7 @@
 // typed to ONLY the surface shared by every listed driver. A `['model']`
 // scenario cannot call `app.rightPane`; a `['model','screen']` scenario cannot
 // call `app.resize`. These are compile errors (proven in `scenario.test-d.ts`),
-// caught only because `tests-new/` is in the tsconfig `include` (D11).
+// caught only because `tests/` is in the tsconfig `include` (D11).
 //
 // `scenario()` calls `it()` at module-eval time, so a file registers tests on
 // import (CLAUDE.md rule 8 is deliberately scoped: this is the DSL's one

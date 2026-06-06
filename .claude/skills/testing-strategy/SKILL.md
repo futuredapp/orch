@@ -33,36 +33,39 @@ Same pattern for the full compound e2e flow: a `.mocked.test.ts` that runs alway
 ## A good test reads like prose
 
 ```ts
-// tests/unit/core/workflow-memoization.test.ts
-import { describe, it, expect } from 'bun:test'
-import { buildTestRun } from '@orch/test/build-test-run'
-import { step } from '@orch/core/step'
+// tests/unit/state/state-store.test.ts
+import { describe, expect, it } from 'bun:test'
+import { makeStepEntry } from '@orch/test/make-step-entry.ts'
+import { FakeFsService, path } from '../../../src/services/index.ts'
+import { FileStateStore, runId } from '../../../src/state/index.ts'
 
-describe('workflow memoization', () => {
-  it('runs a step once and returns the cached value on the next invocation', async () => {
+describe('FileStateStore', () => {
+  it('loadRun returns undefined for a non-existent run', async () => {
     // Arrange
-    const run = buildTestRun()
-    const PING = step.define('ping', { agent: run.fakeRunner({ returns: 'pong' }) })
+    const { store } = makeStore()
 
     // Act
-    const first = await run.exec(async (r) => await r(PING))
-    const second = await run.exec(async (r) => await r(PING))
+    const result = await store.loadRun(runId('r-2026-04-10-913048-xr'))
 
     // Assert
-    expect(first).toBe('pong')
-    expect(second).toBe('pong')
-    expect(run.fakeRunner.invocationCount('ping')).toBe(1)
+    expect(result).toBeUndefined()
   })
 })
+
+function makeStore() {
+  const fs = new FakeFsService()
+  const store = new FileStateStore({ fs, basePath: path('/runs') })
+  return { store, fs }
+}
 ```
 
 Principles this demonstrates:
 
 - **Name is a full sentence** — a human can understand the behavior without opening the code.
-- **`buildTestRun()` hides plumbing, not intent** — one call wires every fake service.
+- **`makeStore()` hides plumbing, not intent** — one local factory wires every fake service.
 - **Arrange-Act-Assert with blank lines** — no comments needed to explain what the code does.
-- **Only fakes at boundaries** — no internal mocking anywhere.
-- **Final assertion proves the behavior named in the title** — `invocationCount('ping') === 1` directly matches "runs a step once".
+- **Only fakes at boundaries** — `FakeFsService` injects at the `FsService` port; no internal mocking.
+- **Final assertion proves the behavior named in the title** — `toBeUndefined()` directly matches "returns undefined".
 
 ## Decision tree — which layer does this test belong in?
 
@@ -83,11 +86,12 @@ Principles this demonstrates:
 
 ## Helpers you should use
 
-- `buildTestRun()` from `@orch/test/build-test-run` — wires fake services into a ready-to-use Workflow.
-- `tempGitRepo()` from `@orch/test/temp-git-repo` — spins up a throwaway real git repo for integration tests.
-- `assertMemoized()` from `@orch/test/assert-memoized` — custom matcher: did this step re-run or hit cache?
+- `FakeFsService`, `FakeProcessService`, `FakeGitService` from `src/services/index.ts` — inject at `*Service` ports in unit and mocked-integration tests.
+- `makeStepEntry()` from `@orch/test/make-step-entry.ts` — builds a `StepEntry` with sensible defaults; overrides what you need.
+- `createTempGitRepo()` from `@orch/test/temp-git-repo.ts` — spins up a throwaway real git repo for integration tests; disposes on `afterEach`.
+- `FakeHost` from `@orch/test/fake-host.ts` — a minimal `Host` stub for tests that wire a `Workflow` without a full system.
 
-If a helper doesn't exist yet, create it in `tests/helpers/` rather than inlining setup into the test.
+If a helper doesn't exist yet, create it in `tests/_support/` rather than inlining setup into the test.
 
 ## Fakes and screen-level QA
 

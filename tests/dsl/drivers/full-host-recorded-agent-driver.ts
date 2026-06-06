@@ -37,25 +37,30 @@ function loadCassetteScript(fps: FakeProcessService, file: string) {
 
 async function build(_meta: ScenarioMeta<readonly DriverName[]>): Promise<FullHostApp> {
   const fixture = await createRealTmuxFixture({ env: {} })
-  // The cassette replays through FakeRunner, which stubs its argv on a
-  // FakeProcessService — no real CLI ever spawns.
-  const fps = new FakeProcessService()
-  const harness = await mountTmuxHost(fixture, { agentProcessService: fps })
+  try {
+    // The cassette replays through FakeRunner, which stubs its argv on a
+    // FakeProcessService — no real CLI ever spawns.
+    const fps = new FakeProcessService()
+    const harness = await mountTmuxHost(fixture, { agentProcessService: fps })
 
-  return createStaticFullHostApp({
-    fixture,
-    harness,
-    label: DRIVER_LABEL,
-    agentForStep: (_name, _index, spec: FullHostSpec) => {
-      if (spec.agent?.kind !== 'cassette') {
-        throw new Error(
-          `${DRIVER_LABEL}: launch spec's agent must be fromCassette(...); got ` +
-            `${spec.agent?.kind ?? 'undefined'}.`,
-        )
-      }
-      return { agent: loadCassetteScript(fps, spec.agent.file) }
-    },
-  })
+    return createStaticFullHostApp({
+      fixture,
+      harness,
+      label: DRIVER_LABEL,
+      agentForStep: (_name, _index, spec: FullHostSpec) => {
+        if (spec.agent?.kind !== 'cassette') {
+          throw new Error(
+            `${DRIVER_LABEL}: launch spec's agent must be fromCassette(...); got ` +
+              `${spec.agent?.kind ?? 'undefined'}.`,
+          )
+        }
+        return { agent: loadCassetteScript(fps, spec.agent.file) }
+      },
+    })
+  } catch (err) {
+    await fixture.dispose()
+    throw err
+  }
 }
 
 export const fullHostRecordedAgentDriver: Driver<FullHostApp> = {

@@ -172,36 +172,41 @@ async function build(meta: ScenarioMeta<readonly DriverName[]>): Promise<FullHos
   const leakBaseline = await scriptedFakeEntryCount()
   const fixture = await createRealTmuxFixture({ env: {} })
 
-  if (liveDriven) {
-    // The live puppet needs the fixture's real BunProcessService (it spawns a
-    // subprocess), so no agentProcessService override is passed.
-    const harness = await mountTmuxHost(fixture, {})
-    return createLiveFullHostApp(fixture, harness, leakBaseline)
+  try {
+    if (liveDriven) {
+      // The live puppet needs the fixture's real BunProcessService (it spawns a
+      // subprocess), so no agentProcessService override is passed.
+      const harness = await mountTmuxHost(fixture, {})
+      return createLiveFullHostApp(fixture, harness, leakBaseline)
+    }
+
+    // Static FakeRunner stubs its argv on a FakeProcessService.
+    const fps = new FakeProcessService()
+    const harness = await mountTmuxHost(fixture, { agentProcessService: fps })
+
+    return createStaticFullHostApp({
+      fixture,
+      harness,
+      label: DRIVER_LABEL,
+      agentForStep: (_name, _index, spec) => {
+        if (isLiveSpec(spec.agent)) {
+          throw new Error(
+            `${DRIVER_LABEL}: a live() / holdsOpen() agent requires meta.liveDriven:true; ` +
+              'the static build cannot drive it.',
+          )
+        }
+        return {
+          agent: new FakeRunner(fps).script({
+            events: emitsTexts(spec.agent).map(infoLine),
+            structuredOutput: 'done',
+          }),
+        }
+      },
+    })
+  } catch (err) {
+    await fixture.dispose()
+    throw err
   }
-
-  // Static FakeRunner stubs its argv on a FakeProcessService.
-  const fps = new FakeProcessService()
-  const harness = await mountTmuxHost(fixture, { agentProcessService: fps })
-
-  return createStaticFullHostApp({
-    fixture,
-    harness,
-    label: DRIVER_LABEL,
-    agentForStep: (_name, _index, spec) => {
-      if (isLiveSpec(spec.agent)) {
-        throw new Error(
-          `${DRIVER_LABEL}: a live() / holdsOpen() agent requires meta.liveDriven:true; ` +
-            'the static build cannot drive it.',
-        )
-      }
-      return {
-        agent: new FakeRunner(fps).script({
-          events: emitsTexts(spec.agent).map(infoLine),
-          structuredOutput: 'done',
-        }),
-      }
-    },
-  })
 }
 
 export const fullHostFakeAgentDriver: Driver<FullHostApp> = {

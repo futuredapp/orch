@@ -36,30 +36,35 @@ function realRunner(which: 'claude' | 'codex'): Runner {
 
 async function build(_meta: ScenarioMeta<readonly DriverName[]>): Promise<FullHostApp> {
   const fixture = await createRealTmuxFixture({ env: {} })
-  // No agentProcessService override → the agent runs on the fixture's real
-  // BunProcessService, so the actual CLI binary spawns.
-  const harness = await mountTmuxHost(fixture, {})
+  try {
+    // No agentProcessService override → the agent runs on the fixture's real
+    // BunProcessService, so the actual CLI binary spawns.
+    const harness = await mountTmuxHost(fixture, {})
 
-  return createStaticFullHostApp({
-    fixture,
-    harness,
-    label: DRIVER_LABEL,
-    agentForStep: (_name, _index, spec: FullHostSpec) => {
-      if (spec.agent?.kind !== 'real-agent') {
-        throw new Error(
-          `${DRIVER_LABEL}: launch spec's agent must be claudeAgent(...)/codexAgent(...); got ` +
-            `${spec.agent?.kind ?? 'undefined'}.`,
-        )
-      }
-      return { agent: realRunner(spec.agent.runner), prompt: spec.agent.prompt }
-    },
-  })
+    return createStaticFullHostApp({
+      fixture,
+      harness,
+      label: DRIVER_LABEL,
+      agentForStep: (_name, _index, spec: FullHostSpec) => {
+        if (spec.agent?.kind !== 'real-agent') {
+          throw new Error(
+            `${DRIVER_LABEL}: launch spec's agent must be claudeAgent(...)/codexAgent(...); got ` +
+              `${spec.agent?.kind ?? 'undefined'}.`,
+          )
+        }
+        return { agent: realRunner(spec.agent.runner), prompt: spec.agent.prompt }
+      },
+    })
+  } catch (err) {
+    await fixture.dispose()
+    throw err
+  }
 }
 
 export const fullHostRealAgentDriver: Driver<FullHostApp> = {
   build,
-  // Reachable only when the E2E gate is on AND a real CLI is present. Either
-  // runner satisfies the predicate; the scenario picks which via the spec.
-  skip: () => !(canRunRealTmuxE2E('claude') || canRunRealTmuxE2E('codex')),
+  // Reachable only when the E2E gate is on AND claude is on PATH. All current
+  // real-agent scenarios use claudeAgent; a Codex-only machine must skip.
+  skip: () => !canRunRealTmuxE2E('claude'),
   timeout: REAL_AGENT_TIMEOUT_MS,
 }

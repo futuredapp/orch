@@ -22,6 +22,7 @@ import type {
   StepRow,
   StepsViewState,
 } from '../../../src/hosts/two-pane/steps-view/index.ts'
+import { retryUntil } from '../../_support/retry.ts'
 import type { DriverName, ModelApp, ModelSpec } from '../app-surfaces.ts'
 import { LeftPane } from '../panes/left-pane.ts'
 import { CARET_ECHO_TOKENS, type PaneDriver } from '../panes/pane-driver.ts'
@@ -29,6 +30,7 @@ import type { ScenarioMeta } from '../scenario.ts'
 import {
   ARROW_DOWN,
   ARROW_UP,
+  computeArrowDirection,
   ESCAPE,
   frameHasColoredText,
   glyphChar,
@@ -117,14 +119,14 @@ function createModelApp(): ModelApp {
       const frame = stripAnsi(instance.lastFrame() ?? '')
       const current =
         previewCursorStepName(frame, stepNames) ?? highlightedStepName(frame, stepNames)
-      if (current === step) return
+      const direction = computeArrowDirection(current, step, stepNames)
+      if (direction === 'done') return
       if (budget-- <= 0) {
         throw new Error(
           `model driver: browseTo(${JSON.stringify(step)}) stuck at ${JSON.stringify(current)}`,
         )
       }
-      const currentIdx = current === undefined ? -1 : stepNames.indexOf(current)
-      instance.stdin.write(currentIdx < target ? ARROW_DOWN : ARROW_UP)
+      instance.stdin.write(direction === 'down' ? ARROW_DOWN : ARROW_UP)
       await new Promise((r) => setTimeout(r, 15))
     }
   }
@@ -174,23 +176,27 @@ function createModelApp(): ModelApp {
       // `?` toggles, so resending is safe ONLY while the overlay is still hidden
       // (a dropped first keypress). Re-read before each resend; never blind-spam.
       const instance = requireUi()
-      for (let i = 0; i < 5; i++) {
-        if (stripAnsi(instance.lastFrame() ?? '').includes(marker)) break
-        instance.stdin.write('?')
-        await new Promise((r) => setTimeout(r, 20))
-      }
-      await waitForFrame(instance, (f) => f.includes(marker), strip)
+      const matched = await retryUntil(
+        () => {
+          instance.stdin.write('?')
+        },
+        () => stripAnsi(instance.lastFrame() ?? '').includes(marker),
+        { maxAttempts: 5, perAttemptMs: 20 },
+      )
+      if (!matched) await waitForFrame(instance, (f) => f.includes(marker), strip)
     },
     async closeHelp(marker): Promise<void> {
       // Esc on a closed overlay is a no-op (or banner-dismiss), never a re-open,
       // so it is safe to resend until the overlay disappears.
       const instance = requireUi()
-      for (let i = 0; i < 5; i++) {
-        if (!stripAnsi(instance.lastFrame() ?? '').includes(marker)) break
-        instance.stdin.write(ESCAPE)
-        await new Promise((r) => setTimeout(r, 20))
-      }
-      await waitForFrame(instance, (f) => !f.includes(marker), strip)
+      const matched = await retryUntil(
+        () => {
+          instance.stdin.write(ESCAPE)
+        },
+        () => !stripAnsi(instance.lastFrame() ?? '').includes(marker),
+        { maxAttempts: 5, perAttemptMs: 20 },
+      )
+      if (!matched) await waitForFrame(instance, (f) => !f.includes(marker), strip)
     },
     async scrollToOldest(): Promise<void> {
       const oldest = stepNames[0]
@@ -209,6 +215,9 @@ function createModelApp(): ModelApp {
     async assertAbsent(text): Promise<void> {
       await waitForFrame(requireUi(), (f) => !f.includes(text), strip)
     },
+    // Catches Ink rendering escape leakage (Ink accidentally encoding escape sequences
+    // as literal text like "^[", "^M"). This is NOT a pty/tmux escape-doubling check —
+    // pty doubling requires a real TTY and must run on a screen or full-host driver (spec §5.7).
     async assertNoCaretEcho(): Promise<void> {
       const frame = stripAnsi(requireUi().lastFrame() ?? '')
       const offender = CARET_ECHO_TOKENS.find((token) => frame.includes(token))

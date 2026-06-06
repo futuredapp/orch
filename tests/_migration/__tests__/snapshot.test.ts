@@ -28,8 +28,8 @@ describe('generateBaseline classifies every path by an auditable rule', () => {
     }
   })
 
-  it('classifies a tests/helpers file as a helper', () => {
-    const helper = baseline.files.find((f) => f.path === 'tests/helpers/make-step-entry.ts')
+  it('classifies a tests/_support file as a helper', () => {
+    const helper = baseline.files.find((f) => f.path === 'tests/_support/make-step-entry.ts')
 
     expect(helper?.classification).toBe('helper')
   })

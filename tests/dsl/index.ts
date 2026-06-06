@@ -14,6 +14,7 @@ export type {
   FullHostSpec,
   LaunchSpec,
   LifecycleApp,
+  LifecyclePaneView,
   LifecycleSpec,
   LiveAgentControl,
   ModelApp,

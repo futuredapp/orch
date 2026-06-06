@@ -64,7 +64,12 @@ function createScreenApp(fixture: SinglePaneStepsFixture): ScreenApp {
 
 async function build(_meta: ScenarioMeta<readonly DriverName[]>): Promise<ScreenApp> {
   const fixture = await createSinglePaneStepsFixture()
-  return createScreenApp(fixture)
+  try {
+    return createScreenApp(fixture)
+  } catch (err) {
+    await fixture.dispose()
+    throw err
+  }
 }
 
 export const screenDriver: Driver<ScreenApp> = {

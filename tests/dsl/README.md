@@ -15,7 +15,7 @@ Driver     one per fidelity; owns gating, timeouts, teardown, predictability rul
 System     src/hosts/two-pane/** under test, at the chosen fidelity
 ```
 
-Scenario files import **only** from `tests-new/dsl/index.ts`. They never name a
+Scenario files import **only** from `tests/dsl/index.ts`. They never name a
 driver type, touch a `PaneDriver`, or mention `canRunRealTmux`/timeouts.
 
 ## The chrome/content rule (D10)

@@ -15,19 +15,19 @@ src/runners/<name>/
 ├── <name>-runner.ts      # buildCommand, parseEvents, extractStructuredOutput
 └── <name>-events.ts      # (optional) stream parser if needed
 
-tests-new/unit/runners/<name>/
+tests/unit/runners/<name>/
 └── <name>-runner.test.ts
 
-tests-new/integration/
+tests/integration/
 ├── <name>-runner-mocked-process.test.ts      # runs on every gate
 └── <name>-runner-real.integration.test.ts    # auto-skipped if CLI missing
 
-tests-new/_support/fixtures/<name>/
+tests/_support/fixtures/<name>/
 ├── simple-success.jsonl                      # canned transcript for unit tests
 └── with-structured-output.jsonl              # (if runner supports structured output)
 ```
 
-> **Test home & shape.** Runner tests follow the unchanged three-layer model (`unit` / `integration` / `e2e`) — see [`docs/testing-strategy.md`](../../../docs/testing-strategy.md). Their **target** home is `tests-new/` (mirroring `src/`); during the repo-wide test migration the non-two-pane tree is still relocating, so if `tests/integration/` is where the other runner tests currently live, it is also fine to add yours there and let parent U11 relocate them as a batch. **Raw CLI parser fixtures stay at the runner layer** (the `.jsonl` transcripts above) — they are *not* replaced by two-pane `recorded-agent` cassettes, which capture orch's normalised `RunnerEvent` stream, not raw CLI stdout.
+> **Test home & shape.** Runner tests follow the unchanged three-layer model (`unit` / `integration` / `e2e`) — see [`docs/testing-strategy.md`](../../../docs/testing-strategy.md). Tests live under `tests/` (mirroring `src/`). **Raw CLI parser fixtures stay at the runner layer** (the `.jsonl` transcripts above) — they are *not* replaced by two-pane `recorded-agent` cassettes, which capture orch's normalised `RunnerEvent` stream, not raw CLI stdout.
 
 ## The Runner interface
 
@@ -133,18 +133,18 @@ export const myagent = defineRunner({
 
 ## Required tests (non-negotiable)
 
-1. **Unit test** (`tests-new/unit/runners/myagent/myagent-runner.test.ts`):
+1. **Unit test** (`tests/unit/runners/myagent/myagent-runner.test.ts`):
    - Asserts `buildCommand` produces the expected argv/env for a known context.
    - Asserts `parseEvents` recognises every line shape the runner cares about.
    - Asserts `parseEvents` returns `null` for unrecognised lines.
    - Asserts `extractStructuredOutput` throws with a clear error when unsupported.
 
-2. **Mocked integration test** (`tests-new/integration/myagent-runner-mocked-process.test.ts`):
-   - Uses `FakeProcessService` scripted from `tests-new/_support/fixtures/myagent/simple-success.jsonl`.
+2. **Mocked integration test** (`tests/integration/myagent-runner-mocked-process.test.ts`):
+   - Uses `FakeProcessService` scripted from `tests/_support/fixtures/myagent/simple-success.jsonl`.
    - Runs the full runner lifecycle and asserts the final result.
    - This is the test that catches "I parsed one line wrong" bugs — it MUST use a real fixture file, not an inline string.
 
-3. **Real integration test** (`tests-new/integration/myagent-runner-real.integration.test.ts`):
+3. **Real integration test** (`tests/integration/myagent-runner-real.integration.test.ts`):
    - Starts with a guard:
      ```ts
      if (!Bun.which('myagent')) {

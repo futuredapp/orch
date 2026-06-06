@@ -72,6 +72,15 @@ const fail = (exitCode: number, stderr: string, prefix: string): TmuxCommandErro
   return new TmuxCommandError(exitCode, redacted, `${prefix} (exit ${exitCode}): ${redacted}`)
 }
 
+// tmux's `-e KEY=VAL` argument parser rejects values longer than ~16 KB with
+// "command too long". Values beyond this threshold are silently omitted from
+// the flags — the subprocess still inherits them from the tmux server's own
+// environment (which is a copy of the spawning process's env), so the
+// effective environment is unchanged. Only overrides that DIFFER from the
+// server's env need to be in the flags; passthrough-policy vars that exceed
+// the limit are already in the inherited env at the same value.
+const TMUX_MAX_ENV_VAL_LEN = 15_000
+
 const appendEnvFlags = (
   argv: string[],
   env: Readonly<Record<string, string>>,
@@ -83,6 +92,7 @@ const appendEnvFlags = (
     if (k.includes('=') || k.includes('\n')) {
       throw new Error(`${prefix}: env key ${JSON.stringify(k)} contains '=' or newline`)
     }
+    if (v.length > TMUX_MAX_ENV_VAL_LEN) continue
     argv.push('-e', `${k}=${v}`)
   }
 }
@@ -485,17 +495,7 @@ export class RealTmuxService implements TmuxService {
     // any running process (the default `cat` placeholder) before respawn.
     const argv: string[] = ['tmux', '-L', opts.socket, 'respawn-pane']
     if (opts.killRunning) argv.push('-k')
-    if (opts.env !== undefined) {
-      for (const [k, v] of Object.entries(opts.env)) {
-        // `=` and newline in the key would split or terminate the `-e KEY=VAL`
-        // argv that tmux parses. Values pass through verbatim — tmux handles
-        // them, including `=` inside the value (only the first split matters).
-        if (k.includes('=') || k.includes('\n')) {
-          throw new Error(`respawnPane: env key ${JSON.stringify(k)} contains '=' or newline`)
-        }
-        argv.push('-e', `${k}=${v}`)
-      }
-    }
+    if (opts.env !== undefined) appendEnvFlags(argv, opts.env, 'respawnPane')
     if (opts.cwd !== undefined) argv.push('-c', opts.cwd)
     argv.push('-t', opts.target, ...opts.argv)
 

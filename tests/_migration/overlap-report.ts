@@ -24,8 +24,8 @@ import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import * as ts from 'typescript'
 
-const TESTS_NEW_ROOT = 'tests-new'
-const BASELINE_PATH = join('tests-new', '_migration', 'baseline.json')
+const TESTS_ROOT = 'tests'
+const BASELINE_PATH = join('tests', '_migration', 'baseline.json')
 
 export interface ScenarioRef {
   readonly file: string
@@ -183,7 +183,7 @@ function walk(dir: string): string[] {
   return out
 }
 
-export function collectScenarios(root: string = TESTS_NEW_ROOT): readonly ScenarioRef[] {
+export function collectScenarios(root: string = TESTS_ROOT): readonly ScenarioRef[] {
   const refs: ScenarioRef[] = []
   for (const file of walk(root)) {
     const rel = file.split('\\').join('/')

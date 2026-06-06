@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test'
 import { makeStepEntry } from '@orch/test/make-step-entry.ts'
 import { FakeFsService, type FsService, type Path, path } from '../../../src/services/index.ts'
 import { FileStateStore, type RunId, runId, type StepEntry } from '../../../src/state/index.ts'
+import { DelegatingFsService } from '../../_support/delegating-fs-service.ts'
 
 const rid = (s: string): RunId => runId(s)
 
@@ -20,61 +21,16 @@ const makeEntry = (overrides: Partial<StepEntry> = {}): StepEntry => makeStepEnt
  * observe tmp-file naming without mocking internal modules. Delegates reads
  * and rename to an underlying FakeFsService.
  */
-class RecordingFsService implements FsService {
-  readonly inner: FakeFsService
+class RecordingFsService extends DelegatingFsService<FakeFsService> {
   readonly writes: Path[] = []
 
   constructor() {
-    this.inner = new FakeFsService()
+    super(new FakeFsService())
   }
 
-  readFile(p: Path): Promise<string> {
-    return this.inner.readFile(p)
-  }
-
-  async writeFile(p: Path, data: string): Promise<void> {
+  override async writeFile(p: Path, data: string): Promise<void> {
     this.writes.push(p)
     await this.inner.writeFile(p, data)
-  }
-
-  appendFile(p: Path, data: string): Promise<void> {
-    return this.inner.appendFile(p, data)
-  }
-
-  rename(from: Path, to: Path): Promise<void> {
-    return this.inner.rename(from, to)
-  }
-
-  mkdir(p: Path, opts?: { readonly recursive?: boolean }): Promise<void> {
-    return this.inner.mkdir(p, opts)
-  }
-
-  exists(p: Path): Promise<boolean> {
-    return this.inner.exists(p)
-  }
-
-  glob(pattern: string, opts?: { readonly cwd?: Path }): AsyncIterable<Path> {
-    return this.inner.glob(pattern, opts)
-  }
-
-  readDir(p: Path): Promise<readonly Path[]> {
-    return this.inner.readDir(p)
-  }
-
-  stat(p: Path): Promise<{ readonly size: number; readonly mtimeMs: number }> {
-    return this.inner.stat(p)
-  }
-
-  remove(p: Path): Promise<void> {
-    return this.inner.remove(p)
-  }
-
-  tempDir(prefix: string): Promise<Path> {
-    return this.inner.tempDir(prefix)
-  }
-
-  symlink(target: Path, linkPath: Path): Promise<void> {
-    return this.inner.symlink(target, linkPath)
   }
 }
 
@@ -156,7 +112,7 @@ describe('FileStateStore', () => {
     const store = new FileStateStore({ fs: fakeFs, basePath: BASE })
     const id = rid('r-2026-04-10-458000-q8')
 
-    expect(store.loadRun(id)).rejects.toThrow()
+    await expect(store.loadRun(id)).rejects.toThrow()
   })
 
   it('atomic write leaves original state untouched when rename fails', async () => {
@@ -250,7 +206,7 @@ describe('FileStateStore', () => {
     const { store } = makeStore()
     const id = rid('r-2026-04-10-458000-q8')
 
-    expect(store.setStatus(id, 'completed')).rejects.toThrow('does not exist')
+    await expect(store.setStatus(id, 'completed')).rejects.toThrow('does not exist')
   })
 
   it('loadRun rethrows EACCES errors instead of returning undefined', async () => {

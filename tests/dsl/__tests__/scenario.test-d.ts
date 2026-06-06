@@ -88,4 +88,24 @@ export async function _scenarioTypeTests(): Promise<void> {
       await app.system.exitedNormally()
     },
   )
+
+  // --- accepted: lifecycle panes expose assertFocused ----------------------
+  scenario(
+    { name: 'pane-focus-ok', drivers: ['lifecycle'], feature: 'f', oldTestRefs: [] },
+    async (app) => {
+      await app.leftPane.assertFocused()
+      await app.rightPane.assertFocused()
+    },
+  )
+
+  // --- rejected: lifecycle panes do not expose the full LeftPane surface ---
+  // LifecyclePaneView has only `assertFocused`; assertShowsContent is LeftPane-only.
+  // §6.1: unsupported pane actions must be a compile error, not a runtime surprise.
+  scenario(
+    { name: 'no-pane-content', drivers: ['lifecycle'], feature: 'f', oldTestRefs: [] },
+    async (app) => {
+      // @ts-expect-error LifecyclePaneView has no `assertShowsContent` — lifecycle panes are focus-only
+      await app.leftPane.assertShowsContent('x')
+    },
+  )
 }

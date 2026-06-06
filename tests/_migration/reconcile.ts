@@ -24,15 +24,15 @@
 // It must NOT `import` a test/scenario file — that would register/execute Bun
 // tests (parent §5.3). It reads source text and parses the AST instead.
 //
-// Run: `bun run tests-new/_migration/reconcile.ts` (exits non-zero on findings).
+// Run: `bun run tests/_migration/reconcile.ts` (exits non-zero on findings).
 
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import * as ts from 'typescript'
 import type { Baseline, BaselineEntry } from './snapshot.ts'
 
-const BASELINE_PATH = join('tests-new', '_migration', 'baseline.json')
-const LEDGER_PATH = join('tests-new', '_migration', 'ledger.md')
+const BASELINE_PATH = join('tests', '_migration', 'baseline.json')
+const LEDGER_PATH = join('tests', '_migration', 'ledger.md')
 
 // --- group-B surface (the Phase-14 closeout scope) --------------------------
 // Computed over the WHOLE baseline; this predicate only labels which findings are

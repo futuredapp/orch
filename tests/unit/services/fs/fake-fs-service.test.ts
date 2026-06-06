@@ -59,7 +59,7 @@ describe('FakeFsService', () => {
   it('throws when mkdir is called non-recursively on a missing parent', async () => {
     const fs = new FakeFsService()
 
-    expect(fs.mkdir(path('/a/b/c'))).rejects.toThrow()
+    await expect(fs.mkdir(path('/a/b/c'))).rejects.toThrow()
   })
 
   it('matches glob patterns **/*.json and foo/*.md over the in-memory tree', async () => {

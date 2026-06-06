@@ -18,8 +18,10 @@
 // injected per driver (`screen` → fixture.sendKey; `full-host` → harness.sendKeys).
 
 import type { NamedKey, PaneHandle } from '@orch/test/real-tmux/index.ts'
+import { retryUntil } from '../../_support/retry.ts'
 import { CARET_ECHO_TOKENS, type PaneDriver } from '../panes/pane-driver.ts'
 import {
+  computeArrowDirection,
   frameHasColoredText,
   glyphChar,
   highlightedStepName,
@@ -71,15 +73,15 @@ export function createRealTmuxPaneDriver(deps: RealTmuxPaneDriverDeps): PaneDriv
     for (;;) {
       const frame = await deps.handle.capture()
       const current = cursorName(frame)
-      if (current === step) return
+      const direction = computeArrowDirection(current, step, names)
+      if (direction === 'done') return
       if (budget-- <= 0) {
         throw new Error(
           `${deps.driverLabel}: selectStep(${JSON.stringify(step)}) — cursor stuck at ` +
             `${JSON.stringify(current ?? '(none)')} after exhausting moves.\nFrame:\n${frame}`,
         )
       }
-      const currentIdx = current === undefined ? -1 : names.indexOf(current)
-      await deps.sendKey(currentIdx < target ? 'Down' : 'Up')
+      await deps.sendKey(direction === 'down' ? 'Down' : 'Up')
       // Let the arrow register before re-reading; tolerate a dropped key (the
       // next loop re-captures and resends).
       await deps.handle
@@ -96,13 +98,16 @@ export function createRealTmuxPaneDriver(deps: RealTmuxPaneDriverDeps): PaneDriv
     predicate: (frame: string) => boolean,
   ): Promise<void> {
     const perSend = Math.max(400, Math.floor(deps.assertTimeoutMs / 6))
-    for (let i = 0; i < 6; i++) {
-      const frame = await deps.handle.capture()
-      if (predicate(frame)) return
-      await deps.sendKey(key)
-      await deps.handle.waitFor(predicate, { timeoutMs: perSend }).catch(() => {})
-    }
-    await deps.handle.waitFor(predicate, waitOpts)
+    const matched = await retryUntil(
+      () => deps.sendKey(key),
+      async () => predicate(await deps.handle.capture()),
+      {
+        maxAttempts: 6,
+        perAttemptMs: perSend,
+        waitAfterAttempt: (timeoutMs) => deps.handle.waitFor(predicate, { timeoutMs }),
+      },
+    )
+    if (!matched) await deps.handle.waitFor(predicate, waitOpts)
   }
 
   return {
@@ -172,13 +177,17 @@ export function createRealTmuxPaneDriver(deps: RealTmuxPaneDriverDeps): PaneDriv
       // `?` toggles the overlay, so it is NOT idempotent — resend only while the
       // marker is still absent (a dropped first keypress), never blind-spam.
       const perSend = Math.max(400, Math.floor(deps.assertTimeoutMs / 6))
-      for (let i = 0; i < 6; i++) {
-        const frame = await deps.handle.capture()
-        if (frame.includes(marker)) return
-        await deps.sendKey('?')
-        await deps.handle.waitFor((f) => f.includes(marker), { timeoutMs: perSend }).catch(() => {})
-      }
-      await deps.handle.waitFor((frame) => frame.includes(marker), waitOpts)
+      const predicate = (frame: string): boolean => frame.includes(marker)
+      const matched = await retryUntil(
+        () => deps.sendKey('?'),
+        async () => predicate(await deps.handle.capture()),
+        {
+          maxAttempts: 6,
+          perAttemptMs: perSend,
+          waitAfterAttempt: (timeoutMs) => deps.handle.waitFor(predicate, { timeoutMs }),
+        },
+      )
+      if (!matched) await deps.handle.waitFor(predicate, waitOpts)
     },
     async closeHelp(marker): Promise<void> {
       // `Escape` on a closed overlay is a no-op / banner-dismiss, never a
@@ -199,18 +208,10 @@ export function createRealTmuxPaneDriver(deps: RealTmuxPaneDriverDeps): PaneDriv
     },
     async assertColored(lineNeedle, colorName): Promise<void> {
       // Colour lives in the RAW capture (tmux SGR escapes), so use captureRaw.
-      const deadline = Date.now() + deps.assertTimeoutMs
-      for (;;) {
-        const raw = await deps.handle.captureRaw()
-        if (frameHasColoredText(raw, lineNeedle, colorName)) return
-        if (Date.now() >= deadline) {
-          throw new Error(
-            `${deps.driverLabel}: no '${colorName}' SGR on a line containing ` +
-              `${JSON.stringify(lineNeedle)}.\nRaw frame:\n${raw}`,
-          )
-        }
-        await new Promise((r) => setTimeout(r, 50))
-      }
+      await deps.handle.waitForRaw(
+        (raw) => frameHasColoredText(raw, lineNeedle, colorName),
+        waitOpts,
+      )
     },
     assertAbsent(text): Promise<void> {
       return deps.handle.waitFor((frame) => !frame.includes(text), waitOpts)

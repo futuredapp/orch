@@ -38,6 +38,11 @@ export interface PaneHandle {
    * error containing the last captured frame if `timeoutMs` elapses first.
    */
   waitFor(predicate: (text: string) => boolean, opts?: WaitOptions): Promise<void>
+  /**
+   * Resolves when `predicate(captureRaw())` first returns true. Rejects with an
+   * error containing the last raw frame if `timeoutMs` elapses first.
+   */
+  waitForRaw(predicate: (text: string) => boolean, opts?: WaitOptions): Promise<void>
 }
 
 export interface WaitOptions {
@@ -82,9 +87,12 @@ export function createPaneHandle(deps: CreatePaneHandleDeps): PaneHandle {
     return stripAnsi(raw)
   }
 
-  const waitFor = async (
+  const waitForCapture = async (
+    captureFrame: () => Promise<string>,
     predicate: (text: string) => boolean,
-    opts: WaitOptions = {},
+    opts: WaitOptions,
+    errorPrefix: string,
+    frameLabel: string,
   ): Promise<void> => {
     const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS
     const intervalMs = opts.intervalMs ?? DEFAULT_INTERVAL_MS
@@ -92,17 +100,31 @@ export function createPaneHandle(deps: CreatePaneHandleDeps): PaneHandle {
 
     let lastFrame = ''
     while (Date.now() < deadline) {
-      lastFrame = await capture()
+      lastFrame = await captureFrame()
       if (predicate(lastFrame)) return
       await new Promise((resolve) => setTimeout(resolve, intervalMs))
     }
-    lastFrame = await capture()
+    lastFrame = await captureFrame()
     if (predicate(lastFrame)) return
 
     throw new Error(
-      `waitFor(${label}): predicate did not match within ${timeoutMs}ms.\n` +
-        `Last captured frame:\n${lastFrame}`,
+      `${errorPrefix}(${label}): predicate did not match within ${timeoutMs}ms.\n` +
+        `Last captured ${frameLabel}:\n${lastFrame}`,
     )
+  }
+
+  const waitFor = async (
+    predicate: (text: string) => boolean,
+    opts: WaitOptions = {},
+  ): Promise<void> => {
+    await waitForCapture(capture, predicate, opts, 'waitFor', 'frame')
+  }
+
+  const waitForRaw = async (
+    predicate: (text: string) => boolean,
+    opts: WaitOptions = {},
+  ): Promise<void> => {
+    await waitForCapture(captureRaw, predicate, opts, 'waitForRaw', 'raw frame')
   }
 
   const waitForText = async (needle: string, opts?: WaitOptions): Promise<void> => {
@@ -126,5 +148,6 @@ export function createPaneHandle(deps: CreatePaneHandleDeps): PaneHandle {
     captureRaw,
     waitForText,
     waitFor,
+    waitForRaw,
   }
 }

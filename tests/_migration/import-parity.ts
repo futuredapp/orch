@@ -26,7 +26,7 @@ import { dirname, join, resolve } from 'node:path'
 import * as ts from 'typescript'
 
 const REPO_ROOT = resolve(dirname(new URL(import.meta.url).pathname), '..', '..')
-const MAP_PATH = join('tests-new', '_migration', 'relocation-map.json')
+const MAP_PATH = join('tests', '_migration', 'relocation-map.json')
 
 // tsconfig path aliases that point at on-disk locations (kept in sync with
 // tsconfig.json `paths`). Each maps an `@orch/<x>/` prefix to a repo-relative dir.
@@ -36,7 +36,7 @@ const ALIASES: ReadonlyArray<readonly [string, string]> = [
   ['@orch/services/', 'src/services/'],
   ['@orch/state/', 'src/state/'],
   ['@orch/validators/', 'src/validators/'],
-  ['@orch/test/', 'tests-new/_support/'],
+  ['@orch/test/', 'tests/_support/'],
 ]
 
 export interface ImportBinding {
@@ -162,13 +162,6 @@ export function checkParity(
   }
 
   for (const b of newBindings) {
-    if (b.target.startsWith('tests/') && !b.target.startsWith('tests-new/')) {
-      violations.push({
-        kind: 'cross-tree',
-        file: newFile.path,
-        detail: `imports across the tree boundary into tests/: '${b.specifier}'`,
-      })
-    }
     if (!exists(b.target)) {
       violations.push({
         kind: 'resolution',
@@ -203,6 +196,21 @@ export function checkMap(
 ): readonly ParityViolation[] {
   const out: ParityViolation[] = []
   for (const pair of pairs) {
+    if (!exists(pair.old)) {
+      // Old file was moved to a different path or deleted — parity cannot be verified.
+      // Check resolution only for the new file.
+      const newBindings = parseImports(read(pair.new), pair.new, dirOf(pair.new))
+      for (const b of newBindings) {
+        if (!exists(b.target)) {
+          out.push({
+            kind: 'resolution',
+            file: pair.new,
+            detail: `unresolved import '${b.specifier}' → ${b.target}`,
+          })
+        }
+      }
+      continue
+    }
     out.push(
       ...checkParity(
         { path: pair.old, source: read(pair.old) },
@@ -233,6 +241,12 @@ export function renderViolations(
 
 if (import.meta.main) {
   const pairs = loadRelocationMap()
+  if (pairs.length === 0) {
+    process.stderr.write(
+      'import-parity: relocation map is empty or missing — this is a false-green signal\n',
+    )
+    process.exit(1)
+  }
   const violations = checkMap(pairs)
   process.stdout.write(`${renderViolations(pairs, violations)}\n`)
   process.exit(violations.length > 0 ? 1 : 0)

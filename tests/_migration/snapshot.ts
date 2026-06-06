@@ -11,7 +11,7 @@
 // It must NOT `import` test files (that would register/execute Bun tests —
 // parent §5.3): it reads source text and parses the TypeScript AST instead.
 //
-// Run as a script to (re)write the artifact: `bun run tests-new/_migration/snapshot.ts`.
+// Run as a script to (re)write the artifact: `bun run tests/_migration/snapshot.ts`.
 
 import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -52,8 +52,8 @@ function classify(relPath: string): { classification: Classification; rule: stri
   if (relPath.endsWith('.test.ts') || relPath.endsWith('.test.tsx')) {
     return { classification: 'test', rule: 'ext:.test.ts(x)' }
   }
-  if (relPath.startsWith('tests/helpers/'))
-    return { classification: 'helper', rule: 'dir:tests/helpers' }
+  if (relPath.startsWith('tests/_support/'))
+    return { classification: 'helper', rule: 'dir:tests/_support' }
   if (relPath.startsWith('tests/fixtures/')) {
     return { classification: 'fixture', rule: 'dir:tests/fixtures' }
   }

@@ -13,7 +13,7 @@ const FIXTURE_DISK = new Set<string>([
   'src/core/step.ts',
   'src/core/types.ts',
   'src/core/workflow.ts',
-  'tests-new/_support/fake-host.ts',
+  'tests/_support/fake-host.ts',
   'tests/helpers/fake-host.ts',
 ])
 const existsOnFixtureDisk = (p: string): boolean => FIXTURE_DISK.has(p)
@@ -37,9 +37,9 @@ describe('parseImports + srcSymbolSet', () => {
 })
 
 describe('resolveSpecifier', () => {
-  it('maps the @orch/test alias to tests-new/_support', () => {
-    expect(resolveSpecifier('@orch/test/fake-host.ts', 'tests-new/unit/core')).toBe(
-      'tests-new/_support/fake-host.ts',
+  it('maps the @orch/test alias to tests/_support', () => {
+    expect(resolveSpecifier('@orch/test/fake-host.ts', 'tests/unit/core')).toBe(
+      'tests/_support/fake-host.ts',
     )
   })
 
@@ -111,20 +111,20 @@ describe('checkParity — R10: a wrong ../ count', () => {
   })
 })
 
-describe('checkParity — D13: the cross-tree ban', () => {
-  it('flags a new file that still imports anything under tests/', () => {
+describe('checkParity — D13: the cross-tree ban (removed post-migration)', () => {
+  it('no longer flags imports from tests/ since both trees are now tests/', () => {
     const oldFile = {
       path: 'tests/unit/core/x.test.ts',
       source: "import { createFakeHost } from '../../helpers/fake-host.ts'",
     }
     const newFile = {
-      path: 'tests-new/unit/core/x.test.ts',
-      source: "import { createFakeHost } from '../../../tests/helpers/fake-host.ts'",
+      path: 'tests/unit/core/x.test.ts',
+      source: "import { createFakeHost } from '../../helpers/fake-host.ts'",
     }
 
     const violations = checkParity(oldFile, newFile, existsOnFixtureDisk)
 
-    expect(violations.some((v) => v.kind === 'cross-tree')).toBe(true)
+    expect(violations.some((v) => v.kind === 'cross-tree')).toBe(false)
   })
 })
 

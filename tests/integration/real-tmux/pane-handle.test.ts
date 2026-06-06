@@ -1,9 +1,10 @@
 // triage: keep — U2 self-tests for PaneHandle, sendKeys, and runWorkflow.
 //
 // Pins the surface every Tier 1 / Tier 4 test reads from: capture() strips
-// ANSI, captureRaw() preserves it, waitForText resolves before its timeout
-// and throws with the last frame after it, named keys are sent as keystrokes
-// (not literal text), and runWorkflow invokes the supplied agent slot.
+// ANSI, captureRaw() preserves it, waitForText/waitFor/waitForRaw resolve
+// before their timeout and throw with the last frame after it, named keys are
+// sent as keystrokes (not literal text), and runWorkflow invokes the supplied
+// agent slot.
 
 import { afterEach, describe, expect, it } from 'bun:test'
 import {
@@ -171,6 +172,27 @@ describe.skipIf(!tmuxAvailable)('PaneHandle.waitFor predicate shape', () => {
         intervalMs: 25,
       })
       expect(Date.now() - start).toBeLessThan(1000)
+    },
+    REAL_TMUX_TEST_TIMEOUT_MS,
+  )
+
+  it(
+    'waitForRaw rejects with the last raw frame when the predicate never matches',
+    async () => {
+      const fixture = await createRealTmuxFixture({ env: {} })
+      fixturesToDispose.push(fixture)
+      const harness = await mountTmuxHost(fixture, { disableStepsView: true })
+      harnessesToTeardown.push(harness)
+
+      let thrown: unknown
+      try {
+        await harness.right.waitForRaw(() => false, { timeoutMs: 150 })
+      } catch (err) {
+        thrown = err
+      }
+      expect(thrown).toBeInstanceOf(Error)
+      expect((thrown as Error).message).toContain('waitForRaw')
+      expect((thrown as Error).message).toContain('Last captured raw frame')
     },
     REAL_TMUX_TEST_TIMEOUT_MS,
   )

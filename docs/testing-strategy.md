@@ -44,10 +44,10 @@ The **triage rule** is the north star and the migration pruning filter:
 
 ## Writing a scenario
 
-`scenario(meta, body)` expands to **one `it()` per listed driver**, each gated/timed/torn-down by that driver. The scenario file never mentions `canRunRealTmux`, timeouts, or `afterEach`. The DSL barrel (`tests-new/dsl/index.ts`) is the **only** import surface — scenarios never name a driver or touch tmux.
+`scenario(meta, body)` expands to **one `it()` per listed driver**, each gated/timed/torn-down by that driver. The scenario file never mentions `canRunRealTmux`, timeouts, or `afterEach`. The DSL barrel (`tests/dsl/index.ts`) is the **only** import surface — scenarios never name a driver or touch tmux.
 
 ```ts
-// tests-new/model/follow-live--returns-to-running-step.test.ts
+// tests/model/follow-live--returns-to-running-step.test.ts
 import { scenario } from '../dsl/index.ts'
 
 scenario({
@@ -69,12 +69,12 @@ scenario({
 })
 ```
 
-The typed `app` surface is **driver-specific**: a `['model']` scenario cannot call `app.rightPane`; a `['screen']` scenario *can* call `app.resize`; a `['lifecycle']` scenario *can* call `app.press`/`app.signal`; a `['model','screen']` scenario is typed to only the **shared** `leftPane` surface. Unsupported actions are a **compile error** — `tests-new/` is in the `tsconfig` `include`, so `bun run typecheck` enforces it. The `?.` idiom is therefore **banned in scenarios**: reaching for a key absent on the chosen driver signals the wrong category.
+The typed `app` surface is **driver-specific**: a `['model']` scenario cannot call `app.rightPane`; a `['screen']` scenario *can* call `app.resize`; a `['lifecycle']` scenario *can* call `app.press`/`app.signal`; a `['model','screen']` scenario is typed to only the **shared** `leftPane` surface. Unsupported actions are a **compile error** — `tests/` is in the `tsconfig` `include`, so `bun run typecheck` enforces it. The `?.` idiom is therefore **banned in scenarios**: reaching for a key absent on the chosen driver signals the wrong category.
 
 The full-host **agent slot** is declared with a fidelity-independent spec: `emits(...texts)` (static), `live()`/`holdsOpen()` (the scriptedFake live submode, requires `liveDriven: true`), `fromCassette(file)` (recorded replay), `claudeAgent(prompt)`/`codexAgent(prompt)` (the real binary).
 
 ```ts
-// tests-new/full-host/recorded-agent/claude-plan-then-work.test.ts
+// tests/full-host/recorded-agent/claude-plan-then-work.test.ts
 import { fromCassette, scenario } from '../../dsl/index.ts'
 
 scenario({
@@ -92,7 +92,7 @@ scenario({
 `tmux-argv` is **not** a `scenario()` — it is a plain unit test of `RealTmuxService` argv against `FakeProcessService`, living in the taxonomy as a category that runs at unit speed:
 
 ```ts
-// tests-new/tmux-argv/send-keys--escapes-metacharacters.test.ts
+// tests/tmux-argv/send-keys--escapes-metacharacters.test.ts
 import { expect, it } from 'bun:test'
 import { FakeProcessService } from '../../src/services/process/fake-process-service.ts'
 import { RealTmuxService } from '../../src/services/tmux/index.ts'
@@ -107,7 +107,7 @@ it('send-keys passes a metacharacter payload literally via -l', async () => {
 
 ## Drivers and the registry (no central switch)
 
-A driver implements `{ build(meta), skip(), timeout }` and is added with a new file + one line in `tests-new/dsl/drivers/registry.ts`. The full set is live: `model`, `screen`, `full-host:fake-agent`, `full-host:recorded-agent`, `full-host:real-agent`, `lifecycle`. **All hard-won real-tmux predictability rules live inside the driver's `build`/`teardown`** (unique socket per run, the timeout constants, hook-signal + liveness backstop, server reaping, puppet self-reap, poll-and-resend) — they are requirements on driver implementations, never on scenario authors. The drivers that own them ship with driver-level regression tests (teardown/no-orphans, timeout/polling) under `tests-new/dsl/drivers/__tests__/`.
+A driver implements `{ build(meta), skip(), timeout }` and is added with a new file + one line in `tests/dsl/drivers/registry.ts`. The full set is live: `model`, `screen`, `full-host:fake-agent`, `full-host:recorded-agent`, `full-host:real-agent`, `lifecycle`. **All hard-won real-tmux predictability rules live inside the driver's `build`/`teardown`** (unique socket per run, the timeout constants, hook-signal + liveness backstop, server reaping, puppet self-reap, poll-and-resend) — they are requirements on driver implementations, never on scenario authors. The drivers that own them ship with driver-level regression tests (teardown/no-orphans, timeout/polling) under `tests/dsl/drivers/__tests__/`.
 
 The recorded and real full-host drivers **reuse** the same static full-host engine (`createStaticFullHostApp`); only the agent slot's `Runner` differs (a cassette-fed `FakeRunner`, or the real `ClaudeRunner`/`CodexRunner`). The swap *is* the promotion — there is no copy-paste.
 
@@ -116,9 +116,9 @@ The recorded and real full-host drivers **reuse** the same static full-host engi
 Expected chrome (footer hints, glyphs, labels) lives as a **co-located constant on the Pane Object**, asserted via a semantic method — **never** inline in a scenario, **never** imported from `src/`.
 
 ```ts
-// tests-new/dsl/panes/left-pane.ts
+// tests/dsl/panes/left-pane.ts
 export class LeftPane {
-  private static readonly TEXT = { quitHint: 'q quit', followHint: 'f follow' } as const
+  private static readonly TEXT = { quitHint: 'q quit', followHint: 'f live' } as const
   constructor(private readonly driver: PaneDriver) {}
 
   assertQuitHintVisible() { return this.driver.assertBottomText(LeftPane.TEXT.quitHint, { count: 1 }) }
@@ -151,22 +151,22 @@ A cassette captures the Runner's **normalised `RunnerEvent` stream** (via the ex
 Re-record when a cassette drifts (runs a real run once through the `onEvent` tap, then `--verify` replays it CLI-free):
 
 ```sh
-bun run tests-new/full-host/recorded-agent/record.ts --scenario claude-plan-then-work --runner claude --prompt '…'
-bun run tests-new/full-host/recorded-agent/record.ts --scenario claude-plan-then-work --verify
+bun run tests/full-host/recorded-agent/record.ts --scenario claude-plan-then-work --runner claude --prompt '…'
+bun run tests/full-host/recorded-agent/record.ts --scenario claude-plan-then-work --verify
 ```
 
 ## Predictability rules for real-tmux drivers
 
 The tmux-booting drivers (`screen`, `full-host`, `lifecycle`) round-trip a `pane-died` hook, so they are the only place flakiness can enter. These rules live **inside the drivers** now; they were hardened after the two-pane-sequential-runs flake (2026-05-26) and the `nav.f-snaps` flake (2026-05-29):
 
-1. **Unique socket per run** via `createRealTmuxFixture` (`tests-new/_support/real-tmux/`) — allocates `orch-<runId>`, wires the SIGINT/SIGTERM stale-socket reaper, asserts you are not nested inside tmux, removes the socket on `dispose()`.
+1. **Unique socket per run** via `createRealTmuxFixture` (`tests/_support/real-tmux/`) — allocates `orch-<runId>`, wires the SIGINT/SIGTERM stale-socket reaper, asserts you are not nested inside tmux, removes the socket on `dispose()`.
 2. **Use the real-tmux budgets, not Bun's 5s default** — `REAL_TMUX_TEST_TIMEOUT_MS` for the test, `REAL_TMUX_ASSERT_TIMEOUT_MS` for poll/assert waits. Both are distinct knobs; neither may be dropped.
 3. **No real CLI except in `full-host:real-agent`** — the agent slot is a `FakeRunner` everywhere else.
 4. **Interactive completion is hook-signal + liveness backstop**, not a bare wait — a missed `pane-died` hook resolves in ~1s via the poll, logged as `interactive-wait-hook-missed`.
 5. **Reap the tmux server, not just the process** — a subprocess-spawned run boots a detached server; teardown must `kill-server` and remove the socket, or servers accumulate to the per-uid limit.
 6. **Idempotent probe-driven keys poll-and-resend, not fire-and-forget** — a single `send-keys` for an idempotent key (`f` for snap-to-live, boundary nav) can be lost under contention or arrive before `useInput` subscribes. Capture the pane between keystrokes and re-press until the observed state matches.
 
-Ink projection tests (`model` and the `<StepsView>` unit tests) drive Ink via `ink-testing-library`; never read `lastFrame()` after a fixed `setTimeout` — use the polling helpers in `tests-new/_support/ink-frame.ts` (`waitForFrame`, `pressUntilFrame`, `waitForIntents`) and `tests-new/_support/` `manual-timer` for component timers.
+Ink projection tests (`model` and the `<StepsView>` unit tests) drive Ink via `ink-testing-library`; never read `lastFrame()` after a fixed `setTimeout` — use the polling helpers in `tests/_support/ink-frame.ts` (`waitForFrame`, `pressUntilFrame`, `waitForIntents`) and `tests/_support/` `manual-timer` for component timers.
 
 ## Running & gating — the script ladder
 
@@ -174,13 +174,25 @@ Selection is **by path only**: the filesystem is the manifest. Cost levels are n
 
 | Moment | Command | Runs |
 | --- | --- | --- |
-| Tight two-pane dev loop | `bun run test:two-pane:fast` | model + tmux-argv + DSL/migration unit tests (ms, no tmux) |
+| Tight two-pane dev loop | `bun run test:two-pane:fast` | model + tmux-argv + DSL unit tests (ms, no tmux) |
 | Touched rendering / panes | `bun run test:two-pane:screen` / `:full:fake` / `:full:recorded` / `:tmux` | that bucket (seconds) |
 | Touched process lifecycle | `bun run test:two-pane:lifecycle` | lifecycle (serial, `--max-concurrency=1`) |
-| Pre-commit / the gate | `bun run check` | everything **except** real-agent |
-| Release | `bun run check:release` | **everything** (`which claude codex` first) |
+| Pre-commit / the gate | `bun run check` | everything **except** real-agent; includes `check:migration` (overlap-report + import-parity) |
+| Release | `bun run check:release` | **everything** (`preflight:release` checks `which claude codex` first) |
 
-Concurrency is **encoded as flags**, not a comment: `--max-concurrency=2` bounds the tmux pane levels; `--max-concurrency=1` makes `lifecycle` serial. `real-agent` is unreachable except by naming `test:two-pane:full:real` (gated on `tmux` + the CLI + `RUN_REAL_TMUX_E2E=1`). During the migration `test:legacy` (incl. old `tests/e2e`) keeps the old suite on the gate; the final phase repoints the default onto `tests-new/`.
+Concurrency is **encoded as flags**, not a comment: `--max-concurrency=2` bounds the tmux pane levels; `--max-concurrency=1` makes `lifecycle` serial. `real-agent` is unreachable except by naming `test:two-pane:full:real` (gated on `tmux` + the CLI + `RUN_REAL_TMUX_E2E=1`).
+
+## Migration tooling (`tests/_migration/`)
+
+The `tests/_migration/` directory holds lightweight auditing tools that keep the suite honest during (and after) the old-tier migration. They run as part of `bun run check` via `check:migration`.
+
+| Tool | What it checks |
+| --- | --- |
+| `overlap-report.ts` | Every scenario with an `overlapGroup` has at least one `model` AND one `screen` case in that group (the contract-overlap rule). Flags missing halves so deadline pressure can't silently skip them. |
+| `import-parity.ts` | Every symbol in the DSL public barrel (`tests/dsl/index.ts`) is exported and importable — catches barrel drift when new DSL features are added. |
+| `snapshot.ts` / `reconcile.ts` | Track old-tier test counts and per-scenario ledger entries; keep migration accounting visible so the "delete old tests in the same PR" rule stays enforceable. |
+
+These tools are **not** scenario tests — they are plain scripts run via `bun run <tool>`. Their own unit tests live under `tests/_migration/__tests__/`. After the migration is complete the snapshot/reconcile tools may be retired, but overlap-report and import-parity are permanently part of the gate.
 
 ## Screen-level manual QA — the `orch-qa-engineer` skill
 
@@ -198,7 +210,3 @@ When you add or change a feature:
 6. **Vary width/resize** in `screen` when the feature touches layout/repainting.
 
 A typical feature PR: ~5 `model`/`unit`, 0–1 `screen`, 0–1 `full-host:fake-agent`; `recorded`/`real`/`lifecycle` only when the feature reaches those surfaces.
-
-## Migration status
-
-The repo is mid-relocation into `tests-new/`. The old `tests/` tree stays on disk, progressively `.skip` as each behaviour's replacement lands, and is kept forever. Write new **two-pane** tests under `tests-new/` in the new shape; write new **non-two-pane** tests in their existing `tests/{unit,integration,e2e}` home until that module relocates, then straight to `tests-new/` with a `tests-new/_migration/ledger.md` row tagged `new`. The `tests-new/_migration/` ledger accounts for every old case (`port`/`merge`/`demote`/`drop`); `bun run overlap-report` flags missing `model`↔`screen` contract twins and ledger gaps against the frozen baseline.
