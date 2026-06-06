@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/core/ask-mocked.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { afterEach, describe, expect, it } from 'bun:test'
 import * as fs from 'node:fs/promises'
 import { ask } from '../../../src/core/ask.ts'
@@ -48,7 +49,7 @@ function makeDeps(overrides: DepsOverrides = {}): WorkflowDeps & {
   }
 }
 
-describe('ask step — mocked integration', () => {
+describe.skip('ask step — mocked integration', () => {
   it('runs the prompt service and persists the typed value', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-ask-test-')
     const prompts = new FakePromptService()

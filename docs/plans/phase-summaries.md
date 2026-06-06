@@ -383,3 +383,36 @@ are all green. The two real-agent smokes auto-skip off the gate and need
 `tmux` + `claude` + `RUN_REAL_TMUX_E2E=1` to actually run; the dropped interactive
 mixed-step shape is recorded as a deferred follow-up for when an
 `interactiveStep(...)` real-agent harness helper lands.
+
+## Phase 10
+
+Phase 10 (U10) is the first of the "migrate the rest of the repo" relocations: the
+`core/**` tests move from `tests/{unit,integration}/core` into their
+`tests-new/{unit,integration}/core` mirror. This is a pure relocation, not a
+re-derivation — every one of the 61 files (44 unit + 17 integration, 650 cases)
+was copied byte-for-byte, with only its cross-tree helper imports rewritten to the
+`@orch/test/*` alias. The two shared helpers those tests need (`fake-host`,
+`temp-git-repo`) were moved into `tests-new/_support/` with thin re-export shims
+left at the old `tests/helpers/` paths so the still-green old suite keeps
+resolving. Old copies are wrapped unconditional `describe.skip` with a
+`// MIGRATED →` marker and kept on disk forever; the 6 core `.test-d.ts`
+type-tests are deliberately left untouched (deferred to U13).
+
+The load-bearing new piece is `tests-new/_migration/import-parity.ts` plus its
+`check:import-parity` gate script. Relocating a file changes its relative depth, so
+a wrong `../` count can silently resolve to the wrong module while the diff still
+looks clean. The guard AST-parses each relocated file and asserts it imports the
+exact same `src/` symbol set as its baseline original, that every import resolves
+on disk, and that nothing reaches back into `tests/`. U11–U13 reuse it. The
+relocation pairs live in a committed `tests-new/_migration/relocation-map.json`.
+
+What matters for next work: the relocation recipe and its machinery are now proven
+end-to-end — copy + rewrite-helper-specifiers + parity-guard + `describe.skip` +
+one ledger row per file. U11 (runners), U12 (services/state/validators/workflows/
+config/codegen + non-two-pane hosts), and U13 (cli/observability/e2e + the deferred
+`.test-d.ts` type-tests) follow the same pattern; each appends to the relocation
+map and the ledger, and reuses the helper-move script and skip script (both
+parameterised and idempotent). No `src/` file was touched. The only failing tests
+on the gate are the 5 long-standing `ENOENT` fixture failures under gitignored
+`.orch/` — pre-existing infra, identical in the old and new locations, not a
+relocation regression. The frozen U1 baseline was never regenerated.

@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/core/workflow-resume-registry.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { createResumeRegistry } from '../../../src/core/resume-registry.ts'
 import { step } from '../../../src/core/step.ts'
@@ -58,7 +59,7 @@ function runnerWithResume(name = 'fake'): Runner {
   }) as Runner
 }
 
-describe('workflow executor — resume registry registration and runnerName persistence', () => {
+describe.skip('workflow executor — resume registry registration and runnerName persistence', () => {
   it('writes StepEntry.runnerName for an interactive agent step', async () => {
     const deps = makeDeps()
     const agent = runnerWithResume('claude')

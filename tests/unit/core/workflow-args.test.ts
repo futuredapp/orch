@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/core/workflow-args.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { step } from '../../../src/core/step.ts'
 import type { RunFn, WorkflowArgs, WorkflowDeps } from '../../../src/core/workflow.ts'
@@ -35,7 +36,7 @@ function makeDeps(args?: WorkflowArgs): WorkflowDeps {
   } as WorkflowDeps
 }
 
-describe('workflow() args parameter', () => {
+describe.skip('workflow() args parameter', () => {
   it('delivers args.prompt to the callback when supplied via deps.args', async () => {
     const deps = makeDeps({ prompt: 'think hard' })
     const fr = new FakeRunner(deps.processService as FakeProcessService)

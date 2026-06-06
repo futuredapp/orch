@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/core/prompt-file/resolve-prompt-path.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -9,7 +10,7 @@ import { path } from '../../../../src/services/types.ts'
 const PROJ = path('/proj')
 const WORKFLOW_DIR = path('/proj/examples/foo')
 
-describe('resolvePromptPath', () => {
+describe.skip('resolvePromptPath', () => {
   it('resolves a workflow-local relative path against callerDir', () => {
     const out = resolvePromptPath('foo.md', WORKFLOW_DIR, PROJ)
 
@@ -72,7 +73,7 @@ describe('resolvePromptPath', () => {
   })
 })
 
-describe('resolvePromptPath — symlink R7 hardening', () => {
+describe.skip('resolvePromptPath — symlink R7 hardening', () => {
   // Finding #4: a relative path can pass the lexical isInside check while
   // pointing — via a symlink — at a target outside the project root. These
   // tests use real symlinks on real temp dirs to exercise the realpath gate.

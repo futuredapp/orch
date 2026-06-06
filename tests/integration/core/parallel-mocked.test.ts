@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/core/parallel-mocked.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { z } from 'zod'
 import { ParallelError, parallel } from '../../../src/core/parallel.ts'
@@ -47,7 +48,7 @@ function makeDeps(overrides?: {
   }
 }
 
-describe('parallel — mocked integration', () => {
+describe.skip('parallel — mocked integration', () => {
   it('heterogeneous parallel persists both step entries', async () => {
     const deps = makeDeps()
 

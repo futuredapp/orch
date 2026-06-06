@@ -25,6 +25,23 @@ move_dir() {
   echo "moved: $from -> $to"
 }
 
+# Move a single helper FILE and leave a re-export shim at its old path. Both
+# tests/helpers/<X>.ts and tests-new/_support/<X>.ts are two dirs deep from the
+# repo root, so the moved file's own `../../src/...` imports are preserved
+# unchanged (the same invariant as move_dir). Idempotent: once the target exists
+# (and the old path is the shim) it is a no-op.
+move_file() {
+  local from="$1" to="$2" shim_target="$3"
+  if [ -f "$to" ]; then
+    echo "skip: $to already exists"
+    return 0
+  fi
+  mkdir -p "$(dirname "$to")"
+  git mv "$from" "$to"
+  shim "$from" "$shim_target"
+  echo "moved+shim: $from -> $to"
+}
+
 # A shim re-exports everything from the moved file at $2 (a path relative to the
 # shim's own directory). Whole-module `export *` carries both values and types.
 shim() {
@@ -65,5 +82,14 @@ shim tests/helpers/behavioral-dsl/internal/invariants.ts          "$BDI/invarian
 shim tests/helpers/behavioral-dsl/internal/lifecycle-handle.ts    "$BDI/lifecycle-handle.ts"
 shim tests/helpers/behavioral-dsl/internal/mouse-events.ts        "$BDI/mouse-events.ts"
 shim tests/helpers/behavioral-dsl/internal/snapshot.ts            "$BDI/snapshot.ts"
+
+# --- single-file helper moves (parent U10 / PD2) ----------------------------
+# fake-host (46 importers) and temp-git-repo (2) are needed by the relocated
+# core tests under tests-new/, which may never import from tests/ (D13). They
+# still have LIVE non-core consumers in the old suite, so each move leaves a
+# shim until those consumers relocate (R11). Both already keep their internal
+# `../../src/...` imports valid post-move (two dirs deep before and after).
+move_file tests/helpers/fake-host.ts     tests-new/_support/fake-host.ts     ../../tests-new/_support/fake-host.ts
+move_file tests/helpers/temp-git-repo.ts tests-new/_support/temp-git-repo.ts ../../tests-new/_support/temp-git-repo.ts
 
 echo "done."

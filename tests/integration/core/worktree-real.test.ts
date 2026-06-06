@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/core/worktree-real.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { afterEach, describe, expect, it } from 'bun:test'
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
@@ -113,7 +114,7 @@ async function git(cwd: Path | string, argv: readonly string[]): Promise<string>
   return out.stdout
 }
 
-describe.skipIf(!canRun)('createWorktree — real git', () => {
+describe.skip('createWorktree — real git', () => {
   it('creates a worktree at the sibling default with branch off HEAD; git worktree list reflects it', async () => {
     const repo = await makeRepo()
 

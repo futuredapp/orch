@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/core/resume.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { afterEach, describe, expect, it } from 'bun:test'
 import * as fs from 'node:fs/promises'
 import { commit } from '../../../src/core/commit.ts'
@@ -52,7 +53,7 @@ function makeDeps(overrides?: {
   }
 }
 
-describe('resume (integration)', () => {
+describe.skip('resume (integration)', () => {
   it('four-step crash at step 3, resume completes all steps with memoization', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-resume-test-')
     const sharedRunId = 'r-2026-04-13-447523-5f' as RunId

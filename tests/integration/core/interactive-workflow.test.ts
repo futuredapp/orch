@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/core/interactive-workflow.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { step } from '../../../src/core/step.ts'
 import type { InteractiveResult } from '../../../src/core/types.ts'
@@ -51,7 +52,7 @@ function makeDeps(overrides?: {
   }
 }
 
-describe('interactive workflow mocked round-trip', () => {
+describe.skip('interactive workflow mocked round-trip', () => {
   it('interactive step followed by autonomous step produces correct state', async () => {
     const deps = makeDeps({
       generateSessionId: () => 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',

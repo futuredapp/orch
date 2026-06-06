@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/core/worktree-executor.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { step } from '../../../src/core/step.ts'
 import { path } from '../../../src/core/types.ts'
@@ -11,7 +12,7 @@ import {
   setupRepoRoot,
 } from './_worktree-test-helpers.ts'
 
-describe('createWorktree() — happy paths', () => {
+describe.skip('createWorktree() — happy paths', () => {
   it('creates a worktree at the sibling default and persists WorktreeResult to state.json', async () => {
     const deps = makeDeps()
     setupRepoRoot(deps.gitService)

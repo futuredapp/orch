@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/core/workflow-parallel-lifecycle.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Tests the U7 lifecycle events: `step:parallel-start` and
 // `step:parallel-complete` fire around every `parallel(...)` call, with a
 // deterministic block id, and bracket the inner branches' `step:start` /
@@ -52,7 +53,7 @@ function lifecycle(host: FakeHost): readonly StepLifecycleEvent[] {
     .map((r) => r.event)
 }
 
-describe('parallel() block lifecycle events', () => {
+describe.skip('parallel() block lifecycle events', () => {
   it('emits one step:parallel-start before the first branch and one step:parallel-complete after the last branch', async () => {
     const deps = makeDeps()
 

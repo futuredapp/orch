@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/core/workflow-auto-stop.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { AutoStopUnsupportedError } from '../../../src/core/errors.ts'
 import { step } from '../../../src/core/step.ts'
@@ -66,7 +67,7 @@ function makeAutoStopRunner(prepEnv: Readonly<Record<string, string>> = {}): {
   return { runner, state }
 }
 
-describe('interactive auto-stop fail-fast', () => {
+describe.skip('interactive auto-stop fail-fast', () => {
   it('throws AutoStopUnsupportedError before any host spawn when the runner lacks prepareAutoStop', async () => {
     const deps = makeDeps()
     const agent = new FakeRunner(deps.processService as FakeProcessService, {
@@ -89,7 +90,7 @@ describe('interactive auto-stop fail-fast', () => {
   })
 })
 
-describe('interactive auto-stop wiring', () => {
+describe.skip('interactive auto-stop wiring', () => {
   it('calls prepareAutoStop once and passes autoStop:true to the host', async () => {
     const deps = makeDeps()
     const { runner, state } = makeAutoStopRunner()

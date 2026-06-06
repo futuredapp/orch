@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/core/workflow-tmux-guards.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Host-seam forwarding — the executor no longer carries `onEvent` / `tmuxActive`
 // callbacks; every runner event now travels through `host.onRunnerEvent`.
 // This file used to pin the deleted tmuxActive interactive refusal; that guard
@@ -48,7 +49,7 @@ function makeDeps(overrides?: {
   }
 }
 
-describe('host runner-event forwarding', () => {
+describe.skip('host runner-event forwarding', () => {
   it('fires host.onRunnerEvent for every parsed runner event in order', async () => {
     const deps = makeDeps()
     const agent = new FakeRunner(deps.processService)

@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/core/prompt-file/load-prompt.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { afterEach, describe, expect, it } from 'bun:test'
 import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -16,7 +17,7 @@ afterEach(() => {
   __setPromptFileReader(undefined)
 })
 
-describe('loadPrompt', () => {
+describe.skip('loadPrompt', () => {
   it('reads a workflow-local file and substitutes vars', () => {
     const fake = new FakePromptFileReader(PROJ_ROOT, {
       [`${THIS_DIR}/greeting.md`]: 'Hello {{name}}',

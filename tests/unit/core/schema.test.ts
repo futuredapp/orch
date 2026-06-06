@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/core/schema.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { z } from 'zod'
 import { SchemaValidationError, schema } from '../../../src/core/schema.ts'
@@ -11,7 +12,7 @@ import type { Equal, Expect } from '../../helpers/type-assertions.ts'
 const fps = new FakeProcessService()
 const fakeRunner = new FakeRunner(fps)
 
-describe('schema()', () => {
+describe.skip('schema()', () => {
   it('produces a SchemaWrapper with valid JSON Schema string for z.object', () => {
     const wrapper = schema(z.object({ a: z.string(), b: z.number() }))
 
@@ -116,7 +117,7 @@ describe('schema()', () => {
 // without requiring zod@4 as a dev-dependency.
 // ---------------------------------------------------------------------------
 
-describe('schema() — fails loudly when JSON Schema conversion produces nothing', () => {
+describe.skip('schema() — fails loudly when JSON Schema conversion produces nothing', () => {
   it('throws when the converter returns no usable shape (simulating a Zod v4 schema)', () => {
     const fakeV4Schema = {
       _def: { typeName: 'ZodSomethingV4Only' },
@@ -187,7 +188,7 @@ type _4 = Expect<Equal<Step<{ a: string }>, Step<{ a: string }, Record<string, n
 type _5 = Expect<Equal<Step<unknown>, Step<unknown, Record<string, never>>>>
 type _6 = Expect<Equal<Step<string>, Step<string, Record<string, never>>>>
 
-describe('step.define generic inference', () => {
+describe.skip('step.define generic inference', () => {
   it('step with returns: schema(z.object) infers Step<{ a: string }>', () => {
     const { config } = TYPED
     if (config.kind !== 'agent') throw new Error('expected agent config')
@@ -209,7 +210,7 @@ describe('step.define generic inference', () => {
   })
 })
 
-describe('SchemaValidationError', () => {
+describe.skip('SchemaValidationError', () => {
   it('message includes step name and Zod path details', () => {
     const s = z.object({ name: z.string(), age: z.number() })
     const result = s.safeParse({ name: 123, age: 'wrong' })

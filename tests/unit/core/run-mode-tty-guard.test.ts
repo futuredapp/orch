@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/core/run-mode-tty-guard.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // resolveRunMode's TTY guard — explicit --mode=two-pane without a TTY is an
 // error UNLESS --no-attach was passed (CI / screenshot tests). Adjacent to
 // the existing run-mode.test.ts; kept separate so the intent of the guard is
@@ -6,7 +7,7 @@
 import { describe, expect, it } from 'bun:test'
 import { RunModeError, resolveRunMode } from '../../../src/core/run-mode.ts'
 
-describe('resolveRunMode — two-pane TTY guard', () => {
+describe.skip('resolveRunMode — two-pane TTY guard', () => {
   it('two-pane with no TTY and no allowHeadless returns an explicit RunModeError', () => {
     let caught: unknown
     try {

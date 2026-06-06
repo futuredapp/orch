@@ -1,7 +1,8 @@
+// MIGRATED → tests-new/unit/core/worktree.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { createWorktree } from '../../../src/core/worktree.ts'
 
-describe('createWorktree() factory', () => {
+describe.skip('createWorktree() factory', () => {
   it('derives step name from branch: feat/foo becomes worktree:feat-foo', () => {
     const s = createWorktree('feat/foo', { enter: true })
 

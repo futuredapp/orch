@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/core/typed-vars-workflow.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // End-to-end integration test for typed-prompt-vars (U10 / Phase 3 cap).
 //
 // Exercises all three contract sources documented in the plan:
@@ -91,7 +92,7 @@ function capturingRunner(deps: WorkflowDeps, name: string): Capture {
   }
 }
 
-describe('typed-vars: reusable step across multiple run() calls', () => {
+describe.skip('typed-vars: reusable step across multiple run() calls', () => {
   it('inline {{topic}} literal: distinct vars produce distinct cache entries', async () => {
     const deps = makeDeps()
     const cap = capturingRunner(deps, 'tv1')
@@ -177,7 +178,7 @@ describe('typed-vars: reusable step across multiple run() calls', () => {
   })
 })
 
-describe('typed-vars: cold-clone codegen produces the right augmentation', () => {
+describe.skip('typed-vars: cold-clone codegen produces the right augmentation', () => {
   it('runCodegen against the reusable-step fixture emits a valid sidecar', async () => {
     const tmp = await mkdtemp(join(tmpdir(), 'orch-typed-vars-cold-'))
     try {

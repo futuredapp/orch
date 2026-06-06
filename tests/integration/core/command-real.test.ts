@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/core/command-real.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // command() — real BunProcessService integration. Auto-skips when `bun` is
 // not on PATH (matches the pattern worktree's real-git tests use).
 
@@ -51,7 +52,7 @@ interface Box<T> {
   value?: T
 }
 
-describe('command() — real BunProcessService', () => {
+describe.skip('command() — real BunProcessService', () => {
   if (BUN_BIN === null) {
     it.skip('skipped: bun binary not found on PATH', () => {})
     return

@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/core/failure-summary.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Unit tests for the FailureSummary value + summarizeFailure() factory. Both
 // host renderers (plain-host, two-pane host) hang off this shape, so its
 // fields matter more than the rendered string form.
@@ -10,7 +11,7 @@ import type { RunId } from '../../../src/state/index.ts'
 const RUN_ID = 'r-2026-04-23-phased2' as RunId
 const STEP = stepName('plan')
 
-describe('summarizeFailure', () => {
+describe.skip('summarizeFailure', () => {
   it('carries the step name, runId, and failedAt through verbatim', () => {
     const summary = summarizeFailure({
       stepName: STEP,

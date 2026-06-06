@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/core/commit-real.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { afterEach, describe, expect, it } from 'bun:test'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
@@ -76,7 +77,7 @@ async function makeDeps(
   }
 }
 
-describe.skipIf(!canRun)('commit step with real git', () => {
+describe.skip('commit step with real git', () => {
   it('creates a commit and returns the new HEAD SHA', async () => {
     const repoDir = await tempGitRepo()
     const deps = await makeDeps(repoDir)

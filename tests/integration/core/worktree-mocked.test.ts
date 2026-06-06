@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/core/worktree-mocked.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { afterEach, describe, expect, it } from 'bun:test'
 import * as fs from 'node:fs/promises'
 import { parallel } from '../../../src/core/parallel.ts'
@@ -104,7 +105,7 @@ function scriptHappyWorktree(
 // Tests
 // ---------------------------------------------------------------------------
 
-describe('createWorktree — mocked integration', () => {
+describe.skip('createWorktree — mocked integration', () => {
   it('createWorktree(enter: true) followed by an agent step persists both StepEntry rows with expected shape', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-worktree-test-')
     const deps = makeDeps()

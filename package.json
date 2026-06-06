@@ -11,8 +11,9 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "check": "bun run lint && bun run typecheck && bun run test && bun run test:two-pane:lifecycle",
-    "check:release": "bun run lint && bun run typecheck && bun run test:project && bun run test:two-pane:lifecycle && bun run test:two-pane:full:real",
+    "check": "bun run lint && bun run typecheck && bun run check:import-parity && bun run test && bun run test:two-pane:lifecycle",
+    "check:release": "bun run lint && bun run typecheck && bun run check:import-parity && bun run test:project && bun run test:two-pane:lifecycle && bun run test:two-pane:full:real",
+    "check:import-parity": "bun run tests-new/_migration/import-parity.ts",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",

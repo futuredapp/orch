@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/core/validators-workflow.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { afterEach, describe, expect, it } from 'bun:test'
 import * as fs from 'node:fs/promises'
 import * as nodePath from 'node:path'
@@ -47,7 +48,7 @@ function makeDeps(cwd: string, basePath: string): WorkflowDeps {
   }
 }
 
-describe('workflow + validators (full pipeline integration)', () => {
+describe.skip('workflow + validators (full pipeline integration)', () => {
   it('throws ValidationError and leaves no StepEntry when fileProduced fails against a real temp dir', async () => {
     tmpDir = await fs.mkdtemp(nodePath.join('/tmp', 'orch-vw-'))
     const cwd = await fs.mkdtemp(nodePath.join('/tmp', 'orch-vw-cwd-'))

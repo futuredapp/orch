@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/core/workflow.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { commit } from '../../../src/core/commit.ts'
 import { setWorkflowCwd } from '../../../src/core/execution-context.ts'
@@ -60,7 +61,7 @@ function makeDeps(overrides?: {
   }
 }
 
-describe('workflow run()', () => {
+describe.skip('workflow run()', () => {
   it('executes a step and returns its value via extractStructuredOutput', async () => {
     const deps = makeDeps()
     const fr = new FakeRunner(deps.processService)
@@ -338,7 +339,7 @@ describe('workflow run()', () => {
 // (they don't stream events through the host).
 // ---------------------------------------------------------------------------
 
-describe('workflow run() — runner.toTranscriptLines forwarding', () => {
+describe.skip('workflow run() — runner.toTranscriptLines forwarding', () => {
   it('forwards transcript lines from runner.toTranscriptLines to host.onRunnerEvent for autonomous steps', async () => {
     const deps = makeDeps()
 
@@ -478,7 +479,7 @@ describe('workflow run() — runner.toTranscriptLines forwarding', () => {
   })
 })
 
-describe('workflow run() with commit steps', () => {
+describe.skip('workflow run() with commit steps', () => {
   it('commit step stages and commits when tree is dirty', async () => {
     const deps = makeDeps()
     deps.gitService.setIsClean(deps.cwd, false)
@@ -646,7 +647,7 @@ describe('workflow run() with commit steps', () => {
 // a Phase 2 stand-in) and fall back to deps.cwd when nothing was set.
 // ---------------------------------------------------------------------------
 
-describe('workflow run() — currentCwd integration', () => {
+describe.skip('workflow run() — currentCwd integration', () => {
   it('agent step reads currentCwd, defaulting to deps.cwd when no workflowCwd is set', async () => {
     const deps = makeDeps()
 

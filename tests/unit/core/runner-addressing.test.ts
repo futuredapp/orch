@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/core/runner-addressing.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // U1 — the executor threads the run-time-derived step key, the resolved run
 // state dir, and orch's own pid into the runner's `ctx.env` at spawn, on BOTH
 // the autonomous and interactive paths, identically. These addressing values
@@ -87,7 +88,7 @@ function capturingRunner(deps: WorkflowDeps, name: string): CapturingRunner {
   return { runner, contexts }
 }
 
-describe('U1 — executor threads addressing values into ctx.env (autonomous path)', () => {
+describe.skip('U1 — executor threads addressing values into ctx.env (autonomous path)', () => {
   it('exposes the derived key, run state dir, and parent pid to buildCommand', async () => {
     const deps = makeDeps()
     const cap = capturingRunner(deps, 'r1')
@@ -144,7 +145,7 @@ describe('U1 — executor threads addressing values into ctx.env (autonomous pat
   })
 })
 
-describe('U1 — executor threads addressing values into ctx.env (interactive path)', () => {
+describe.skip('U1 — executor threads addressing values into ctx.env (interactive path)', () => {
   it('exposes the same addressing values, identical in shape to the autonomous path', async () => {
     const deps = makeDeps({ host: createFakeHost({ mode: 'two-pane' }) })
     const cap = capturingRunner(deps, 'r1')
@@ -162,7 +163,7 @@ describe('U1 — executor threads addressing values into ctx.env (interactive pa
   })
 })
 
-describe('U1 — real runners ignore the addressing env (argv unchanged)', () => {
+describe.skip('U1 — real runners ignore the addressing env (argv unchanged)', () => {
   it('claude builds identical argv with and without the addressing env present', async () => {
     const runner = claude()
     const base: RunnerContext = {

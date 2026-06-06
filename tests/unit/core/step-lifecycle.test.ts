@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/core/step-lifecycle.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // The lifecycle trio (`step:start → step:complete | step:failed`), the
 // parallel branch-update supplement, and the duration source all live behind
 // `withStepLifecycle`. Before the envelope these were hand-emitted at four
@@ -51,7 +52,7 @@ function insideParallel<T>(run: () => Promise<T>): Promise<T> {
   return executionContext.run({ parallelDepth: 1, workflowCwd: undefined }, run)
 }
 
-describe('withStepLifecycle', () => {
+describe.skip('withStepLifecycle', () => {
   it('emits step:start then step:complete with the wall-clock duration when the body resolves', async () => {
     const host = createFakeHost()
     const clock = new FakeClock(1000)

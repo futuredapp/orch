@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/core/codex-thread-id-capture.integration.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { step } from '../../../src/core/step.ts'
 import type { WorkflowDeps } from '../../../src/core/workflow.ts'
@@ -57,7 +58,7 @@ function captureReturning(
   })
 }
 
-describe('workflow.execute — codex-style captureSessionId integration', () => {
+describe.skip('workflow.execute — codex-style captureSessionId integration', () => {
   it('replaces the orch UUID with the captured thread_id when capture succeeds', async () => {
     const deps = makeDeps()
 

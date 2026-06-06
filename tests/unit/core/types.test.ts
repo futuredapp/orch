@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/core/types.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import {
   type InteractiveResult,
@@ -6,7 +7,7 @@ import {
   stepName,
 } from '../../../src/core/types.ts'
 
-describe('stepName', () => {
+describe.skip('stepName', () => {
   it('accepts a colon-separated name like commit:foo', () => {
     const name = stepName('commit:foo')
 
@@ -38,7 +39,7 @@ describe('stepName', () => {
   })
 })
 
-describe('InteractiveResultSchema', () => {
+describe.skip('InteractiveResultSchema', () => {
   it('parses a valid InteractiveResult round-trip', () => {
     const input: InteractiveResult = {
       exitCode: 0,
@@ -82,7 +83,7 @@ describe('InteractiveResultSchema', () => {
   })
 })
 
-describe('StepMode compile-time type', () => {
+describe.skip('StepMode compile-time type', () => {
   it('accepts interactive and autonomous as valid StepMode values', () => {
     const interactive: StepMode = 'interactive'
     const autonomous: StepMode = 'autonomous'

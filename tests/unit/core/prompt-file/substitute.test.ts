@@ -1,8 +1,9 @@
+// MIGRATED → tests-new/unit/core/prompt-file/substitute.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { PromptFileError } from '../../../../src/core/prompt-file/errors.ts'
 import { assertPromptVars, substitute } from '../../../../src/core/prompt-file/substitute.ts'
 
-describe('substitute', () => {
+describe.skip('substitute', () => {
   it('AE1: substitutes a single named placeholder', () => {
     expect(substitute('Hello {{name}}', { name: 'world' })).toBe('Hello world')
   })
@@ -47,7 +48,7 @@ describe('substitute', () => {
   })
 })
 
-describe('substitute strictness', () => {
+describe.skip('substitute strictness', () => {
   it('AE3: missing-placeholder error names BOTH the placeholder and the supplied key', () => {
     let thrown: unknown
     try {
@@ -93,7 +94,7 @@ describe('substitute strictness', () => {
   })
 })
 
-describe('assertPromptVars', () => {
+describe.skip('assertPromptVars', () => {
   it('AE6: rejects an array value and suggests loadPrompt', () => {
     let thrown: unknown
     try {
@@ -131,7 +132,7 @@ describe('assertPromptVars', () => {
   })
 })
 
-describe('substitute optional placeholders ({{x?}})', () => {
+describe.skip('substitute optional placeholders ({{x?}})', () => {
   it('substitutes the value when an optional key is supplied', () => {
     expect(substitute('Hi {{name?}}', { name: 'world' })).toBe('Hi world')
   })

@@ -1,0 +1,246 @@
+[
+  {
+    "old": "tests/unit/core/ask.test.ts",
+    "new": "tests-new/unit/core/ask.test.ts"
+  },
+  {
+    "old": "tests/unit/core/command.test.ts",
+    "new": "tests-new/unit/core/command.test.ts"
+  },
+  {
+    "old": "tests/unit/core/commit.test.ts",
+    "new": "tests-new/unit/core/commit.test.ts"
+  },
+  {
+    "old": "tests/unit/core/derive-step-key.test.ts",
+    "new": "tests-new/unit/core/derive-step-key.test.ts"
+  },
+  {
+    "old": "tests/unit/core/errors.test.ts",
+    "new": "tests-new/unit/core/errors.test.ts"
+  },
+  {
+    "old": "tests/unit/core/execution-context.test.ts",
+    "new": "tests-new/unit/core/execution-context.test.ts"
+  },
+  {
+    "old": "tests/unit/core/failure-summary.test.ts",
+    "new": "tests-new/unit/core/failure-summary.test.ts"
+  },
+  {
+    "old": "tests/unit/core/interactive-mode.test.ts",
+    "new": "tests-new/unit/core/interactive-mode.test.ts"
+  },
+  {
+    "old": "tests/unit/core/parallel-inherits-subworkflow-fields.test.ts",
+    "new": "tests-new/unit/core/parallel-inherits-subworkflow-fields.test.ts"
+  },
+  {
+    "old": "tests/unit/core/parallel.test.ts",
+    "new": "tests-new/unit/core/parallel.test.ts"
+  },
+  {
+    "old": "tests/unit/core/resume-registry.test.ts",
+    "new": "tests-new/unit/core/resume-registry.test.ts"
+  },
+  {
+    "old": "tests/unit/core/run-mode-tty-guard.test.ts",
+    "new": "tests-new/unit/core/run-mode-tty-guard.test.ts"
+  },
+  {
+    "old": "tests/unit/core/run-mode.test.ts",
+    "new": "tests-new/unit/core/run-mode.test.ts"
+  },
+  {
+    "old": "tests/unit/core/run-step-once-collision.test.ts",
+    "new": "tests-new/unit/core/run-step-once-collision.test.ts"
+  },
+  {
+    "old": "tests/unit/core/run-workflow.test.ts",
+    "new": "tests-new/unit/core/run-workflow.test.ts"
+  },
+  {
+    "old": "tests/unit/core/runner-addressing.test.ts",
+    "new": "tests-new/unit/core/runner-addressing.test.ts"
+  },
+  {
+    "old": "tests/unit/core/schema-validation.test.ts",
+    "new": "tests-new/unit/core/schema-validation.test.ts"
+  },
+  {
+    "old": "tests/unit/core/schema.test.ts",
+    "new": "tests-new/unit/core/schema.test.ts"
+  },
+  {
+    "old": "tests/unit/core/session-id-capture.test.ts",
+    "new": "tests-new/unit/core/session-id-capture.test.ts"
+  },
+  {
+    "old": "tests/unit/core/step-lifecycle.test.ts",
+    "new": "tests-new/unit/core/step-lifecycle.test.ts"
+  },
+  {
+    "old": "tests/unit/core/step.test.ts",
+    "new": "tests-new/unit/core/step.test.ts"
+  },
+  {
+    "old": "tests/unit/core/types-step-name-pattern.test.ts",
+    "new": "tests-new/unit/core/types-step-name-pattern.test.ts"
+  },
+  {
+    "old": "tests/unit/core/types.test.ts",
+    "new": "tests-new/unit/core/types.test.ts"
+  },
+  {
+    "old": "tests/unit/core/view-registry.test.ts",
+    "new": "tests-new/unit/core/view-registry.test.ts"
+  },
+  {
+    "old": "tests/unit/core/workflow-args.test.ts",
+    "new": "tests-new/unit/core/workflow-args.test.ts"
+  },
+  {
+    "old": "tests/unit/core/workflow-auto-stop.test.ts",
+    "new": "tests-new/unit/core/workflow-auto-stop.test.ts"
+  },
+  {
+    "old": "tests/unit/core/workflow-name-validation.test.ts",
+    "new": "tests-new/unit/core/workflow-name-validation.test.ts"
+  },
+  {
+    "old": "tests/unit/core/workflow-parallel-lifecycle.test.ts",
+    "new": "tests-new/unit/core/workflow-parallel-lifecycle.test.ts"
+  },
+  {
+    "old": "tests/unit/core/workflow-resume-registry.test.ts",
+    "new": "tests-new/unit/core/workflow-resume-registry.test.ts"
+  },
+  {
+    "old": "tests/unit/core/workflow-tmux-guards.test.ts",
+    "new": "tests-new/unit/core/workflow-tmux-guards.test.ts"
+  },
+  {
+    "old": "tests/unit/core/workflow-validators.test.ts",
+    "new": "tests-new/unit/core/workflow-validators.test.ts"
+  },
+  {
+    "old": "tests/unit/core/workflow-vars-cache-key.test.ts",
+    "new": "tests-new/unit/core/workflow-vars-cache-key.test.ts"
+  },
+  {
+    "old": "tests/unit/core/workflow.test.ts",
+    "new": "tests-new/unit/core/workflow.test.ts"
+  },
+  {
+    "old": "tests/unit/core/worktree-executor-cache.test.ts",
+    "new": "tests-new/unit/core/worktree-executor-cache.test.ts"
+  },
+  {
+    "old": "tests/unit/core/worktree-executor-conflicts.test.ts",
+    "new": "tests-new/unit/core/worktree-executor-conflicts.test.ts"
+  },
+  {
+    "old": "tests/unit/core/worktree-executor-postcreate.test.ts",
+    "new": "tests-new/unit/core/worktree-executor-postcreate.test.ts"
+  },
+  {
+    "old": "tests/unit/core/worktree-executor.test.ts",
+    "new": "tests-new/unit/core/worktree-executor.test.ts"
+  },
+  {
+    "old": "tests/unit/core/worktree.test.ts",
+    "new": "tests-new/unit/core/worktree.test.ts"
+  },
+  {
+    "old": "tests/unit/core/prompt-file/cache-key.test.ts",
+    "new": "tests-new/unit/core/prompt-file/cache-key.test.ts"
+  },
+  {
+    "old": "tests/unit/core/prompt-file/caller-dir.test.ts",
+    "new": "tests-new/unit/core/prompt-file/caller-dir.test.ts"
+  },
+  {
+    "old": "tests/unit/core/prompt-file/load-prompt.test.ts",
+    "new": "tests-new/unit/core/prompt-file/load-prompt.test.ts"
+  },
+  {
+    "old": "tests/unit/core/prompt-file/resolve-prompt-path.test.ts",
+    "new": "tests-new/unit/core/prompt-file/resolve-prompt-path.test.ts"
+  },
+  {
+    "old": "tests/unit/core/prompt-file/step-define-prompt-file.test.ts",
+    "new": "tests-new/unit/core/prompt-file/step-define-prompt-file.test.ts"
+  },
+  {
+    "old": "tests/unit/core/prompt-file/substitute.test.ts",
+    "new": "tests-new/unit/core/prompt-file/substitute.test.ts"
+  },
+  {
+    "old": "tests/integration/core/ask-lifecycle.test.ts",
+    "new": "tests-new/integration/core/ask-lifecycle.test.ts"
+  },
+  {
+    "old": "tests/integration/core/ask-mocked.test.ts",
+    "new": "tests-new/integration/core/ask-mocked.test.ts"
+  },
+  {
+    "old": "tests/integration/core/codex-thread-id-capture.integration.test.ts",
+    "new": "tests-new/integration/core/codex-thread-id-capture.integration.test.ts"
+  },
+  {
+    "old": "tests/integration/core/command-mocked.test.ts",
+    "new": "tests-new/integration/core/command-mocked.test.ts"
+  },
+  {
+    "old": "tests/integration/core/command-real.test.ts",
+    "new": "tests-new/integration/core/command-real.test.ts"
+  },
+  {
+    "old": "tests/integration/core/commit-mocked.test.ts",
+    "new": "tests-new/integration/core/commit-mocked.test.ts"
+  },
+  {
+    "old": "tests/integration/core/commit-real.test.ts",
+    "new": "tests-new/integration/core/commit-real.test.ts"
+  },
+  {
+    "old": "tests/integration/core/interactive-workflow.test.ts",
+    "new": "tests-new/integration/core/interactive-workflow.test.ts"
+  },
+  {
+    "old": "tests/integration/core/parallel-mocked.test.ts",
+    "new": "tests-new/integration/core/parallel-mocked.test.ts"
+  },
+  {
+    "old": "tests/integration/core/prompt-file-workflow.test.ts",
+    "new": "tests-new/integration/core/prompt-file-workflow.test.ts"
+  },
+  {
+    "old": "tests/integration/core/resume.test.ts",
+    "new": "tests-new/integration/core/resume.test.ts"
+  },
+  {
+    "old": "tests/integration/core/typed-vars-workflow.test.ts",
+    "new": "tests-new/integration/core/typed-vars-workflow.test.ts"
+  },
+  {
+    "old": "tests/integration/core/validators-workflow.test.ts",
+    "new": "tests-new/integration/core/validators-workflow.test.ts"
+  },
+  {
+    "old": "tests/integration/core/view-resolution.test.ts",
+    "new": "tests-new/integration/core/view-resolution.test.ts"
+  },
+  {
+    "old": "tests/integration/core/workflow.test.ts",
+    "new": "tests-new/integration/core/workflow.test.ts"
+  },
+  {
+    "old": "tests/integration/core/worktree-mocked.test.ts",
+    "new": "tests-new/integration/core/worktree-mocked.test.ts"
+  },
+  {
+    "old": "tests/integration/core/worktree-real.test.ts",
+    "new": "tests-new/integration/core/worktree-real.test.ts"
+  }
+]

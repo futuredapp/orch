@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/core/prompt-file-workflow.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { afterEach, describe, expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
@@ -45,7 +46,7 @@ afterEach(() => {
   __setPromptFileReader(undefined)
 })
 
-describe('file-prompts-demo workflow loads with the real .md files', () => {
+describe.skip('file-prompts-demo workflow loads with the real .md files', () => {
   it('imports the workflow module without throwing — step.define calls live inside the workflow body, so module load is purely the workflow() factory call', async () => {
     const mod = await import('../../../examples/file-prompts-demo/index.ts')
 
@@ -54,7 +55,7 @@ describe('file-prompts-demo workflow loads with the real .md files', () => {
   })
 })
 
-describe('file-prompts-demo step.define stores raw templates (post-U2)', () => {
+describe.skip('file-prompts-demo step.define stores raw templates (post-U2)', () => {
   it('slug step holds the raw template (substitution deferred to run())', () => {
     __setPromptFileReader(freshExampleReader())
 
@@ -101,7 +102,7 @@ describe('file-prompts-demo step.define stores raw templates (post-U2)', () => {
   })
 })
 
-describe('file-prompts-demo regression: broken fixture surfaces typos at run-time', () => {
+describe.skip('file-prompts-demo regression: broken fixture surfaces typos at run-time', () => {
   it('a workflow .md with a typo throws PromptFileError naming BOTH placeholder and key — but at run() not define()', async () => {
     const fixtureDir = resolve(REPO_ROOT, 'tests/fixtures/prompt-file-workflows/broken-typo')
     __setPromptFileReader(

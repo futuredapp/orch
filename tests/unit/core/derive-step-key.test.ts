@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/core/derive-step-key.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // U4 — sub-aware cache key derivation. Exercises `deriveStepKey` directly so
 // the fold rules (`as:` wins, sub-path prefix, vars-hash suffix) are pinned
 // independently of the rest of `runStepOnce`.
@@ -7,7 +8,7 @@ import { stableHashHex } from '../../../src/core/prompt-file/cache-key.ts'
 import { stepName } from '../../../src/core/types.ts'
 import { deriveStepKey } from '../../../src/core/workflow.ts'
 
-describe('deriveStepKey — sub-aware folding', () => {
+describe.skip('deriveStepKey — sub-aware folding', () => {
   it('returns the bare name when subPath is empty and no overrides', () => {
     expect(deriveStepKey(stepName('plan'), undefined)).toBe('plan')
   })

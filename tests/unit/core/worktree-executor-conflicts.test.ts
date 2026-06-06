@@ -1,10 +1,11 @@
+// MIGRATED → tests-new/unit/core/worktree-executor-conflicts.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { workflow } from '../../../src/core/workflow.ts'
 import { createWorktree } from '../../../src/core/worktree.ts'
 import { GitCommandError } from '../../../src/services/index.ts'
 import { expectedSiblingPath, makeDeps, setupRepoRoot } from './_worktree-test-helpers.ts'
 
-describe('createWorktree() — conflicts', () => {
+describe.skip('createWorktree() — conflicts', () => {
   it('throws GitCommandError when branchExists returns true', async () => {
     const deps = makeDeps()
     setupRepoRoot(deps.gitService)
@@ -70,7 +71,7 @@ describe('createWorktree() — conflicts', () => {
   })
 })
 
-describe('createWorktree() — override rejection', () => {
+describe.skip('createWorktree() — override rejection', () => {
   it('throws when prompt override is provided', async () => {
     const deps = makeDeps()
     setupRepoRoot(deps.gitService)

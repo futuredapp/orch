@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/core/execution-context.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import {
   currentCwd,
@@ -14,7 +15,7 @@ const FALLBACK = path('/tmp/fallback')
 const A = path('/tmp/a')
 const B = path('/tmp/b')
 
-describe('currentCwd', () => {
+describe.skip('currentCwd', () => {
   it('returns the fallback when no store is active', () => {
     expect(currentCwd(FALLBACK)).toBe(FALLBACK)
   })
@@ -40,7 +41,7 @@ describe('currentCwd', () => {
   })
 })
 
-describe('setWorkflowCwd', () => {
+describe.skip('setWorkflowCwd', () => {
   it('mutates the active store and persists across awaits inside the same scope', async () => {
     let beforeAwait: string | undefined
     let afterAwait: string | undefined
@@ -122,7 +123,7 @@ describe('setWorkflowCwd', () => {
   })
 })
 
-describe('currentSubworkflowDepth', () => {
+describe.skip('currentSubworkflowDepth', () => {
   it('returns 0 outside any ALS scope', () => {
     expect(currentSubworkflowDepth()).toBe(0)
   })
@@ -144,7 +145,7 @@ describe('currentSubworkflowDepth', () => {
   })
 })
 
-describe('currentSubworkflowPath', () => {
+describe.skip('currentSubworkflowPath', () => {
   it('returns the empty array outside any ALS scope', () => {
     expect(currentSubworkflowPath()).toEqual([])
   })
@@ -166,7 +167,7 @@ describe('currentSubworkflowPath', () => {
   })
 })
 
-describe('isInsideParallel', () => {
+describe.skip('isInsideParallel', () => {
   it('returns false outside any ALS scope', () => {
     expect(isInsideParallel()).toBe(false)
   })

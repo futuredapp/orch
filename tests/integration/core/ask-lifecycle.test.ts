@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/core/ask-lifecycle.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Behavioural tests for the lifecycle visibility of `ask()` steps.
 //
 // User-observable invariant: while an `ask()` prompt is waiting for input,
@@ -58,7 +59,7 @@ function makeDeps(overrides: DepsOverrides = {}): WorkflowDeps {
   }
 }
 
-describe('ask step — lifecycle visibility (pins the disappearing-prompt bug)', () => {
+describe.skip('ask step — lifecycle visibility (pins the disappearing-prompt bug)', () => {
   it('emits a step:start event for the ask step before the prompt is awaited so the TUI can show a row for it', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-ask-lifecycle-')
 

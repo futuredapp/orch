@@ -1,7 +1,8 @@
+// MIGRATED → tests-new/unit/core/ask.test.ts (parent U10) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { ask } from '../../../src/core/ask.ts'
 
-describe('ask() factory', () => {
+describe.skip('ask() factory', () => {
   it('returns a frozen Step with kind ask', () => {
     const s = ask({ name: 'continue', question: 'continue?', buttons: ['yes', 'no'] })
 
