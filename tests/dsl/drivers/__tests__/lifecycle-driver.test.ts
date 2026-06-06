@@ -86,7 +86,7 @@ describe('lifecycle driver — idempotent key poll-and-resend', () => {
       await app.launch({ steps: ['plan', 'execute'], agent: holdsOpen(), stopAt: 'mid-step' })
 
       // Navigate away from the live edge to a completed step…
-      await userAction(selectStep('plan'))
+      await app.wrapBody(() => userAction(selectStep('plan')))
       // …then snap back. `press('left','f')` returns only once the selection is
       // observed on the live step — poll-and-resend is what makes that reliable.
       // A single dropped keypress (the 2026-05-29 regression) would make this

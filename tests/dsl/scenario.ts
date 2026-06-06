@@ -91,6 +91,12 @@ export function expandScenario<D extends readonly DriverName[]>(
   }))
 }
 
+type WrappableApp = AppBase & { wrapBody<T>(fn: () => Promise<T>): Promise<T> }
+
+function hasWrapBody(app: AppBase): app is WrappableApp {
+  return typeof (app as Partial<WrappableApp>).wrapBody === 'function'
+}
+
 function registerCase<D extends readonly DriverName[]>(
   testCase: ScenarioCase,
   body: (app: SharedApp<D>) => Promise<void>,
@@ -101,8 +107,11 @@ function registerCase<D extends readonly DriverName[]>(
     testCase.label,
     async () => {
       const app: AppBase = await driver.build(meta)
+      const run = hasWrapBody(app)
+        ? (fn: () => Promise<void>) => app.wrapBody(fn)
+        : (fn: () => Promise<void>) => fn()
       try {
-        await body(app as unknown as SharedApp<D>)
+        await run(() => body(app as unknown as SharedApp<D>))
       } finally {
         await app.teardown()
       }

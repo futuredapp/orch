@@ -22,7 +22,7 @@ describe('encodeKey — injectivity (R10)', () => {
   it('does not collide a control char with an adjacent literal (fixed-width hex)', () => {
     // With variable-width hex, U+0001 + "0" ("%1" + "0") and U+0010 ("%10")
     // would both encode to "%10"; fixed 4-digit hex keeps them apart.
-    const u0001Then0 = String.fromCharCode(0x01) + '0'
+    const u0001Then0 = `${String.fromCharCode(0x01)}0`
     const u0010 = String.fromCharCode(0x10)
 
     expect(encodeKey(u0001Then0)).not.toBe(encodeKey(u0010))

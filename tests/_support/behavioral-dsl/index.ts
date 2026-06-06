@@ -31,6 +31,9 @@ export {
   runArtifactExists,
   worktreeExists,
 } from './filesystem-matchers.ts'
+export type { HandleSlot } from './internal/current-handle.ts'
+// ─── Handle slot (lifecycle driver context isolation) ─────────────────────
+export { createHandleSlot, runWithHandleSlot } from './internal/current-handle.ts'
 export type { InvariantViolation, ScenarioTag } from './internal/invariants.ts'
 export type {
   AgentControl,

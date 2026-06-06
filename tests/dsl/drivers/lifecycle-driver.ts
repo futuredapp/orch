@@ -10,9 +10,10 @@
 // (unique reserved socket, detached-server reaping, poll-and-resend); this
 // driver owns calling them and the leaked-puppet sentinel (parent R1).
 //
-// Concurrency: the behavioral-dsl helpers key off a process-global "current
-// handle", so lifecycle scenarios MUST run serially (`--max-concurrency=1`,
-// D6/D14) — there is no per-call handle threading.
+// Concurrency: the behavioral-dsl helpers key off `AsyncLocalStorage`, scoped
+// per test via `app.wrapBody`. Lifecycle scenarios run at `--max-concurrency=4`
+// — each test gets its own `HandleSlot`, so concurrent tests never clobber each
+// other's handle. See `tests/_support/behavioral-dsl/internal/current-handle.ts`.
 
 import { appendFile, readFile } from 'node:fs/promises'
 import {
@@ -23,6 +24,7 @@ import {
   assertTmuxSession,
   clickOnPane,
   closeOrchStdin,
+  createHandleSlot,
   exitedNormally as exitedNormallyMatcher,
   holdUntilReleased,
   isFocused,
@@ -30,6 +32,7 @@ import {
   noOrphanChildren as noOrphanChildrenMatcher,
   type OrchHandle,
   pressKeyInPane,
+  runWithHandleSlot,
   signalOrch,
   snapToLive,
   terminalRestoredCleanly as terminalRestoredCleanlyMatcher,
@@ -152,12 +155,17 @@ function deferredPaneDriver(): PaneDriver {
 // does), so its pane drivers wire `assertFocused` to the behavioral-dsl
 // `isFocused()` matcher over the captured pane; every other read stays deferred
 // (parent U2 — subprocess-snapshot reads land with the migration unit needing
-// them). `side` selects the matching pane assertion.
-function focusablePaneDriver(side: 'left' | 'right'): PaneDriver {
+// them). `side` selects the matching pane assertion. `slot` is the per-test
+// ALS context so the assertion runs with the correct handle.
+function focusablePaneDriver(
+  side: 'left' | 'right',
+  slot: ReturnType<typeof createHandleSlot>,
+): PaneDriver {
   const assertPane = side === 'left' ? assertLeftPane : assertRightPane
   return {
     ...deferredPaneDriver(),
-    assertFocused: () => assertPane(withinMs(REAL_TMUX_ASSERT_TIMEOUT_MS), isFocused()),
+    assertFocused: () =>
+      runWithHandleSlot(slot, () => assertPane(withinMs(REAL_TMUX_ASSERT_TIMEOUT_MS), isFocused())),
   }
 }
 
@@ -171,7 +179,10 @@ async function readPersistedStatus(handle: OrchHandle): Promise<string | undefin
   }
 }
 
-function createLifecycleApp(leakBaseline: number): LifecycleApp {
+function createLifecycleApp(
+  leakBaseline: number,
+  slot: ReturnType<typeof createHandleSlot>,
+): LifecycleApp {
   let handle: OrchHandle | undefined
 
   const requireHandle = (): OrchHandle => {
@@ -181,9 +192,13 @@ function createLifecycleApp(leakBaseline: number): LifecycleApp {
 
   const system: SystemAssertionsBackend = {
     exitedNormally: () =>
-      assertOrchExits(withinMs(REAL_TMUX_ASSERT_TIMEOUT_MS), exitedNormallyMatcher()),
+      runWithHandleSlot(slot, () =>
+        assertOrchExits(withinMs(REAL_TMUX_ASSERT_TIMEOUT_MS), exitedNormallyMatcher()),
+      ),
     tmuxTornDown: () =>
-      assertTmuxSession(withinMs(REAL_TMUX_ASSERT_TIMEOUT_MS), tmuxIsTornDownMatcher()),
+      runWithHandleSlot(slot, () =>
+        assertTmuxSession(withinMs(REAL_TMUX_ASSERT_TIMEOUT_MS), tmuxIsTornDownMatcher()),
+      ),
     async persistedStatus(status: PersistedStatus): Promise<void> {
       const h = requireHandle()
       const deadline = Date.now() + REAL_TMUX_ASSERT_TIMEOUT_MS
@@ -201,22 +216,31 @@ function createLifecycleApp(leakBaseline: number): LifecycleApp {
       )
     },
     terminalRestoredCleanly: () =>
-      assertTerminalEscapeStream(
-        withinMs(REAL_TMUX_ASSERT_TIMEOUT_MS),
-        terminalRestoredCleanlyMatcher(),
+      runWithHandleSlot(slot, () =>
+        assertTerminalEscapeStream(
+          withinMs(REAL_TMUX_ASSERT_TIMEOUT_MS),
+          terminalRestoredCleanlyMatcher(),
+        ),
       ),
     noOrphanChildren: () =>
-      assertTerminalEscapeStream(withinMs(REAL_TMUX_ASSERT_TIMEOUT_MS), noOrphanChildrenMatcher()),
+      runWithHandleSlot(slot, () =>
+        assertTerminalEscapeStream(
+          withinMs(REAL_TMUX_ASSERT_TIMEOUT_MS),
+          noOrphanChildrenMatcher(),
+        ),
+      ),
   }
 
   return {
     async launch(spec: LifecycleSpec): Promise<void> {
       const fixtureName = resolveFixtureName(spec.steps)
       const plan = planLaunch(spec)
-      handle = await launchOrchWorkflow(fixtureName, {
-        script: plan.script,
-        bringToState: plan.bringToState,
-      })
+      handle = await runWithHandleSlot(slot, () =>
+        launchOrchWorkflow(fixtureName, {
+          script: plan.script,
+          bringToState: plan.bringToState,
+        }),
+      )
     },
 
     press(pane: 'left' | 'right', key: string): Promise<void> {
@@ -225,20 +249,20 @@ function createLifecycleApp(leakBaseline: number): LifecycleApp {
       // lands on the live step, defeating the dropped-first-keypress race
       // (REGRESSION 2026-05-29 nav.f-snaps). Other keys are fire-and-forget;
       // their observable transition is polled by the following assertion.
-      if (key === 'f') return userAction(snapToLive())
-      return userAction(pressKeyInPane(pane, key))
+      if (key === 'f') return runWithHandleSlot(slot, () => userAction(snapToLive()))
+      return runWithHandleSlot(slot, () => userAction(pressKeyInPane(pane, key)))
     },
 
     signal(sig: Signal): Promise<void> {
       requireHandle()
-      return userAction(signalOrch(sig))
+      return runWithHandleSlot(slot, () => userAction(signalOrch(sig)))
     },
 
     async closeStdin(): Promise<void> {
       requireHandle()
-      await userAction(closeOrchStdin())
+      await runWithHandleSlot(slot, () => userAction(closeOrchStdin()))
       // Weak contract: no teardown matcher — settle, then assert terminal balance.
-      await userAction(wait(CLOSE_STDIN_SETTLE_MS))
+      await runWithHandleSlot(slot, () => userAction(wait(CLOSE_STDIN_SETTLE_MS)))
     },
 
     async quitIntent(): Promise<void> {
@@ -251,12 +275,14 @@ function createLifecycleApp(leakBaseline: number): LifecycleApp {
 
     click(pane: 'left' | 'right'): Promise<void> {
       requireHandle()
-      return userAction(clickOnPane(pane))
+      return runWithHandleSlot(slot, () => userAction(clickOnPane(pane)))
     },
 
-    leftPane: new LeftPane(focusablePaneDriver('left')),
-    rightPane: new RightPane(focusablePaneDriver('right')),
+    leftPane: new LeftPane(focusablePaneDriver('left', slot)),
+    rightPane: new RightPane(focusablePaneDriver('right', slot)),
     system: new SystemAssertions(system),
+
+    wrapBody: <T>(fn: () => Promise<T>) => runWithHandleSlot(slot, fn),
 
     async teardown(): Promise<void> {
       await handle?.teardown()
@@ -269,7 +295,7 @@ function createLifecycleApp(leakBaseline: number): LifecycleApp {
 
 async function build(_meta: ScenarioMeta<readonly DriverName[]>): Promise<LifecycleApp> {
   const leakBaseline = await scriptedFakeEntryCount()
-  return createLifecycleApp(leakBaseline)
+  return createLifecycleApp(leakBaseline, createHandleSlot())
 }
 
 export const lifecycleDriver: Driver<LifecycleApp> = {

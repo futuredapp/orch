@@ -80,7 +80,7 @@ export function ModelHarness({
 }: ModelHarnessProps): ReactElement {
   const [view, setView] = useState<ViewMode>(LIVE_VIEW)
   const [banner, setBanner] = useState<Banner | undefined>(initialBanner)
-  const [seq, setSeq] = useState(initialBanner?.seq ?? 0)
+  const [, setSeq] = useState(initialBanner?.seq ?? 0)
 
   const dispatch = useCallback((intent: StepsViewIntent): void => {
     if (intent.type === 'enter') {

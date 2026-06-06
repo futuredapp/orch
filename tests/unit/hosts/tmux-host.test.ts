@@ -848,6 +848,7 @@ describe('createTmuxHost socket resolution', () => {
     return tmux
   }
 
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: test name documents the literal socket template shape
   it('derives the socket as orch-${runId} when no socket is supplied', async () => {
     const tmux = await buildHostWith({})
 
@@ -861,6 +862,7 @@ describe('createTmuxHost socket resolution', () => {
     expect([...socketsTouched(tmux)]).toEqual(['orch-test-99-abcd'])
   })
 
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: test name documents the literal socket template shape
   it('embeds the provided socket in the pane-died hook, not orch-${runId}', async () => {
     const tmux = await buildHostWith({ socket: socketName('orch-test-99-abcd') })
 

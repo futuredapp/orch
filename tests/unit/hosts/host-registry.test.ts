@@ -167,12 +167,14 @@ describe('two-pane ORCH_TMUX_SOCKET bridge', () => {
     expect(await resolveTwoPaneSocket()).toEqual(['orch-test-12345-abcd'])
   })
 
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: test name documents the literal socket template shape
   it('derives orch-${runId} when ORCH_TMUX_SOCKET is unset (production default)', async () => {
     delete process.env[ENV_KEY]
 
     expect(await resolveTwoPaneSocket()).toEqual(['orch-r-2026-06-02-101010-z9'])
   })
 
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: test name documents the literal socket template shape
   it('derives orch-${runId} when ORCH_TMUX_SOCKET is empty', async () => {
     process.env[ENV_KEY] = ''
 

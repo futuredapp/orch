@@ -49,7 +49,7 @@ class HarnessStdout extends EventEmitter {
 
 class HarnessStdin extends EventEmitter {
   isTTY = true
-  private data: string | null = null
+  data: string | null = null
 
   write = (data: string): void => {
     this.data = data

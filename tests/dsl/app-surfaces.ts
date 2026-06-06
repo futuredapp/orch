@@ -176,4 +176,10 @@ export interface LifecycleApp extends AppBase {
   readonly rightPane: LifecyclePaneView
   /** Exit / teardown / persisted status. */
   readonly system: SystemAssertions
+  /**
+   * Wraps the scenario body in an `AsyncLocalStorage` context scoped to this
+   * test instance. Used by `scenario.ts` to isolate behavioral-dsl handle
+   * state across concurrent lifecycle tests (replaces `--max-concurrency=1`).
+   */
+  wrapBody<T>(fn: () => Promise<T>): Promise<T>
 }
