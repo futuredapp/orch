@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/barrel.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Guards the public barrel `src/index.ts`. Workflows authored against
 // `import { ... } from 'orch'` rely on these names being exported. This
 // file is intentionally small — it only asserts the names that are
@@ -6,7 +7,7 @@
 import { describe, expect, it } from 'bun:test'
 import * as orch from '../../src/index.ts'
 
-describe('orch public barrel', () => {
+describe.skip('orch public barrel', () => {
   it('re-exports `z` so workflows can author schemas without installing zod in the host repo', () => {
     // Zod's `z` is an object namespace with the chainable schema constructors
     // hanging off it.

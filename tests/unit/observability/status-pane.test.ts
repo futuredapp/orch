@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/observability/status-pane.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import {
   formatElapsed,
@@ -26,7 +27,7 @@ function record(
 // Glyphs
 // ---------------------------------------------------------------------------
 
-describe('stepGlyph', () => {
+describe.skip('stepGlyph', () => {
   it('uses Unicode glyphs for every step status when tty is true', () => {
     expect(stepGlyph('pending', true)).toBe('○')
     expect(stepGlyph('running', true)).toBe('●')
@@ -50,7 +51,7 @@ describe('stepGlyph', () => {
 // stepGlyphView — Ink view helper (char + color/dim)
 // ---------------------------------------------------------------------------
 
-describe('stepGlyphView', () => {
+describe.skip('stepGlyphView', () => {
   it('returns a green check for completed', () => {
     expect(stepGlyphView('completed')).toEqual({ char: '✓', color: 'green' })
   })
@@ -86,7 +87,7 @@ describe('stepGlyphView', () => {
 // Elapsed formatting
 // ---------------------------------------------------------------------------
 
-describe('formatElapsed', () => {
+describe.skip('formatElapsed', () => {
   it('formats sub-second durations in milliseconds', () => {
     expect(formatElapsed(0)).toBe('0ms')
     expect(formatElapsed(999)).toBe('999ms')
@@ -108,7 +109,7 @@ describe('formatElapsed', () => {
 // ANSI stripping
 // ---------------------------------------------------------------------------
 
-describe('stripAnsi', () => {
+describe.skip('stripAnsi', () => {
   it('removes color escapes from a rendered step name', () => {
     const coloured = '\u001b[31mbrainstorm\u001b[0m'
     expect(stripAnsi(coloured)).toBe('brainstorm')
@@ -140,7 +141,7 @@ function runState(overrides: Partial<RunState> = {}): RunState {
   }
 }
 
-describe('toStatusRecords', () => {
+describe.skip('toStatusRecords', () => {
   it('returns an empty list when neither persisted state nor live records exist', () => {
     expect(toStatusRecords({})).toEqual([])
   })
@@ -198,7 +199,7 @@ describe('toStatusRecords', () => {
 // renderStatusPane — pure line rendering
 // ---------------------------------------------------------------------------
 
-describe('renderStatusPane', () => {
+describe.skip('renderStatusPane', () => {
   it('renders the empty-state line when no records are provided', () => {
     expect(renderStatusPane([], { now: NOW })).toEqual(['(no steps yet)'])
   })

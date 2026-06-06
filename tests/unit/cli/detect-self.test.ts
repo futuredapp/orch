@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/cli/detect-self.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { isInsideOrchSourceRepo } from '../../../src/cli/commands/detect-self.ts'
 import { FakeFsService, path } from '../../../src/services/index.ts'
@@ -10,7 +11,7 @@ async function seed(fs: FakeFsService, files: Record<string, string>): Promise<v
   }
 }
 
-describe('isInsideOrchSourceRepo', () => {
+describe.skip('isInsideOrchSourceRepo', () => {
   it('returns true when package.json name is "orch" AND src/cli/main.ts exists', async () => {
     const fs = new FakeFsService()
     await seed(fs, {

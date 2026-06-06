@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/cli/detect-tmux.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import {
   isInsideTmux,
@@ -6,7 +7,7 @@ import {
 } from '../../../src/cli/detect-tmux.ts'
 import { FakeProcessService } from '../../../src/services/index.ts'
 
-describe('isInsideTmux', () => {
+describe.skip('isInsideTmux', () => {
   it('returns true when TMUX is set to a non-empty string', () => {
     expect(isInsideTmux({ TMUX: '/tmp/tmux-1000/default,12345,0' })).toBe(true)
   })
@@ -20,7 +21,7 @@ describe('isInsideTmux', () => {
   })
 })
 
-describe('meetsMinimumTmuxVersion', () => {
+describe.skip('meetsMinimumTmuxVersion', () => {
   it('accepts tmux 3.3 exactly', () => {
     expect(meetsMinimumTmuxVersion({ raw: 'tmux 3.3', major: 3, minor: 3 })).toBe(true)
   })
@@ -37,7 +38,7 @@ describe('meetsMinimumTmuxVersion', () => {
   })
 })
 
-describe('probeTmuxVersion', () => {
+describe.skip('probeTmuxVersion', () => {
   it('parses the major and minor components of tmux -V output', async () => {
     const proc = new FakeProcessService()
     proc.when(['tmux', '-V']).respondWith({ exitCode: 0, stdout: ['tmux 3.6a'] })

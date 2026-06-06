@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/observability/file-session-logger.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { stepName } from '../../../src/core/types.ts'
 import { createFileSessionLogger } from '../../../src/observability/file-session-logger.ts'
@@ -25,7 +26,7 @@ function parseLines(raw: string): Array<Record<string, unknown>> {
     .map((line) => JSON.parse(line) as Record<string, unknown>)
 }
 
-describe('createFileSessionLogger — append', () => {
+describe.skip('createFileSessionLogger — append', () => {
   it('writes an ndjson line to the category file with auto-injected ts', async () => {
     const { logger, fs, clock } = make()
     clock.set(12_345)
@@ -102,7 +103,7 @@ describe('createFileSessionLogger — append', () => {
   })
 })
 
-describe('createFileSessionLogger — writeFile', () => {
+describe.skip('createFileSessionLogger — writeFile', () => {
   it('writes a complete file atomically via temp-then-rename through FsService', async () => {
     const { logger, fs } = make()
     await logger.writeFile('run.meta.json', '{"ok":true}')
@@ -134,7 +135,7 @@ describe('createFileSessionLogger — writeFile', () => {
   })
 })
 
-describe('createFileSessionLogger — rawSink', () => {
+describe.skip('createFileSessionLogger — rawSink', () => {
   it('returns null when debug is false', () => {
     const { logger } = make(false)
     expect(logger.rawSink('agents/demo.stdout')).toBeNull()
@@ -161,7 +162,7 @@ describe('createFileSessionLogger — rawSink', () => {
   })
 })
 
-describe('createFileSessionLogger — streamSink', () => {
+describe.skip('createFileSessionLogger — streamSink', () => {
   it('returns a writable sink even when debug is false', async () => {
     const { logger, fs } = make(false)
     const sink = logger.streamSink('agents/demo/raw_output.ndjson')

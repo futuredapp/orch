@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/cli/run-resume-registry-forwarding.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // CLI integration coverage for U4 — runCmd must construct a `ResumeRegistry`
 // and pass the same live reference both into `hostFactory` (so the right
 // pane can resolve a runner on Enter) AND into `wfDeps` (so `runStepOnce`
@@ -93,7 +94,7 @@ const DEFAULT_OPTS: CliOpts = {
   watch: false,
 }
 
-describe('runCmd forwards a live ResumeRegistry', () => {
+describe.skip('runCmd forwards a live ResumeRegistry', () => {
   it('passes a defined ResumeRegistry into hostFactory inputs', async () => {
     const deps = makeDeps()
     let capturedRegistry: NonNullable<Parameters<HostFactory>[0]['resumeRegistry']> | undefined

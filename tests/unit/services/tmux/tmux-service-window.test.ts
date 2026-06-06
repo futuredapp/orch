@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/tmux-argv/services/tmux/tmux-service-window.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { windowId } from '../../../../src/services/tmux/index.ts'
 
@@ -8,7 +9,7 @@ import { windowId } from '../../../../src/services/tmux/index.ts'
 // but pane-target tmux semantics are silently destructive when applied to a
 // kill-window).
 
-describe('windowId smart constructor', () => {
+describe.skip('windowId smart constructor', () => {
   it('accepts well-formed tmux window ids like @0 and @42', () => {
     expect(windowId('@0')).toBe('@0' as ReturnType<typeof windowId>)
     expect(windowId('@42')).toBe('@42' as ReturnType<typeof windowId>)

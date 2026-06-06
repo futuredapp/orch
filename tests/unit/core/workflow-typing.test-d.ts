@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/core/workflow-typing.test-d.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Compile-time tests for U2 — generic `workflow<Args>` factory, default
 // `Args = WorkflowArgs`, and the module-private body handle. These tests do
 // NOT execute any runtime code; failures land at `tsc --noEmit` time.

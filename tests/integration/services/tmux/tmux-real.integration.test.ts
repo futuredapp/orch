@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/services/tmux/tmux-real.integration.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Gated real tmux tests. Each test creates its own socket and kills the
 // server in `afterEach` — tests run in parallel by bun test, so separate
 // sockets prevent cross-contamination.
@@ -46,7 +47,7 @@ afterEach(async () => {
   sockets = []
 })
 
-describe.skipIf(!canRun)('RealTmuxService against a real tmux server', () => {
+describe.skip('RealTmuxService against a real tmux server', () => {
   it('creates a session, splits a pane, and returns a valid tmux pane id', async () => {
     const tmux = new RealTmuxService({ processService: new BunProcessService() })
     const socket = newSocket('split')
@@ -558,7 +559,7 @@ const runShell = async (
   return { stdout, exitCode }
 }
 
-describe.skipIf(!canRun)('initOrchSession strict-sandbox lockdown on real tmux', () => {
+describe.skip('initOrchSession strict-sandbox lockdown on real tmux', () => {
   const initStrict = async (socket: SocketName) => {
     const tmux = new RealTmuxService({ processService: new BunProcessService() })
     await initOrchSession(tmux, new BunFsService(), {

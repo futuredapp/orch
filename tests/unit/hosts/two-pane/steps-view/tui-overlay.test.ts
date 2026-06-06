@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/hosts/two-pane/tui-overlay.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Wire-format tests for the parent → child TUI overlay IPC channel.
 //
 // One JSON line per snapshot, written by the controller, tailed by the model.
@@ -12,7 +13,7 @@ import {
   type TuiOverlay,
 } from '../../../../../src/hosts/two-pane/steps-view/index.ts'
 
-describe('parseTuiOverlayLine', () => {
+describe.skip('parseTuiOverlayLine', () => {
   it('parses a live view-mode snapshot with no banner', () => {
     const parsed = parseTuiOverlayLine(JSON.stringify({ view: { mode: 'live' } }))
 
@@ -92,7 +93,7 @@ describe('parseTuiOverlayLine', () => {
   })
 })
 
-describe('serializeTuiOverlayLine', () => {
+describe.skip('serializeTuiOverlayLine', () => {
   it('writes banner:null when banner is undefined (explicit clear sentinel)', () => {
     const overlay: TuiOverlay = { view: { mode: 'live' } }
 

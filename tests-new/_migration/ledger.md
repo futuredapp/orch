@@ -710,3 +710,194 @@
 | unit/validators/validation-error.test.ts | (all 7 cases) | tests-new/unit/validators/validation-error.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
 | unit/workflows/parse-phases.test.ts | (all 16 cases) | tests-new/unit/workflows/parse-phases.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
 | unit/workflows/resolve-builtin.test.ts | (all 10 cases) | tests-new/unit/workflows/resolve-builtin.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+
+## Relocated/Classified — cli · observability · e2e · type-tests · tmux · demotes (parent U13)
+
+> **Phase 13 / U13 is the FINAL relocation phase (parent D1: relocation, not
+> re-derivation).** It drains the last relocatable clusters of the frozen baseline
+> (D12): `cli/**` (31), `observability/**` (13), the 4 remaining non-tier-4
+> `e2e/**`, the 6 deferred `.test-d.ts` **type-tests**, the 3 behavioral-dsl
+> **helper tests**, the **stragglers** (`barrel`, `examples/subworkflows-smoke`,
+> `setup/reap-test-sockets` test), the explicitly-**classified** tmux
+> adapter/harness set (PD3), and the relocatable **Category-A demotes** (PD5).
+> Every file below was COPIED to its new home with its body **byte-identical**
+> except cross-tree helper specifiers (rewritten to the `@orch/test/*` alias, PD2)
+> and, for the two `real-tmux-harness` files, a depth correction of the `src`
+> import prefix (5→3) since they move from `unit/hosts/two-pane/**` into
+> `integration/real-tmux/**`. Every relocated file imports the **same `src/`
+> symbols** as its baseline original, machine-verified per file by `import-parity`
+> (`bun run check:import-parity`, parent R10) — 77 new pairs, all green. The old
+> copies are wrapped unconditional `.skip` with a `// MIGRATED →` marker and kept
+> on disk forever (D2); capability-gated old copies had `describe.skipIf(…)` /
+> `it.skipIf(…)` flipped to unconditional `.skip` so U14 reconcile reads them as
+> MIGRATED (R13), while the NEW copies keep `skipIf` (legitimate gating, D8).
+>
+> **tmux classification rule (PD3, §6).** A tmux test that boots **no real tmux**
+> goes to `tests-new/tmux-argv/services/tmux/**` when it asserts adapter output
+> (argv, escaping, encoded sequences, emitted config) or adapter input-validation
+> (smart constructors for tmux ids) — this captured all 6 no-tmux files
+> (`tmux-service`, `has-session-server`, `external-mouse-events`, `session-init`,
+> `tmux-service-window`, and the integration `tmux-integration` which the file
+> header itself calls an argv-construction test). A tmux test that **boots real
+> tmux** (`skipIf`-gated) goes to `tests-new/integration/real-tmux/**` (harness /
+> predictability substrate: the 6 `real-tmux/*`, the 2 `real-tmux-harness/*` infra
+> tests, `cleanup-reaper`) or `tests-new/integration/services/tmux/**`
+> (`tmux-real.integration`), gating preserved verbatim. **None dropped.** The
+> `real-tmux-harness/{pane-handle,socket-allocation}` pair, despite its `two-pane/`
+> origin path, tests the `_support/real-tmux/**` socket/pane infrastructure (U2
+> substrate) — it asserts socket/handle mechanics, NOT rendering ("passes if the
+> pane is empty" is **false** for it), so it is a relocation, **exempt from §9**.
+
+| e2e/cli/orch-run.test.ts | (all 5 cases) | tests-new/e2e/cli/orch-run.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. NEW copy keeps `skipIf` (legitimate capability gating, D8); OLD copy flipped to unconditional `.skip` (R13). |
+| e2e/resume-real-claude.test.ts | (all 1 cases) | tests-new/e2e/resume-real-claude.test.ts | port | Cross-tree specifier(s) → `@orch/test/fake-host` (PD2). `src` import set unchanged, parity green. NEW copy keeps `skipIf` (legitimate capability gating, D8); OLD copy flipped to unconditional `.skip` (R13). |
+| e2e/steps-tui-e2e.test.ts | (all 1 cases) | tests-new/e2e/steps-tui-e2e.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. NEW copy keeps `skipIf` (legitimate capability gating, D8); OLD copy flipped to unconditional `.skip` (R13). |
+| e2e/workflows/builtin-phased-build.e2e.test.ts | (all 2 cases) | tests-new/e2e/workflows/builtin-phased-build.e2e.test.ts | port | Cross-tree specifier(s) → `@orch/test/real-tmux` (PD2). `src` import set unchanged, parity green. NEW copy keeps `skipIf` (legitimate capability gating, D8); OLD copy flipped to unconditional `.skip` (R13). |
+| integration/cli/commands/init-e2e.test.ts | (all 3 cases) | tests-new/integration/cli/commands/init-e2e.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. |
+| integration/cli/commands/init.test.ts | (all 17 cases) | tests-new/integration/cli/commands/init.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. |
+| integration/cli/commands/logs-old-and-new-runs.test.ts | (all 2 cases) | tests-new/integration/cli/commands/logs-old-and-new-runs.test.ts | port | Cross-tree specifier(s) → `@orch/test/make-step-entry` (PD2). `src` import set unchanged, parity green. |
+| integration/cli/commands/new.test.ts | (all 12 cases) | tests-new/integration/cli/commands/new.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. |
+| integration/cli/commands/resume.test.ts | (all 8 cases) | tests-new/integration/cli/commands/resume.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. |
+| integration/cli/commands/runs.test.ts | (all 3 cases) | tests-new/integration/cli/commands/runs.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. |
+| integration/cli/commands/status.test.ts | (all 6 cases) | tests-new/integration/cli/commands/status.test.ts | port | Cross-tree specifier(s) → `@orch/test/make-step-entry` (PD2). `src` import set unchanged, parity green. |
+| integration/cli/interactive-plain-error.test.ts | (all 1 cases) | tests-new/integration/cli/interactive-plain-error.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. |
+| integration/cli/interactivity-flag.test.ts | (all 6 cases) | tests-new/integration/cli/interactivity-flag.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. |
+| integration/cli/main-dispatch.test.ts | (all 5 cases) | tests-new/integration/cli/main-dispatch.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. |
+| integration/cli/run-builtin.test.ts | (all 5 cases) | tests-new/integration/cli/run-builtin.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. |
+| integration/cli/run-end-of-run-summary.test.ts | (all 2 cases) | tests-new/integration/cli/run-end-of-run-summary.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. |
+| integration/cli/run-resume-cycle.test.ts | (all 3 cases) | tests-new/integration/cli/run-resume-cycle.test.ts | port | Cross-tree specifier(s) → `@orch/test/make-step-entry` (PD2). `src` import set unchanged, parity green. |
+| integration/cli/run-resume-registry-forwarding.test.ts | (all 1 cases) | tests-new/integration/cli/run-resume-registry-forwarding.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. |
+| integration/cli/single-pane-no-terminal-clear.test.ts | (all 2 cases) | tests-new/integration/cli/single-pane-no-terminal-clear.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. |
+| integration/cli/two-pane-auto-attach.test.ts | (all 5 cases) | tests-new/integration/cli/two-pane-auto-attach.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. |
+| integration/cli/two-pane-tty-guard.test.ts | (all 4 cases) | tests-new/integration/cli/two-pane-tty-guard.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. |
+| integration/cli/unknown-flag.test.ts | (all 2 cases) | tests-new/integration/cli/unknown-flag.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. |
+| integration/examples/subworkflows-smoke.test.ts | (all 5 cases) | tests-new/integration/examples/subworkflows-smoke.test.ts | port | Cross-tree specifier(s) → `@orch/test/fake-host` (PD2). `src` import set unchanged, parity green. |
+| integration/observability/resume-per-step-folder.test.ts | (all 4 cases) | tests-new/integration/observability/resume-per-step-folder.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. |
+| integration/observability/session-logger-baseline.integration.test.ts | (all 11 cases) | tests-new/integration/observability/session-logger-baseline.integration.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. |
+| integration/observability/session-logger-debug.integration.test.ts | (all 6 cases) | tests-new/integration/observability/session-logger-debug.integration.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. |
+| integration/observability/session-logger.e2e.test.ts | (all 9 cases) | tests-new/integration/observability/session-logger.e2e.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. |
+| integration/observability/status-loop.test.ts | (all 9 cases) | tests-new/integration/observability/status-loop.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. |
+| integration/observability/status-real.integration.test.ts | (all 1 cases) | tests-new/integration/observability/status-real.integration.test.ts | port | Cross-tree specifier(s) → `@orch/test/real-tmux` (PD2). `src` import set unchanged, parity green. NEW copy keeps `skipIf` (legitimate capability gating, D8); OLD copy flipped to unconditional `.skip` (R13). |
+| integration/real-tmux/agent-handle.test.ts | (all 4 cases) | tests-new/integration/real-tmux/agent-handle.test.ts | port | **Classified `integration` real-tmux (PD3)** — boots real tmux, `skipIf` gating preserved verbatim. Cross-tree specifier(s) → `@orch/test/real-tmux` (PD2). `src` import set unchanged, parity green. NEW copy keeps `skipIf` (legitimate capability gating, D8); OLD copy flipped to unconditional `.skip` (R13). |
+| integration/real-tmux/predictable-fake-f1.test.ts | (all 2 cases) | tests-new/integration/real-tmux/predictable-fake-f1.test.ts | port | **Classified `integration` real-tmux (PD3)** — boots real tmux, `skipIf` gating preserved verbatim. Cross-tree specifier(s) → `@orch/test/real-tmux` (PD2). `src` import set unchanged, parity green. NEW copy keeps `skipIf` (legitimate capability gating, D8); OLD copy flipped to unconditional `.skip` (R13). |
+| integration/real-tmux/predictable-fake-f2.test.ts | (all 2 cases) | tests-new/integration/real-tmux/predictable-fake-f2.test.ts | port | **Classified `integration` real-tmux (PD3)** — boots real tmux, `skipIf` gating preserved verbatim. Cross-tree specifier(s) → `@orch/test/real-tmux` (PD2). `src` import set unchanged, parity green. NEW copy keeps `skipIf` (legitimate capability gating, D8); OLD copy flipped to unconditional `.skip` (R13). |
+| integration/real-tmux/predictable-fake-ink.test.ts | (all 1 cases) | tests-new/integration/real-tmux/predictable-fake-ink.test.ts | port | **Classified `integration` real-tmux (PD3)** — boots real tmux, `skipIf` gating preserved verbatim. Cross-tree specifier(s) → `@orch/test/real-tmux` (PD2). `src` import set unchanged, parity green. NEW copy keeps `skipIf` (legitimate capability gating, D8); OLD copy flipped to unconditional `.skip` (R13). |
+| integration/real-tmux/predictable-fake-three-step.test.ts | (all 1 cases) | tests-new/integration/real-tmux/predictable-fake-three-step.test.ts | port | **Classified `integration` real-tmux (PD3)** — boots real tmux, `skipIf` gating preserved verbatim. Cross-tree specifier(s) → `@orch/test/real-tmux` (PD2). `src` import set unchanged, parity green. NEW copy keeps `skipIf` (legitimate capability gating, D8); OLD copy flipped to unconditional `.skip` (R13). |
+| integration/real-tmux/teardown-leak-guard.test.ts | (all 3 cases) | tests-new/integration/real-tmux/teardown-leak-guard.test.ts | port | **Classified `integration` real-tmux (PD3)** — boots real tmux, `skipIf` gating preserved verbatim. Cross-tree specifier(s) → `@orch/test/real-tmux` (PD2). `src` import set unchanged, parity green. NEW copy keeps `skipIf` (legitimate capability gating, D8); OLD copy flipped to unconditional `.skip` (R13). |
+| integration/services/tmux/tmux-integration.test.ts | (all 38 cases) | tests-new/tmux-argv/services/tmux/tmux-integration.test.ts | port | **Classified `tmux-argv` (PD3)** — argv/escaping/adapter or smart-constructor validation, boots NO real tmux (FakeProcessService / pure). Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. |
+| integration/services/tmux/tmux-real.integration.test.ts | (all 26 cases) | tests-new/integration/services/tmux/tmux-real.integration.test.ts | port | **Classified `integration` real-tmux (PD3)** — boots real tmux, `skipIf` gating preserved verbatim. Cross-tree specifier(s) → `@orch/test/real-tmux` (PD2). `src` import set unchanged, parity green. NEW copy keeps `skipIf` (legitimate capability gating, D8); OLD copy flipped to unconditional `.skip` (R13). |
+| integration/tests-setup/cleanup-reaper.real.integration.test.ts | (all 6 cases) | tests-new/integration/real-tmux/cleanup-reaper.real.integration.test.ts | port | **Classified `integration` real-tmux (PD3)** — boots real tmux, `skipIf` gating preserved verbatim. Cross-tree specifier(s) → `@orch/test/real-tmux`, `@orch/test/setup/reap-test-sockets` (PD2). `src` import set unchanged, parity green. NEW copy keeps `skipIf` (legitimate capability gating, D8); OLD copy flipped to unconditional `.skip` (R13). |
+| unit/barrel.test.ts | (all 5 cases) | tests-new/unit/barrel.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. |
+| unit/cli/argv.test.ts | (all 26 cases) | tests-new/unit/cli/argv.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. |
+| unit/cli/banner.test.ts | (all 4 cases) | tests-new/unit/cli/banner.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. |
+| unit/cli/commands/init-templates.test.ts | (all 7 cases) | tests-new/unit/cli/commands/init-templates.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. |
+| unit/cli/commands/scaffold.test.ts | (all 31 cases) | tests-new/unit/cli/commands/scaffold.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. |
+| unit/cli/detect-self.test.ts | (all 7 cases) | tests-new/unit/cli/detect-self.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. |
+| unit/cli/detect-tmux.test.ts | (all 9 cases) | tests-new/unit/cli/detect-tmux.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. |
+| unit/cli/execute-with-attach.test.ts | (all 8 cases) | tests-new/unit/cli/execute-with-attach.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. |
+| unit/cli/format.test.ts | (all 8 cases) | tests-new/unit/cli/format.test.ts | port | Cross-tree specifier(s) → `@orch/test/make-step-entry` (PD2). `src` import set unchanged, parity green. |
+| unit/cli/logs-command.test.ts | (all 9 cases) | tests-new/unit/cli/logs-command.test.ts | port | Cross-tree specifier(s) → `@orch/test/make-step-entry` (PD2). `src` import set unchanged, parity green. |
+| unit/cli/run-codegen-prepass.test.ts | (all 5 cases) | tests-new/unit/cli/run-codegen-prepass.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. |
+| unit/cli/tail-lines.test.ts | (all 3 cases) | tests-new/unit/cli/tail-lines.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. |
+| unit/cli/types-command-watch.test.ts | (all 3 cases) | tests-new/unit/cli/types-command-watch.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. |
+| unit/cli/types-command.test.ts | (all 5 cases) | tests-new/unit/cli/types-command.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. |
+| unit/core/ask-types.test-d.ts | (all 0 cases) | tests-new/unit/core/ask-types.test-d.ts | port | Type-test relocated into `tests-new/unit/core/**` where `tsc --noEmit` typechecks it (parent D11/D12). type-assertions specifier → `@orch/test/type-assertions.ts`. parity green. |
+| unit/core/prompt-file/promptfile-registry.test-d.ts | (all 0 cases) | tests-new/unit/core/prompt-file/promptfile-registry.test-d.ts | port | Type-test relocated into `tests-new/unit/core/**` where `tsc --noEmit` typechecks it (parent D11/D12). type-assertions specifier → `@orch/test/type-assertions.ts`. parity green. |
+| unit/core/prompt-file/template-vars.test-d.ts | (all 0 cases) | tests-new/unit/core/prompt-file/template-vars.test-d.ts | port | Type-test relocated into `tests-new/unit/core/**` where `tsc --noEmit` typechecks it (parent D11/D12). type-assertions specifier → `@orch/test/type-assertions.ts`. parity green. |
+| unit/core/run-workflow-typing.test-d.ts | (all 0 cases) | tests-new/unit/core/run-workflow-typing.test-d.ts | port | Type-test relocated into `tests-new/unit/core/**` where `tsc --noEmit` typechecks it (parent D11/D12). type-assertions specifier → `@orch/test/type-assertions.ts`. parity green. |
+| unit/core/step-runfn-typed-vars.test-d.ts | (all 0 cases) | tests-new/unit/core/step-runfn-typed-vars.test-d.ts | port | Type-test relocated into `tests-new/unit/core/**` where `tsc --noEmit` typechecks it (parent D11/D12). type-assertions specifier → `@orch/test/type-assertions.ts`. parity green. |
+| unit/core/workflow-typing.test-d.ts | (all 0 cases) | tests-new/unit/core/workflow-typing.test-d.ts | port | Type-test relocated into `tests-new/unit/core/**` where `tsc --noEmit` typechecks it (parent D11/D12). type-assertions specifier → `@orch/test/type-assertions.ts`. parity green. |
+| unit/helpers/behavioral-dsl/invariants.test.ts | (all 20 cases) | tests-new/unit/support/behavioral-dsl/invariants.test.ts | port | Cross-tree specifier(s) → `@orch/test/behavioral-dsl/*` (PD2). `src` import set unchanged, parity green. |
+| unit/helpers/behavioral-dsl/pane-matchers.test.ts | (all 22 cases) | tests-new/unit/support/behavioral-dsl/pane-matchers.test.ts | port | Cross-tree specifier(s) → `@orch/test/behavioral-dsl/*` (PD2). `src` import set unchanged, parity green. |
+| unit/helpers/behavioral-dsl/snapshot.test.ts | (all 15 cases) | tests-new/unit/support/behavioral-dsl/snapshot.test.ts | port | Cross-tree specifier(s) → `@orch/test/behavioral-dsl/*` (PD2). `src` import set unchanged, parity green. |
+| unit/hosts/two-pane/real-tmux-harness/pane-handle.test.ts | (all 11 cases) | tests-new/integration/real-tmux/pane-handle.test.ts | port | **Classified `integration` real-tmux (PD3)** — boots real tmux, `skipIf` gating preserved verbatim. Cross-tree specifier(s) → `@orch/test/real-tmux` (PD2). `src` import set unchanged, parity green. NEW copy keeps `skipIf` (legitimate capability gating, D8); OLD copy flipped to unconditional `.skip` (R13). |
+| unit/hosts/two-pane/real-tmux-harness/socket-allocation.test.ts | (all 18 cases) | tests-new/integration/real-tmux/socket-allocation.test.ts | port | **Classified `integration` real-tmux (PD3)** — boots real tmux, `skipIf` gating preserved verbatim. Cross-tree specifier(s) → `@orch/test/real-tmux` (PD2). `src` import set unchanged, parity green. NEW copy keeps `skipIf` (legitimate capability gating, D8); OLD copy flipped to unconditional `.skip` (R13). |
+| unit/hosts/two-pane/steps-view/tui-overlay.test.ts | (all 11 cases) | tests-new/unit/hosts/two-pane/tui-overlay.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. |
+| unit/observability/file-session-logger.test.ts | (all 21 cases) | tests-new/unit/observability/file-session-logger.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. |
+| unit/observability/instrument-process-service.test.ts | (all 4 cases) | tests-new/unit/observability/instrument-process-service.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. |
+| unit/observability/null-session-logger.test.ts | (all 9 cases) | tests-new/unit/observability/null-session-logger.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. |
+| unit/observability/readme-template.test.ts | (all 5 cases) | tests-new/unit/observability/readme-template.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. |
+| unit/observability/redact.test.ts | (all 12 cases) | tests-new/unit/observability/redact.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. |
+| unit/observability/status-loop-subworkflow.test.ts | (all 4 cases) | tests-new/unit/observability/status-loop-subworkflow.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. |
+| unit/observability/status-pane.test.ts | (all 26 cases) | tests-new/unit/observability/status-pane.test.ts | port | Cross-tree specifier(s) → `@orch/test/make-step-entry` (PD2). `src` import set unchanged, parity green. |
+| unit/services/tmux/external-mouse-events.test.ts | (all 7 cases) | tests-new/tmux-argv/services/tmux/external-mouse-events.test.ts | port | **Classified `tmux-argv` (PD3)** — argv/escaping/adapter or smart-constructor validation, boots NO real tmux (FakeProcessService / pure). Cross-tree specifier(s) → `@orch/test/behavioral-dsl/*` (PD2). `src` import set unchanged, parity green. |
+| unit/services/tmux/has-session-server.test.ts | (all 12 cases) | tests-new/tmux-argv/services/tmux/has-session-server.test.ts | port | **Classified `tmux-argv` (PD3)** — argv/escaping/adapter or smart-constructor validation, boots NO real tmux (FakeProcessService / pure). Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. |
+| unit/services/tmux/session-init.test.ts | (all 12 cases) | tests-new/tmux-argv/services/tmux/session-init.test.ts | port | **Classified `tmux-argv` (PD3)** — argv/escaping/adapter or smart-constructor validation, boots NO real tmux (FakeProcessService / pure). Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. |
+| unit/services/tmux/tmux-service-window.test.ts | (all 4 cases) | tests-new/tmux-argv/services/tmux/tmux-service-window.test.ts | port | **Classified `tmux-argv` (PD3)** — argv/escaping/adapter or smart-constructor validation, boots NO real tmux (FakeProcessService / pure). Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. |
+| unit/services/tmux/tmux-service.test.ts | (all 43 cases) | tests-new/tmux-argv/services/tmux/tmux-service.test.ts | port | **Classified `tmux-argv` (PD3)** — argv/escaping/adapter or smart-constructor validation, boots NO real tmux (FakeProcessService / pure). Verbatim relocation — body byte-identical; no cross-tree imports to rewrite. `src` import set unchanged, parity green. |
+| unit/setup/reap-test-sockets.test.ts | (all 12 cases) | tests-new/unit/support/reap-test-sockets.test.ts | port | Cross-tree specifier(s) → `@orch/test/setup/reap-test-sockets` (PD2). `src` import set unchanged, parity green. |
+
+### Category-A demotes relocated (PD5)
+
+> Three group-B-deferred (`→ U10–U13`) demotes had a clean verbatim case body and
+> existing fake APIs, so they relocate here into a cheaper category. The other
+> Category-A files routed to "U10–U13" are real-tmux/host **behavioral** tests
+> whose disposition is recorded under §9 below.
+
+| Old file (case) | New home | Disposition | Reason |
+|---|---|---|---|
+| unit/hosts/two-pane/steps-view/tui-overlay.test.ts (all 11 parse/serialize cases) | tests-new/unit/hosts/two-pane/tui-overlay.test.ts | demote→unit (PURE) | `parseTuiOverlayLine`/`serializeTuiOverlayLine` are pure model-state codec, not rendering (triage/D-P6). Verbatim; `src` depth 5→4 corrected; parity green. **Old file fully `.skip`.** |
+| unit/hosts/two-pane/steps-view/adaptive-columns.test.ts (`COLUMN_THRESHOLDS` policy case) | tests-new/unit/hosts/two-pane/adaptive-columns-thresholds.test.ts | demote→unit (MIXED — case extract) | Pure threshold-constant policy assertion. The adaptive-column **render** case (`pickColumns` breakpoints) is group-B render and stays LIVE in the old file (D15 — no premature full skip). **Old file stays LIVE.** |
+| unit/hosts/two-pane/steps-view/subworkflow-parallel-suppression.test.ts (real-`parallel()` persisted-records case) | tests-new/integration/hosts/two-pane/subworkflow-parallel-persisted-records.test.ts | demote→integration (MIXED — case extract) | Runs a real `parallel()` workflow via `parent.execute(deps)` with fakes and asserts persisted lifecycle records — execution/persistence ("passes if the pane is empty"). The three `projectStepsView` projection cases are group-B render and stay LIVE (D15). **Old file stays LIVE.** |
+
+### Infra notes (D13 `_support` move — not test rows)
+
+> **`tests/setup/reap-test-sockets.ts`** (a `setup` baseline entry, the reaper) was
+> **moved** to `tests-new/_support/setup/reap-test-sockets.ts` (its one cross-dir
+> import `../helpers/real-tmux/socket.ts` → `../real-tmux/socket.ts`), leaving a
+> thin re-export shim at the old path so the still-live `cleanup-stale-tmux.ts`
+> preload (which `import`s `./reap-test-sockets.ts`) keeps resolving. The relocated
+> `reap-test-sockets.test.ts` imports it via `@orch/test/setup/reap-test-sockets.ts`.
+> **`tests/setup/cleanup-stale-tmux.ts`** (the other `setup` entry, the bunfig
+> preload) is **unchanged** and stays put — `bunfig.toml` still loads it; it reaches
+> the reaper through the shim. Neither is a test relocation.
+
+### Shim lifecycle (PD6) — all four shims KEPT after U13
+
+> U13 rewrote its own `@orch/test/*` consumers. A `_support` shim is deleted only
+> when U13 skips/relocates its **last** live old consumer. After U13, every shim
+> still has live (un-`.skip`'d) old consumers, so **all are kept**:
+> `make-step-entry` (live: `steps-view-model.test.ts`, `subworkflow-boundary-projection.test.ts`,
+> and the still-LIVE `subworkflow-parallel-suppression.test.ts`);
+> `fake-host` (live: `start-steps-view.test.ts` + the LIVE `subworkflow-parallel-suppression.test.ts`);
+> `real-tmux` & `behavioral-dsl` (live: the entire still-LIVE lifecycle / two-pane
+> real suites). Their deletion is handed to the §9 group-B closeout.
+
+## Open accounting gap — group-B render/projection leftovers + non-relocatable behavioral demotes (blocking U14)
+
+> **Recorded per parent §3.7 / D1 / R3 / §9 — NOT U13 work; counted so U14 inherits
+> an exact gap, not a surprise.** U13 relocates/classifies only what is a true
+> relocation; it skips and re-derives **nothing** of the following, and leaves every
+> file below **LIVE and unmarked**.
+
+**(a) Category-B render/projection leftovers (need group-B re-derivation, not relocation).**
+The still-LIVE `tests/**/two-pane/**` render files the parent §9 enumerates remain
+LIVE: `steps-view/steps-view-colors.test.tsx`, `steps-view/steps-view-banner.test.tsx`,
+the adaptive-column **render** cases (the threshold case demoted above), the LIVE
+`steps-view/*.test.tsx` spans-files set, and the LIVE `integration/hosts/two-pane/**`
+plumbing files. **Plus the 5 `integration/hosts/two-pane-*.test.ts`** files U12 flagged.
+
+**(b) Non-relocatable Category-A behavioral demotes (real-tmux/host coordination — no faithful fake substrate).**
+Four `→ U10–U13` demotes assert **end-to-end host behavior** (real tmux `wait-for`
+stop-channels, real PTY pane lifecycle, or the real host's logger+store wiring) that
+has **no faithful fake substrate** without building host-integration infrastructure
+(a fake host with stop-channels / a wired session-logger run) — which is
+re-derivation, **forbidden to a U13 relocation** by D1/R3. Their *component*
+behaviors are already covered with fakes (auto-stop wiring by
+`tests-new/unit/core/workflow-auto-stop.test.ts`; per-step disk artifacts by
+`file-session-logger` / `transcript-sidecar` / `resume-per-step-folder`). Rather than
+ship a green-but-unfaithful rewrite, U13 leaves these **LIVE** and counts them here:
+
+| Old file (demoted case) | Why not relocated by U13 |
+|---|---|
+| integration/hosts/two-pane/tier-1/auto-stop.real.integration.test.ts (4 stop-channel cases) | Tests the real-tmux host's `wait-for` stop-channel + PTY pane-exit race; `createFakeHost` has no stop-channel. Core auto-stop *wiring* already covered by `workflow-auto-stop.test.ts`. |
+| integration/lifecycle/progression.per-step-artifacts-land-on-disk.behavioral.real.test.ts (1 case) | Asserts session.json + events.ndjson land via the **real host's** logger+store wiring through a driven subprocess; fakes need that wiring assembled. Component-level disk persistence already covered. |
+| integration/lifecycle/resume.cached-steps-replay-with-cached-glyph.behavioral.real.test.ts (1 case) | Resume orchestration proven through the real driven host; faithful fake needs the same host wiring. |
+| integration/lifecycle/command.output-streams-to-right-pane-and-exit-code-recorded.behavioral.real.test.ts (1 case) | Per the U6 ledger note, the command-step host-fixture infrastructure (a `command(...)` step + pipe-pane capture) **does not exist** in `_support/real-tmux/`. |
+
+> **Recommended resolution (parent §9).** A **group-B closeout** phase between U13 and
+> U14, owned by a group-B-literate agent loading the two-pane scenario DSL (not the
+> relocation recipe), dispositions each (a)/(b) entry as `skip-as-covered` /
+> `re-derive` / `drop`. Until it lands, **U14 reconciliation cannot pass** — its
+> frozen-baseline scan will (correctly) flag exactly the (a)+(b) set as unaccounted
+> `test` entries. After U13, the only un-`.skip`'d, un-ledgered baseline `test`
+> entries remaining are precisely this (a)+(b) set: the gap is now exact and counted.

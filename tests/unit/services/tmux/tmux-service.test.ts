@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/tmux-argv/services/tmux/tmux-service.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { FakeProcessService } from '../../../../src/services/process/fake-process-service.ts'
 import {
@@ -12,7 +13,7 @@ import {
 // Branded constructors
 // ---------------------------------------------------------------------------
 
-describe('paneId', () => {
+describe.skip('paneId', () => {
   it('accepts tmux pane ids shaped like %42', () => {
     expect(paneId('%42')).toBe('%42' as ReturnType<typeof paneId>)
   })
@@ -34,7 +35,7 @@ describe('paneId', () => {
   })
 })
 
-describe('socketName', () => {
+describe.skip('socketName', () => {
   it('accepts lowercase alphanumerics with dashes', () => {
     expect(socketName('orch-run-001')).toBe('orch-run-001' as ReturnType<typeof socketName>)
   })
@@ -62,7 +63,7 @@ describe('socketName', () => {
 // TmuxCommandError shape
 // ---------------------------------------------------------------------------
 
-describe('TmuxCommandError', () => {
+describe.skip('TmuxCommandError', () => {
   it('preserves the exit code and stderr passed to the constructor', () => {
     const err = new TmuxCommandError(1, 'no server running', 'tmux failed (exit 1)')
 
@@ -83,7 +84,7 @@ describe('TmuxCommandError', () => {
 // FakeTmuxService — recording
 // ---------------------------------------------------------------------------
 
-describe('FakeTmuxService recording', () => {
+describe.skip('FakeTmuxService recording', () => {
   it('records every method call with its options in order', async () => {
     const tmux = new FakeTmuxService()
     const socket = socketName('orch-1')
@@ -112,7 +113,7 @@ describe('FakeTmuxService recording', () => {
 // FakeTmuxService — scripted return values
 // ---------------------------------------------------------------------------
 
-describe('FakeTmuxService.splitPane', () => {
+describe.skip('FakeTmuxService.splitPane', () => {
   it('returns scripted pane ids in FIFO order', async () => {
     const tmux = new FakeTmuxService()
     tmux.nextPaneId(paneId('%10'))
@@ -136,7 +137,7 @@ describe('FakeTmuxService.splitPane', () => {
   })
 })
 
-describe('FakeTmuxService.createSession (initial pane id contract)', () => {
+describe.skip('FakeTmuxService.createSession (initial pane id contract)', () => {
   it('returns the next scripted createSession pane id when one is queued', async () => {
     const tmux = new FakeTmuxService()
     const socket = socketName('orch-1')
@@ -234,7 +235,7 @@ describe('FakeTmuxService.createSession (initial pane id contract)', () => {
   })
 })
 
-describe('FakeTmuxService.displayMessage', () => {
+describe.skip('FakeTmuxService.displayMessage', () => {
   it('returns scripted display results in FIFO order', async () => {
     const tmux = new FakeTmuxService()
     tmux.setDisplayResult('0')
@@ -274,7 +275,7 @@ describe('FakeTmuxService.displayMessage', () => {
 // FakeTmuxService.capturePane / pipePane / listPanes (phase 13c additions)
 // ---------------------------------------------------------------------------
 
-describe('FakeTmuxService.capturePane', () => {
+describe.skip('FakeTmuxService.capturePane', () => {
   it('records the capture call and returns the scripted result', async () => {
     const tmux = new FakeTmuxService()
     tmux.setCaptureResult('hello world')
@@ -300,7 +301,7 @@ describe('FakeTmuxService.capturePane', () => {
   })
 })
 
-describe('FakeTmuxService.pipePane', () => {
+describe.skip('FakeTmuxService.pipePane', () => {
   it('records the pipe command and append flag for observe-mode assertions', async () => {
     const tmux = new FakeTmuxService()
 
@@ -320,7 +321,7 @@ describe('FakeTmuxService.pipePane', () => {
   })
 })
 
-describe('FakeTmuxService.listPanes', () => {
+describe.skip('FakeTmuxService.listPanes', () => {
   it('returns scripted pane lines in FIFO order', async () => {
     const tmux = new FakeTmuxService()
     tmux.setListPanesResult(['%1', '%2'])
@@ -352,7 +353,7 @@ describe('FakeTmuxService.listPanes', () => {
   })
 })
 
-describe('FakeTmuxService.killSession', () => {
+describe.skip('FakeTmuxService.killSession', () => {
   it('records the session teardown call so host tests can assert it fired', async () => {
     const tmux = new FakeTmuxService()
     const socket = socketName('orch-1')
@@ -379,7 +380,7 @@ describe('FakeTmuxService.killSession', () => {
   })
 })
 
-describe('FakeTmuxService.respawnPane', () => {
+describe.skip('FakeTmuxService.respawnPane', () => {
   it('records argv verbatim even when entries contain shell metacharacters', async () => {
     const tmux = new FakeTmuxService()
     const socket = socketName('orch-1')
@@ -419,7 +420,7 @@ describe('FakeTmuxService.respawnPane', () => {
   })
 })
 
-describe('FakeTmuxService.swapPane', () => {
+describe.skip('FakeTmuxService.swapPane', () => {
   it('records the swap call with src and dst pane ids in the order received', async () => {
     const tmux = new FakeTmuxService()
     const socket = socketName('orch-1')
@@ -433,7 +434,7 @@ describe('FakeTmuxService.swapPane', () => {
   })
 })
 
-describe('FakeTmuxService.splitPane argv variant', () => {
+describe.skip('FakeTmuxService.splitPane argv variant', () => {
   it('records the argv shape separately from the command shape with env and cwd fields', async () => {
     const tmux = new FakeTmuxService()
     const socket = socketName('orch-1')
@@ -471,7 +472,7 @@ describe('FakeTmuxService.splitPane argv variant', () => {
   })
 })
 
-describe('FakeTmuxService.waitFor', () => {
+describe.skip('FakeTmuxService.waitFor', () => {
   it('records a wait without timeoutMs so interactive callers can assert the no-timeout contract', async () => {
     const tmux = new FakeTmuxService()
 
@@ -505,7 +506,7 @@ describe('FakeTmuxService.waitFor', () => {
 // RealTmuxService.createSession argv shape (U2 — per-source tmux sessions)
 // ---------------------------------------------------------------------------
 
-describe('RealTmuxService.createSession (argv shape + pane-id parsing)', () => {
+describe.skip('RealTmuxService.createSession (argv shape + pane-id parsing)', () => {
   const SOCKET = socketName('orch-cs')
 
   it('includes -P -F #{pane_id} after the new-session geometry flags so tmux prints the initial pane id', async () => {

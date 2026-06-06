@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/tmux-argv/services/tmux/tmux-integration.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Integration tests: RealTmuxService composed with FakeProcessService.
 // These tests verify that tmux argv construction is exactly what we expect
 // to send over the process seam — every flag, positional, and ordering.
@@ -12,7 +13,7 @@ import {
 } from '../../../../src/services/tmux/index.ts'
 import { path } from '../../../../src/services/types.ts'
 
-describe('RealTmuxService.createSession', () => {
+describe.skip('RealTmuxService.createSession', () => {
   it('sends new-session with detached flag, socket, window geometry, /dev/null config, and -P -F #{pane_id} (U2)', async () => {
     const proc = new FakeProcessService()
     const expectedArgv = [
@@ -116,7 +117,7 @@ describe('RealTmuxService.createSession', () => {
   })
 })
 
-describe('RealTmuxService.splitPane', () => {
+describe.skip('RealTmuxService.splitPane', () => {
   it('returns the parsed pane id from split-window -P output', async () => {
     const proc = new FakeProcessService()
     proc
@@ -180,7 +181,7 @@ describe('RealTmuxService.splitPane', () => {
   })
 })
 
-describe('RealTmuxService.swapPane', () => {
+describe.skip('RealTmuxService.swapPane', () => {
   it('passes -d so that swapping a hidden pane into the visible slot does not move tmux focus to it', async () => {
     // Regression: without `-d`, tmux's documented swap-pane default moves the
     // active pane to the source after the swap. In our case `src` is the
@@ -197,7 +198,7 @@ describe('RealTmuxService.swapPane', () => {
   })
 })
 
-describe('RealTmuxService.sendKeys', () => {
+describe.skip('RealTmuxService.sendKeys', () => {
   it('passes each key verbatim after -l to prevent metacharacter interpretation', async () => {
     const proc = new FakeProcessService()
     const payload = '; rm -rf /'
@@ -232,7 +233,7 @@ describe('RealTmuxService.sendKeys', () => {
   })
 })
 
-describe('RealTmuxService.waitFor', () => {
+describe.skip('RealTmuxService.waitFor', () => {
   it('resolves once the underlying wait-for subprocess exits zero', async () => {
     const proc = new FakeProcessService()
     proc.when(['tmux', '-L', 'orch-1', 'wait-for', 'pane-exit-1']).respondWith({ exitCode: 0 })
@@ -288,7 +289,7 @@ describe('RealTmuxService.waitFor', () => {
   })
 })
 
-describe('RealTmuxService.displayMessage', () => {
+describe.skip('RealTmuxService.displayMessage', () => {
   it('returns the stdout line as the rendered format', async () => {
     const proc = new FakeProcessService()
     proc
@@ -322,7 +323,7 @@ describe('RealTmuxService.displayMessage', () => {
   })
 })
 
-describe('RealTmuxService.setOption and setHook', () => {
+describe.skip('RealTmuxService.setOption and setHook', () => {
   it('builds a global set-option argv when global is true', async () => {
     const proc = new FakeProcessService()
     proc
@@ -355,7 +356,7 @@ describe('RealTmuxService.setOption and setHook', () => {
   })
 })
 
-describe('RealTmuxService.killPane, selectPane, attachSession, signalChannel', () => {
+describe.skip('RealTmuxService.killPane, selectPane, attachSession, signalChannel', () => {
   it('sends the expected argv for each single-purpose method', async () => {
     const proc = new FakeProcessService()
     proc.when(['tmux', '-L', 'orch-1', 'kill-pane', '-t', '%1']).respondWith({ exitCode: 0 })
@@ -375,7 +376,7 @@ describe('RealTmuxService.killPane, selectPane, attachSession, signalChannel', (
 // capturePane / pipePane / listPanes (phase 13c additions)
 // ---------------------------------------------------------------------------
 
-describe('RealTmuxService.capturePane', () => {
+describe.skip('RealTmuxService.capturePane', () => {
   it('builds capture-pane argv with -p and appends -e/-J when requested', async () => {
     const proc = new FakeProcessService()
     proc
@@ -406,7 +407,7 @@ describe('RealTmuxService.capturePane', () => {
   })
 })
 
-describe('RealTmuxService.pipePane', () => {
+describe.skip('RealTmuxService.pipePane', () => {
   it('builds pipe-pane argv with -O and the command as the final positional', async () => {
     const proc = new FakeProcessService()
     proc
@@ -435,7 +436,7 @@ describe('RealTmuxService.pipePane', () => {
   })
 })
 
-describe('RealTmuxService.listPanes', () => {
+describe.skip('RealTmuxService.listPanes', () => {
   it('splits the format-rendered stdout into one entry per non-empty line', async () => {
     const proc = new FakeProcessService()
     proc
@@ -469,7 +470,7 @@ describe('RealTmuxService.listPanes', () => {
   })
 })
 
-describe('RealTmuxService.respawnPane', () => {
+describe.skip('RealTmuxService.respawnPane', () => {
   it('composes tmux respawn-pane -k -t <pane> <argv...> with no shell interpretation', async () => {
     const proc = new FakeProcessService()
     // The argv entries include a shell-meta step name. If the composer ever
@@ -660,7 +661,7 @@ describe('RealTmuxService.respawnPane', () => {
 // unbindKey / bindKey (PR A — strict tmux sandbox)
 // ---------------------------------------------------------------------------
 
-describe('RealTmuxService.unbindKey', () => {
+describe.skip('RealTmuxService.unbindKey', () => {
   it('emits unbind-key -a -T <table> for the requested table', async () => {
     const proc = new FakeProcessService()
     proc
@@ -697,7 +698,7 @@ describe('RealTmuxService.unbindKey', () => {
   })
 })
 
-describe('RealTmuxService.bindKey', () => {
+describe.skip('RealTmuxService.bindKey', () => {
   it("emits bind-key -n <key> <command...> when table is 'root-no-prefix'", async () => {
     // `-n` is tmux shorthand for "root with no prefix". Tmux 3.6a's
     // `bind-key` grammar is `<key> <command-name> [args...]` — there is no

@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/tmux-argv/services/tmux/external-mouse-events.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Unit coverage for `buildSgrMouse`. The builder produces the exact escape
 // sequence tmux's `send-keys -M` expects (xterm SGR mouse encoding). The
 // probe's end-to-end behavior is exercised in U8's click-to-focus smoke and
@@ -6,7 +7,7 @@
 import { describe, expect, it } from 'bun:test'
 import { buildSgrMouse } from '../../../../tests/helpers/behavioral-dsl/internal/mouse-events.ts'
 
-describe('buildSgrMouse', () => {
+describe.skip('buildSgrMouse', () => {
   it('encodes a left-button press as ESC[<0;col;rowM', () => {
     expect(buildSgrMouse({ pressed: true, button: 'left', col: 12, row: 5 })).toBe('\x1b[<0;12;5M')
   })

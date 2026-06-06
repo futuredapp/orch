@@ -495,3 +495,45 @@ ledger them so reconciliation doesn't flag them as unaccounted. The `make-step-e
 must stay until U13 skips its last consumer. `bun run check`'s non-flaky gate (lint,
 typecheck, import-parity, new-unit, new-int) is green; U12 touched no `src/` file and never
 regenerated the frozen baseline.
+
+## Phase 13
+
+Phase 13 (parent U13) is the final relocation phase. It drained the last relocatable
+clusters of the frozen baseline out of the old `tests/` tree into `tests-new/`: `cli/**`
+(31), `observability/**` (13), the 4 remaining non-tier-4 `e2e/**`, the 6 deferred
+`.test-d.ts` type-tests (now typechecked in `tests-new/unit/core/**` because the tree is
+in `tsconfig`), the 3 behavioral-dsl helper tests, and the stragglers (`barrel`,
+`examples/subworkflows-smoke`, the `reap-test-sockets` test). It reused the existing
+machinery verbatim — the import-parity guard, the `@orch/test/*` aliases, the skip-and-
+ledger recipe — adding only a list-driven `scripts/skip-migrated-u13.sh`. 77 files moved
+with bodies byte-identical (only cross-tree helper specifiers rewritten); each old copy is
+now `.skip` + `// MIGRATED →` and kept on disk (D2). The import-parity guard is green over
+all 242 relocation pairs, and `bun run check` passes lint, typecheck, parity, the old
+suite, and `test:new-unit` — the only failures are the 5 documented pre-existing ENOENT
+fixture failures under gitignored `.orch/` (in U10/U11-relocated core files, not U13's).
+
+Two genuine judgment calls beyond mechanical copying. (1) The tmux adapter/harness tests
+were explicitly classified (PD3): every no-real-tmux file (argv/escaping/validation) went
+to `tests-new/tmux-argv/services/tmux/**`; every real-tmux file (`skipIf`-gated) went to
+`tests-new/integration/real-tmux/**` or `…/services/tmux/**` with gating preserved — none
+dropped. (2) Of the seven group-B-deferred Category-A demotes, three had a clean verbatim
+case body and relocated faithfully (the `tui-overlay` codec → unit; the `adaptive-columns`
+threshold-constants case and the `subworkflow-parallel` persisted-records case → extracted,
+their mixed old files kept LIVE per D15). The other four are real-tmux/host **behavioral**
+tests (`auto-stop`, `per-step-artifacts`, `resume`, `command`) whose assertions depend on
+end-to-end host behavior — real tmux `wait-for` stop-channels, PTY pane lifecycle, or the
+real host's logger+store wiring — with **no faithful fake substrate** short of building
+host-integration infrastructure, which D1/R3 forbid a relocation from doing. Rather than
+ship green-but-unfaithful rewrites, these were left LIVE and counted in the ledger's §9 gap.
+
+What matters for next work: U13 is the last relocation, but the migration is **not** ready
+for U14 reconciliation yet. The ledger now carries an explicit, baseline-grounded "Open
+accounting gap" section listing exactly what remains un-`.skip`'d: the group-B render/
+projection leftovers (`steps-view-colors`, `steps-view-banner`, the LIVE `steps-view/*` and
+`integration/hosts/two-pane/**` files, the 5 `two-pane-*` files), plus the four
+non-relocatable behavioral demotes above. These need a **group-B closeout** phase (a
+two-pane-DSL-literate agent, not the relocation recipe) to disposition each as
+`skip-as-covered` / `re-derive` / `drop` before U14 can pass. All four `_support` shims
+(`make-step-entry`, `fake-host`, `real-tmux`, `behavioral-dsl`) stay KEPT — each still has
+live old consumers among those leftovers. No `src/` file changed; the frozen baseline was
+never regenerated.

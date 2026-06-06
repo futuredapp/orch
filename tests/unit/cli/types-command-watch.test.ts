@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/cli/types-command-watch.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Real-fs watch test for `orch types --watch`.
 //
 // `fs.watch` cannot be intercepted by FakeFsService — the precedent in
@@ -104,7 +105,7 @@ async function waitFor(
   throw new Error(`waitFor timed out after ${timeoutMs}ms`)
 }
 
-describe('orch types --watch', () => {
+describe.skip('orch types --watch', () => {
   it('regenerates sidecars when a prompt file changes', async () => {
     await writeConfig(
       tmpDir,

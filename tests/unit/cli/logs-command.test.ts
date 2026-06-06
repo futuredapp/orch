@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/cli/logs-command.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Unit tests for `orch logs` (PR B — --latest, --step, --follow).
 //
 // The command is wired against fakes at the `*Service` ports per
@@ -128,7 +129,7 @@ async function seedRun(
 // --latest
 // ---------------------------------------------------------------------------
 
-describe('orch logs --latest', () => {
+describe.skip('orch logs --latest', () => {
   it('resolves to the most recent run id from the registry', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-logs-latest-')
     const deps = makeDeps()
@@ -183,7 +184,7 @@ describe('orch logs --latest', () => {
 // --step (exact match)
 // ---------------------------------------------------------------------------
 
-describe('orch logs <runId> --step <name>', () => {
+describe.skip('orch logs <runId> --step <name>', () => {
   it('prints only the named step when --step is an exact match', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-logs-step-match-')
     const deps = makeDeps()
@@ -248,7 +249,7 @@ describe('orch logs <runId> --step <name>', () => {
 // --follow
 // ---------------------------------------------------------------------------
 
-describe('orch logs <runId> --follow', () => {
+describe.skip('orch logs <runId> --follow', () => {
   it('exits 2 with a hint pointing at --step when --follow is missing --step', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-logs-follow-no-step-')
     const deps = makeDeps()

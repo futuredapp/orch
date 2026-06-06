@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/cli/run-codegen-prepass.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Unit coverage for the codegen pre-pass inside `runCmd` — specifically the
 // three runtime branches that live in `runCodegenPrepass`:
 //
@@ -89,7 +90,7 @@ function capture(): { stderr: () => string; restore: () => void } {
   }
 }
 
-describe('runCodegenPrepass — branch coverage', () => {
+describe.skip('runCodegenPrepass — branch coverage', () => {
   it('silently skips when orch.config.ts is missing (ConfigLoadError)', async () => {
     // No orch.config.ts in tmpDir → loadConfig throws ConfigLoadError. The
     // prepass swallows it because runCmd's loadWorkflow will report the real
@@ -163,7 +164,7 @@ describe('runCodegenPrepass — branch coverage', () => {
   })
 })
 
-describe('runCodegen — discovery failure path', () => {
+describe.skip('runCodegen — discovery failure path', () => {
   it('records a CodegenError on configDir when discoverPrompts throws', async () => {
     // Inject an FsService whose `glob` throws — discoverPrompts iterates the
     // glob results inside a `for await`, so the failure bubbles up and the

@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/cli/run-end-of-run-summary.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // End-of-run summary block — printed by executeWithAttach on both the
 // success and the mapped-failure paths. The unit test (tests/unit/cli/
 // execute-with-attach.test.ts) covers the same writes against a fake host;
@@ -26,7 +27,7 @@ function bufferStream(): { stream: NodeJS.WritableStream; text: () => string } {
 
 const RUN_ID = 'r-2026-04-29-143052-7k'
 
-describe('end-of-run summary (integration)', () => {
+describe.skip('end-of-run summary (integration)', () => {
   it('prints the two-line success block with a relative data path', async () => {
     const stderr = bufferStream()
     const stdout = bufferStream()

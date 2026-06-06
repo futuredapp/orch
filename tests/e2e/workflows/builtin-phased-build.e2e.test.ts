@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/e2e/workflows/builtin-phased-build.e2e.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Tier 4 e2e — the packaged built-ins (`orch::work-cc`, `orch::work-codex`)
 // driven against REAL CLIs through a real tmux host. Env-gated and developer-
 // opt-in (`RUN_REAL_TMUX_E2E=1` + the CLI on PATH); auto-skips in normal CI, so
@@ -21,7 +22,6 @@ import { ARTIFACT_PATH } from '../../../src/workflows/phased-build/decide-prompt
 import { parsePhases } from '../../../src/workflows/phased-build/parse-phases.ts'
 import { buildPhasedWorkflow } from '../../../src/workflows/phased-build/pipeline.ts'
 import {
-  canRunRealTmuxE2E,
   createRealTmuxFixture,
   type MountedHarness,
   mountTmuxHost,
@@ -66,7 +66,7 @@ function depsFor(
   }
 }
 
-describe.skipIf(!canRunRealTmuxE2E('claude'))('Tier 4 — orch::work-cc (real Claude)', () => {
+describe.skip('Tier 4 — orch::work-cc (real Claude)', () => {
   it('the decide step writes a parseable phase artifact for a tiny plan', async () => {
     const fixture = await createRealTmuxFixture({ env: {} })
     fixturesToDispose.push(fixture)
@@ -99,34 +99,31 @@ describe.skipIf(!canRunRealTmuxE2E('claude'))('Tier 4 — orch::work-cc (real Cl
   }, 180_000)
 })
 
-describe.skipIf(!canRunRealTmuxE2E('codex'))(
-  'Tier 4 — orch::work-codex autoStop setup (real Codex)',
-  () => {
-    it('finishes an interactive turn and the pane closes on its own with no keystroke', async () => {
-      const fixture = await createRealTmuxFixture({ env: {} })
-      fixturesToDispose.push(fixture)
-      const harness = await mountTmuxHost(fixture, {
-        disableStepsView: false,
-        agentProcessService: fixture.processService,
-      })
-      harnessesToTeardown.push(harness)
+describe.skip('Tier 4 — orch::work-codex autoStop setup (real Codex)', () => {
+  it('finishes an interactive turn and the pane closes on its own with no keystroke', async () => {
+    const fixture = await createRealTmuxFixture({ env: {} })
+    fixturesToDispose.push(fixture)
+    const harness = await mountTmuxHost(fixture, {
+      disableStepsView: false,
+      agentProcessService: fixture.processService,
+    })
+    harnessesToTeardown.push(harness)
 
-      // The work-codex runner posture (sandbox: 'full-auto'). Exercises the real
-      // per-run CODEX_HOME injection the codex variant relies on for autoStop —
-      // the path that can fail where the Claude variant succeeds.
-      const result = await harness.runWorkflow([
-        {
-          name: 'decide-phases',
-          agent: codex({ sandbox: 'full-auto' }),
-          mode: 'interactive',
-          autoStop: true,
-          prompt: 'Reply with exactly the word "done" and nothing else.',
-        },
-      ])
+    // The work-codex runner posture (sandbox: 'full-auto'). Exercises the real
+    // per-run CODEX_HOME injection the codex variant relies on for autoStop —
+    // the path that can fail where the Claude variant succeeds.
+    const result = await harness.runWorkflow([
+      {
+        name: 'decide-phases',
+        agent: codex({ sandbox: 'full-auto' }),
+        mode: 'interactive',
+        autoStop: true,
+        prompt: 'Reply with exactly the word "done" and nothing else.',
+      },
+    ])
 
-      expect(result.completed).toBe(true)
+    expect(result.completed).toBe(true)
 
-      await cleanup()
-    }, 120_000)
-  },
-)
+    await cleanup()
+  }, 120_000)
+})

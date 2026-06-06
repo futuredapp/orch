@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/core/ask-types.test-d.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Compile-time tests for the const-generic and discriminated-union shape of
 // `ask()`. No runtime assertions — failures land at `tsc --noEmit` time.
 

@@ -1,7 +1,8 @@
+// MIGRATED → tests-new/unit/cli/argv.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { ArgvError, parseArgv } from '../../../src/cli/main.ts'
 
-describe('parseArgv', () => {
+describe.skip('parseArgv', () => {
   it('parses a command with a positional argument', () => {
     const result = parseArgv(['run', 'deploy'])
 
@@ -59,7 +60,7 @@ describe('parseArgv', () => {
   })
 })
 
-describe('parseArgv prompt handling', () => {
+describe.skip('parseArgv prompt handling', () => {
   it('captures a positional prompt as args.prompt', () => {
     const result = parseArgv(['run', 'brainstorm', 'think hard about X'])
 
@@ -109,7 +110,7 @@ describe('parseArgv prompt handling', () => {
   })
 })
 
-describe('parseArgv mode and format flags', () => {
+describe.skip('parseArgv mode and format flags', () => {
   it('defaults mode to undefined (auto-detected) and format to text', () => {
     const result = parseArgv(['run', 'brainstorm'])
 
@@ -156,7 +157,7 @@ describe('parseArgv mode and format flags', () => {
   })
 })
 
-describe('parseArgv rejects removed flags', () => {
+describe.skip('parseArgv rejects removed flags', () => {
   it('rejects --tmux with a message pointing at --mode=two-pane', () => {
     let caught: unknown
     try {

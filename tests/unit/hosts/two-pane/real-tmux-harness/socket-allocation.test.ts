@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/real-tmux/socket-allocation.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // triage: keep — U1 self-test for the real-tmux harness lifecycle.
 //
 // Pins the contracts U2/U3 build on: unique sockets per fixture, hard-stop on
@@ -25,7 +26,7 @@ afterEach(async () => {
   fixturesToDispose = []
 })
 
-describe('allocateSocketName', () => {
+describe.skip('allocateSocketName', () => {
   it('returns a reserved orch-test-<pid>-<nonce> name embedding this process pid', () => {
     const name = allocateSocketName()
 
@@ -48,7 +49,7 @@ describe('allocateSocketName', () => {
   })
 })
 
-describe('reserved-prefix audit guard (success criterion)', () => {
+describe.skip('reserved-prefix audit guard (success criterion)', () => {
   // Encodes "no bare orch- / orch-r- socket is ever created by test code".
   // PROD_OR_BARE matches a production orch-r- socket OR any orch- name whose
   // first segment is not `test` — exactly the shapes the stale-socket preload
@@ -72,7 +73,7 @@ describe('reserved-prefix audit guard (success criterion)', () => {
   })
 })
 
-describe('pidFromTestSocket', () => {
+describe.skip('pidFromTestSocket', () => {
   it('parses the pid from a reserved orch-test- socket name', () => {
     expect(pidFromTestSocket('orch-test-12345-ab12cd')).toBe(12345)
   })
@@ -90,7 +91,7 @@ describe('pidFromTestSocket', () => {
   })
 })
 
-describe('assertNoNestedTmux', () => {
+describe.skip('assertNoNestedTmux', () => {
   it('returns silently when TMUX is unset or empty', () => {
     expect(() => assertNoNestedTmux({})).not.toThrow()
     expect(() => assertNoNestedTmux({ TMUX: '' })).not.toThrow()
@@ -102,7 +103,7 @@ describe('assertNoNestedTmux', () => {
   })
 })
 
-describe('canRunRealTmux', () => {
+describe.skip('canRunRealTmux', () => {
   it('returns false when TMUX is set even if tmux is on PATH', () => {
     expect(canRunRealTmux({ TMUX: '/tmp/tmux-x/default,1,0', PATH: process.env.PATH })).toBe(false)
   })
@@ -112,7 +113,7 @@ describe('canRunRealTmux', () => {
   })
 })
 
-describe('createRealTmuxFixture lifecycle', () => {
+describe.skip('createRealTmuxFixture lifecycle', () => {
   it('exposes services, a reserved orch-test- socket decoupled from runId, and an existing state-base directory', async () => {
     const fixture = await createRealTmuxFixture({ env: {} })
     fixturesToDispose.push(fixture)
@@ -155,7 +156,7 @@ describe('createRealTmuxFixture lifecycle', () => {
   })
 })
 
-describe.skipIf(!tmuxAvailable)('createRealTmuxFixture real-tmux teardown', () => {
+describe.skip('createRealTmuxFixture real-tmux teardown', () => {
   it('kills a tmux server booted on its socket so list-sessions exits non-zero after dispose', async () => {
     const fixture = await createRealTmuxFixture({ env: {} })
     const { socket } = fixture

@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/cli/types-command.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Unit tests for `orch types` (one-shot mode). Watch mode lives in
 // `types-command-watch.test.ts` because it requires real fs + fs.watch.
 
@@ -101,7 +102,7 @@ export const config = defineConfig(${body})
   )
 }
 
-describe('orch types (one-shot)', () => {
+describe.skip('orch types (one-shot)', () => {
   it('writes one sidecar per discovered prompt file', async () => {
     await writeConfig(
       tmpDir,

@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/cli/unknown-flag.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Smoke-level CLI test — runs the orch entry point with removed flags and
 // asserts the process exits CONFIG_ERROR with a message pointing at
 // --mode=two-pane. Uses bun run so the full argv pipeline (including
@@ -32,7 +33,7 @@ async function runCli(argv: string[]): Promise<{
   }
 }
 
-describe('CLI rejects removed flags', () => {
+describe.skip('CLI rejects removed flags', () => {
   it('--tmux exits CONFIG_ERROR with a message pointing at --mode=two-pane', async () => {
     const { exitCode, stderr } = await runCli(['run', 'brainstorm', '--tmux'])
 

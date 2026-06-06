@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/observability/readme-template.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { renderRunReadme } from '../../../src/observability/readme-template.ts'
 
@@ -10,7 +11,7 @@ const BASE_CTX = {
   orchVersion: '0.0.0',
 }
 
-describe('renderRunReadme', () => {
+describe.skip('renderRunReadme', () => {
   it('includes the runId in the top-level heading', () => {
     const md = renderRunReadme(BASE_CTX)
     expect(md).toContain('# Run r-2026-04-24-950814-ei')

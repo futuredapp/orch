@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/real-tmux/predictable-fake-f1.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // U7 (interactive slice) — F1 acceptance + the R6 manual-typing flow.
 //
 // F1: drive a two-step workflow (step 1 interactive, step 2 headless) to a
@@ -56,7 +57,7 @@ function teeFor(m: Mounted, key: string): string {
   return teeTxt(String(m.harness.stateStore.runDir(m.fixture.runId)), key)
 }
 
-describe.skipIf(!tmuxAvailable)('U7 F1 — interactive step 1 → headless step 2', () => {
+describe.skip('U7 F1 — interactive step 1 → headless step 2', () => {
   it(
     'drives a two-step workflow to a finished state, every assertion gated on a durable signal',
     async () => {
@@ -106,7 +107,7 @@ describe.skipIf(!tmuxAvailable)('U7 F1 — interactive step 1 → headless step 
   )
 })
 
-describe.skipIf(!tmuxAvailable)('U7 R6 — manual typing through a real PTY', () => {
+describe.skip('U7 R6 — manual typing through a real PTY', () => {
   it(
     'renders a hand-typed line exactly once via tmux send-keys (manual stdin, not control)',
     async () => {

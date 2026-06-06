@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/support/behavioral-dsl/invariants.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Unit coverage for `runInvariantContract` and the outcome matchers it
 // composes. Each test builds a synthetic `LifecycleSnapshot` and asserts
 // against the violations the contract reports.
@@ -41,7 +42,7 @@ function baseSnapshot(overrides: Partial<LifecycleSnapshot> = {}): LifecycleSnap
   }
 }
 
-describe('exitedNormally()', () => {
+describe.skip('exitedNormally()', () => {
   it('matches when orch exited with code 0', () => {
     const r = exitedNormally()(baseSnapshot())
     expect(r.matched).toBe(true)
@@ -65,7 +66,7 @@ describe('exitedNormally()', () => {
   })
 })
 
-describe('tmuxIsTornDown()', () => {
+describe.skip('tmuxIsTornDown()', () => {
   it('matches when both tmux server and session are gone', () => {
     expect(tmuxIsTornDown()(baseSnapshot()).matched).toBe(true)
   })
@@ -77,7 +78,7 @@ describe('tmuxIsTornDown()', () => {
   })
 })
 
-describe('terminalRestoredCleanly()', () => {
+describe.skip('terminalRestoredCleanly()', () => {
   it('matches when enters===exits AND ons===offs', () => {
     expect(
       terminalRestoredCleanly()(
@@ -104,7 +105,7 @@ describe('terminalRestoredCleanly()', () => {
   })
 })
 
-describe('noOrphanChildren()', () => {
+describe.skip('noOrphanChildren()', () => {
   it('matches when no orphans were swept', () => {
     expect(noOrphanChildren()(baseSnapshot()).matched).toBe(true)
   })
@@ -121,7 +122,7 @@ describe('noOrphanChildren()', () => {
   })
 })
 
-describe('stepArtifactsIntact()', () => {
+describe.skip('stepArtifactsIntact()', () => {
   it('matches when every per-step file is intact', () => {
     expect(
       stepArtifactsIntact()(baseSnapshot({ perStepFilesIntact: { plan: true, exec: true } }))
@@ -138,7 +139,7 @@ describe('stepArtifactsIntact()', () => {
   })
 })
 
-describe('withinMs', () => {
+describe.skip('withinMs', () => {
   it('returns a polling budget for the given timeout', () => {
     expect(withinMs(2_000)).toEqual({ timeoutMs: 2_000 })
   })
@@ -149,7 +150,7 @@ describe('withinMs', () => {
   })
 })
 
-describe('runInvariantContract', () => {
+describe.skip('runInvariantContract', () => {
   it('returns an empty violation list when every matcher passes', () => {
     const violations = runInvariantContract(baseSnapshot(), 'signal-sigint')
     expect(violations).toEqual([])

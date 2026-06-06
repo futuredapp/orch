@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/tmux-argv/services/tmux/has-session-server.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Unit coverage for `TmuxService.hasSession` / `hasServer`. Both methods are
 // exit-code probes that flatten "no session" / "no server running" stderr
 // into a boolean, while unexpected failures still throw. The tests script
@@ -15,7 +16,7 @@ import {
 
 const SOCKET = socketName('orch-test')
 
-describe('RealTmuxService.hasSession', () => {
+describe.skip('RealTmuxService.hasSession', () => {
   it('returns true when tmux has-session exits 0', async () => {
     const procs = new FakeProcessService()
     procs.when(['tmux', '-L', SOCKET, 'has-session', '-t', '=orch']).respondWith({ exitCode: 0 })
@@ -73,7 +74,7 @@ describe('RealTmuxService.hasSession', () => {
   })
 })
 
-describe('RealTmuxService.hasServer', () => {
+describe.skip('RealTmuxService.hasServer', () => {
   it('returns true when tmux list-sessions exits 0', async () => {
     const procs = new FakeProcessService()
     procs
@@ -109,7 +110,7 @@ describe('RealTmuxService.hasServer', () => {
   })
 })
 
-describe('FakeTmuxService.hasSession / hasServer', () => {
+describe.skip('FakeTmuxService.hasSession / hasServer', () => {
   it('reports presence after createSession on the matching socket', async () => {
     const tmux = new FakeTmuxService()
 

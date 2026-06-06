@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/support/behavioral-dsl/snapshot.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Unit coverage for `snapshot(handle, probe)`. Uses fakes for the subprocess
 // handle, tmux probe, and process service so the snapshot can be exercised
 // without booting a real orch run.
@@ -108,7 +109,7 @@ afterEach(async () => {
   await rm(scratch, { recursive: true, force: true }).catch(() => undefined)
 })
 
-describe('snapshot(handle, probe)', () => {
+describe.skip('snapshot(handle, probe)', () => {
   it('reports tmuxServerExists=false and an empty pane state when the probe says the server is down', async () => {
     const handle = fakeHandle({ stateBase: scratch })
     const probe = fakeProbe({ hasServer: false })
@@ -313,7 +314,7 @@ describe('snapshot(handle, probe)', () => {
   })
 })
 
-describe('countAltScreen / countMouseTracking helpers', () => {
+describe.skip('countAltScreen / countMouseTracking helpers', () => {
   it('returns zero counts for an empty buffer', () => {
     expect(countAltScreen(Buffer.alloc(0))).toEqual({ enters: 0, exits: 0 })
     expect(countMouseTracking(Buffer.alloc(0))).toEqual({ ons: 0, offs: 0 })

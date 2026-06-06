@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/cli/two-pane-auto-attach.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // two-pane auto-attach integration — drives runCmd with a mocked
 // TmuxHost+FakeTmuxService backend and asserts the race-or-wait contract
 // between workflow completion and tmux attach-session exit.
@@ -113,7 +114,7 @@ const NO_ATTACH_OPTS: CliOpts = {
   watch: false,
 }
 
-describe('runCmd auto-attach — argv shape', () => {
+describe.skip('runCmd auto-attach — argv shape', () => {
   it('spawns tmux -L <socket> attach-session -t orch via the host', async () => {
     // We don't need the full runCmd pipeline for argv assertion — drive
     // the host directly via a custom factory. This keeps the test focused
@@ -149,7 +150,7 @@ describe('runCmd auto-attach — argv shape', () => {
   })
 })
 
-describe('runCmd auto-attach — race semantics', () => {
+describe.skip('runCmd auto-attach — race semantics', () => {
   it('when the attach exits first, prints the detached hint and still waits for the workflow', async () => {
     // We race by hand using two deferreds. The host factory captures them so
     // the test can resolve them in whichever order it wants.
@@ -299,7 +300,7 @@ describe('runCmd auto-attach — race semantics', () => {
   })
 })
 
-describe('runCmd --no-attach — hint preserved, no spawn', () => {
+describe.skip('runCmd --no-attach — hint preserved, no spawn', () => {
   it('does not spawn attach-session and emits the attach-with hint to stderr', async () => {
     const processService = new FakeProcessService()
     const tmux = new FakeTmuxService()

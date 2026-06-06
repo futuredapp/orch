@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/cli/commands/runs.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { afterEach, describe, expect, it } from 'bun:test'
 import * as fs from 'node:fs/promises'
 import { runsCmd } from '../../../../src/cli/commands/runs.ts'
@@ -42,7 +43,7 @@ function makeDeps(): CliDeps {
   }
 }
 
-describe('runsCmd (integration)', () => {
+describe.skip('runsCmd (integration)', () => {
   it('returns EXIT.OK and prints message when no runs exist', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-runs-test-')
     const deps = makeDeps()

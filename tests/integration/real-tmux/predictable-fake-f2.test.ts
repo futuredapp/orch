@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/real-tmux/predictable-fake-f2.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // U7 (headless slice) — F2 acceptance: drive parallel branches and concurrent
 // runs independently with no cross-talk. These ride entirely on headless fakes
 // (no TUI), so they belong to Phase 1. The interactive F1 flow + manual-typing
@@ -64,45 +65,42 @@ async function exists(path: string): Promise<boolean> {
   }
 }
 
-describe.skipIf(!tmuxAvailable)(
-  'U7 F2 — parallel branches via the control channel (R9, AE4)',
-  () => {
-    it(
-      'delivers each branch only its own type_and_send text',
-      async () => {
-        const m = await mount()
-        const a = m.harness.agent('a')
-        const b = m.harness.agent('b')
+describe.skip('U7 F2 — parallel branches via the control channel (R9, AE4)', () => {
+  it(
+    'delivers each branch only its own type_and_send text',
+    async () => {
+      const m = await mount()
+      const a = m.harness.agent('a')
+      const b = m.harness.agent('b')
 
-        const run = m.harness.runPuppetWorkflow([
-          {
-            parallel: [
-              { name: 'fake', as: 'a' },
-              { name: 'fake', as: 'b' },
-            ],
-          },
-        ])
+      const run = m.harness.runPuppetWorkflow([
+        {
+          parallel: [
+            { name: 'fake', as: 'a' },
+            { name: 'fake', as: 'b' },
+          ],
+        },
+      ])
 
-        await a.waitForReady()
-        await b.waitForReady()
-        await a.typeAndSend('to-a')
-        await b.typeAndSend('to-b')
-        await a.finish()
-        await b.finish()
+      await a.waitForReady()
+      await b.waitForReady()
+      await a.typeAndSend('to-a')
+      await b.typeAndSend('to-b')
+      await a.finish()
+      await b.finish()
 
-        expect((await run).completed).toBe(true)
+      expect((await run).completed).toBe(true)
 
-        const aOut = await readWhenContains(teeFor(m, 'a'), 'to-a')
-        const bOut = await readWhenContains(teeFor(m, 'b'), 'to-b')
-        expect(aOut).not.toContain('to-b')
-        expect(bOut).not.toContain('to-a')
-      },
-      REAL_TMUX_TEST_TIMEOUT_MS,
-    )
-  },
-)
+      const aOut = await readWhenContains(teeFor(m, 'a'), 'to-a')
+      const bOut = await readWhenContains(teeFor(m, 'b'), 'to-b')
+      expect(aOut).not.toContain('to-b')
+      expect(bOut).not.toContain('to-a')
+    },
+    REAL_TMUX_TEST_TIMEOUT_MS,
+  )
+})
 
-describe.skipIf(!tmuxAvailable)('U7 F2 — concurrent runs are isolated (AE3, R11)', () => {
+describe.skip('U7 F2 — concurrent runs are isolated (AE3, R11)', () => {
   it(
     'finishing one run does not end the other; handles never resolve the wrong run',
     async () => {

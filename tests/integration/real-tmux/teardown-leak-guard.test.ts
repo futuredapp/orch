@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/real-tmux/teardown-leak-guard.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // U6 — teardown hygiene + leaked-process guard (R14).
 //
 // Two layers:
@@ -63,7 +64,7 @@ async function fileExists(path: string): Promise<boolean> {
   }
 }
 
-describe.skipIf(!tmuxAvailable)('U6 teardown leak guard (real tmux)', () => {
+describe.skip('U6 teardown leak guard (real tmux)', () => {
   it(
     'reaps every fake child after an interactive + headless run',
     async () => {
@@ -114,7 +115,7 @@ describe.skipIf(!tmuxAvailable)('U6 teardown leak guard (real tmux)', () => {
   )
 })
 
-describe('U6 interactive self-reap (subprocess, ORCH_PARENT_PID not process.ppid)', () => {
+describe.skip('U6 interactive self-reap (subprocess, ORCH_PARENT_PID not process.ppid)', () => {
   let runStateDir: string
   let killables: Array<{ kill(): void }> = []
 

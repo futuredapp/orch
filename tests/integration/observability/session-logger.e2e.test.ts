@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/observability/session-logger.e2e.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // ---------------------------------------------------------------------------
 // Phase 1 acceptance test — drives FileSessionLogger against a real tempdir
 // via BunFsService, simulating the hook-points the executor will wire in
@@ -138,7 +139,7 @@ async function driveOneStepWorkflow(): Promise<string> {
   return span.stepSpanId
 }
 
-describe('session-logger e2e acceptance', () => {
+describe.skip('session-logger e2e acceptance', () => {
   it('writes the full baseline logs directory after a one-step workflow', async () => {
     await driveOneStepWorkflow()
 

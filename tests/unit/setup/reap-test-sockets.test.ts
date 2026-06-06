@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/support/reap-test-sockets.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Seam-level tests for the liveness-gated reaper. The reaper had ZERO coverage
 // before this fix; these pin the predicate (prefix gate + pid liveness, no age
 // window) using injected isPidAlive / killServer / removeFile and a real temp
@@ -47,7 +48,7 @@ function recorder(killServerImpl?: (name: string) => Promise<void>): Recorder {
   }
 }
 
-describe('reapStaleTestSockets — reap decision', () => {
+describe.skip('reapStaleTestSockets — reap decision', () => {
   it('reaps a reserved orch-test- socket whose owner pid is dead', async () => {
     await touch('orch-test-4242-deadbeef')
     const rec = recorder()
@@ -140,7 +141,7 @@ describe('reapStaleTestSockets — reap decision', () => {
   })
 })
 
-describe('reapStaleTestSockets — robustness', () => {
+describe.skip('reapStaleTestSockets — robustness', () => {
   it('still removes the socket file when killServer reports the server already gone', async () => {
     await touch('orch-test-4242-deadbeef')
     // killServer that "fails" (server already gone) by resolving — the default
@@ -191,7 +192,7 @@ describe('reapStaleTestSockets — robustness', () => {
   })
 })
 
-describe('isOwnerPidAlive', () => {
+describe.skip('isOwnerPidAlive', () => {
   it('reports this process as alive', () => {
     expect(isOwnerPidAlive(process.pid)).toBe(true)
   })

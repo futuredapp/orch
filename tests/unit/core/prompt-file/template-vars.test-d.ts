@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/core/prompt-file/template-vars.test-d.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Compile-time tests for the vendored TLT extractor. No runtime assertions —
 // failures land at `tsc --noEmit` time. Each `Expect<Equal<...>>` row is one
 // row of behavior; see SKILL.md's reference for the assertion pattern.

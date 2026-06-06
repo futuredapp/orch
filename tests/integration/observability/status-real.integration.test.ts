@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/observability/status-real.integration.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Gated real-tmux integration test for the status loop. Creates a session,
 // splits a status pane running `cat`, drives lifecycle events through the
 // loop, and captures the pane to confirm the rendered glyphs actually made
@@ -44,7 +45,7 @@ const stepNameBrand = (name: string): StepName => name as StepName
 
 const waitForMs = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
-describe.skipIf(!canRun)('startStatusLoop against a real tmux pane', () => {
+describe.skip('startStatusLoop against a real tmux pane', () => {
   it('renders a step:start event into the status pane within a short capture window', async () => {
     const tmux = new RealTmuxService({ processService: new BunProcessService() })
     const socket = newSocket('start')

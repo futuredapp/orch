@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/examples/subworkflows-smoke.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // U10 smoke pin: every subworkflow example file loads cleanly, exports a
 // WorkflowExecutor with the expected `name`, and the registry in
 // `examples/orch.config.ts` resolves every entry. Then a fake-runner workflow
@@ -86,7 +87,7 @@ function lifecycleEvents(deps: WorkflowDeps): readonly StepLifecycleEvent[] {
     .map((r) => r.event)
 }
 
-describe('subworkflow examples — module load + registry shape', () => {
+describe.skip('subworkflow examples — module load + registry shape', () => {
   it('each example exports a default WorkflowExecutor with the expected name', () => {
     expect(feature.name).toBe('feature')
     expect(simpleFeature.name).toBe('simple-feature')
@@ -128,7 +129,7 @@ describe('subworkflow examples — module load + registry shape', () => {
   })
 })
 
-describe('subworkflow examples — runWorkflow end-to-end with fake runner', () => {
+describe.skip('subworkflow examples — runWorkflow end-to-end with fake runner', () => {
   it('parent + sub composition emits enter/exit and runs sub step under the sub-path cache key', async () => {
     const deps = makeDeps()
     const PLAN = step.define('plan', { agent: silentRunner(deps, 'r1'), prompt: 'plan-it' })

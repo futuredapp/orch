@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/cli/commands/resume.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { afterEach, describe, expect, it } from 'bun:test'
 import * as fs from 'node:fs/promises'
 import type { CliDeps } from '../../../../src/cli/deps.ts'
@@ -63,7 +64,7 @@ const DEFAULT_HOST_FACTORY: HostFactory = async (args) =>
     runId: args.runId,
   })
 
-describe('resumeCmd state-finding (integration)', () => {
+describe.skip('resumeCmd state-finding (integration)', () => {
   // We import resumeCmd dynamically to avoid pulling in loadConfig's import()
   // side effects. These tests exercise the state-finding logic only —
   // they will hit the "no workflowName" or "loadConfig" error paths,

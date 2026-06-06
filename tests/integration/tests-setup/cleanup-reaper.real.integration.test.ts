@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/real-tmux/cleanup-reaper.real.integration.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Headline verification for the stale-socket reaper, against REAL tmux servers.
 //
 // Each `it` boots one or more real `tmux -L <socket>` servers, runs the actual
@@ -77,7 +78,7 @@ async function deadPid(): Promise<number> {
   return proc.pid
 }
 
-describe.skipIf(!canRunRealTmux())('reapStaleTestSockets against real tmux', () => {
+describe.skip('reapStaleTestSockets against real tmux', () => {
   it(
     'reaps a reserved orch-test- server whose owner pid is dead (server gone + socket file gone)',
     async () => {

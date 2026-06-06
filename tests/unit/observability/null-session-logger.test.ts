@@ -1,8 +1,9 @@
+// MIGRATED → tests-new/unit/observability/null-session-logger.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { stepName } from '../../../src/core/types.ts'
 import { createNullSessionLogger } from '../../../src/observability/null-session-logger.ts'
 
-describe('createNullSessionLogger', () => {
+describe.skip('createNullSessionLogger', () => {
   it('returns a SessionLogger whose append resolves without side effects', async () => {
     const logger = createNullSessionLogger()
     await expect(logger.append('spawns', { foo: 'bar' })).resolves.toBeUndefined()

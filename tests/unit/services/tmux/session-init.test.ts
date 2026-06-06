@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/tmux-argv/services/tmux/session-init.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Strict-sandbox ordering test (PR A — tmux strict appliance mode).
 //
 // Pins the exact call sequence asserted by the plan §"Required call ordering":
@@ -28,7 +29,7 @@ const baseOpts = {
   paneDiedCommand: 'run-shell "tmux -L orch-1 wait-for -S pane-exit-#{hook_pane}"',
 }
 
-describe('initOrchSession writes the strict-sandbox tmux config', () => {
+describe.skip('initOrchSession writes the strict-sandbox tmux config', () => {
   it('writes a config file containing history-limit >= 50000, mouse on, remain-on-exit on, prefix None, exit-empty off, and destroy-unattached off', async () => {
     const fs = new FakeFsService()
     const tmux = new FakeTmuxService()
@@ -68,7 +69,7 @@ describe('initOrchSession writes the strict-sandbox tmux config', () => {
   })
 })
 
-describe('initOrchSession wipes key tables before installing bindings', () => {
+describe.skip('initOrchSession wipes key tables before installing bindings', () => {
   it('wipes all four key tables before installing any bindings', async () => {
     const fs = new FakeFsService()
     const tmux = new FakeTmuxService()
@@ -90,7 +91,7 @@ describe('initOrchSession wipes key tables before installing bindings', () => {
   })
 })
 
-describe('initOrchSession installs the root allowlist followed by the copy-mode allowlist', () => {
+describe.skip('initOrchSession installs the root allowlist followed by the copy-mode allowlist', () => {
   it('binds MouseDrag1Border to resize-pane -M as the first root-table binding', async () => {
     const fs = new FakeFsService()
     const tmux = new FakeTmuxService()
@@ -233,7 +234,7 @@ describe('initOrchSession installs the root allowlist followed by the copy-mode 
   })
 })
 
-describe('initOrchSession installs the discoverability hint and lifecycle hook', () => {
+describe.skip('initOrchSession installs the discoverability hint and lifecycle hook', () => {
   it('installs the persistent status-right hint after the bindings are in place', async () => {
     const fs = new FakeFsService()
     const tmux = new FakeTmuxService()

@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/core/step-runfn-typed-vars.test-d.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Compile-time tests for U4 — `Step<TResult, TVars>` threading through
 // `step.define` overloads, `RunFn` overloads, and `RunOverrides<V>`. Each row
 // is one behavior; failures land at `tsc --noEmit` time.

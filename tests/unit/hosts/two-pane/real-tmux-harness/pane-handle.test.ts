@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/real-tmux/pane-handle.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // triage: keep — U2 self-tests for PaneHandle, sendKeys, and runWorkflow.
 //
 // Pins the surface every Tier 1 / Tier 4 test reads from: capture() strips
@@ -31,7 +32,7 @@ afterEach(async () => {
   fixturesToDispose = []
 })
 
-describe('isNamedKey', () => {
+describe.skip('isNamedKey', () => {
   it('returns true for tmux named keys the harness supports', () => {
     expect(isNamedKey('Enter')).toBe(true)
     expect(isNamedKey('Up')).toBe(true)
@@ -47,14 +48,14 @@ describe('isNamedKey', () => {
   })
 })
 
-describe('stripAnsi re-export', () => {
+describe.skip('stripAnsi re-export', () => {
   it('removes CSI sequences but keeps the visible text', () => {
     expect(stripAnsi('\x1b[31mred\x1b[0m')).toBe('red')
     expect(stripAnsi('plain')).toBe('plain')
   })
 })
 
-describe.skipIf(!tmuxAvailable)('mountTmuxHost end-to-end with FakeRunner', () => {
+describe.skip('mountTmuxHost end-to-end with FakeRunner', () => {
   it(
     'exposes left and right pane handles for the orch session',
     async () => {
@@ -131,7 +132,7 @@ describe.skipIf(!tmuxAvailable)('mountTmuxHost end-to-end with FakeRunner', () =
   )
 })
 
-describe.skipIf(!tmuxAvailable)('PaneHandle.waitForText timeout shape', () => {
+describe.skip('PaneHandle.waitForText timeout shape', () => {
   it(
     'rejects with an error containing the last frame when the text never appears',
     async () => {
@@ -154,7 +155,7 @@ describe.skipIf(!tmuxAvailable)('PaneHandle.waitForText timeout shape', () => {
   )
 })
 
-describe.skipIf(!tmuxAvailable)('PaneHandle.waitFor predicate shape', () => {
+describe.skip('PaneHandle.waitFor predicate shape', () => {
   it(
     'resolves on the first predicate match without exhausting the timeout',
     async () => {
@@ -176,7 +177,7 @@ describe.skipIf(!tmuxAvailable)('PaneHandle.waitFor predicate shape', () => {
   )
 })
 
-describe.skipIf(!tmuxAvailable)('sendKeys named-key dispatch', () => {
+describe.skip('sendKeys named-key dispatch', () => {
   it(
     'sends Enter as a real keystroke (tmux exits 0)',
     async () => {

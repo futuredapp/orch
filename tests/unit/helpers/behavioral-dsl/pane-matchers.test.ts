@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/support/behavioral-dsl/pane-matchers.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Unit coverage for pane / workflow matchers. Each constructor returns
 // either a `Matcher` (workflow) or a `PaneMatcherFactory` (pane-content);
 // both project over a synthetic `LifecycleSnapshot`.
@@ -48,7 +49,7 @@ function baseSnapshot(overrides: Partial<LifecycleSnapshot> = {}): LifecycleSnap
   }
 }
 
-describe('containsText', () => {
+describe.skip('containsText', () => {
   it('matches when the literal substring appears in the bound pane', () => {
     const m = containsText('hello')('left')
     expect(m(baseSnapshot({ leftPaneText: 'say hello world' })).matched).toBe(true)
@@ -71,7 +72,7 @@ describe('containsText', () => {
   })
 })
 
-describe('doesNotContain', () => {
+describe.skip('doesNotContain', () => {
   it('matches when the needle is absent', () => {
     const m = doesNotContain('boom')('left')
     expect(m(baseSnapshot({ leftPaneText: 'everything is fine' })).matched).toBe(true)
@@ -85,7 +86,7 @@ describe('doesNotContain', () => {
   })
 })
 
-describe('isFocused', () => {
+describe.skip('isFocused', () => {
   it('matches when the bound pane is focused', () => {
     expect(isFocused()('left')(baseSnapshot({ leftPaneFocused: true })).matched).toBe(true)
     expect(isFocused()('right')(baseSnapshot({ rightPaneFocused: true })).matched).toBe(true)
@@ -96,7 +97,7 @@ describe('isFocused', () => {
   })
 })
 
-describe('showsInkState', () => {
+describe.skip('showsInkState', () => {
   it('matches the "live" banner pattern in the pane text', () => {
     expect(
       showsInkState('live')('left')(baseSnapshot({ leftPaneText: '▶ live agent' })).matched,
@@ -117,7 +118,7 @@ describe('showsInkState', () => {
   })
 })
 
-describe('hasFooterText', () => {
+describe.skip('hasFooterText', () => {
   it('matches when the needle appears in the last few lines of the pane', () => {
     const body = 'line 1\nline 2\nline 3\nline 4\nfooter row'
     expect(hasFooterText('footer')('left')(baseSnapshot({ leftPaneText: body })).matched).toBe(true)
@@ -131,7 +132,7 @@ describe('hasFooterText', () => {
   })
 })
 
-describe('hasNoLiveOutput', () => {
+describe.skip('hasNoLiveOutput', () => {
   it('matches when the pane text is empty / whitespace only', () => {
     expect(hasNoLiveOutput()('left')(baseSnapshot({ leftPaneText: '   \n  ' })).matched).toBe(true)
   })
@@ -141,7 +142,7 @@ describe('hasNoLiveOutput', () => {
   })
 })
 
-describe('isPaneDead', () => {
+describe.skip('isPaneDead', () => {
   it('matches when the bound pane reports pane_dead=1', () => {
     const snap = baseSnapshot({
       panesAlive: [
@@ -154,7 +155,7 @@ describe('isPaneDead', () => {
   })
 })
 
-describe('workflow matchers', () => {
+describe.skip('workflow matchers', () => {
   it('isRunningStep matches when stateStatus=running and the step entry is unfinalized', () => {
     const snap = baseSnapshot({
       stateStatus: 'running',

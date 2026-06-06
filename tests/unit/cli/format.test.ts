@@ -1,8 +1,9 @@
+// MIGRATED → tests-new/unit/cli/format.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { formatDuration, formatMs, glyphs } from '../../../src/cli/format.ts'
 import { makeRunState, makeStepEntry } from '../../helpers/make-step-entry.ts'
 
-describe('glyphs', () => {
+describe.skip('glyphs', () => {
   it('returns Unicode glyphs when TTY is true', () => {
     const g = glyphs(true)
 
@@ -20,7 +21,7 @@ describe('glyphs', () => {
   })
 })
 
-describe('formatMs', () => {
+describe.skip('formatMs', () => {
   it('formats sub-second durations as milliseconds', () => {
     expect(formatMs(0)).toBe('0ms')
     expect(formatMs(500)).toBe('500ms')
@@ -40,7 +41,7 @@ describe('formatMs', () => {
   })
 })
 
-describe('formatDuration', () => {
+describe.skip('formatDuration', () => {
   it('uses endedAt - startedAt when both are present', () => {
     const state = makeRunState({ startedAt: 1000, endedAt: 6000 })
 

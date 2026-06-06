@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/core/run-workflow-typing.test-d.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Compile-time tests for U5 — `runWorkflow` preserves a subworkflow's typed
 // Args contract at the parent call site.
 

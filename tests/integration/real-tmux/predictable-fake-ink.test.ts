@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/real-tmux/predictable-fake-ink.test.ts (parent U13) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Real-tmux acceptance for the Ink interactive entry (`ink-entry.tsx`).
 //
 // The ink-view component is unit-covered via ink-testing-library; this test
@@ -41,7 +42,7 @@ async function mount(): Promise<{ harness: MountedHarness; fixture: RealTmuxFixt
   return { harness, fixture }
 }
 
-describe.skipIf(!tmuxAvailable)('Ink interactive entry — real PTY in a tmux pane', () => {
+describe.skip('Ink interactive entry — real PTY in a tmux pane', () => {
   it(
     'drives an Ink step: control line renders to the log and the visible pane, then finishes',
     async () => {
