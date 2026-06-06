@@ -269,3 +269,108 @@
 > are already covered by the three U6 full-host scenarios above; no new full-host
 > scenario was needed (the §7 default expectation of zero new full-host scenarios
 > held). No U6 scenario file was edited.
+
+## Migrated cases — lifecycle / outside-in (parent U8)
+
+> **Phase 8 / U8** migrates the lifecycle / outside-in surface
+> (`tests/integration/lifecycle/`) as a pruning re-derivation across four groups
+> (phase plan §2): **G1** process signals/stdin/quit + **G2** click-to-focus →
+> `lifecycle` `scenario()`; **G3** failure *rendering* → `model` (+ `screen`/
+> `full-host` twin) using the existing `outcome:'failed'` DSL (KD3, no new
+> lifecycle pane-reads); **G4** side effects / persistence → the non-`scenario()`
+> `tests-new/lifecycle/side-effects/` category (KD1/KD4, the `tmux-argv` /
+> `model/controller` precedent). **KD2:** signals/quit assert only the shutdown
+> invariants `main` produces — no `persistedStatus('cancelled')`; on current
+> `main` no signal/quit persists `cancelled` (Phase 2 finding), and U8 changes no
+> source (parent §2 non-goal). The U6-deferred `command`/`progression.per-step-
+> artifacts`/`resume` files stay LIVE for U10–U13.
+
+### G1 — process signals / stdin / quit → `lifecycle` `scenario()`, file `.skip`
+
+| Old file | Old case | New scenario (path) | Disposition | Reason |
+|---|---|---|---|---|
+| lifecycle/sigint-to-orch-during-mid-step.real.test.ts | exits via documented signal, tears down tmux, and leaves the terminal balanced | lifecycle/sigint--exits-cleanly-and-tears-down.test.ts | port | SIGINT shutdown invariants (exit/tmux-down/terminal-balanced/no-orphans), re-derived on the lifecycle driver (the strengthened U2 ctrl-c tracer). |
+| lifecycle/sigint-to-orch-during-mid-step.real.test.ts | (the §9.8-ideal `persistedStatus('cancelled')` sub-claim) | — | drop | The old cell already omits it (documented finding); on `main` SIGINT does not persist `cancelled`. Asserting it would be false; source unchanged per U8 non-goal. `persistedStatus` itself stays covered by the lifecycle driver regression test against a planted state. |
+| lifecycle/sigterm-to-orch-during-mid-step.real.test.ts | exits cleanly, tears down tmux, and leaves the terminal balanced | lifecycle/sigterm--exits-cleanly-and-tears-down.test.ts | port | SIGTERM shutdown invariants (KD2). |
+| lifecycle/sighup-to-orch-during-mid-step.real.test.ts | exits cleanly, tears down tmux, and leaves the terminal balanced | lifecycle/sighup--exits-cleanly-and-tears-down.test.ts | port | SIGHUP (controlling-TTY hangup) shutdown invariants (KD2). |
+| lifecycle/double-sigint-to-orch-during-mid-step.real.test.ts | still reaches the §6.5 signal-sigint clean state after a redundant SIGINT | lifecycle/double-sigint--still-reaches-clean-shutdown.test.ts | port | Redundant-second-SIGINT regression guard; same clean shutdown state (KD2). |
+| lifecycle/close-stdin-during-mid-step.real.test.ts | preserves the weak close-stdin contract — terminal stays balanced | lifecycle/close-stdin--terminal-stays-balanced.test.ts | port | The WEAK contract mirrored exactly: settle, then assert only terminal balance — no exit/teardown matcher (orch v1 has no stdin-EOF handler). |
+| lifecycle/q-during-fake-mid-step.real.test.ts | tears orch down cleanly — §6.5 pane-q-during-run | lifecycle/q-intent--tears-down-cleanly.test.ts | port | A daemon `quit` intent (via `tui-intents.ndjson`) tears orch down cleanly (exit + tmux gone). |
+
+### G2 — click-to-focus → `lifecycle` `scenario()`, file `.skip`
+
+| Old file | Old case | New scenario (path) | Disposition | Reason |
+|---|---|---|---|---|
+| lifecycle/click-to-focus-across-divider-smoke.real.test.ts | clicks move focus between the left and right panes | lifecycle/click-to-focus--moves-focus-across-divider.test.ts | port | Click-to-focus round-trip (right then back to left) via the W1 `click`/`assertFocused` affordances over real tmux — the mouse-event builder + focus matcher. |
+
+### G3 — failure RENDERING → `model` (+ `screen` twin)
+
+> **Reality correction (KD3, applied at implementation time).** The phase plan's
+> premise that the two `failure.*` "x-glyph-and-error-banner" /
+> "right-pane-failure-summary" lifecycle files assert *pane content* is
+> contradicted by the code: both assert durable *on-disk* signals (lifecycle.ndjson
+> / persisted state / per-step tee file) because at Tier 5 the pane is torn down
+> sub-100ms when the workflow throws (the old files' own comments say the on-pane
+> equivalent lives in the in-process tiers). By the decision rule + triage ("passes
+> if the pane is empty?" → **yes**), all four `failure.*` files are persistence
+> tests and relocate to **G4** (`side-effects/`), not `model`/`screen`. The genuine
+> *rendering* gap U8 owns is the **failed-step glyph + colour**, which the U5a
+> ledger explicitly deferred from `steps-view-colors.test.tsx` to U8. W4 closes
+> exactly that, re-derived via the existing `outcome:'failed'` DSL (no lifecycle
+> pane-reads). The error-BANNER rendering was already covered by the U5b
+> `banner--info-and-error-paint` model/screen twins.
+
+| Old file | Old case | New scenario (path) | Disposition | Reason |
+|---|---|---|---|---|
+| steps-view/steps-view-colors.test.tsx | renders a red cross for failed steps (the U5a-deferred "red-cross" case, assigned to U8) | model/failure--failed-step-glyph-and-color.test.ts (+ screen/failure--failed-step-glyph-and-color-bytes.test.ts) | port | Failed step row renders ✗ in red — projector decision (model) + bytes survive real tmux (screen), overlapGroup `failure-glyph`. **File stays LIVE** — its remaining per-status render cases (dim-pending / cyan-selection / preview-chevron / interactive / cached / stripAnsi-structure) are still deferred to U10–U13 (U5a ledger). |
+
+### G4 — side effects / persistence → `tests-new/lifecycle/side-effects/` (non-`scenario()`), file `.skip`
+
+> **Non-`scenario()` category** (KD1/KD4, the `tmux-argv` / `model/controller`
+> precedent — see `tests-new/lifecycle/side-effects/README.md`). These drive a real
+> orch subprocess and assert git / filesystem / persisted-state SIDE EFFECTS with
+> zero pane assertions (triage = passes if the pane is empty), at one fidelity with
+> no twin. They are plain `it()` tests importing behavioral-dsl from `@orch/test/*`
+> (import-path parity, parent R10 — verified to import the same helper symbols as
+> their baseline originals), NOT a shared-DSL extension. Includes the four
+> `failure.*` files, which assert DISK signals despite two of their names mentioning
+> the pane (KD3 reality correction above).
+
+| Old file | Old case | New file (path) | Disposition | Reason |
+|---|---|---|---|---|
+| lifecycle/failure.persisted-state-reflects-failed-status.behavioral.real.test.ts | state.json status=failed, prior steps completed, failed step recorded | side-effects/failure-persisted-state.test.ts | port | Persisted-state side effect; passes with an empty pane. |
+| lifecycle/failure.api-error-on-first-turn-keeps-run-failed-not-crashed.behavioral.real.test.ts | CLI emits terminal error + non-zero exit → step.failed, run.failed (NOT crashed) | side-effects/failure-api-error-is-failed-not-crashed.test.ts | port | Graceful-failure persistence. KD5: asserted as observed on `main` (`failed`); the old comment's RED prediction is stale (source since fixed). Source unchanged by U8. |
+| lifecycle/failure.failed-step-shows-x-glyph-and-error-banner.behavioral.real.test.ts | puppet fail() emits step:failed in lifecycle.ndjson with the message and ends the run as failed | side-effects/failure-step-failed-recorded-on-disk.test.ts | port | The cell asserts DISK signals (lifecycle.ndjson + persisted state), not pane content — persistence, not rendering (KD3). The named ✗ glyph render → model/screen `failure-glyph` twin; the error banner → U5b banner twins. |
+| lifecycle/failure.right-pane-shows-failure-summary.behavioral.real.test.ts | the per-step tee file contains the failure headline and error text | side-effects/failure-summary-written-to-tee.test.ts | port | The cell asserts a DISK side effect (the per-step tee file), not pane content (KD3). |
+| lifecycle/commit.step-creates-real-commit-on-branch.behavioral.real.test.ts | git log on the worktree branch shows the commit added by the commit step | side-effects/commit-step-creates-real-commit.test.ts | port | Git side effect (`commitExists`). |
+| lifecycle/worktree.creates-real-git-worktree-and-switches-cwd.behavioral.real.test.ts | git worktree list reports the branch and the agent step lands inside it | side-effects/worktree-creates-and-switches-cwd.test.ts | port | Git + fs side effect (`worktreeExists` + file under the worktree path). |
+| lifecycle/worktree.post-create-shell-command-creates-file.behavioral.real.test.ts | postCreate ["touch sentinel.txt"] creates the file inside the worktree | side-effects/worktree-post-create-shell-command.test.ts | port | Fs side effect (`fileExistsAt` for the postCreate sentinel). |
+| lifecycle/ask.noninteractive-uses-default-and-does-not-block.behavioral.real.test.ts | --noninteractive resolves the ask to its declared default and the next step runs | side-effects/ask-noninteractive-uses-default.test.ts | port | Non-blocking behaviour; persisted state shows both steps completed. |
+
+### W6 — lifecycle-dir close-out: the 4 U5b/U6 rendering strays → file `.skip` (COVERED BY)
+
+> These four files physically live in `tests/integration/lifecycle/` but belong to
+> U5/U6's areas (the parent U5 old-sources list names `lifecycle/banner.*` and
+> `lifecycle/end-of-run.*`). U5b/U6 built the model/screen/full-host replacements
+> but never `.skip`ped these lifecycle copies. Each asserts a DISK signal as a
+> teardown-race workaround for an unobservable pane; the rendering they are named
+> for is covered by an existing twin (verified before close-out), so each is
+> `demote`/`drop` + `// COVERED BY →`. No new twin was needed (no genuine gap).
+
+| Old file | Old case | Covered by (path) | Disposition | Reason |
+|---|---|---|---|---|
+| lifecycle/banner.info-banner-auto-clears-after-ttl.behavioral.real.test.ts | the "step complete" info banner is visible briefly then disappears | model/banner--info-clears-error-persists.test.ts | demote→model | Info-banner TTL auto-clear is a render decision over time, proven on the virtual clock (D-P2). |
+| lifecycle/banner.error-banner-persists-until-escape.behavioral.real.test.ts | error banner stays visible past the info-TTL and dismisses on Esc (`it.todo`) | model/banner--info-clears-error-persists.test.ts | drop | Never-executed `it.todo` placeholder (blocked at Tier 5). Persist-past-TTL covered at the model seam; the Esc-dismiss half never ran. File `describe.skip`. |
+| lifecycle/end-of-run.right-pane-rests-on-final-step.behavioral.real.test.ts | the final step has a non-empty events.ndjson and session.json on disk | full-host/fake-agent/multi-step--right-pane-auto-advances.test.ts | demote | Visible right-pane rest-on-latest covered by the U6 full-host scenario; the disk-artifact half is subsumed by the still-LIVE per-step-artifacts cell (→U10–U13). |
+| lifecycle/end-of-run.summary-and-completion-count-visible.behavioral.real.test.ts | all 3 steps complete, run status=completed, lifecycle.ndjson records run-ended | model/end-of-run--summary-and-count.test.ts (+ screen twin) | demote→model/screen | Visible summary + completion count covered by the U5b twins; the persisted-completed / run-ended disk assertion was a teardown-race workaround for the unobservable pane. |
+
+### U8 lifecycle-dir drain (DoD)
+
+> After U8 the **only** LIVE (non-`.skip`) files in `tests/integration/lifecycle/`
+> are the three U6-deferred → U10–U13 relocations (reconcile rule 3 forbids a
+> `MIGRATED →` marker to a not-yet-existing target):
+> `command.output-streams-to-right-pane-and-exit-code-recorded`,
+> `progression.per-step-artifacts-land-on-disk`,
+> `resume.cached-steps-replay-with-cached-glyph`. Everything else U8 touched is
+> `.skip` with a `// MIGRATED →` / `// COVERED BY →` marker and a case-granular row
+> above.

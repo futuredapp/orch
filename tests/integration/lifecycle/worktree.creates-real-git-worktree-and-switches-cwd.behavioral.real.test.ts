@@ -32,8 +32,10 @@ afterEach(async () => {
   if (handle !== undefined) await handle.teardown()
 })
 
+// MIGRATED → tests-new/lifecycle/side-effects/worktree-creates-and-switches-cwd.test.ts — parent U8 (G4).
+// port: git + fs side effect (worktree materialized; agent step writes inside it).
 describe.skipIf(!canRunRealTmux())('Tier 5 behavioral — worktree creates real git worktree', () => {
-  it('git worktree list reports the branch and the agent step lands inside it', async () => {
+  it.skip('git worktree list reports the branch and the agent step lands inside it', async () => {
     handle = await launchOrchWorkflow('worktree-then-agent', {
       script: { work: puppet() },
       initGitRepo: true,

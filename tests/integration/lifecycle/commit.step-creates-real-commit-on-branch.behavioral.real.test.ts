@@ -27,8 +27,10 @@ afterEach(async () => {
   if (handle !== undefined) await handle.teardown()
 })
 
+// MIGRATED → tests-new/lifecycle/side-effects/commit-step-creates-real-commit.test.ts — parent U8 (G4).
+// port: git side effect (a real commit on the worktree branch).
 describe.skipIf(!canRunRealTmux())('Tier 5 behavioral — commit step creates real commit', () => {
-  it('git log on the worktree branch shows the commit added by the commit step', async () => {
+  it.skip('git log on the worktree branch shows the commit added by the commit step', async () => {
     handle = await launchOrchWorkflow('agent-then-commit', {
       script: { work: puppet() },
       initGitRepo: true,

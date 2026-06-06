@@ -32,8 +32,14 @@ afterEach(async () => {
   if (handle !== undefined) await handle.teardown()
 })
 
+// COVERED BY → tests-new/full-host/fake-agent/multi-step--right-pane-auto-advances.test.ts — parent U8 (W6 close-out; U6 area).
+// demote: the visible "right pane rests on the final/latest step" is covered by
+// the U6 full-host right-pane auto-advance scenario. This cell only asserts the
+// final step's on-disk artifacts (a teardown-race workaround for the unobservable
+// pane); that disk shape is subsumed by the still-LIVE per-step-artifacts cell
+// (each completed step writes session.json + events.ndjson → U10–U13).
 describe.skipIf(!canRunRealTmux())('Tier 5 behavioral — right pane rests on final step', () => {
-  it('the final step has a non-empty events.ndjson and session.json on disk', async () => {
+  it.skip('the final step has a non-empty events.ndjson and session.json on disk', async () => {
     handle = await launchOrchWorkflow('three-step-linear', {
       script: { plan: puppet(), execute: puppet(), finalize: puppet() },
     })

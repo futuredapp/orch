@@ -44,8 +44,12 @@ afterEach(async () => {
   if (handle !== undefined) await handle.teardown()
 })
 
+// MIGRATED → tests-new/lifecycle/sigint--exits-cleanly-and-tears-down.test.ts — parent U8 (G1).
+// port: SIGINT shutdown invariants (exit/tmux-down/terminal-balanced/no-orphans).
+// The `cancelled`-status sub-claim is NOT asserted there (KD2) — on main no signal
+// persists `cancelled`; ledgered as a `drop`-with-reason (source unchanged, U8 non-goal).
 describe.skipIf(!canRunRealTmux())('Tier 5 — SIGINT to orch during mid-step', () => {
-  it('exits via documented signal, tears down tmux, and leaves the terminal balanced', async () => {
+  it.skip('exits via documented signal, tears down tmux, and leaves the terminal balanced', async () => {
     handle = await launchOrchWorkflow('two-step-linear', {
       script: {
         plan: holdUntilReleased(),

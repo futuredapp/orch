@@ -20,9 +20,12 @@
  */
 
 import { describe, it } from 'bun:test'
-import { canRunRealTmux } from '../../helpers/real-tmux/fixture.ts'
 
-describe.skipIf(!canRunRealTmux())('Tier 5 behavioral — error banner persists until Escape', () => {
+// COVERED BY → tests-new/model/banner--info-clears-error-persists.test.ts — parent U8 (W6 close-out; U5b area).
+// drop: a never-executed `it.todo` placeholder (blocked at Tier 5 by the teardown
+// race). The persist-past-TTL behaviour is covered at the model seam (U5b); the
+// Esc-dismiss half never ran and asserted nothing. File fully `describe.skip`.
+describe.skip('Tier 5 behavioral — error banner persists until Escape', () => {
   it.todo('error banner stays visible past the info-TTL and dismisses on Esc (blocked: orch tears down on step:failed; Tier 5 cannot observe post-failure pane state — see findings F-5)', async () => {
     /* see findings doc F-5 */
   })

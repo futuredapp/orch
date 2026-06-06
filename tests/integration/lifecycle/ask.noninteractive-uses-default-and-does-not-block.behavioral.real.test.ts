@@ -27,10 +27,12 @@ afterEach(async () => {
   if (handle !== undefined) await handle.teardown()
 })
 
+// MIGRATED → tests-new/lifecycle/side-effects/ask-noninteractive-uses-default.test.ts — parent U8 (G4).
+// port: non-blocking behaviour (ask resolves its default; next step completes).
 describe.skipIf(!canRunRealTmux())(
   'Tier 5 behavioral — ask resolves default in noninteractive',
   () => {
-    it('--noninteractive resolves the ask to its declared default and the next step runs', async () => {
+    it.skip('--noninteractive resolves the ask to its declared default and the next step runs', async () => {
       handle = await launchOrchWorkflow('ask-with-default', {
         script: { after: puppet() },
         cliArgs: ['--noninteractive'],

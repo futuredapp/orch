@@ -11,6 +11,7 @@
 // The only free-string method is `assertShowsContent`, for literals the test
 // itself authored. Chrome literals must not appear inline in a scenario file.
 
+import { notImplemented } from '../not-implemented.ts'
 import type { GlyphName, PaneDriver } from './pane-driver.ts'
 
 export class LeftPane {
@@ -95,6 +96,11 @@ export class LeftPane {
   /** Chrome/hygiene: the pane shows no caret-notation echo bytes. */
   assertNoCaretEcho(): Promise<void> {
     return this.driver.assertNoCaretEcho()
+  }
+
+  /** This pane holds focus (lifecycle click-to-focus; notImplemented elsewhere). */
+  assertFocused(): Promise<void> {
+    return this.driver.assertFocused?.() ?? notImplemented('LeftPane.assertFocused')
   }
 
   // --- affordances ----------------------------------------------------------

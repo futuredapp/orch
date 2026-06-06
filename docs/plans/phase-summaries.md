@@ -308,3 +308,42 @@ fail). The real-tmux lifecycle/screen buckets and the legacy integration suite
 (with its documented pre-existing 5 `ENOENT` fixture failures under gitignored
 `.orch/`) were not re-run end-to-end — U7 added no scenarios or driver changes, so
 they are unaffected.
+
+## Phase 8
+
+Phase 8 (parent unit **U8**) migrates the lifecycle / outside-in surface — the
+`tests/integration/lifecycle/` behaviours whose risk is *process behaviour*
+(signals, stdin-EOF, the `q` quit-intent, click-to-focus) or *real side effects*
+(commit, worktree, ask, graceful-failure persistence) — into `tests-new/`. The
+process behaviours became `lifecycle` `scenario()` tests after a small set of
+new, **lifecycle-only** driver affordances landed test-first: `closeStdin`,
+`quitIntent`, `click`, plus `terminalRestoredCleanly` / `noOrphanChildren` system
+assertions and a pane `assertFocused`. The signal/quit scenarios assert only the
+shutdown invariants `main` actually produces (clean exit, tmux torn down,
+terminal balanced, no orphans) — deliberately **not** `persistedStatus('cancelled')`,
+because on current `main` no signal or quit persists a `cancelled` status. U8
+changed **no source**; that gap is asserted as-is and ledgered, per the parent's
+non-goal.
+
+Two reality-driven deviations from the phase plan are worth carrying forward.
+First, the side-effect / persistence tests (commit, worktree, ask, failed-state)
+relocated into a new non-`scenario()` category `tests-new/lifecycle/side-effects/`
+(plain `it()` tests importing the behavioral-dsl from `@orch/test/*`) — the same
+"this is real but not pane-shaped" call U7 made for `model/controller`. Second,
+the two `failure.*` files the plan slotted as *rendering* (✗ glyph / right-pane
+summary) actually assert **on-disk** signals, not pane content (at this fidelity
+the pane is torn down sub-100ms when the workflow throws), so they relocated as
+persistence tests too. The genuine failure *rendering* gap — the failed-step ✗
+glyph and its red colour, explicitly deferred from Phase 5 to U8 — was closed as a
+`model` + `screen` twin using the existing `outcome:'failed'` DSL; the error-banner
+render was already covered in Phase 5.
+
+What matters for next work: the lifecycle directory is now drained to exactly the
+three files intentionally deferred to U10–U13 (`command`, `progression.per-step-
+artifacts`, `resume.cached-steps-replay`) — every other file is `.skip` with a
+`// MIGRATED →` / `// COVERED BY →` marker and a case-granular ledger row. tmux is
+present on this box, so the lifecycle/screen/model buckets and the blocking
+overlap report all ran green; `bun run check` is green apart from the documented,
+unrelated pre-existing `ENOENT` fixture failures under gitignored `.orch/`. The
+`cancelled`-on-signal status gap and the desired-vs-actual failure-bucket nuance
+remain open product questions, recorded but not acted on (test-only phase).

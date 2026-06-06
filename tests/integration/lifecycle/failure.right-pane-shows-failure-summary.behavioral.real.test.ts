@@ -35,8 +35,12 @@ afterEach(async () => {
   if (handle !== undefined) await handle.teardown()
 })
 
+// MIGRATED → tests-new/lifecycle/side-effects/failure-summary-written-to-tee.test.ts — parent U8 (G4).
+// port: this cell asserts a DISK side effect (the per-step tee file), not pane
+// content — a persistence test (triage = passes if pane empty). The visible
+// right-pane failure summary is a rendering concern covered elsewhere (KD3).
 describe.skipIf(!canRunRealTmux())('Tier 5 behavioral — failure summary is captured', () => {
-  it('the per-step tee file contains the failure headline and error text', async () => {
+  it.skip('the per-step tee file contains the failure headline and error text', async () => {
     handle = await launchOrchWorkflow('puppet-can-fail', {
       script: { plan: puppet(), execute: puppet() },
     })

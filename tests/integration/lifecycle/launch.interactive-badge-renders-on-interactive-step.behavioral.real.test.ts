@@ -13,7 +13,6 @@
  */
 
 import { afterEach, beforeEach, describe, it } from 'bun:test'
-import { canRunRealTmux } from '../../helpers/real-tmux/fixture.ts'
 
 beforeEach(() => {
   /* no setup */
@@ -23,11 +22,11 @@ afterEach(async () => {
   /* no teardown */
 })
 
-// MIGRATED → (dropped) — parent U4.
+// MIGRATED → (dropped) — parent U4 (file `describe.skip`-finalized in U8 W6 hygiene).
 // drop: a blocked `it.todo` that never executed (scripted-fake has no
 // interactive mode). Re-derive when an interactive/PTY-capable fake runner
 // exists (parent U9 / recorded-agent). Nothing to port — it asserted nothing.
-describe.skipIf(!canRunRealTmux())('Tier 5 behavioral — interactive badge rendering', () => {
+describe.skip('Tier 5 behavioral — interactive badge rendering', () => {
   it.todo('renders the interactive glyph on an interactive step (blocked: scripted-fake does not support interactive mode; needs Tier 4 or a PTY-capable fake runner)', async () => {
     /* see findings doc D-1 */
   })

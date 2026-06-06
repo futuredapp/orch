@@ -86,4 +86,14 @@ export interface PaneDriver {
    * trivially over the rendered frame.
    */
   assertNoCaretEcho(): Promise<void>
+
+  // --- U8: focus (lifecycle only) -------------------------------------------
+
+  /**
+   * Assert this pane currently holds focus (click-to-focus). OPTIONAL: only the
+   * `lifecycle` driver models real cross-pane focus, so every other driver omits
+   * it and the Pane Object falls back to `notImplemented`. Kept optional (rather
+   * than a required interface method) so the rendering drivers need no stub.
+   */
+  assertFocused?(): Promise<void>
 }

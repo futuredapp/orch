@@ -44,8 +44,13 @@ afterEach(async () => {
   if (handle !== undefined) await handle.teardown()
 })
 
+// MIGRATED → tests-new/lifecycle/side-effects/failure-step-failed-recorded-on-disk.test.ts — parent U8 (G4).
+// port: this cell asserts DISK signals (lifecycle.ndjson step:failed + persisted
+// state), not pane content — a persistence test (triage = passes if pane empty).
+// The visible ✗ glyph + colour render is covered by the model/screen
+// `failure-glyph` twin; the error banner by the U5b banner twins (KD3).
 describe.skipIf(!canRunRealTmux())('Tier 5 behavioral — failed step is recorded', () => {
-  it('puppet fail() emits step:failed in lifecycle.ndjson with the message and ends the run as failed', async () => {
+  it.skip('puppet fail() emits step:failed in lifecycle.ndjson with the message and ends the run as failed', async () => {
     handle = await launchOrchWorkflow('puppet-can-fail', {
       script: { plan: puppet(), execute: puppet() },
     })

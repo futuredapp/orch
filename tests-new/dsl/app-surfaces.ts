@@ -131,6 +131,21 @@ export interface LifecycleApp extends AppBase {
   launch(spec: LifecycleSpec): Promise<void>
   press(pane: 'left' | 'right', key: string): Promise<void>
   signal(sig: Signal): Promise<void>
+  /**
+   * Close orch's piped stdin (stdin-EOF). A LIFECYCLE-ONLY action — orch v1 has
+   * no stdin-EOF handler, so the contract is deliberately weak (see the
+   * `close-stdin` scenario). Keeping it off the other app surfaces preserves the
+   * "unsupported action = type error" guarantee (D11).
+   */
+  closeStdin(): Promise<void>
+  /**
+   * Fire a `quit` intent the way the steps-view daemon would (append to
+   * `tui-intents.ndjson`) — the path the `q-during` cell uses because external
+   * `send-keys q` is unreliable before Ink claims raw mode. LIFECYCLE-ONLY.
+   */
+  quitIntent(): Promise<void>
+  /** Click on a pane to move focus across the divider. LIFECYCLE-ONLY (real focus). */
+  click(pane: 'left' | 'right'): Promise<void>
   readonly leftPane: LeftPane
   readonly rightPane: RightPane
   /** Exit / teardown / persisted status. */

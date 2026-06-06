@@ -18,6 +18,10 @@ export interface SystemAssertionsBackend {
   exitedNormally(): Promise<void>
   tmuxTornDown(): Promise<void>
   persistedStatus(status: PersistedStatus): Promise<void>
+  /** The terminal escape stream is balanced — no leaked alt-screen/mouse modes. */
+  terminalRestoredCleanly(): Promise<void>
+  /** No orphaned child processes survive the run. */
+  noOrphanChildren(): Promise<void>
 }
 
 export class SystemAssertions {
@@ -35,5 +39,16 @@ export class SystemAssertions {
     return (
       this.backend?.persistedStatus(status) ?? notImplemented('SystemAssertions.persistedStatus')
     )
+  }
+
+  terminalRestoredCleanly(): Promise<void> {
+    return (
+      this.backend?.terminalRestoredCleanly() ??
+      notImplemented('SystemAssertions.terminalRestoredCleanly')
+    )
+  }
+
+  noOrphanChildren(): Promise<void> {
+    return this.backend?.noOrphanChildren() ?? notImplemented('SystemAssertions.noOrphanChildren')
   }
 }

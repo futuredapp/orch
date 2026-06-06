@@ -48,8 +48,10 @@ afterEach(async () => {
   if (handle !== undefined) await handle.teardown()
 })
 
+// MIGRATED → tests-new/lifecycle/double-sigint--still-reaches-clean-shutdown.test.ts — parent U8 (G1).
+// port: a redundant second SIGINT still reaches the clean shutdown state.
 describe.skipIf(!canRunRealTmux())('Tier 5 — double SIGINT to orch during mid-step', () => {
-  it('still reaches the §6.5 signal-sigint clean state after a redundant SIGINT', async () => {
+  it.skip('still reaches the §6.5 signal-sigint clean state after a redundant SIGINT', async () => {
     handle = await launchOrchWorkflow('two-step-linear', {
       script: {
         plan: holdUntilReleased(),

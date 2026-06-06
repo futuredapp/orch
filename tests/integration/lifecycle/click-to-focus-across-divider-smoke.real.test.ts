@@ -34,8 +34,10 @@ afterEach(async () => {
   if (handle !== undefined) await handle.teardown()
 })
 
+// MIGRATED → tests-new/lifecycle/click-to-focus--moves-focus-across-divider.test.ts — parent U8 (G2).
+// port: clicks move focus across the divider (right then back to left) over real tmux.
 describe.skipIf(!canRunRealTmux())('Tier 5 — click-to-focus across the divider', () => {
-  it('clicks move focus between the left and right panes', async () => {
+  it.skip('clicks move focus between the left and right panes', async () => {
     handle = await launchOrchWorkflow('two-step-linear', {
       script: {
         plan: holdUntilReleased(),

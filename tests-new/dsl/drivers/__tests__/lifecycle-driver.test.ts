@@ -9,6 +9,10 @@ import {
 } from '@orch/test/real-tmux/index.ts'
 import { holdsOpen } from '../../agent-spec.ts'
 import type { DriverName, LifecycleApp } from '../../app-surfaces.ts'
+import { LeftPane } from '../../panes/left-pane.ts'
+import type { PaneDriver } from '../../panes/pane-driver.ts'
+import { RightPane } from '../../panes/right-pane.ts'
+import { SystemAssertions } from '../../panes/system-assertions.ts'
 import type { ScenarioMeta } from '../../scenario.ts'
 import { lifecycleDriver } from '../lifecycle-driver.ts'
 
@@ -107,6 +111,77 @@ describe('lifecycle driver — persisted status assertion', () => {
 
       // Negative: a wrong expectation goes red (fail-fast on a terminal status).
       await expect(app.system.persistedStatus('cancelled')).rejects.toThrow(/persistedStatus/)
+    },
+    REAL_TMUX_TEST_TIMEOUT_MS,
+  )
+})
+
+// ── U8 affordances: closeStdin / quitIntent / click+assertFocused ───────────
+
+describe('lifecycle driver — U8 affordances default to notImplemented off a backend', () => {
+  it('SystemAssertions without a backend throws notImplemented for the new checks', () => {
+    const system = new SystemAssertions()
+
+    expect(() => system.terminalRestoredCleanly()).toThrow(/terminalRestoredCleanly/)
+    expect(() => system.noOrphanChildren()).toThrow(/noOrphanChildren/)
+  })
+
+  it('a pane whose driver has no focus capability throws notImplemented for assertFocused', () => {
+    const focusless = {} as unknown as PaneDriver
+
+    expect(() => new LeftPane(focusless).assertFocused()).toThrow(/assertFocused/)
+    expect(() => new RightPane(focusless).assertFocused()).toThrow(/assertFocused/)
+  })
+})
+
+describe('lifecycle driver — U8 process-behaviour affordances', () => {
+  it.skipIf(!tmuxAvailable)(
+    'quitIntent appends a single quit line, the run exits, and tmux is torn down',
+    async () => {
+      const app = await lifecycleDriver.build(META)
+      apps.push(app)
+      await app.launch({ steps: ['work'], agent: holdsOpen(), stopAt: 'mid-step' })
+
+      await app.quitIntent()
+
+      await app.system.exitedNormally()
+      await app.system.tmuxTornDown()
+    },
+    REAL_TMUX_TEST_TIMEOUT_MS,
+  )
+
+  it.skipIf(!tmuxAvailable)(
+    'closeStdin leaves the terminal balanced and teardown reaps with no leaked puppets',
+    async () => {
+      const leakBefore = await scriptedFakeEntryCount()
+
+      const app = await lifecycleDriver.build(META)
+      apps.push(app)
+      await app.launch({ steps: ['work'], agent: holdsOpen(), stopAt: 'mid-step' })
+
+      // Weak contract: orch v1 has no stdin-EOF handler — only the terminal stays balanced.
+      await app.closeStdin()
+      await app.system.terminalRestoredCleanly()
+
+      await app.teardown()
+
+      expect(await scriptedFakeEntryCount()).toBe(leakBefore)
+    },
+    REAL_TMUX_TEST_TIMEOUT_MS,
+  )
+
+  it.skipIf(!tmuxAvailable)(
+    'click moves focus across the divider — right then back to left',
+    async () => {
+      const app = await lifecycleDriver.build(META)
+      apps.push(app)
+      await app.launch({ steps: ['work'], agent: holdsOpen(), stopAt: 'mid-step' })
+
+      await app.click('right')
+      await app.rightPane.assertFocused()
+
+      await app.click('left')
+      await app.leftPane.assertFocused()
     },
     REAL_TMUX_TEST_TIMEOUT_MS,
   )

@@ -39,8 +39,10 @@ afterEach(async () => {
   if (handle !== undefined) await handle.teardown()
 })
 
+// MIGRATED → tests-new/lifecycle/close-stdin--terminal-stays-balanced.test.ts — parent U8 (G1).
+// port: the WEAK close-stdin contract (terminal stays balanced; no teardown asserted).
 describe.skipIf(!canRunRealTmux())('Tier 5 — stdin-EOF to orch during mid-step', () => {
-  it('preserves the weak close-stdin contract — terminal stays balanced', async () => {
+  it.skip('preserves the weak close-stdin contract — terminal stays balanced', async () => {
     handle = await launchOrchWorkflow('two-step-linear', {
       script: {
         plan: holdUntilReleased(),

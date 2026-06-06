@@ -14,19 +14,28 @@
 // handle", so lifecycle scenarios MUST run serially (`--max-concurrency=1`,
 // D6/D14) — there is no per-call handle threading.
 
-import { readFile } from 'node:fs/promises'
+import { appendFile, readFile } from 'node:fs/promises'
 import {
+  assertLeftPane,
   assertOrchExits,
+  assertRightPane,
+  assertTerminalEscapeStream,
   assertTmuxSession,
+  clickOnPane,
+  closeOrchStdin,
   exitedNormally as exitedNormallyMatcher,
   holdUntilReleased,
+  isFocused,
   launchOrchWorkflow,
+  noOrphanChildren as noOrphanChildrenMatcher,
   type OrchHandle,
   pressKeyInPane,
   signalOrch,
   snapToLive,
+  terminalRestoredCleanly as terminalRestoredCleanlyMatcher,
   tmuxIsTornDown as tmuxIsTornDownMatcher,
   userAction,
+  wait,
   withinMs,
 } from '@orch/test/behavioral-dsl/index.ts'
 import {
@@ -58,6 +67,10 @@ import type { Driver } from './registry.ts'
 const DRIVER_LABEL = 'lifecycle'
 const PERSISTED_STATUS_POLL_MS = 50
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled', 'crashed'])
+// orch v1 has no stdin-EOF handler, so `closeStdin` documents observed behaviour
+// rather than asserting teardown: give orch a settle window to (mis)behave before
+// the weak terminal-balance assertion runs (mirrors the old close-stdin cell).
+const CLOSE_STDIN_SETTLE_MS = 2_000
 
 // Map a step-name sequence to the on-disk fixture that defines exactly those
 // steps. The behavioral-dsl fixtures are fixed, so a lifecycle scenario picks
@@ -138,6 +151,19 @@ function deferredPaneDriver(): PaneDriver {
   }
 }
 
+// The lifecycle driver DOES model real cross-pane focus (the only driver that
+// does), so its pane drivers wire `assertFocused` to the behavioral-dsl
+// `isFocused()` matcher over the captured pane; every other read stays deferred
+// (parent U2 — subprocess-snapshot reads land with the migration unit needing
+// them). `side` selects the matching pane assertion.
+function focusablePaneDriver(side: 'left' | 'right'): PaneDriver {
+  const assertPane = side === 'left' ? assertLeftPane : assertRightPane
+  return {
+    ...deferredPaneDriver(),
+    assertFocused: () => assertPane(withinMs(REAL_TMUX_ASSERT_TIMEOUT_MS), isFocused()),
+  }
+}
+
 async function readPersistedStatus(handle: OrchHandle): Promise<string | undefined> {
   const raw = await readFile(`${handle.stateDir}/state.json`, 'utf-8').catch(() => undefined)
   if (raw === undefined) return undefined
@@ -177,6 +203,13 @@ function createLifecycleApp(leakBaseline: number): LifecycleApp {
         `${DRIVER_LABEL}: persistedStatus expected ${JSON.stringify(status)} but state.json status is ${JSON.stringify(last ?? '(none)')}`,
       )
     },
+    terminalRestoredCleanly: () =>
+      assertTerminalEscapeStream(
+        withinMs(REAL_TMUX_ASSERT_TIMEOUT_MS),
+        terminalRestoredCleanlyMatcher(),
+      ),
+    noOrphanChildren: () =>
+      assertTerminalEscapeStream(withinMs(REAL_TMUX_ASSERT_TIMEOUT_MS), noOrphanChildrenMatcher()),
   }
 
   return {
@@ -204,8 +237,28 @@ function createLifecycleApp(leakBaseline: number): LifecycleApp {
       return userAction(signalOrch(sig))
     },
 
-    leftPane: new LeftPane(deferredPaneDriver()),
-    rightPane: new RightPane(deferredPaneDriver()),
+    async closeStdin(): Promise<void> {
+      requireHandle()
+      await userAction(closeOrchStdin())
+      // Weak contract: no teardown matcher — settle, then assert terminal balance.
+      await userAction(wait(CLOSE_STDIN_SETTLE_MS))
+    },
+
+    async quitIntent(): Promise<void> {
+      const h = requireHandle()
+      // The steps-view daemon's `quit` intent path — append directly because an
+      // external `send-keys q` is unreliable before Ink claims raw mode (the old
+      // q-during cell's documented reason).
+      await appendFile(`${h.stateDir}/tui-intents.ndjson`, `${JSON.stringify({ type: 'quit' })}\n`)
+    },
+
+    click(pane: 'left' | 'right'): Promise<void> {
+      requireHandle()
+      return userAction(clickOnPane(pane))
+    },
+
+    leftPane: new LeftPane(focusablePaneDriver('left')),
+    rightPane: new RightPane(focusablePaneDriver('right')),
     system: new SystemAssertions(system),
 
     async teardown(): Promise<void> {

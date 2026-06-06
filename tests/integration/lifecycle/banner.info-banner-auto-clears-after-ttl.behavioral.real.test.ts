@@ -37,8 +37,11 @@ afterEach(async () => {
   if (handle !== undefined) await handle.teardown()
 })
 
+// COVERED BY → tests-new/model/banner--info-clears-error-persists.test.ts — parent U8 (W6 close-out; U5b area).
+// demote→model: info-banner TTL auto-clear is a render decision over time, proven
+// deterministically on the virtual clock (D-P2) — never a real wall-clock wait.
 describe.skipIf(!canRunRealTmux())('Tier 5 behavioral — info banner auto-clears after TTL', () => {
-  it('the "step complete" info banner is visible briefly then disappears', async () => {
+  it.skip('the "step complete" info banner is visible briefly then disappears', async () => {
     handle = await launchOrchWorkflow('three-step-linear', {
       script: { plan: puppet(), execute: puppet(), finalize: puppet() },
     })

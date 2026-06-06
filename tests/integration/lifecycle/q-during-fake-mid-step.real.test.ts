@@ -39,8 +39,10 @@ afterEach(async () => {
   if (handle !== undefined) await handle.teardown()
 })
 
+// MIGRATED → tests-new/lifecycle/q-intent--tears-down-cleanly.test.ts — parent U8 (G1).
+// port: a daemon `quit` intent tears orch down cleanly (exit + tmux gone).
 describe.skipIf(!canRunRealTmux())('Tier 5 — `q` intent during mid-step (fake)', () => {
-  it('tears orch down cleanly — §6.5 pane-q-during-run', async () => {
+  it.skip('tears orch down cleanly — §6.5 pane-q-during-run', async () => {
     handle = await launchOrchWorkflow('two-step-linear', {
       script: {
         plan: holdUntilReleased(),

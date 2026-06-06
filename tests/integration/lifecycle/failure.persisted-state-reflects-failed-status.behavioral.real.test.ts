@@ -31,10 +31,12 @@ afterEach(async () => {
   if (handle !== undefined) await handle.teardown()
 })
 
+// MIGRATED → tests-new/lifecycle/side-effects/failure-persisted-state.test.ts — parent U8 (G4).
+// port: persisted-state side effect (run failed, prior completed, step failed).
 describe.skipIf(!canRunRealTmux())(
   'Tier 5 behavioral — persisted state reflects failed status',
   () => {
-    it('state.json status=failed, prior steps completed, failed step recorded', async () => {
+    it.skip('state.json status=failed, prior steps completed, failed step recorded', async () => {
       handle = await launchOrchWorkflow('puppet-can-fail', {
         script: { plan: puppet(), execute: puppet() },
       })

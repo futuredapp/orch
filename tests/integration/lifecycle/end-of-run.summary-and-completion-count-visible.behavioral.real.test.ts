@@ -39,10 +39,15 @@ afterEach(async () => {
   if (handle !== undefined) await handle.teardown()
 })
 
+// COVERED BY → tests-new/model/end-of-run--summary-and-count.test.ts (+ screen/end-of-run--summary-and-count-bytes.test.ts) — parent U8 (W6 close-out; U5b area).
+// demote→model/screen: the visible end-of-run summary + `steps N/N completed`
+// count is covered by the U5b twins. This cell only asserts the durable
+// completed-run signals (persisted state + lifecycle.ndjson run-ended) as a
+// teardown-race workaround for the unobservable pane.
 describe.skipIf(!canRunRealTmux())(
   'Tier 5 behavioral — end-of-run summary records completion',
   () => {
-    it('all 3 steps complete, run status=completed, lifecycle.ndjson records run-ended', async () => {
+    it.skip('all 3 steps complete, run status=completed, lifecycle.ndjson records run-ended', async () => {
       handle = await launchOrchWorkflow('three-step-linear', {
         script: { plan: puppet(), execute: puppet(), finalize: puppet() },
       })

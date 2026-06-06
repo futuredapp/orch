@@ -7,6 +7,7 @@
 // hatch forwards to the driver; chrome/hygiene assertions are notImplemented
 // until those drivers exist.
 
+import { notImplemented } from '../not-implemented.ts'
 import type { PaneDriver } from './pane-driver.ts'
 
 export class RightPane {
@@ -20,5 +21,10 @@ export class RightPane {
   /** Chrome/hygiene: the right pane shows no echoed caret. */
   assertNoCaretEcho(): Promise<void> {
     return this.driver.assertNoCaretEcho()
+  }
+
+  /** This pane holds focus (lifecycle click-to-focus; notImplemented elsewhere). */
+  assertFocused(): Promise<void> {
+    return this.driver.assertFocused?.() ?? notImplemented('RightPane.assertFocused')
   }
 }

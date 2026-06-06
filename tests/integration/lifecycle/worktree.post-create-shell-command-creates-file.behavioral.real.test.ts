@@ -26,8 +26,10 @@ afterEach(async () => {
   if (handle !== undefined) await handle.teardown()
 })
 
+// MIGRATED → tests-new/lifecycle/side-effects/worktree-post-create-shell-command.test.ts — parent U8 (G4).
+// port: fs side effect (postCreate shell command creates a file in the worktree).
 describe.skipIf(!canRunRealTmux())('Tier 5 behavioral — worktree postCreate shell', () => {
-  it('postCreate ["touch sentinel.txt"] creates the file inside the worktree', async () => {
+  it.skip('postCreate ["touch sentinel.txt"] creates the file inside the worktree', async () => {
     handle = await launchOrchWorkflow('worktree-with-post-create', {
       initGitRepo: true,
     })

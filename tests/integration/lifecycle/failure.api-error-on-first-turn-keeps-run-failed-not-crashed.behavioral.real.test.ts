@@ -44,10 +44,14 @@ afterEach(async () => {
   if (handle !== undefined) await handle.teardown()
 })
 
+// MIGRATED → tests-new/lifecycle/side-effects/failure-api-error-is-failed-not-crashed.test.ts — parent U8 (G4).
+// port: graceful-failure persistence (API error → run `failed`, not `crashed`).
+// KD5: the old comment predicted RED; source has since been fixed, so the
+// relocated cell asserts the observed `failed` (confirmed by a run on main).
 describe.skipIf(!canRunRealTmux())(
   'Tier 5 behavioral — clean API error on first turn is a step failure, not a run crash',
   () => {
-    it('CLI emits terminal error + non-zero exit → step.failed, run.failed (NOT crashed)', async () => {
+    it.skip('CLI emits terminal error + non-zero exit → step.failed, run.failed (NOT crashed)', async () => {
       handle = await launchOrchWorkflow('single-agent-step', {
         script: {
           work: {

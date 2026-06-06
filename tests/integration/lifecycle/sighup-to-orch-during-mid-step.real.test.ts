@@ -44,8 +44,10 @@ afterEach(async () => {
   if (handle !== undefined) await handle.teardown()
 })
 
+// MIGRATED → tests-new/lifecycle/sighup--exits-cleanly-and-tears-down.test.ts — parent U8 (G1).
+// port: SIGHUP (controlling-TTY hangup) shutdown invariants.
 describe.skipIf(!canRunRealTmux())('Tier 5 — SIGHUP to orch during mid-step', () => {
-  it('exits cleanly, tears down tmux, and leaves the terminal balanced', async () => {
+  it.skip('exits cleanly, tears down tmux, and leaves the terminal balanced', async () => {
     handle = await launchOrchWorkflow('two-step-linear', {
       script: {
         plan: holdUntilReleased(),
