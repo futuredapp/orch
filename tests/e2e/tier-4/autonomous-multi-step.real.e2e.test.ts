@@ -9,14 +9,11 @@
 import { afterEach, describe, expect, it } from 'bun:test'
 import { claude } from '../../../src/runners/index.ts'
 import {
-  canRunRealTmuxE2E,
   createRealTmuxFixture,
   type MountedHarness,
   mountTmuxHost,
   type RealTmuxFixture,
 } from '../../helpers/real-tmux/index.ts'
-
-const canRun = canRunRealTmuxE2E('claude')
 
 let fixturesToDispose: RealTmuxFixture[] = []
 let harnessesToTeardown: MountedHarness[] = []
@@ -28,7 +25,8 @@ afterEach(async () => {
   fixturesToDispose = []
 })
 
-describe.skipIf(!canRun)('Tier 4 — autonomous multi-step against real Claude', () => {
+// MIGRATED → tests-new/full-host/real-agent/autonomous-multi-step.test.ts (parent U9/W2) — re-derived as a two-pane pane-integration smoke; kept skipped on disk (D2).
+describe.skip('Tier 4 — autonomous multi-step against real Claude', () => {
   it('two real-CLI autonomous steps run to completion and right.capture() shows live transcript text', async () => {
     const fixture = await createRealTmuxFixture({ env: {} })
     fixturesToDispose.push(fixture)

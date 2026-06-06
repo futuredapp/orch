@@ -62,6 +62,21 @@ export type ScreenSpec = LaunchSpec
 /** Full-host launch spec — adds the agent slot (defaults to an empty `emits()`). */
 export interface FullHostSpec extends LaunchSpec {
   readonly agent?: AgentSpec
+  /**
+   * Run the step(s) in interactive mode instead of the runner's default
+   * autonomous mode (parent U9/W1). Applies to the whole run — the legacy
+   * auto-stop case is single-step, so a run-level flag is sufficient and
+   * per-step heterogeneous modes are deliberately out of scope this phase.
+   * Constrained to `'interactive'`: the only value W1 supports.
+   */
+  readonly mode?: 'interactive'
+  /**
+   * Interactive auto-stop opt-in — a finished turn closes the pane with NO
+   * keystroke (the AE2 proof). Only meaningful with `mode: 'interactive'`.
+   * Defaults off, so a fake/recorded scenario that omits it is byte-for-byte
+   * unaffected (parent W1 risk R1).
+   */
+  readonly autoStop?: boolean
 }
 
 /** Lifecycle launch spec — adds the agent slot (e.g. `holdsOpen()`). */

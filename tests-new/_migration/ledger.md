@@ -55,7 +55,12 @@
 | Old file | Old case | New scenario (path) | Disposition | Reason |
 |---|---|---|---|---|
 | — | — | full-host/recorded-agent/claude-plan-then-work.test.ts | new | born in tests-new/ (parent U3 tracer); no old twin — realistic-event replay had no equivalent under the old harness |
-| — | — | full-host/real-agent/autonomous-multi-step.test.ts | new | parent U3 real-CLI smoke; re-derives the spirit of tests/e2e/tier-4 as a two-pane pane-integration assertion, not a runner-isolation test |
+
+> **Note (parent U9/W4).** The U3 `full-host/real-agent/autonomous-multi-step.test.ts`
+> smoke was born `new` but is, in substance, the re-derivation of the tier-4
+> `autonomous-multi-step` case. U9 retargets its `oldTestRefs` to the specific old
+> file and reclassifies it as a `port` in the tier-4 section below — so the case
+> maps to exactly one disposition (no double-count).
 
 ## Migrated cases — left-pane logic & rendering (parent U5a)
 
@@ -374,3 +379,33 @@
 > `resume.cached-steps-replay-with-cached-glyph`. Everything else U8 touched is
 > `.skip` with a `// MIGRATED →` / `// COVERED BY →` marker and a case-granular row
 > above.
+
+## Migrated cases — `tier-4` / real-CLI (parent U9)
+
+> **Phase 9 / U9** closes the two-pane real-CLI surface — the last of group B.
+> The three `tests/e2e/tier-4/*` files (one frozen-baseline case each, D12) are
+> re-derived through the `full-host:real-agent` driver (gated smokes) and flipped
+> from capability-gating (`describe.skipIf(!canRun)`) to **unconditional**
+> `describe.skip` (D2) so U14's reconcile reads them as migrated, not merely
+> capability-skipped (R5). The interactive/autoStop passthrough (W1) made the
+> auto-stop case expressible. `mixed-with-interactive` is a `drop`: a never-run
+> `it.skip` placeholder asserting nothing, blocked on interactive-PTY-step harness
+> support that still does not exist (deferred follow-up, parent §7 Scope).
+
+| Old file | Old case | New scenario (path) | Disposition | Reason |
+|---|---|---|---|---|
+| tests/e2e/tier-4/autonomous-multi-step.real.e2e.test.ts | two real-CLI autonomous steps run to completion and right.capture() shows live transcript text | full-host/real-agent/autonomous-multi-step.test.ts | port | Re-derived as a two-pane pane-integration smoke: two real Claude steps complete and the second step's transcript paints in the right pane (§9.7). Gated; auto-skips off the gate. |
+| tests/e2e/tier-4/auto-stop.real.e2e.test.ts | finishes its turn and the pane closes on its own with no keystroke | full-host/real-agent/auto-stop.test.ts | port | The unique AE2 proof: a real interactive turn auto-stops and paints its reply with NO keystroke — the real Stop-hook + real env + real tmux `wait-for` transport the fake cannot exercise. Unblocked by the W1 mode/autoStop passthrough. Gated. |
+| tests/e2e/tier-4/mixed-with-interactive.real.e2e.test.ts | autonomous step + interactive step share the same harness body | — | drop | Never-executed `it.skip` placeholder that asserted nothing; depends on interactive-PTY-step harness support that does not exist. Re-derive when that helper lands (deferred follow-up). File `describe.skip` with `// DROPPED →`. |
+
+## Born-new (no baseline twin) — parent U9 recorded realism
+
+> Event-stream-*shape* realism the inline `emits(...)` fake cannot produce
+> (multi-`tool_use` interleave; an error terminal). Hand-authored cassettes that
+> replay deterministically through the fake-agent engine on the real two-pane host
+> — no CLI, no network (parent §9.6, D9). Born in `tests-new/`, no old twin.
+
+| Old file | Old case | New scenario (path) | Disposition | Reason |
+|---|---|---|---|---|
+| — | — | full-host/recorded-agent/multi-tool-use.test.ts | new | born in tests-new/ (parent U9/W3); no old twin — a turn firing several `tool_use` events before its assistant line, a stream shape the inline fake cannot reproduce |
+| — | — | full-host/recorded-agent/error-terminal.test.ts | new | born in tests-new/ (parent U9/W3); no old twin — a turn ending on `terminal.type: 'error'`; proves the failure outcome paints (not a hang/crash) |

@@ -23,7 +23,7 @@
     "test:two-pane:full:fake": "bun test tests-new/dsl/drivers/__tests__/full-host-fake-agent-driver.test.ts tests-new/full-host/fake-agent",
     "test:two-pane:full:recorded": "bun test tests-new/dsl/drivers/__tests__/recorded-agent-driver.test.ts tests-new/full-host/recorded-agent",
     "test:two-pane:full:real": "bun test tests-new/full-host/real-agent",
-    "test:two-pane:fast": "bun test tests-new/model tests-new/tmux-argv tests-new/dsl/__tests__ tests-new/dsl/panes/__tests__ tests-new/dsl/drivers/__tests__/model-driver.test.ts tests-new/_migration/__tests__ && bun run overlap-report",
+    "test:two-pane:fast": "bun test tests-new/model tests-new/tmux-argv tests-new/dsl/__tests__ tests-new/dsl/panes/__tests__ tests-new/dsl/drivers/__tests__/model-driver.test.ts tests-new/dsl/drivers/__tests__/full-host-static-app.test.ts tests-new/_migration/__tests__ && bun run overlap-report",
     "test:two-pane:tmux": "bun test --max-concurrency=2 tests-new/dsl/drivers/__tests__/screen-driver.test.ts tests-new/screen tests-new/dsl/drivers/__tests__/full-host-fake-agent-driver.test.ts tests-new/full-host/fake-agent tests-new/dsl/drivers/__tests__/recorded-agent-driver.test.ts tests-new/full-host/recorded-agent",
     "test:two-pane": "bun run test:two-pane:fast && bun run test:two-pane:tmux",
     "test:two-pane:lifecycle": "bun test --max-concurrency=1 tests-new/dsl/drivers/__tests__/lifecycle-driver.test.ts tests-new/lifecycle",

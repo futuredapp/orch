@@ -72,7 +72,15 @@ export function createStaticFullHostApp(deps: StaticFullHostDeps): FullHostApp {
       stepNames = spec.steps
       const steps = spec.steps.map((name, index) => {
         const built = agentForStep(name, index, spec)
-        return { name, agent: built.agent, ...(built.prompt !== undefined ? { prompt: built.prompt } : {}) }
+        // `mode`/`autoStop` are run-level (W1): forwarded to every step when set,
+        // omitted otherwise so existing fake/recorded scenarios are unchanged.
+        return {
+          name,
+          agent: built.agent,
+          ...(built.prompt !== undefined ? { prompt: built.prompt } : {}),
+          ...(spec.mode !== undefined ? { mode: spec.mode } : {}),
+          ...(spec.autoStop !== undefined ? { autoStop: spec.autoStop } : {}),
+        }
       })
       runPromise = harness.runWorkflow(steps)
       // Never leave the run promise unobserved — that would surface as an

@@ -347,3 +347,39 @@ overlap report all ran green; `bun run check` is green apart from the documented
 unrelated pre-existing `ENOENT` fixture failures under gitignored `.orch/`. The
 `cancelled`-on-signal status gap and the desired-vs-actual failure-bucket nuance
 remain open product questions, recorded but not acted on (test-only phase).
+
+## Phase 9
+
+Phase 9 (U9) closes the two-pane real-CLI surface — the last of the group-B
+migration before the repo-wide relocations (U10–U13) and the U14 reconciliation.
+It migrated the three legacy `tests/e2e/tier-4/*` real-Claude e2e tests into the
+new scenario/driver DSL: the autonomous-multi-step and auto-stop cases were ported
+to gated `full-host:real-agent` smokes (they assert the binary integrates *inside*
+the two-pane system, not the runner in isolation), and `mixed-with-interactive`
+was dropped — it was a never-executed `it.skip` placeholder waiting on
+interactive-PTY-step harness support that still does not exist. All three old
+files were flipped from capability-gating (`describe.skipIf`) to unconditional
+`describe.skip` with `// MIGRATED →` / `// DROPPED →` markers so U14's reconcile
+reads them as migrated rather than merely capability-skipped.
+
+The one genuine driver gap was the auto-stop case: the shared static full-host
+engine mapped each step to `{ agent, prompt }` only and could not express an
+interactive auto-stopping step. W1 extended `FullHostSpec` with optional
+`mode: 'interactive'` + `autoStop` and threaded them into the `runWorkflow` step
+descriptors — both default-off, so every existing fake/recorded scenario is
+byte-for-byte unchanged (proven by a no-tmux unit test). Phase 9 also added two
+hand-authored `full-host:recorded-agent` cassettes (a multi-`tool_use` interleave
+and an error terminal) for event-stream-*shape* realism the inline `emits(...)`
+fake cannot reproduce; both replay deterministically on the gate (real tmux, no
+CLI).
+
+What matters for next work: the two-pane behavioural migration (group B) is now
+complete — U10–U13 (relocating the remaining non-two-pane `tests/` into
+`tests-new/{unit,integration,e2e}`) and U14 (the frozen-baseline reconciliation)
+are what remain. This phase made no `src/` change. The ledger now accounts for all
+three tier-4 cases at case granularity plus the two new `new` cassette rows; the
+blocking overlap report, `typecheck`, `lint`, and the fast/tmux two-pane buckets
+are all green. The two real-agent smokes auto-skip off the gate and need
+`tmux` + `claude` + `RUN_REAL_TMUX_E2E=1` to actually run; the dropped interactive
+mixed-step shape is recorded as a deferred follow-up for when an
+`interactiveStep(...)` real-agent harness helper lands.

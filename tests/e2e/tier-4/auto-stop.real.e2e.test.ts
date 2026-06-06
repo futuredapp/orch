@@ -8,14 +8,11 @@
 import { afterEach, describe, expect, it } from 'bun:test'
 import { claude } from '../../../src/runners/index.ts'
 import {
-  canRunRealTmuxE2E,
   createRealTmuxFixture,
   type MountedHarness,
   mountTmuxHost,
   type RealTmuxFixture,
 } from '../../helpers/real-tmux/index.ts'
-
-const canRun = canRunRealTmuxE2E('claude')
 
 let fixturesToDispose: RealTmuxFixture[] = []
 let harnessesToTeardown: MountedHarness[] = []
@@ -27,7 +24,8 @@ afterEach(async () => {
   fixturesToDispose = []
 })
 
-describe.skipIf(!canRun)('Tier 4 — interactive auto-stop (real Claude)', () => {
+// MIGRATED → tests-new/full-host/real-agent/auto-stop.test.ts (parent U9/W2) — re-derived as the AE2 interactive-auto-stop smoke; kept skipped on disk (D2).
+describe.skip('Tier 4 — interactive auto-stop (real Claude)', () => {
   it('finishes its turn and the pane closes on its own with no keystroke', async () => {
     const fixture = await createRealTmuxFixture({ env: {} })
     fixturesToDispose.push(fixture)

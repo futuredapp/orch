@@ -1,0 +1,53 @@
+{
+  "eventSchema": "RunnerEvent",
+  "events": [
+    {
+      "kind": "info",
+      "payload": {
+        "name": "Read",
+        "path": "src/auth.ts"
+      },
+      "type": "tool_use"
+    },
+    {
+      "kind": "info",
+      "payload": {
+        "name": "Grep",
+        "pattern": "validateToken"
+      },
+      "type": "tool_use"
+    },
+    {
+      "kind": "info",
+      "payload": {
+        "name": "Edit",
+        "path": "src/auth.ts"
+      },
+      "type": "tool_use"
+    },
+    {
+      "kind": "info",
+      "payload": {
+        "text": "investigation complete"
+      },
+      "type": "assistant"
+    }
+  ],
+  "prompt": "Investigate the auth module and summarise the findings",
+  "recordedAt": "2026-06-06T12:00:00Z",
+  "runner": "claude",
+  "runnerVersion": "fixture",
+  "scenarioId": "claude-multi-tool-use",
+  "schemaVersion": 1,
+  "sourceCommand": [
+    "claude",
+    "--bare",
+    "-p"
+  ],
+  "terminal": {
+    "data": "done",
+    "kind": "terminal",
+    "type": "turn-complete"
+  },
+  "workflowName": "investigate"
+}
