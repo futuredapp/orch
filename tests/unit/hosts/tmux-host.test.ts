@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/hosts/tmux-host.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Unit tests for TmuxHost — drives the host with a FakeTmuxService and asserts
 // the recorded tmux command sequence. No real tmux server is started.
 
@@ -117,7 +118,7 @@ class WaitForSessionLostTmuxService extends FakeTmuxService {
   }
 }
 
-describe('createTmuxHost setup', () => {
+describe.skip('createTmuxHost setup', () => {
   it('creates the session, lists the initial pane, and splits the right pane with cat', async () => {
     const tmux = new FakeTmuxService()
     tmux.setListPanesResult(['%0'])
@@ -242,7 +243,7 @@ describe('createTmuxHost setup', () => {
   })
 })
 
-describe('TmuxHost.onRunnerEvent', () => {
+describe.skip('TmuxHost.onRunnerEvent', () => {
   it('does not sendKeys to the right pane — runner bytes flow through the per-step tee (U5)', async () => {
     const tmux = new FakeTmuxService()
     tmux.setListPanesResult(['%0'])
@@ -288,7 +289,7 @@ describe('TmuxHost.onRunnerEvent', () => {
   })
 })
 
-describe('TmuxHost.onLifecycleEvent — step:failed', () => {
+describe.skip('TmuxHost.onLifecycleEvent — step:failed', () => {
   it('does not sendKeys the failure frame to the right pane — it is appended to the per-step tee (U5)', async () => {
     const tmux = new FakeTmuxService()
     tmux.setListPanesResult(['%0'])
@@ -343,7 +344,7 @@ describe('TmuxHost.onLifecycleEvent — step:failed', () => {
   })
 })
 
-describe('TmuxHost.onLifecycleEvent — step:parallel-branch-update', () => {
+describe.skip('TmuxHost.onLifecycleEvent — step:parallel-branch-update', () => {
   it('does not fan rollup bytes onto the right pane (U7 invariant — rollup lives in the _rollup tee)', async () => {
     const tmux = new FakeTmuxService()
     tmux.setListPanesResult(['%0'])
@@ -385,7 +386,7 @@ describe('TmuxHost.onLifecycleEvent — step:parallel-branch-update', () => {
   })
 })
 
-describe('TmuxHost.runInteractive', () => {
+describe.skip('TmuxHost.runInteractive', () => {
   it('logs right-pane interactive pane lifecycle diagnostics', async () => {
     const tmux = new FakeTmuxService()
     tmux.setListPanesResult(['%0'])
@@ -559,7 +560,7 @@ describe('TmuxHost.runInteractive', () => {
   })
 })
 
-describe('TmuxHost.teardown', () => {
+describe.skip('TmuxHost.teardown', () => {
   it('stops the status loop and drains the per-pane write queue', async () => {
     const tmux = new FakeTmuxService()
     tmux.setListPanesResult(['%0'])
@@ -810,7 +811,7 @@ describe('TmuxHost.teardown', () => {
   })
 })
 
-describe('createTmuxHost socket resolution', () => {
+describe.skip('createTmuxHost socket resolution', () => {
   // Collect every socket the host named across its recorded tmux calls. Every
   // call that talks to tmux carries a `socket`; the set should be a singleton.
   function socketsTouched(tmux: FakeTmuxService): Set<string> {

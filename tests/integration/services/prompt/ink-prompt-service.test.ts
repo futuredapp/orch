@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/services/prompt/ink-prompt-service.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { writeFile } from 'node:fs/promises'
 import type { StepName } from '../../../../src/core/types.ts'
@@ -63,7 +64,7 @@ function makeHost({ handler, mode = 'two-pane', reachability }: FakeHostOptions)
   }
 }
 
-describe('InkPromptService (mocked host)', () => {
+describe.skip('InkPromptService (mocked host)', () => {
   it('encodes the spec as base64 JSON and reads the child-written result file', async () => {
     const fs = new BunFsService()
     const svc = new InkPromptService({ fs, runnerScript: toPath('/fake/runner.ts') })

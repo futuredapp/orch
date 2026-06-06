@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/state/run-registry.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { FakeFsService, path } from '../../../src/services/index.ts'
 import { FileRunRegistry, type RunId } from '../../../src/state/index.ts'
@@ -11,7 +12,7 @@ async function seedRunDirs(fs: FakeFsService, ids: readonly string[]): Promise<v
   }
 }
 
-describe('FileRunRegistry', () => {
+describe.skip('FileRunRegistry', () => {
   it('listRuns returns empty array when base directory does not exist', async () => {
     const fs = new FakeFsService()
     const registry = new FileRunRegistry({ fs, basePath: BASE })

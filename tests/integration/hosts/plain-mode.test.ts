@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/hosts/plain-mode.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // plain-mode end-to-end: drive a two-step FakeRunner workflow through the
 // PlainHost and assert the stdout shape (text + JSON) matches the plan's
 // Story 2 / Mode 1 lines.
@@ -77,7 +78,7 @@ async function runTwoStepPlainWorkflow(format: 'text' | 'json'): Promise<{
   return { stdout: stdout.text(), stderr: stderr.text() }
 }
 
-describe('--mode=plain --format=text', () => {
+describe.skip('--mode=plain --format=text', () => {
   it('emits [orch] lifecycle lines and [stepName] runner lines in order', async () => {
     const { stdout } = await runTwoStepPlainWorkflow('text')
     const lines = stdout.split('\n').filter((l) => l.length > 0)
@@ -94,7 +95,7 @@ describe('--mode=plain --format=text', () => {
   })
 })
 
-describe('--mode=plain — step:failed frame', () => {
+describe.skip('--mode=plain — step:failed frame', () => {
   it('writes the Story 1.5 failure frame to stderr and exits via StepError', async () => {
     const fs = new FakeFsService()
     const processService = new FakeProcessService()
@@ -150,7 +151,7 @@ describe('--mode=plain — step:failed frame', () => {
   })
 })
 
-describe('--mode=plain — formatted_output tee', () => {
+describe.skip('--mode=plain — formatted_output tee', () => {
   it('persists rendered stdout bytes to agents/<step>/formatted_output.{ansi,txt}', async () => {
     const fs = new FakeFsService()
     const processService = new FakeProcessService()
@@ -229,7 +230,7 @@ describe('--mode=plain — formatted_output tee', () => {
   })
 })
 
-describe('--mode=plain --format=json', () => {
+describe.skip('--mode=plain --format=json', () => {
   it('emits one NDJSON envelope per event with ts/run/ev/step', async () => {
     const { stdout, stderr } = await runTwoStepPlainWorkflow('json')
     const lines = stdout.split('\n').filter((l) => l.length > 0)

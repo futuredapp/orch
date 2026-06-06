@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/codegen/run-codegen.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { runCodegen } from '../../../src/codegen/run-codegen.ts'
 import { FakeFsService } from '../../../src/services/fs/fake-fs-service.ts'
@@ -9,7 +10,7 @@ async function seedFile(fs: FakeFsService, absPath: string, content: string): Pr
   await fs.writeFile(path(absPath), content)
 }
 
-describe('runCodegen', () => {
+describe.skip('runCodegen', () => {
   it('writes one sidecar per discovered prompt file', async () => {
     const fs = new FakeFsService()
     await seedFile(fs, '/proj/.orch/prompts/a.md', 'Hi {{name}}')

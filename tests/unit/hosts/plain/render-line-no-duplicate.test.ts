@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/hosts/plain/render-line-no-duplicate.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Regression fence for the "doubled live output" bug.
 //
 // In two-pane mode the right pane was rendering each transcript line twice —
@@ -32,7 +33,7 @@ const lineFor = (category: TranscriptCategory): TranscriptLine => ({
   body: 'hello world',
 })
 
-describe('renderTranscriptLine produces a single non-caret-escaped string per line', () => {
+describe.skip('renderTranscriptLine produces a single non-caret-escaped string per line', () => {
   for (const category of CATEGORIES) {
     it(`returns exactly one string for kind=line, category=${category}`, () => {
       const out = renderTranscriptLine(lineFor(category), { color: true, prefix: PREFIX })

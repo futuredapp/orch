@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/state/state-store-subpath.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // U7 — `StepEntry.subPath` persistence (also covers U4 `subCallId` and U9
 // `insideParallel`). All three are additive, optional fields with no
 // schemaVersion bump; pre-feature state files load with each undefined.
@@ -16,7 +17,7 @@ function makeStore() {
   return { fs, store }
 }
 
-describe('StepEntry.subPath persistence', () => {
+describe.skip('StepEntry.subPath persistence', () => {
   it('round-trips an entry with subPath set to a single-level chain', async () => {
     const { store } = makeStore()
     await store.initRun(RID, { startedAt: 0 })

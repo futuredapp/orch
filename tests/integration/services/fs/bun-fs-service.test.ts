@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/services/fs/bun-fs-service.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { BunFsService } from '../../../../src/services/fs/bun-fs-service.ts'
 import type { Path } from '../../../../src/services/types.ts'
@@ -10,7 +11,7 @@ async function collectAsync(iter: AsyncIterable<unknown>): Promise<unknown[]> {
   return result
 }
 
-describe('BunFsService', () => {
+describe.skip('BunFsService', () => {
   let fs: BunFsService
   let tmpDir: Path
 

@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/state/state-store.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { afterEach, describe, expect, it } from 'bun:test'
 import * as fs from 'node:fs/promises'
 import { BunFsService, path } from '../../../src/services/index.ts'
@@ -14,7 +15,7 @@ afterEach(async () => {
 
 const makeEntry = (overrides: Partial<StepEntry> = {}): StepEntry => makeStepEntry(overrides)
 
-describe('FileStateStore (integration)', () => {
+describe.skip('FileStateStore (integration)', () => {
   it('round-trips against a real temp directory', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-state-test-')
     const bunFs = new BunFsService()

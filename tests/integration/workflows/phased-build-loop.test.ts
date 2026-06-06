@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/workflows/phased-build-loop.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // U4 — per-phase implement loop: implement-only, halt-on-failure (R9, R5).
 
 import { describe, expect, it } from 'bun:test'
@@ -24,7 +25,7 @@ const THREE_PHASES = [
   'body three',
 ]
 
-describe('implement loop — runs one step per phase in order (R5)', () => {
+describe.skip('implement loop — runs one step per phase in order (R5)', () => {
   it('runs exactly three implement steps in order and completes unattended', async () => {
     const deps = makeDeps({ prompt: 'inline' })
     const { runner, prompts } = makeRecordingRunner()
@@ -64,7 +65,7 @@ describe('implement loop — runs one step per phase in order (R5)', () => {
   })
 })
 
-describe('implement loop — implement-only prompts (R9)', () => {
+describe.skip('implement loop — implement-only prompts (R9)', () => {
   it('scopes each prompt to a single phase with no commit or validation instruction', async () => {
     const deps = makeDeps({ prompt: 'inline' })
     const { runner, prompts } = makeRecordingRunner()
@@ -81,7 +82,7 @@ describe('implement loop — implement-only prompts (R9)', () => {
   })
 })
 
-describe('implement loop — halt on phase failure (R9)', () => {
+describe.skip('implement loop — halt on phase failure (R9)', () => {
   it('halts before the next phase when a phase reports a non-ok sentinel', async () => {
     const deps = makeDeps({ prompt: 'inline' })
     const { runner, prompts } = makeRecordingRunner()

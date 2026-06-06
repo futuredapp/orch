@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/services/prompt/readline-prompt-service.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { PassThrough } from 'node:stream'
 import type { StepName } from '../../../../src/core/types.ts'
@@ -49,7 +50,7 @@ function feed(h: Harness, lines: ReadonlyArray<string>): void {
   setTimeout(tick, 5)
 }
 
-describe('ReadlinePromptService', () => {
+describe.skip('ReadlinePromptService', () => {
   it('reads a field then the chosen button and resolves with the labels', async () => {
     const h = harness()
     feed(h, ['hello', '1'])

@@ -1,7 +1,8 @@
+// MIGRATED → tests-new/unit/services/clock/fake-clock.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { FakeClock } from '../../../../src/services/clock/fake-clock.ts'
 
-describe('FakeClock', () => {
+describe.skip('FakeClock', () => {
   it('reports the initial value from now() when constructed with an explicit seed', () => {
     const clock = new FakeClock(1000)
 

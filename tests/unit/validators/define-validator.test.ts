@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/validators/define-validator.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { afterEach, describe, expect, it } from 'bun:test'
 import { stepName } from '../../../src/core/types.ts'
 import { FakeFsService, FakeGitService, path } from '../../../src/services/index.ts'
@@ -24,7 +25,7 @@ function makeCtx(value: unknown = undefined): {
   }
 }
 
-describe('defineValidator', () => {
+describe.skip('defineValidator', () => {
   it('returns a Validator with the given name directly (not a factory)', () => {
     const v = defineValidator('tests-passed', () => true)
 
@@ -77,7 +78,7 @@ describe('defineValidator', () => {
   })
 })
 
-describe('DuplicateValidatorError', () => {
+describe.skip('DuplicateValidatorError', () => {
   it('carries the validator name on the instance', () => {
     defineValidator('dup-me', () => true)
 

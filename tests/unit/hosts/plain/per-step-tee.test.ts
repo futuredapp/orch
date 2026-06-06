@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/hosts/plain/per-step-tee.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // ---------------------------------------------------------------------------
 // Per-step tee — opens/closes formatted_output.{ansi,txt} sinks per step and
 // writes verbatim ANSI to one and stripped-ANSI to the other. Ordering and
@@ -30,7 +31,7 @@ function make(): {
   return { logger, fs }
 }
 
-describe('createPerStepTee', () => {
+describe.skip('createPerStepTee', () => {
   it('returns the null tee when no logger is provided', () => {
     expect(createPerStepTee(undefined)).toBe(NULL_PER_STEP_TEE)
   })

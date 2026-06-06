@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/state/state-store-runner-name-and-capture-error.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { FakeFsService, path } from '../../../src/services/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
@@ -12,7 +13,7 @@ function makeStore() {
   return { fs, store }
 }
 
-describe('StepEntry.runnerName + sessionIdCaptureError persistence', () => {
+describe.skip('StepEntry.runnerName + sessionIdCaptureError persistence', () => {
   it('round-trips a step entry with sessionId, runnerName, and sessionIdCaptureError all set', async () => {
     const { store } = makeStore()
 

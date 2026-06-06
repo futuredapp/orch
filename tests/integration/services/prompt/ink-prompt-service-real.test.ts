@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/services/prompt/ink-prompt-service-real.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -24,7 +25,7 @@ const here = dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = join(here, '..', '..', '..', '..')
 const RUNNER = join(REPO_ROOT, 'src', 'services', 'prompt', 'ink-runner.ts')
 
-describe.skipIf(!RUN_REAL)('InkPromptService — real spawn', () => {
+describe.skip('InkPromptService — real spawn', () => {
   it('exits non-zero when invoked with no args (arg-parse boundary)', async () => {
     const proc = Bun.spawn({
       cmd: [process.execPath, RUNNER],

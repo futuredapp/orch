@@ -1,8 +1,9 @@
+// MIGRATED → tests-new/unit/codegen/emit-sidecar.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { emitSidecar } from '../../../src/codegen/emit-sidecar.ts'
 import { path } from '../../../src/services/types.ts'
 
-describe('emitSidecar', () => {
+describe.skip('emitSidecar', () => {
   const projectRoot = path('/proj')
 
   it('produces a .d.ts targeted next to the source file', () => {

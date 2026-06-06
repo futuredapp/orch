@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/workflows/builtin-variants.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // U5 — the two packaged entry workflows (`orch::work-cc`, `orch::work-codex`).
 //
 // These prove the REAL bindings the resolver loads are runnable phased-build
@@ -28,7 +29,7 @@ const TWO_PHASES = [
   'body two',
 ]
 
-describe('work-cc / work-codex entry modules are real phased-build executors (AE2)', () => {
+describe.skip('work-cc / work-codex entry modules are real phased-build executors (AE2)', () => {
   it('exports a work-cc executor named work-cc', () => {
     expect(workCc.name).toBe('work-cc')
     expect(typeof workCc.execute).toBe('function')
@@ -57,7 +58,7 @@ describe('work-cc / work-codex entry modules are real phased-build executors (AE
   })
 })
 
-describe('the shared factory produces identical structure regardless of runner (R4, AE2)', () => {
+describe.skip('the shared factory produces identical structure regardless of runner (R4, AE2)', () => {
   // Runner identity differing across the two variants is structural — the two
   // entry modules above pass different runners (claude vs codex) into ONE
   // factory. Here we prove that factory body is runner-agnostic by running it
@@ -103,7 +104,7 @@ describe('the shared factory produces identical structure regardless of runner (
   })
 })
 
-describe('orch::work-cc drives the full decide→parse→loop happy path unattended', () => {
+describe.skip('orch::work-cc drives the full decide→parse→loop happy path unattended', () => {
   it('completes a 2-phase plan from an inline description with no human keystrokes', async () => {
     const deps = makeDeps({ prompt: 'inline plan' })
     const { runner } = makeRecordingRunner()

@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/services/fs/fake-fs-service-remove.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // FakeFsService.remove brought to parity with BunFsService.remove's
 // `recursive: true, force: true` contract. The F2 "don't keep" branch of
 // `orch init` calls `fsService.remove(.orch)` and depends on every nested
@@ -6,7 +7,7 @@
 import { describe, expect, it } from 'bun:test'
 import { FakeFsService, path } from '../../../../src/services/index.ts'
 
-describe('FakeFsService.remove (recursive)', () => {
+describe.skip('FakeFsService.remove (recursive)', () => {
   it('removes the target and every descendant entry', async () => {
     const fs = new FakeFsService()
     await fs.mkdir(path('/a'), { recursive: true })

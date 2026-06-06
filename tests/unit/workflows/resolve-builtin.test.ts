@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/workflows/resolve-builtin.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import * as nodePath from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -10,7 +11,7 @@ import { BUILTIN_NAMES, isBuiltinName, resolveBuiltin } from '../../../src/workf
 const repoRoot = nodePath.resolve(nodePath.dirname(fileURLToPath(import.meta.url)), '../../..')
 const sourceWorkflowsDir = nodePath.join(repoRoot, 'src', 'workflows')
 
-describe('isBuiltinName', () => {
+describe.skip('isBuiltinName', () => {
   it('is true for a name carrying the orch:: prefix', () => {
     expect(isBuiltinName('orch::work-cc')).toBe(true)
   })
@@ -28,7 +29,7 @@ describe('isBuiltinName', () => {
   })
 })
 
-describe('resolveBuiltin', () => {
+describe.skip('resolveBuiltin', () => {
   it('resolves orch::work-cc to the packaged module under orch source, not cwd', () => {
     const resolved = resolveBuiltin('orch::work-cc')
 

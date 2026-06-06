@@ -1,8 +1,9 @@
+// MIGRATED → tests-new/unit/codegen/extract-placeholders.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { extractPlaceholders } from '../../../src/codegen/extract-placeholders.ts'
 import { PLACEHOLDER_RE } from '../../../src/core/prompt-file/substitute.ts'
 
-describe('extractPlaceholders', () => {
+describe.skip('extractPlaceholders', () => {
   it('returns a single required placeholder', () => {
     expect(extractPlaceholders('Hi {{name}}')).toEqual({ required: ['name'], optional: [] })
   })

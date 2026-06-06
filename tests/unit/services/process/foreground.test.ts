@@ -1,10 +1,11 @@
+// MIGRATED → tests-new/unit/services/process/foreground.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { FakeProcessService } from '../../../../src/services/process/fake-process-service.ts'
 import { path } from '../../../../src/services/types.ts'
 
 const dummyOpts = { cwd: path('/tmp'), env: {} } as const
 
-describe('FakeProcessService.spawnForeground', () => {
+describe.skip('FakeProcessService.spawnForeground', () => {
   it('returns the scripted exit code when a foreground process completes', async () => {
     const fake = new FakeProcessService()
     fake.whenForeground(['claude', '--session-id', 'abc']).respondWith({ exitCode: 0 })

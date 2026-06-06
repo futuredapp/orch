@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/hosts/plain-host-attach-foreground.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // PlainHost.attachForeground — the plain host never takes the TTY. Its
 // workflow stream IS the foreground, so attach is a resolved-immediately
 // no-op. This guarantees the CLI's Promise.race(workflow, attach) collapses
@@ -22,7 +23,7 @@ function bufferStream(): { stream: NodeJS.WritableStream; text: () => string } {
 
 const RUN_ID = 'r-2026-04-23-031568-o6' as RunId
 
-describe('PlainHost.attachForeground', () => {
+describe.skip('PlainHost.attachForeground', () => {
   it('resolves immediately with no subprocess spawn', async () => {
     const stdout = bufferStream()
     const stderr = bufferStream()

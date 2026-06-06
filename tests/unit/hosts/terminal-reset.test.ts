@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/hosts/terminal-reset.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { PassThrough } from 'node:stream'
 import {
@@ -16,7 +17,7 @@ function makeStream(isTTY: boolean): { stream: NodeJS.WritableStream; buffer: Bu
   return { stream: pt as unknown as NodeJS.WritableStream, buffer }
 }
 
-describe('restoreTerminalModes', () => {
+describe.skip('restoreTerminalModes', () => {
   it('writes the canonical DEC private-mode reset string when the stream is a TTY', () => {
     const { stream, buffer } = makeStream(true)
 

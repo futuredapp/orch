@@ -589,3 +589,124 @@
 | integration/runners/scripted-fake/entry.real.test.ts | (all 9 cases) | tests-new/integration/runners/scripted-fake/entry.real.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
 | integration/runners/scripted-fake/two-step-linear.smoke.test.ts | (all 1 cases) | tests-new/integration/runners/scripted-fake/two-step-linear.smoke.test.ts | port | Verbatim relocation — `fake-host` and the `two-step-linear.ts` lifecycle-fixture ES import both → `@orch/test/*` (fixture copied to `_support`, PD2). `src` import set unchanged, parity guard green. |
 
+
+## Relocated — `services(excl tmux)/state/validators/workflows/config/codegen/hosts(non-two-pane)` (parent U12)
+
+> **Phase 12 / U12 is a RELOCATION, not a re-derivation (parent D1).** The seven
+> non-two-pane module clusters here are already plain class/integration tests with
+> fakes at the `*Service` seam — today's `unit`/`integration` concept *is* the
+> parent's `unit`/`integration` category. Each file below was COPIED to its
+> `tests-new/{unit,integration}` mirror with its body **byte-identical**; the only
+> edits are cross-tree specifiers and one runtime fixture path:
+> the **6** `make-step-entry` importers (5 unit `state` + `integration/state/state-store`)
+> → `@orch/test/make-step-entry.ts`; the **1** `temp-git-repo` importer
+> (`integration/validators/git-validators`) → `@orch/test/temp-git-repo.ts`; and the
+> **1** `import.meta.dir` runtime fixture path in `integration/hosts/plain/transcript-render-claude`
+> repointed to the existing `_support` fixture (PD4). Every relocated file imports the
+> **same `src/` symbols** as its baseline original, machine-verified per file by
+> `import-parity` (`bun run check:import-parity`, parent R10) — so the 1:1 case
+> identity D15 requires is preserved by construction, and one `port` row per file
+> (the U7/U10/U11 relocation precedent, PD6) is the accounting. No case was split,
+> merged, demoted, or dropped; no `src/` file was touched. The old copies are
+> wrapped unconditional `describe.skip` with a `// MIGRATED →` marker and kept on
+> disk forever (D2); the one capability-gated file
+> (`integration/services/prompt/ink-prompt-service-real`) had its OLD copy flipped
+> from `describe.skipIf(!RUN_REAL)` to unconditional `describe.skip` so U14's
+> reconcile reads it as MIGRATED, while the NEW copy keeps `skipIf` (legitimate
+> capability gating, D8). There are **no** `.test-d.ts` type-tests in these
+> clusters (deferred type-test relocation is U13).
+
+> **Helper/asset handling (D13 `_support` move + co-located asset — infra, not test rows).**
+> `tests/helpers/make-step-entry.ts` was **moved** to
+> `tests-new/_support/make-step-entry.ts` with a thin re-export shim left at the old
+> path (parent D13/R11). The shim is **kept** — cli/observability (U13) and still-live
+> two-pane files still import the old path; it dies when U13 skips the last consumer.
+> The co-located workflows asset `tests/integration/workflows/_harness.ts`
+> (baseline-classified `asset`) was **copied** into
+> `tests-new/integration/workflows/_harness.ts` (its `fake-host` specifier →
+> `@orch/test/*`; `src` imports depth-preserved), mirroring U10's
+> `_worktree-test-helpers.ts` co-located asset relocation; the original is left in
+> place for the now-skipped old workflows tests. U14 reconcile accounts for these
+> baseline `helper`/`asset` entries via the `_support` move / co-located copy,
+> **not** as relocated `test` rows.
+
+> **Exclusions (PD5/PD8 — left untouched and live, by design).** All **7**
+> `tests/{unit,integration}/services/tmux/**` files are the **U13** `tmux-argv`-vs-`integration`
+> classification job (parent §7 note) and are not relocated here. The **5**
+> `tests/integration/hosts/two-pane-*.test.ts` files
+> (`two-pane-mocked`, `two-pane-interactive`, `two-pane-interactive-session-lost`,
+> `two-pane-failure-and-parallel`, `two-pane-sequential-runs`) are two-pane host
+> integration tests (group B surface); their disposition belongs to group-B closeout /
+> U14 (see the phase plan §9 open accounting gap). U12 leaves all 12 files byte-unchanged
+> with **no** `// MIGRATED →` marker, still live.
+
+| Old file | Old case | New file (path) | Disposition | Reason |
+|---|---|---|---|---|
+| integration/codegen/codegen-fixture.test.ts | (all 5 cases) | tests-new/integration/codegen/codegen-fixture.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| integration/hosts/plain-host-command-line.test.ts | (all 3 cases) | tests-new/integration/hosts/plain-host-command-line.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| integration/hosts/plain-mode.test.ts | (all 4 cases) | tests-new/integration/hosts/plain-mode.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| integration/hosts/plain/transcript-render-claude.test.ts | (all 2 cases) | tests-new/integration/hosts/plain/transcript-render-claude.test.ts | port | Runtime fixture path `../../../fixtures/claude` → `../../../_support/fixtures/claude` (PD4; fixture already in `_support` from U11). Proven green from new location; `src` import set unchanged. |
+| integration/hosts/tmux-host-command-line.test.ts | (all 4 cases) | tests-new/integration/hosts/tmux-host-command-line.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| integration/services/fs/bun-fs-service.test.ts | (all 7 cases) | tests-new/integration/services/fs/bun-fs-service.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| integration/services/process/bun-process-service.test.ts | (all 8 cases) | tests-new/integration/services/process/bun-process-service.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| integration/services/prompt/ink-prompt-service-real.test.ts | (all 3 cases) | tests-new/integration/services/prompt/ink-prompt-service-real.test.ts | port | OLD copy's `describe.skipIf(!RUN_REAL)` flipped to unconditional `describe.skip` (R13); NEW copy keeps `skipIf` (capability gating, D8). No `src` import change. |
+| integration/services/prompt/ink-prompt-service.test.ts | (all 7 cases) | tests-new/integration/services/prompt/ink-prompt-service.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| integration/state/run-registry.test.ts | (all 1 cases) | tests-new/integration/state/run-registry.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| integration/state/state-store.test.ts | (all 2 cases) | tests-new/integration/state/state-store.test.ts | port | `make-step-entry` specifier → `@orch/test/make-step-entry.ts` (helper moved to `_support`, PD2). `src` import set unchanged, parity guard green. |
+| integration/validators/file-produced.test.ts | (all 3 cases) | tests-new/integration/validators/file-produced.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| integration/validators/git-validators.test.ts | (all 5 cases) | tests-new/integration/validators/git-validators.test.ts | port | `temp-git-repo` specifier → `@orch/test/temp-git-repo.ts` (already in `_support`, U10). `src` import set unchanged, parity guard green. |
+| integration/workflows/builtin-variants.test.ts | (all 7 cases) | tests-new/integration/workflows/builtin-variants.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| integration/workflows/phased-build-decide.test.ts | (all 4 cases) | tests-new/integration/workflows/phased-build-decide.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| integration/workflows/phased-build-input.test.ts | (all 6 cases) | tests-new/integration/workflows/phased-build-input.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| integration/workflows/phased-build-loop.test.ts | (all 5 cases) | tests-new/integration/workflows/phased-build-loop.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/codegen/discover-prompts.test.ts | (all 9 cases) | tests-new/unit/codegen/discover-prompts.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/codegen/emit-sidecar.test.ts | (all 9 cases) | tests-new/unit/codegen/emit-sidecar.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/codegen/extract-placeholders.test.ts | (all 12 cases) | tests-new/unit/codegen/extract-placeholders.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/codegen/run-codegen.test.ts | (all 7 cases) | tests-new/unit/codegen/run-codegen.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/config/load-config.test.ts | (all 19 cases) | tests-new/unit/config/load-config.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/hosts/await-foreground-shutdown.test.ts | (all 3 cases) | tests-new/unit/hosts/await-foreground-shutdown.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/hosts/failure-text.test.ts | (all 5 cases) | tests-new/unit/hosts/failure-text.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/hosts/host-registry.test.ts | (all 7 cases) | tests-new/unit/hosts/host-registry.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/hosts/pane-queue.test.ts | (all 4 cases) | tests-new/unit/hosts/pane-queue.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/hosts/parallel-rollup.test.ts | (all 7 cases) | tests-new/unit/hosts/parallel-rollup.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/hosts/plain-host-attach-foreground.test.ts | (all 1 cases) | tests-new/unit/hosts/plain-host-attach-foreground.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/hosts/plain-host.test.ts | (all 13 cases) | tests-new/unit/hosts/plain-host.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/hosts/plain/per-step-tee.test.ts | (all 6 cases) | tests-new/unit/hosts/plain/per-step-tee.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/hosts/plain/plain-host-subworkflow-divider.test.ts | (all 10 cases) | tests-new/unit/hosts/plain/plain-host-subworkflow-divider.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/hosts/plain/render-line-no-duplicate.test.ts | (all 5 cases) | tests-new/unit/hosts/plain/render-line-no-duplicate.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/hosts/terminal-reset.test.ts | (all 5 cases) | tests-new/unit/hosts/terminal-reset.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/hosts/tmux-host-attach-foreground.test.ts | (all 8 cases) | tests-new/unit/hosts/tmux-host-attach-foreground.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/hosts/tmux-host.test.ts | (all 24 cases) | tests-new/unit/hosts/tmux-host.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/services/clock/fake-clock.test.ts | (all 4 cases) | tests-new/unit/services/clock/fake-clock.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/services/clock/sleep.test.ts | (all 6 cases) | tests-new/unit/services/clock/sleep.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/services/fs/bun-fs-service.test.ts | (all 4 cases) | tests-new/unit/services/fs/bun-fs-service.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/services/fs/fake-fs-service-remove.test.ts | (all 4 cases) | tests-new/unit/services/fs/fake-fs-service-remove.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/services/fs/fake-fs-service.test.ts | (all 11 cases) | tests-new/unit/services/fs/fake-fs-service.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/services/fs/symlink.test.ts | (all 3 cases) | tests-new/unit/services/fs/symlink.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/services/git/bun-git-service.test.ts | (all 33 cases) | tests-new/unit/services/git/bun-git-service.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/services/git/fake-git-service.test.ts | (all 24 cases) | tests-new/unit/services/git/fake-git-service.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/services/process/fake-process-service.test.ts | (all 7 cases) | tests-new/unit/services/process/fake-process-service.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/services/process/foreground.test.ts | (all 5 cases) | tests-new/unit/services/process/foreground.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/services/process/line-framer.test.ts | (all 7 cases) | tests-new/unit/services/process/line-framer.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/services/process/merge-env.test.ts | (all 8 cases) | tests-new/unit/services/process/merge-env.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/services/process/raw-streams.test.ts | (all 13 cases) | tests-new/unit/services/process/raw-streams.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/services/prompt/confirm-service.test.ts | (all 14 cases) | tests-new/unit/services/prompt/confirm-service.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/services/prompt/fake-prompt-service.test.ts | (all 4 cases) | tests-new/unit/services/prompt/fake-prompt-service.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/services/prompt/ink-app.test.tsx | (all 8 cases) | tests-new/unit/services/prompt/ink-app.test.tsx | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/services/prompt/readline-prompt-service.test.ts | (all 5 cases) | tests-new/unit/services/prompt/readline-prompt-service.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/services/types.test.ts | (all 4 cases) | tests-new/unit/services/types.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/state/run-id.test.ts | (all 9 cases) | tests-new/unit/state/run-id.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/state/run-registry.test.ts | (all 8 cases) | tests-new/unit/state/run-registry.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/state/state-store-runner-name-and-capture-error.test.ts | (all 6 cases) | tests-new/unit/state/state-store-runner-name-and-capture-error.test.ts | port | `make-step-entry` specifier → `@orch/test/make-step-entry.ts` (helper moved to `_support`, PD2). `src` import set unchanged, parity guard green. |
+| unit/state/state-store-session-id.test.ts | (all 4 cases) | tests-new/unit/state/state-store-session-id.test.ts | port | `make-step-entry` specifier → `@orch/test/make-step-entry.ts` (helper moved to `_support`, PD2). `src` import set unchanged, parity guard green. |
+| unit/state/state-store-subpath.test.ts | (all 6 cases) | tests-new/unit/state/state-store-subpath.test.ts | port | `make-step-entry` specifier → `@orch/test/make-step-entry.ts` (helper moved to `_support`, PD2). `src` import set unchanged, parity guard green. |
+| unit/state/state-store-v5.test.ts | (all 17 cases) | tests-new/unit/state/state-store-v5.test.ts | port | `make-step-entry` specifier → `@orch/test/make-step-entry.ts` (helper moved to `_support`, PD2). `src` import set unchanged, parity guard green. |
+| unit/state/state-store.test.ts | (all 21 cases) | tests-new/unit/state/state-store.test.ts | port | `make-step-entry` specifier → `@orch/test/make-step-entry.ts` (helper moved to `_support`, PD2). `src` import set unchanged, parity guard green. |
+| unit/validators/check.test.ts | (all 9 cases) | tests-new/unit/validators/check.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/validators/define-validator.test.ts | (all 8 cases) | tests-new/unit/validators/define-validator.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/validators/file-produced.test.ts | (all 9 cases) | tests-new/unit/validators/file-produced.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/validators/git-commit-created.test.ts | (all 4 cases) | tests-new/unit/validators/git-commit-created.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/validators/git-diff-created.test.ts | (all 4 cases) | tests-new/unit/validators/git-diff-created.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/validators/validation-error.test.ts | (all 7 cases) | tests-new/unit/validators/validation-error.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/workflows/parse-phases.test.ts | (all 16 cases) | tests-new/unit/workflows/parse-phases.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/workflows/resolve-builtin.test.ts | (all 10 cases) | tests-new/unit/workflows/resolve-builtin.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |

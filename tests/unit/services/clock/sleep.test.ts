@@ -1,8 +1,9 @@
+// MIGRATED → tests-new/unit/services/clock/sleep.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { BunClock } from '../../../../src/services/clock/bun-clock.ts'
 import { FakeClock } from '../../../../src/services/clock/fake-clock.ts'
 
-describe('Clock.sleep', () => {
+describe.skip('Clock.sleep', () => {
   describe('BunClock', () => {
     it('resolves only after the requested duration has elapsed in real time', async () => {
       const clock = new BunClock()

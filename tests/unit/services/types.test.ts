@@ -1,7 +1,8 @@
+// MIGRATED → tests-new/unit/services/types.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { path } from '../../../src/services/index.ts'
 
-describe('path() smart constructor', () => {
+describe.skip('path() smart constructor', () => {
   it('rejects the empty string as an invalid path', () => {
     expect(() => path('')).toThrow(/empty string/)
   })

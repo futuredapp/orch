@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/state/state-store-session-id.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { FakeFsService, path } from '../../../src/services/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
@@ -12,7 +13,7 @@ function makeStore() {
   return { fs, store }
 }
 
-describe('StepEntry.sessionId persistence (Phase 3)', () => {
+describe.skip('StepEntry.sessionId persistence (Phase 3)', () => {
   it('round-trips a step entry with sessionId set', async () => {
     const { store } = makeStore()
 

@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/services/process/fake-process-service.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { FakeProcessService } from '../../../../src/services/process/fake-process-service.ts'
 import { path } from '../../../../src/services/types.ts'
@@ -12,7 +13,7 @@ async function collect(iter: AsyncIterable<string>): Promise<string[]> {
 
 const dummyOpts = { cwd: path('/tmp'), env: {} } as const
 
-describe('FakeProcessService', () => {
+describe.skip('FakeProcessService', () => {
   it('emits the scripted stdout lines and exit code for a matching argv', async () => {
     const fake = new FakeProcessService()
     fake.when(['echo', 'hello']).respondWith({ stdout: ['hello'], exitCode: 0 })

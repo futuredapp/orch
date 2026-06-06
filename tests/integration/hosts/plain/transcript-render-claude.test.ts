@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/hosts/plain/transcript-render-claude.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Integration: pipe a captured Claude NDJSON transcript through the full
 // chain (parseClaudeLine → toClaudeTranscriptLines → renderTranscriptLine)
 // and assert the rendered output. The fixture lives under tests/fixtures/
@@ -40,7 +41,7 @@ function renderFixture(color: boolean): string {
   return out.join('\n')
 }
 
-describe('Claude transcript rendering — captured riddle-solve fixture', () => {
+describe.skip('Claude transcript rendering — captured riddle-solve fixture', () => {
   it('renders the captured NDJSON into a readable plain-text transcript ending in a done block', () => {
     const text = renderFixture(false)
 

@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/hosts/await-foreground-shutdown.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Phase 4 unit tests: Host.awaitForegroundShutdown.
 //
 // Pins the contract:
@@ -33,7 +34,7 @@ function makeStderr(): { stream: NodeJS.WritableStream; text: () => string } {
   return { stream: stream as unknown as NodeJS.WritableStream, text: () => chunks.join('') }
 }
 
-describe('Host.awaitForegroundShutdown', () => {
+describe.skip('Host.awaitForegroundShutdown', () => {
   it('resolves immediately under plain mode (no foreground UI to wait on)', async () => {
     const stdout = new Writable({
       write(_c, _e, cb) {

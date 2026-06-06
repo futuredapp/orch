@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/hosts/plain-host.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { Writable } from 'node:stream'
 import type { StepName } from '../../../src/core/types.ts'
@@ -47,7 +48,7 @@ function makeJsonHost() {
   return { host, stdout, stderr }
 }
 
-describe('PlainHost — text format', () => {
+describe.skip('PlainHost — text format', () => {
   it('writes the banner to stderr, not stdout', () => {
     const { host, stdout, stderr } = makeTextHost()
     host.writeBanner('[orch] mode=plain (flag: --mode=plain)')
@@ -112,7 +113,7 @@ describe('PlainHost — text format', () => {
   })
 })
 
-describe('PlainHost — step:failed frame', () => {
+describe.skip('PlainHost — step:failed frame', () => {
   it('writes the Story 1.5 failure frame to stderr after the [orch] line', () => {
     const { host, stdout, stderr } = makeTextHost()
     host.onLifecycleEvent({ type: 'step:failed', stepName: STEP, error: new Error('boom') })
@@ -146,7 +147,7 @@ describe('PlainHost — step:failed frame', () => {
   })
 })
 
-describe('PlainHost — json format', () => {
+describe.skip('PlainHost — json format', () => {
   it('suppresses the banner on stderr when --format=json', () => {
     const { host, stdout, stderr } = makeJsonHost()
     host.writeBanner('noise')

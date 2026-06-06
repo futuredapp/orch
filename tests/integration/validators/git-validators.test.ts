@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/validators/git-validators.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { afterEach, describe, expect, it } from 'bun:test'
 import * as fs from 'node:fs/promises'
 import * as nodePath from 'node:path'
@@ -36,7 +37,7 @@ function ctxWithBaseline(r: TempGitRepo, baseline: string): ValidatorCtx {
   }
 }
 
-describe('gitDiffCreated + gitCommitCreated (integration, real BunGitService)', () => {
+describe.skip('gitDiffCreated + gitCommitCreated (integration, real BunGitService)', () => {
   it('gitDiffCreated fails on a clean repo then passes after an unstaged edit', async () => {
     repo = await createTempGitRepo()
     const services = makeServices()
@@ -110,7 +111,7 @@ describe('gitDiffCreated + gitCommitCreated (integration, real BunGitService)', 
   })
 })
 
-describe('createTempGitRepo helper', () => {
+describe.skip('createTempGitRepo helper', () => {
   it('produces a path that exists and a commit SHA shaped like hex', async () => {
     repo = await createTempGitRepo()
 

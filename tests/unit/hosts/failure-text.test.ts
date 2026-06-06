@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/hosts/failure-text.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Unit tests for renderFailureText — the pure string producer used by the
 // plain host's stderr failure frame.
 
@@ -10,7 +11,7 @@ import type { RunId } from '../../../src/state/index.ts'
 const RUN = 'r-2026-04-23-phased2' as RunId
 const STEP = stepName('build')
 
-describe('renderFailureText', () => {
+describe.skip('renderFailureText', () => {
   it('leads with the failed step headline and error message', () => {
     const text = renderFailureText(
       summarizeFailure({

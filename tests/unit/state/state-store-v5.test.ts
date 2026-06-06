@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/state/state-store-v5.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { FakeFsService, path } from '../../../src/services/index.ts'
 import { FileStateStore, type RunId, StateCorruptionError } from '../../../src/state/index.ts'
@@ -17,7 +18,7 @@ async function writeRawState(fs: FakeFsService, body: unknown): Promise<void> {
   await fs.writeFile(path('/runs/r-2026-04-10-458000-q8/state.json'), JSON.stringify(body))
 }
 
-describe('RunState schema v5', () => {
+describe.skip('RunState schema v5', () => {
   it('round-trips a v5 state file with all current fields', async () => {
     const { store } = makeStore()
 
@@ -151,7 +152,7 @@ describe('RunState schema v5', () => {
   })
 })
 
-describe('RunState pre-v5 rejection (prerelease — no migrations)', () => {
+describe.skip('RunState pre-v5 rejection (prerelease — no migrations)', () => {
   it('rejects a v1 state file with wipe hint', async () => {
     const { fs, store } = makeStore()
     await writeRawState(fs, {

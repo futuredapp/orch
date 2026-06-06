@@ -460,3 +460,38 @@ regenerated, and `bun run check` is green except for the same 5 long-standing
 ENOENT fixture failures under gitignored `.orch/` (`file-prompts-demo` /
 `typed-vars` / `codegen` — unrelated to runners, identical before and after this
 phase).
+
+## Phase 12
+
+Phase 12 (parent U12) relocated the seven remaining non-two-pane, non-cli/observability
+test clusters — `services` (excluding `tmux`), `state`, `validators`, `workflows`,
+`config`, `codegen`, and the non-two-pane `hosts` tests — out of the old `tests/`
+tree into their `tests-new/{unit,integration}` mirror. This is the third of the four
+relocation phases (U10–U13) and built no new machinery: it reused U10's import-parity
+guard, the existing `@orch/*` aliases, and the established skip-and-ledger recipe.
+68 test files (51 unit + 17 integration) moved verbatim — bodies byte-identical, only
+import paths rewritten — each old copy then wrapped `describe.skip` with a `// MIGRATED →`
+marker and kept on disk (D2). The goal is the same as U10/U11: drain the frozen baseline
+toward zero so U14 can prove the migration complete, while never losing the old safety net.
+
+The only non-mechanical edits were the ones the plan predicted: `make-step-entry.ts` was
+moved into `tests-new/_support/` (with a re-export shim left at the old path, since
+cli/observability and still-live two-pane files still import it), the one `temp-git-repo`
+importer was repointed to the `@orch/test/*` alias, and the single `import.meta.dir`
+runtime fixture path in `transcript-render-claude` was repointed to the `_support` fixture
+(the import-only parity guard can't see runtime paths, so this was verified by running the
+test green). One detail the plan got wrong and worth flagging: it claimed the non-two-pane
+hosts cluster had no helper imports, but the workflows integration tests depend on a
+co-located `_harness.ts` asset — that was copied alongside its tests (its `fake-host`
+specifier rewritten to the alias), mirroring U10's `_worktree-test-helpers.ts` precedent.
+
+What matters for next work: U13 closes out `cli/**`, `observability/**`, the remaining
+`e2e/**`, the deferred `.test-d.ts` type-tests, and — importantly — two accounting gaps
+U12 deliberately left open. The 7 `services/tmux/**` files still need their `tmux-argv`-vs-
+`integration` classification (U13's job), and the 5 `tests/integration/hosts/two-pane-*.test.ts`
+files (two-pane host integration, group B surface) are still live and undispositioned against
+the frozen baseline — whoever owns the two-pane host integration cleanup (U13 or U14) must
+ledger them so reconciliation doesn't flag them as unaccounted. The `make-step-entry` shim
+must stay until U13 skips its last consumer. `bun run check`'s non-flaky gate (lint,
+typecheck, import-parity, new-unit, new-int) is green; U12 touched no `src/` file and never
+regenerated the frozen baseline.

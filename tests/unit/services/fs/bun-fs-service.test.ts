@@ -1,10 +1,11 @@
+// MIGRATED → tests-new/unit/services/fs/bun-fs-service.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { BunFsService } from '../../../../src/services/fs/bun-fs-service.ts'
 import { path } from '../../../../src/services/index.ts'
 
 const fakeHomedir = () => '/Users/fake-user'
 
-describe('BunFsService.remove() protected-root guard', () => {
+describe.skip('BunFsService.remove() protected-root guard', () => {
   it('refuses to remove the filesystem root', async () => {
     const fs = new BunFsService({ homedir: fakeHomedir })
 

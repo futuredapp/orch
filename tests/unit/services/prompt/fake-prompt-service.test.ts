@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/services/prompt/fake-prompt-service.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import type { StepName } from '../../../../src/core/types.ts'
 import type { Host } from '../../../../src/hosts/index.ts'
@@ -14,7 +15,7 @@ const SPEC = {
   buttons: ['continue', 'retry'],
 }
 
-describe('FakePromptService', () => {
+describe.skip('FakePromptService', () => {
   it('returns the scripted result for the configured step', async () => {
     const svc = new FakePromptService()
     svc.when('ask:continue').respondWith({

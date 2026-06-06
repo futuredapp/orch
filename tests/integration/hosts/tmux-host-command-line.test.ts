@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/hosts/tmux-host-command-line.test.ts (parent U12) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // tmux host: `onCommandLine` writes raw line bytes to the per-step tee.
 //
 // U5 dropped the legacy `sendKeys`-on-pane fan-out for command lines. Every
@@ -109,7 +110,7 @@ function paneWrites(tmux: FakeTmuxService, target: ReturnType<typeof paneId>): s
     .map((c) => (c.method === 'sendKeys' ? c.opts.keys.join('') : ''))
 }
 
-describe('TmuxHost.onCommandLine', () => {
+describe.skip('TmuxHost.onCommandLine', () => {
   it('writes command bytes to the per-step tee, not to the right pane', async () => {
     const h = await makeHarness()
     // The tee must be open before write — emitted by `step:start` for command

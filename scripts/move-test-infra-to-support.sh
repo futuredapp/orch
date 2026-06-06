@@ -92,4 +92,13 @@ shim tests/helpers/behavioral-dsl/internal/snapshot.ts            "$BDI/snapshot
 move_file tests/helpers/fake-host.ts     tests-new/_support/fake-host.ts     ../../tests-new/_support/fake-host.ts
 move_file tests/helpers/temp-git-repo.ts tests-new/_support/temp-git-repo.ts ../../tests-new/_support/temp-git-repo.ts
 
+# --- single-file helper move (parent U12 / PD2) -----------------------------
+# make-step-entry (6 importers: 5 unit state + integration/state/state-store) is
+# needed by the relocated state tests under tests-new/, which may never import
+# from tests/ (D13). It still has LIVE non-state consumers in the old suite
+# (cli/observability — U13; still-live two-pane files), so the move leaves a shim
+# until those consumers relocate (R11). It keeps its `../../src/...` import valid
+# post-move (two dirs deep before and after).
+move_file tests/helpers/make-step-entry.ts tests-new/_support/make-step-entry.ts ../../tests-new/_support/make-step-entry.ts
+
 echo "done."
