@@ -1,0 +1,30 @@
+[
+  {
+    "old": "tests/unit/hosts/two-pane/await-interactive-pane-exit.test.ts",
+    "new": "tests-new/unit/hosts/two-pane/await-interactive-pane-exit.test.ts"
+  },
+  {
+    "old": "tests/unit/hosts/two-pane/kind-details.test.ts",
+    "new": "tests-new/unit/hosts/two-pane/kind-details.test.ts"
+  },
+  {
+    "old": "tests/unit/hosts/two-pane/lifecycle-choreographer.test.ts",
+    "new": "tests-new/unit/hosts/two-pane/lifecycle-choreographer.test.ts"
+  },
+  {
+    "old": "tests/unit/hosts/two-pane/replay-command-pane.test.ts",
+    "new": "tests-new/unit/hosts/two-pane/replay-command-pane.test.ts"
+  },
+  {
+    "old": "tests/unit/hosts/two-pane/replay-transcript.test.ts",
+    "new": "tests-new/unit/hosts/two-pane/replay-transcript.test.ts"
+  },
+  {
+    "old": "tests/unit/hosts/two-pane/session-lost-classification.test.ts",
+    "new": "tests-new/unit/hosts/two-pane/session-lost-classification.test.ts"
+  },
+  {
+    "old": "tests/unit/hosts/two-pane/stdio-capture.test.ts",
+    "new": "tests-new/unit/hosts/two-pane/stdio-capture.test.ts"
+  }
+]

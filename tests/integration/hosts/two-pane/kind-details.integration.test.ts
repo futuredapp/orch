@@ -1,3 +1,4 @@
+// COVERED BY → tests-new/model/controller/right-pane-on-intent.test.ts — kind-details file-tail replay register/dispatch is the onIntent('enter') warm-cache DECISION (passes if pane empty)
 // triage: rewrite — kind-details panel visible outcome is Tier 1 territory once the harness gains "enter on a completed non-agent step" sugar. Interim Keep; Rewrite once that helper lands.
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { mkdir, mkdtemp, rm } from 'node:fs/promises'
@@ -87,7 +88,7 @@ afterEach(async () => {
   await rm(tempDir, { recursive: true, force: true })
 })
 
-describe('kind-details rendered through the swap-based replay controller (U8)', () => {
+describe.skip('kind-details rendered through the swap-based replay controller (U8)', () => {
   it('writes commit / worktree / ask payloads to .replay/<step>.txt and tails them on scratch', async () => {
     const tmux = new FakeTmuxService()
     const stateDir = `${tempDir}/state`

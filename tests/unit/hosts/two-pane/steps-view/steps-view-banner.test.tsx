@@ -1,3 +1,4 @@
+// COVERED BY → tests-new/model/footer--view-mode-hints.test.ts (parent U14 group-B closeout) — every case covered; see ledger. Kept skipped on disk (D2).
 // triage: rewrite — banner + view-mode footer now covered at Tier 2 (banner-rendering.test.tsx, view-mode-footer.test.tsx). Rewrite this file to focus on banner↔footer interaction slices the new files do not cover.
 // Renderer tests for the U4 banner + view-mode surface on `<StepsView>`.
 //
@@ -45,7 +46,7 @@ function makeLive(overrides?: {
 
 const tick = (ms = 30): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
-describe('<StepsView> footer derives from view.mode', () => {
+describe.skip('<StepsView> footer derives from view.mode', () => {
   it('renders ▶ live · ⏎ view step · q quit · ? help in live mode (no `f live` token)', () => {
     const frame = stripAnsi(
       renderToString(<StepsView state={makeLive()} onIntent={NOOP} now={() => NOW} />, {
@@ -92,7 +93,7 @@ describe('<StepsView> footer derives from view.mode', () => {
   })
 })
 
-describe('<StepsView> banner rendering', () => {
+describe.skip('<StepsView> banner rendering', () => {
   it('renders an info banner above the steps grid', () => {
     const state = makeLive({
       banner: { kind: 'info', text: 'step plan complete', ttlMs: 4000, seq: 1 },
@@ -123,7 +124,7 @@ describe('<StepsView> banner rendering', () => {
   })
 })
 
-describe('<StepsView> Esc precedence', () => {
+describe.skip('<StepsView> Esc precedence', () => {
   it('Esc with help open closes help only — does not dispatch dismiss-banner', async () => {
     const intents: StepsViewIntent[] = []
     const state = makeLive({
@@ -197,7 +198,7 @@ describe('<StepsView> Esc precedence', () => {
   })
 })
 
-describe('<StepsView> banner auto-dismiss', () => {
+describe.skip('<StepsView> banner auto-dismiss', () => {
   // These tests drive the auto-dismiss timer through an injected ManualTimer
   // (the `scheduleDismiss` prop) instead of real wall-clock. `advance(ms)` is
   // the only thing that fires the timer, so the assertions are deterministic
@@ -291,7 +292,7 @@ describe('<StepsView> banner auto-dismiss', () => {
   })
 })
 
-describe('<HelpOverlay> mentions the U4 surface', () => {
+describe.skip('<HelpOverlay> mentions the U4 surface', () => {
   it('lists f, Esc, and the view-mode indicator', () => {
     const frame = stripAnsi(renderToString(<HelpOverlay />, { columns: 110 }))
 

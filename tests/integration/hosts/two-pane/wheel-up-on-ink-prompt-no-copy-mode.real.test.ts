@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/real-tmux/wheel-up-on-ink-prompt-no-copy-mode.test.ts
 // Behavioural Tier-1 test: wheel-up on an open `ask()` prompt must keep the
 // visible right pane out of copy-mode.
 //
@@ -46,61 +47,58 @@ afterEach(async () => {
   fixturesToDispose = []
 })
 
-describe.skipIf(!tmuxAvailable)(
-  'two-pane host — wheel-up on an open ink-prompt keeps the pane out of copy-mode',
-  () => {
-    it('the visible right pane reports alternate_on == 1 while the prompt is open so the smart-wheel binding does not enter copy-mode', async () => {
-      const fixture = await createRealTmuxFixture({ env: {} })
-      fixturesToDispose.push(fixture)
-      const harness = await mountTmuxHost(fixture, { disableStepsView: true })
-      harnessesToTeardown.push(harness)
+describe.skip('two-pane host — wheel-up on an open ink-prompt keeps the pane out of copy-mode', () => {
+  it('the visible right pane reports alternate_on == 1 while the prompt is open so the smart-wheel binding does not enter copy-mode', async () => {
+    const fixture = await createRealTmuxFixture({ env: {} })
+    fixturesToDispose.push(fixture)
+    const harness = await mountTmuxHost(fixture, { disableStepsView: true })
+    harnessesToTeardown.push(harness)
 
-      const tmpDir = String(fixture.stateBase)
-      const resultPath = `${tmpDir}/ink-prompt-result.json`
-      const spec: PromptSpec = {
-        question: 'WHEEL-PROBE-MARKER',
-        fields: [],
-        buttons: ['ok'],
-      }
-      const specB64 = Buffer.from(JSON.stringify(spec), 'utf8').toString('base64')
+    const tmpDir = String(fixture.stateBase)
+    const resultPath = `${tmpDir}/ink-prompt-result.json`
+    const spec: PromptSpec = {
+      question: 'WHEEL-PROBE-MARKER',
+      fields: [],
+      buttons: ['ok'],
+    }
+    const specB64 = Buffer.from(JSON.stringify(spec), 'utf8').toString('base64')
 
-      // Kick the prompt off in the background; teardown will resolve it.
-      const promptDone = harness.host
-        .runInteractive({
-          argv: [process.execPath, RUNNER, '--spec', specB64, '--result', resultPath],
-          env: {} as Readonly<Record<string, string>>,
-          cwd: toPath(tmpDir),
-          stepName: makeStepName('wheel-up-check'),
-        })
-        .catch((err: unknown) => err)
+    // Kick the prompt off in the background; teardown will resolve it.
+    const promptDone = harness.host
+      .runInteractive({
+        argv: [process.execPath, RUNNER, '--spec', specB64, '--result', resultPath],
+        env: {} as Readonly<Record<string, string>>,
+        cwd: toPath(tmpDir),
+        stepName: makeStepName('wheel-up-check'),
+      })
+      .catch((err: unknown) => err)
 
-      await harness.right.waitForText('WHEEL-PROBE-MARKER', { timeoutMs: 8000 })
+    await harness.right.waitForText('WHEEL-PROBE-MARKER', { timeoutMs: 8000 })
 
-      const paneId = await harness.right.paneId
+    const paneId = await harness.right.paneId
 
-      const probe = Bun.spawn(
-        [
-          'tmux',
-          '-L',
-          String(fixture.socket),
-          'display-message',
-          '-p',
-          '-t',
-          String(paneId),
-          '#{?alternate_on,1,0}',
-        ],
-        { stdout: 'pipe', stderr: 'ignore' },
-      )
-      const probeOut = (await new Response(probe.stdout).text()).trim()
-      await probe.exited
+    const probe = Bun.spawn(
+      [
+        'tmux',
+        '-L',
+        String(fixture.socket),
+        'display-message',
+        '-p',
+        '-t',
+        String(paneId),
+        '#{?alternate_on,1,0}',
+      ],
+      { stdout: 'pipe', stderr: 'ignore' },
+    )
+    const probeOut = (await new Response(probe.stdout).text()).trim()
+    await probe.exited
 
-      // Contract: alt-screen is on, so the smart-wheel binding (which keys on
-      // `#{?alternate_on,1,0}`) takes the `send-keys -M` branch instead of
-      // `copy-mode -e`. The prompt UI stays visible under wheel-up.
-      expect(probeOut).toBe('1')
+    // Contract: alt-screen is on, so the smart-wheel binding (which keys on
+    // `#{?alternate_on,1,0}`) takes the `send-keys -M` branch instead of
+    // `copy-mode -e`. The prompt UI stays visible under wheel-up.
+    expect(probeOut).toBe('1')
 
-      // Suppress unawaited-promise warning; afterEach teardown resolves it.
-      void promptDone
-    }, 30_000)
-  },
-)
+    // Suppress unawaited-promise warning; afterEach teardown resolves it.
+    void promptDone
+  }, 30_000)
+})

@@ -1,3 +1,4 @@
+// COVERED BY → tests-new/model/glyph--state-and-color.test.ts (parent U14 group-B closeout) — every case covered; see ledger. Kept skipped on disk (D2).
 // Color, bold, and dim assertions for `<StepsView>` rendering.
 //
 // Bun's test runner reports `process.stdout.isTTY === false`, which causes
@@ -102,7 +103,7 @@ async function renderSelectedFrame(
   return frame
 }
 
-describe('<StepsView> selection accent', () => {
+describe.skip('<StepsView> selection accent', () => {
   it('renders cursor and name in cyan on the selected row, with bold name', async () => {
     const frame = await renderSelectedFrame('running')
     const planLine = frame.split('\n').find((line) => line.includes('plan'))
@@ -183,7 +184,7 @@ describe('<StepsView> selection accent', () => {
   })
 })
 
-describe('<StepsView> semantic glyph colors', () => {
+describe.skip('<StepsView> semantic glyph colors', () => {
   it('renders a green check for completed steps', () => {
     const state = stateWithSingleStep('completed')
     const frame = renderToString(<StepsView state={state} onIntent={NOOP} now={() => NOW} />, {
@@ -251,7 +252,7 @@ describe('<StepsView> semantic glyph colors', () => {
   })
 })
 
-describe('<StepsView> NO_COLOR stripped-frame integrity', () => {
+describe.skip('<StepsView> NO_COLOR stripped-frame integrity', () => {
   it('retains every structural element (names, glyphs, hairlines, cursor, footer) under stripAnsi', async () => {
     // Reuse renderSelectedFrame to get a frame where the running 'plan' row
     // is user-selected. stripAnsi the result and assert every structural

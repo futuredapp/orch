@@ -1,3 +1,4 @@
+// COVERED BY → tests-new/model/controller/resume-refusal.test.ts (happy-path: registry hit + sessionId + resumeCommand spawns runner) — resume argv/swap/no-respawn is a controller DECISION at the FakeTmuxService seam
 // Integration coverage for the U8 swap-based resume path. The interactive
 // resume runner returns a `RunnerCommand`; the controller registers a `pty`
 // source on the scratch session with that argv/env and swaps it in. No
@@ -118,7 +119,7 @@ afterEach(async () => {
   await rm(tempDir, { recursive: true, force: true })
 })
 
-describe('resume launcher (U8 swap-based, mocked tmux + scripted runner)', () => {
+describe.skip('resume launcher (U8 swap-based, mocked tmux + scripted runner)', () => {
   it('spawns the resume argv as a pty source in a per-source session and swaps it in', async () => {
     const tmux = new FakeTmuxService()
     tmux.nextCreateSessionPaneId(paneId('%500'))

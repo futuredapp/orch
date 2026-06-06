@@ -1,3 +1,4 @@
+// COVERED BY → tests-new/lifecycle/q-intent--tears-down-cleanly.test.ts (+ lifecycle/launch--boots-to-mid-step-and-tears-down.test.ts) — TUI-mounted-through-completion / pending-until-quit / teardown-order are PROCESS lifecycle plumbing (FakeTmux mocked e2e, passes if pane empty)
 // Phase 4 mocked e2e: drive a multi-step workflow through createTmuxHost +
 // FakeTmuxService + FakeProcessService end-to-end and assert that:
 //   1. The host stays alive through workflow completion.
@@ -43,7 +44,7 @@ function makeStderr(): { stream: NodeJS.WritableStream; text: () => string } {
   return { stream: stream as unknown as NodeJS.WritableStream, text: () => chunks.join('') }
 }
 
-describe('steps-tui mocked e2e', () => {
+describe.skip('steps-tui mocked e2e', () => {
   it('keeps the TUI mounted through workflow completion until quit fires', async () => {
     const tmux = new FakeTmuxService()
     tmux.setListPanesResult(['%0'])

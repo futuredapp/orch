@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/real-tmux/server-killed-externally.test.ts
 // Tier-1 fail-first repro of incident r-2026-05-22-093650-j0: the tmux
 // server died externally mid-run; orch's next `runInteractive` call hit a
 // dead socket and surfaced an uncaught `TmuxCommandError`.
@@ -72,7 +73,7 @@ async function countOrphanTmuxProcessesForSocket(socket: string): Promise<number
   return stdout.split('\n').filter((line) => line.trim().length > 0).length
 }
 
-describe.skipIf(!tmuxAvailable)('two-pane host — tmux server killed externally mid-run', () => {
+describe.skip('two-pane host — tmux server killed externally mid-run', () => {
   it('translates the dead socket into HostUnavailableError and reports unreachable', async () => {
     const fixture = await createRealTmuxFixture({ env: {} })
     fixturesToDispose.push(fixture)

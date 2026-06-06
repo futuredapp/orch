@@ -1,3 +1,4 @@
+// DROPPED → steps=[] empty-state transient is not faithfully expressible through the launch-with-steps scenario/driver DSL; header+footer halves covered by tests-new/model/launch--header-and-step-list-render.test.ts (parent U14). Kept skipped on disk (D2).
 // triage: keep — Tier 2 empty-steps rendering.
 //
 // Before any step:start lands, the steps view should render an empty-state
@@ -29,7 +30,7 @@ function tick(): Promise<void> {
   return new Promise((r) => setTimeout(r, 30))
 }
 
-describe('<StepsView> empty-steps state', () => {
+describe.skip('<StepsView> empty-steps state', () => {
   it('renders the placeholder row, the run header, and the live footer when steps is []', () => {
     const frame = stripAnsi(
       renderToString(<StepsView state={emptyState()} onIntent={NOOP} now={() => NOW} />, {

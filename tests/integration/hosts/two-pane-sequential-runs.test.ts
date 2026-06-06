@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/hosts/two-pane/two-pane-sequential-runs.test.ts
 // ---------------------------------------------------------------------------
 // Reproducer for "second run blinks and exits" bug.
 // ---------------------------------------------------------------------------
@@ -94,7 +95,7 @@ async function killSocket(socket: string): Promise<void> {
   }
 }
 
-describe.skipIf(!canRun)('two-pane host - sequential runs against real tmux', () => {
+describe.skip('two-pane host - sequential runs against real tmux', () => {
   let fixtures: RealTmuxFixture[] = []
   let harnesses: MountedHarness[] = []
   let tmpDirs: string[] = []

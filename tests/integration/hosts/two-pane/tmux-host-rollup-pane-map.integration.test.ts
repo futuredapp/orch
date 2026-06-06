@@ -1,3 +1,4 @@
+// COVERED BY → tests-new/model/controller/right-pane-controller-sources.test.ts (+ right-pane-controller-lifecycle.test.ts, unit/hosts/parallel-rollup.test.ts) — rollup tee-bytes/per-source-createSession/no-respawn/no-sendKeys are controller DECISIONs at the FakeTmuxService seam (passes if pane empty)
 // triage: rewrite — rollup visible outcome is Tier 1 territory once the harness gains a "drive a parallel block" helper. Interim Keep; Rewrite once that helper lands.
 // Integration coverage for U7: the parallel rollup lives on its own hidden
 // pane in a per-source tmux session (`orch-src-rollup`), fed by the
@@ -113,7 +114,7 @@ async function driveParallelBlock(branches: readonly string[]): Promise<DriveRes
   }
 }
 
-describe('two-pane host: rollup pane-map wiring (U7)', () => {
+describe.skip('two-pane host: rollup pane-map wiring (U7)', () => {
   it('writes rollup snapshots to the _rollup tee instead of the visible right pane', async () => {
     const { tmux, teeAnsi } = await driveParallelBlock(['a', 'b'])
 

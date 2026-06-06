@@ -1,3 +1,4 @@
+// COVERED BY → tests-new/model/controller/right-pane-controller-interactive-dead-pane.test.ts — keeps-visible-slot-alive after interactive unregister is the dead-pane controller DECISION at the fake ownership seam
 // Regression test for the "right pane disappears after the first interactive
 // step + replay fails with `can't find pane: %3`" bug observed in run
 // `r-2026-05-11-154533-le` (workflow `codex-riddle-solver`).
@@ -140,7 +141,7 @@ afterEach(async () => {
   await rm(tempDir, { recursive: true, force: true })
 })
 
-describe('right-pane-controller — interactive unregister keeps visible slot alive', () => {
+describe.skip('right-pane-controller — interactive unregister keeps visible slot alive', () => {
   it('leaves visiblePaneId pointing at a live pane so a subsequent replay swap does not target the killed pane', async () => {
     // ----- Arrange -----
     const tmux = new FakeTmuxService()

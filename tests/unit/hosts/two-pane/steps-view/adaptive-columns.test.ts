@@ -1,3 +1,4 @@
+// COVERED BY → tests-new/screen/columns--elapsed-threshold.test.ts + tests-new/unit/hosts/two-pane/adaptive-columns-thresholds.test.ts (parent U14 group-B closeout) — see ledger. Kept skipped on disk (D2). (mixed — see ledger)
 // Pure-function table tests for the adaptive-columns picker.
 //
 // Phase 1 only ever drops the `elapsed` column (cost/tokens are reserved
@@ -11,7 +12,7 @@ import {
   pickColumns,
 } from '../../../../../src/hosts/two-pane/steps-view/index.ts'
 
-describe('pickColumns', () => {
+describe.skip('pickColumns', () => {
   it('hides elapsed below width 70 and exposes it from 70 upward across the canonical breakpoints', () => {
     const cases: ReadonlyArray<{ readonly width: number; readonly elapsed: boolean }> = [
       { width: 60, elapsed: false },

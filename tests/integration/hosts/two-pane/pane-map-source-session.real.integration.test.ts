@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/real-tmux/pane-map-source-session.test.ts
 // Real-tmux coverage for the per-source session helpers + a swap-between-two-
 // file-tail-sources smoke test. Pins the load-bearing invariants of the
 // per-source pane-map design (KTD2/KTD3 in
@@ -61,7 +62,7 @@ afterEach(async () => {
   tempDirs = []
 })
 
-describe.skipIf(!canRun)('per-source session lifecycle on real tmux', () => {
+describe.skip('per-source session lifecycle on real tmux', () => {
   it('creates a per-source session as a sibling of the visible orch session, on the same socket', async () => {
     const tmux = new RealTmuxService({ processService: new BunProcessService() })
     const socket = newSocket('create')

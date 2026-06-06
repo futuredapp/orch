@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/real-tmux/end-of-run.test.ts
 // Phase 4 real-tmux integration: end-of-run summary survives in the left pane.
 //
 // Boots a real tmux server, mounts the steps-view-runner against a seeded
@@ -62,7 +63,7 @@ async function captureUntil(
   }
 }
 
-describe.skipIf(!canRun)('end-of-run summary on real tmux', () => {
+describe.skip('end-of-run summary on real tmux', () => {
   let fixtures: RealTmuxFixture[] = []
 
   afterEach(async () => {

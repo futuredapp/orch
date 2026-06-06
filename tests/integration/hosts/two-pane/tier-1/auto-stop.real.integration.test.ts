@@ -1,3 +1,4 @@
+// COVERED BY → tests-new/unit/core/workflow-auto-stop.test.ts (parent U14 group-B closeout) — unit behavior covered; end-to-end real-tmux/host assertion dropped (no faithful fake substrate, P14-D5); see ledger. Kept skipped on disk (D2).
 // triage: keep — Tier 1 proof that interactive auto-stop closes a finished
 // turn on real tmux without a human keystroke. Would FAIL (hang past the
 // timeout) if the host never armed/raced the stop channel: the `cat` pane
@@ -89,7 +90,7 @@ function stringField(event: Record<string, unknown>, key: string): string {
   return value
 }
 
-describe.skipIf(!tmuxAvailable)('Tier 1 — interactive auto-stop', () => {
+describe.skip('Tier 1 — interactive auto-stop', () => {
   it('closes itself when the stop channel is signaled, with no manual close', async () => {
     const fixture = await createRealTmuxFixture({ env: {} })
     fixturesToDispose.push(fixture)

@@ -1,0 +1,7 @@
+tests/unit/hosts/two-pane/await-interactive-pane-exit.test.ts	// MIGRATED → tests-new/unit/hosts/two-pane/await-interactive-pane-exit.test.ts (parent U14) — demote-relocated (pane-agnostic unit); kept skipped on disk (D2).
+tests/unit/hosts/two-pane/kind-details.test.ts	// MIGRATED → tests-new/unit/hosts/two-pane/kind-details.test.ts (parent U14) — demote-relocated (pane-agnostic unit); kept skipped on disk (D2).
+tests/unit/hosts/two-pane/lifecycle-choreographer.test.ts	// MIGRATED → tests-new/unit/hosts/two-pane/lifecycle-choreographer.test.ts (parent U14) — demote-relocated (pane-agnostic unit); kept skipped on disk (D2).
+tests/unit/hosts/two-pane/replay-command-pane.test.ts	// MIGRATED → tests-new/unit/hosts/two-pane/replay-command-pane.test.ts (parent U14) — demote-relocated (pane-agnostic unit); kept skipped on disk (D2).
+tests/unit/hosts/two-pane/replay-transcript.test.ts	// MIGRATED → tests-new/unit/hosts/two-pane/replay-transcript.test.ts (parent U14) — demote-relocated (pane-agnostic unit); kept skipped on disk (D2).
+tests/unit/hosts/two-pane/session-lost-classification.test.ts	// MIGRATED → tests-new/unit/hosts/two-pane/session-lost-classification.test.ts (parent U14) — demote-relocated (pane-agnostic unit); kept skipped on disk (D2).
+tests/unit/hosts/two-pane/stdio-capture.test.ts	// MIGRATED → tests-new/unit/hosts/two-pane/stdio-capture.test.ts (parent U14) — demote-relocated (pane-agnostic unit); kept skipped on disk (D2).

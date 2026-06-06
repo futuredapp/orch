@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/hosts/two-pane/stdio-capture.test.ts (parent U14) — demote-relocated (pane-agnostic unit); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { Writable } from 'node:stream'
 import { installStdioCapture } from '../../../../src/hosts/two-pane/stdio-capture.ts'
@@ -44,7 +45,7 @@ function makeStdout(): NodeJS.WriteStream & { text(): string } {
   return stream
 }
 
-describe('installStdioCapture', () => {
+describe.skip('installStdioCapture', () => {
   it('captures console.log output with object formatting', async () => {
     const target = makeTarget()
     const consoleRef = makeConsole()

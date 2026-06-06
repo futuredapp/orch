@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/hosts/two-pane/await-interactive-pane-exit.test.ts (parent U14) — demote-relocated (pane-agnostic unit); kept skipped on disk (D2).
 // Unit coverage for the interactive completion wait's liveness backstop.
 //
 // The wait's primary signal is the unbounded `pane-died` hook channel. Under
@@ -35,7 +36,7 @@ async function driveUntilSettled(
   }
 }
 
-describe('awaitInteractivePaneExit', () => {
+describe.skip('awaitInteractivePaneExit', () => {
   it('resolves via the pane-died hook when the hook signal arrives', async () => {
     const tmux = new FakeTmuxService()
     const clock = new FakeClock(0)

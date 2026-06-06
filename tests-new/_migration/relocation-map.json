@@ -1,179 +1,95 @@
 [
   {
-    "old": "tests/unit/core/ask.test.ts",
-    "new": "tests-new/unit/core/ask.test.ts"
+    "old": "tests/e2e/cli/orch-run.test.ts",
+    "new": "tests-new/e2e/cli/orch-run.test.ts"
   },
   {
-    "old": "tests/unit/core/command.test.ts",
-    "new": "tests-new/unit/core/command.test.ts"
+    "old": "tests/e2e/resume-real-claude.test.ts",
+    "new": "tests-new/e2e/resume-real-claude.test.ts"
   },
   {
-    "old": "tests/unit/core/commit.test.ts",
-    "new": "tests-new/unit/core/commit.test.ts"
+    "old": "tests/e2e/steps-tui-e2e.test.ts",
+    "new": "tests-new/e2e/steps-tui-e2e.test.ts"
   },
   {
-    "old": "tests/unit/core/derive-step-key.test.ts",
-    "new": "tests-new/unit/core/derive-step-key.test.ts"
+    "old": "tests/e2e/workflows/builtin-phased-build.e2e.test.ts",
+    "new": "tests-new/e2e/workflows/builtin-phased-build.e2e.test.ts"
   },
   {
-    "old": "tests/unit/core/errors.test.ts",
-    "new": "tests-new/unit/core/errors.test.ts"
+    "old": "tests/integration/cli/commands/init-e2e.test.ts",
+    "new": "tests-new/integration/cli/commands/init-e2e.test.ts"
   },
   {
-    "old": "tests/unit/core/execution-context.test.ts",
-    "new": "tests-new/unit/core/execution-context.test.ts"
+    "old": "tests/integration/cli/commands/init.test.ts",
+    "new": "tests-new/integration/cli/commands/init.test.ts"
   },
   {
-    "old": "tests/unit/core/failure-summary.test.ts",
-    "new": "tests-new/unit/core/failure-summary.test.ts"
+    "old": "tests/integration/cli/commands/logs-old-and-new-runs.test.ts",
+    "new": "tests-new/integration/cli/commands/logs-old-and-new-runs.test.ts"
   },
   {
-    "old": "tests/unit/core/interactive-mode.test.ts",
-    "new": "tests-new/unit/core/interactive-mode.test.ts"
+    "old": "tests/integration/cli/commands/new.test.ts",
+    "new": "tests-new/integration/cli/commands/new.test.ts"
   },
   {
-    "old": "tests/unit/core/parallel-inherits-subworkflow-fields.test.ts",
-    "new": "tests-new/unit/core/parallel-inherits-subworkflow-fields.test.ts"
+    "old": "tests/integration/cli/commands/resume.test.ts",
+    "new": "tests-new/integration/cli/commands/resume.test.ts"
   },
   {
-    "old": "tests/unit/core/parallel.test.ts",
-    "new": "tests-new/unit/core/parallel.test.ts"
+    "old": "tests/integration/cli/commands/runs.test.ts",
+    "new": "tests-new/integration/cli/commands/runs.test.ts"
   },
   {
-    "old": "tests/unit/core/resume-registry.test.ts",
-    "new": "tests-new/unit/core/resume-registry.test.ts"
+    "old": "tests/integration/cli/commands/status.test.ts",
+    "new": "tests-new/integration/cli/commands/status.test.ts"
   },
   {
-    "old": "tests/unit/core/run-mode-tty-guard.test.ts",
-    "new": "tests-new/unit/core/run-mode-tty-guard.test.ts"
+    "old": "tests/integration/cli/interactive-plain-error.test.ts",
+    "new": "tests-new/integration/cli/interactive-plain-error.test.ts"
   },
   {
-    "old": "tests/unit/core/run-mode.test.ts",
-    "new": "tests-new/unit/core/run-mode.test.ts"
+    "old": "tests/integration/cli/interactivity-flag.test.ts",
+    "new": "tests-new/integration/cli/interactivity-flag.test.ts"
   },
   {
-    "old": "tests/unit/core/run-step-once-collision.test.ts",
-    "new": "tests-new/unit/core/run-step-once-collision.test.ts"
+    "old": "tests/integration/cli/main-dispatch.test.ts",
+    "new": "tests-new/integration/cli/main-dispatch.test.ts"
   },
   {
-    "old": "tests/unit/core/run-workflow.test.ts",
-    "new": "tests-new/unit/core/run-workflow.test.ts"
+    "old": "tests/integration/cli/run-builtin.test.ts",
+    "new": "tests-new/integration/cli/run-builtin.test.ts"
   },
   {
-    "old": "tests/unit/core/runner-addressing.test.ts",
-    "new": "tests-new/unit/core/runner-addressing.test.ts"
+    "old": "tests/integration/cli/run-end-of-run-summary.test.ts",
+    "new": "tests-new/integration/cli/run-end-of-run-summary.test.ts"
   },
   {
-    "old": "tests/unit/core/schema-validation.test.ts",
-    "new": "tests-new/unit/core/schema-validation.test.ts"
+    "old": "tests/integration/cli/run-resume-cycle.test.ts",
+    "new": "tests-new/integration/cli/run-resume-cycle.test.ts"
   },
   {
-    "old": "tests/unit/core/schema.test.ts",
-    "new": "tests-new/unit/core/schema.test.ts"
+    "old": "tests/integration/cli/run-resume-registry-forwarding.test.ts",
+    "new": "tests-new/integration/cli/run-resume-registry-forwarding.test.ts"
   },
   {
-    "old": "tests/unit/core/session-id-capture.test.ts",
-    "new": "tests-new/unit/core/session-id-capture.test.ts"
+    "old": "tests/integration/cli/single-pane-no-terminal-clear.test.ts",
+    "new": "tests-new/integration/cli/single-pane-no-terminal-clear.test.ts"
   },
   {
-    "old": "tests/unit/core/step-lifecycle.test.ts",
-    "new": "tests-new/unit/core/step-lifecycle.test.ts"
+    "old": "tests/integration/cli/two-pane-auto-attach.test.ts",
+    "new": "tests-new/integration/cli/two-pane-auto-attach.test.ts"
   },
   {
-    "old": "tests/unit/core/step.test.ts",
-    "new": "tests-new/unit/core/step.test.ts"
+    "old": "tests/integration/cli/two-pane-tty-guard.test.ts",
+    "new": "tests-new/integration/cli/two-pane-tty-guard.test.ts"
   },
   {
-    "old": "tests/unit/core/types-step-name-pattern.test.ts",
-    "new": "tests-new/unit/core/types-step-name-pattern.test.ts"
+    "old": "tests/integration/cli/unknown-flag.test.ts",
+    "new": "tests-new/integration/cli/unknown-flag.test.ts"
   },
   {
-    "old": "tests/unit/core/types.test.ts",
-    "new": "tests-new/unit/core/types.test.ts"
-  },
-  {
-    "old": "tests/unit/core/view-registry.test.ts",
-    "new": "tests-new/unit/core/view-registry.test.ts"
-  },
-  {
-    "old": "tests/unit/core/workflow-args.test.ts",
-    "new": "tests-new/unit/core/workflow-args.test.ts"
-  },
-  {
-    "old": "tests/unit/core/workflow-auto-stop.test.ts",
-    "new": "tests-new/unit/core/workflow-auto-stop.test.ts"
-  },
-  {
-    "old": "tests/unit/core/workflow-name-validation.test.ts",
-    "new": "tests-new/unit/core/workflow-name-validation.test.ts"
-  },
-  {
-    "old": "tests/unit/core/workflow-parallel-lifecycle.test.ts",
-    "new": "tests-new/unit/core/workflow-parallel-lifecycle.test.ts"
-  },
-  {
-    "old": "tests/unit/core/workflow-resume-registry.test.ts",
-    "new": "tests-new/unit/core/workflow-resume-registry.test.ts"
-  },
-  {
-    "old": "tests/unit/core/workflow-tmux-guards.test.ts",
-    "new": "tests-new/unit/core/workflow-tmux-guards.test.ts"
-  },
-  {
-    "old": "tests/unit/core/workflow-validators.test.ts",
-    "new": "tests-new/unit/core/workflow-validators.test.ts"
-  },
-  {
-    "old": "tests/unit/core/workflow-vars-cache-key.test.ts",
-    "new": "tests-new/unit/core/workflow-vars-cache-key.test.ts"
-  },
-  {
-    "old": "tests/unit/core/workflow.test.ts",
-    "new": "tests-new/unit/core/workflow.test.ts"
-  },
-  {
-    "old": "tests/unit/core/worktree-executor-cache.test.ts",
-    "new": "tests-new/unit/core/worktree-executor-cache.test.ts"
-  },
-  {
-    "old": "tests/unit/core/worktree-executor-conflicts.test.ts",
-    "new": "tests-new/unit/core/worktree-executor-conflicts.test.ts"
-  },
-  {
-    "old": "tests/unit/core/worktree-executor-postcreate.test.ts",
-    "new": "tests-new/unit/core/worktree-executor-postcreate.test.ts"
-  },
-  {
-    "old": "tests/unit/core/worktree-executor.test.ts",
-    "new": "tests-new/unit/core/worktree-executor.test.ts"
-  },
-  {
-    "old": "tests/unit/core/worktree.test.ts",
-    "new": "tests-new/unit/core/worktree.test.ts"
-  },
-  {
-    "old": "tests/unit/core/prompt-file/cache-key.test.ts",
-    "new": "tests-new/unit/core/prompt-file/cache-key.test.ts"
-  },
-  {
-    "old": "tests/unit/core/prompt-file/caller-dir.test.ts",
-    "new": "tests-new/unit/core/prompt-file/caller-dir.test.ts"
-  },
-  {
-    "old": "tests/unit/core/prompt-file/load-prompt.test.ts",
-    "new": "tests-new/unit/core/prompt-file/load-prompt.test.ts"
-  },
-  {
-    "old": "tests/unit/core/prompt-file/resolve-prompt-path.test.ts",
-    "new": "tests-new/unit/core/prompt-file/resolve-prompt-path.test.ts"
-  },
-  {
-    "old": "tests/unit/core/prompt-file/step-define-prompt-file.test.ts",
-    "new": "tests-new/unit/core/prompt-file/step-define-prompt-file.test.ts"
-  },
-  {
-    "old": "tests/unit/core/prompt-file/substitute.test.ts",
-    "new": "tests-new/unit/core/prompt-file/substitute.test.ts"
+    "old": "tests/integration/codegen/codegen-fixture.test.ts",
+    "new": "tests-new/integration/codegen/codegen-fixture.test.ts"
   },
   {
     "old": "tests/integration/core/ask-lifecycle.test.ts",
@@ -242,6 +158,686 @@
   {
     "old": "tests/integration/core/worktree-real.test.ts",
     "new": "tests-new/integration/core/worktree-real.test.ts"
+  },
+  {
+    "old": "tests/integration/examples/subworkflows-smoke.test.ts",
+    "new": "tests-new/integration/examples/subworkflows-smoke.test.ts"
+  },
+  {
+    "old": "tests/integration/hosts/plain-host-command-line.test.ts",
+    "new": "tests-new/integration/hosts/plain-host-command-line.test.ts"
+  },
+  {
+    "old": "tests/integration/hosts/plain-mode.test.ts",
+    "new": "tests-new/integration/hosts/plain-mode.test.ts"
+  },
+  {
+    "old": "tests/integration/hosts/plain/transcript-render-claude.test.ts",
+    "new": "tests-new/integration/hosts/plain/transcript-render-claude.test.ts"
+  },
+  {
+    "old": "tests/integration/hosts/tmux-host-command-line.test.ts",
+    "new": "tests-new/integration/hosts/tmux-host-command-line.test.ts"
+  },
+  {
+    "old": "tests/integration/hosts/two-pane/transcript-replay-memory.smoke.test.ts",
+    "new": "tests-new/integration/hosts/two-pane/transcript-replay-memory.smoke.test.ts"
+  },
+  {
+    "old": "tests/integration/hosts/two-pane-interactive-session-lost.test.ts",
+    "new": "tests-new/integration/hosts/two-pane/two-pane-interactive-session-lost.test.ts"
+  },
+  {
+    "old": "tests/integration/hosts/two-pane-mocked.test.ts",
+    "new": "tests-new/integration/hosts/two-pane/two-pane-mocked.test.ts"
+  },
+  {
+    "old": "tests/integration/hosts/two-pane-sequential-runs.test.ts",
+    "new": "tests-new/integration/hosts/two-pane/two-pane-sequential-runs.test.ts"
+  },
+  {
+    "old": "tests/integration/observability/resume-per-step-folder.test.ts",
+    "new": "tests-new/integration/observability/resume-per-step-folder.test.ts"
+  },
+  {
+    "old": "tests/integration/observability/session-logger-baseline.integration.test.ts",
+    "new": "tests-new/integration/observability/session-logger-baseline.integration.test.ts"
+  },
+  {
+    "old": "tests/integration/observability/session-logger-debug.integration.test.ts",
+    "new": "tests-new/integration/observability/session-logger-debug.integration.test.ts"
+  },
+  {
+    "old": "tests/integration/observability/session-logger.e2e.test.ts",
+    "new": "tests-new/integration/observability/session-logger.e2e.test.ts"
+  },
+  {
+    "old": "tests/integration/observability/status-loop.test.ts",
+    "new": "tests-new/integration/observability/status-loop.test.ts"
+  },
+  {
+    "old": "tests/integration/observability/status-real.integration.test.ts",
+    "new": "tests-new/integration/observability/status-real.integration.test.ts"
+  },
+  {
+    "old": "tests/integration/real-tmux/agent-handle.test.ts",
+    "new": "tests-new/integration/real-tmux/agent-handle.test.ts"
+  },
+  {
+    "old": "tests/integration/hosts/two-pane/tier-1/banner-info-and-error-ttl.real.integration.test.ts",
+    "new": "tests-new/integration/real-tmux/banner-info-and-error-ttl.test.ts"
+  },
+  {
+    "old": "tests/integration/tests-setup/cleanup-reaper.real.integration.test.ts",
+    "new": "tests-new/integration/real-tmux/cleanup-reaper.real.integration.test.ts"
+  },
+  {
+    "old": "tests/integration/hosts/two-pane/end-of-run.real.integration.test.ts",
+    "new": "tests-new/integration/real-tmux/end-of-run.test.ts"
+  },
+  {
+    "old": "tests/unit/hosts/two-pane/real-tmux-harness/pane-handle.test.ts",
+    "new": "tests-new/integration/real-tmux/pane-handle.test.ts"
+  },
+  {
+    "old": "tests/integration/hosts/two-pane/pane-map-source-session.real.integration.test.ts",
+    "new": "tests-new/integration/real-tmux/pane-map-source-session.test.ts"
+  },
+  {
+    "old": "tests/integration/real-tmux/predictable-fake-f1.test.ts",
+    "new": "tests-new/integration/real-tmux/predictable-fake-f1.test.ts"
+  },
+  {
+    "old": "tests/integration/real-tmux/predictable-fake-f2.test.ts",
+    "new": "tests-new/integration/real-tmux/predictable-fake-f2.test.ts"
+  },
+  {
+    "old": "tests/integration/real-tmux/predictable-fake-ink.test.ts",
+    "new": "tests-new/integration/real-tmux/predictable-fake-ink.test.ts"
+  },
+  {
+    "old": "tests/integration/real-tmux/predictable-fake-three-step.test.ts",
+    "new": "tests-new/integration/real-tmux/predictable-fake-three-step.test.ts"
+  },
+  {
+    "old": "tests/integration/hosts/two-pane/tier-1/right-pane-shows-failure-summary.real.integration.test.ts",
+    "new": "tests-new/integration/real-tmux/right-pane-shows-failure-summary.test.ts"
+  },
+  {
+    "old": "tests/integration/hosts/two-pane/real-tmux-server-killed-externally.integration.test.ts",
+    "new": "tests-new/integration/real-tmux/server-killed-externally.test.ts"
+  },
+  {
+    "old": "tests/unit/hosts/two-pane/real-tmux-harness/socket-allocation.test.ts",
+    "new": "tests-new/integration/real-tmux/socket-allocation.test.ts"
+  },
+  {
+    "old": "tests/integration/hosts/two-pane/steps-view/steps-tui.real.integration.test.ts",
+    "new": "tests-new/integration/real-tmux/steps-tui.test.ts"
+  },
+  {
+    "old": "tests/integration/hosts/two-pane/steps-view-header-no-duplicate.real.integration.test.ts",
+    "new": "tests-new/integration/real-tmux/steps-view-header-no-duplicate.test.ts"
+  },
+  {
+    "old": "tests/integration/real-tmux/teardown-leak-guard.test.ts",
+    "new": "tests-new/integration/real-tmux/teardown-leak-guard.test.ts"
+  },
+  {
+    "old": "tests/integration/hosts/two-pane/wheel-no-mode-error.real.test.ts",
+    "new": "tests-new/integration/real-tmux/wheel-no-mode-error.test.ts"
+  },
+  {
+    "old": "tests/integration/hosts/two-pane/wheel-up-on-ink-prompt-no-copy-mode.real.test.ts",
+    "new": "tests-new/integration/real-tmux/wheel-up-on-ink-prompt-no-copy-mode.test.ts"
+  },
+  {
+    "old": "tests/integration/hosts/two-pane/windows.real.integration.test.ts",
+    "new": "tests-new/integration/real-tmux/windows.test.ts"
+  },
+  {
+    "old": "tests/integration/runners/claude/claude-e2e-lite.test.ts",
+    "new": "tests-new/integration/runners/claude/claude-e2e-lite.test.ts"
+  },
+  {
+    "old": "tests/integration/runners/claude/claude-mocked.test.ts",
+    "new": "tests-new/integration/runners/claude/claude-mocked.test.ts"
+  },
+  {
+    "old": "tests/integration/runners/claude/claude-real.test.ts",
+    "new": "tests-new/integration/runners/claude/claude-real.test.ts"
+  },
+  {
+    "old": "tests/integration/runners/claude/claude-resume.test.ts",
+    "new": "tests-new/integration/runners/claude/claude-resume.test.ts"
+  },
+  {
+    "old": "tests/integration/runners/claude/claude-structured-mocked.test.ts",
+    "new": "tests-new/integration/runners/claude/claude-structured-mocked.test.ts"
+  },
+  {
+    "old": "tests/integration/runners/claude/claude-structured-real.test.ts",
+    "new": "tests-new/integration/runners/claude/claude-structured-real.test.ts"
+  },
+  {
+    "old": "tests/integration/runners/codex/codex-mocked.test.ts",
+    "new": "tests-new/integration/runners/codex/codex-mocked.test.ts"
+  },
+  {
+    "old": "tests/integration/runners/codex/codex-real.test.ts",
+    "new": "tests-new/integration/runners/codex/codex-real.test.ts"
+  },
+  {
+    "old": "tests/integration/runners/cross-runner-parallel.test.ts",
+    "new": "tests-new/integration/runners/cross-runner-parallel.test.ts"
+  },
+  {
+    "old": "tests/integration/runners/run-runner.test.ts",
+    "new": "tests-new/integration/runners/run-runner.test.ts"
+  },
+  {
+    "old": "tests/integration/runners/scripted-fake-ink.test.tsx",
+    "new": "tests-new/integration/runners/scripted-fake-ink.test.tsx"
+  },
+  {
+    "old": "tests/integration/runners/scripted-fake-interactive.test.ts",
+    "new": "tests-new/integration/runners/scripted-fake-interactive.test.ts"
+  },
+  {
+    "old": "tests/integration/runners/scripted-fake-puppet-addressing.test.ts",
+    "new": "tests-new/integration/runners/scripted-fake-puppet-addressing.test.ts"
+  },
+  {
+    "old": "tests/integration/runners/scripted-fake/entry.real.test.ts",
+    "new": "tests-new/integration/runners/scripted-fake/entry.real.test.ts"
+  },
+  {
+    "old": "tests/integration/runners/scripted-fake/two-step-linear.smoke.test.ts",
+    "new": "tests-new/integration/runners/scripted-fake/two-step-linear.smoke.test.ts"
+  },
+  {
+    "old": "tests/integration/services/fs/bun-fs-service.test.ts",
+    "new": "tests-new/integration/services/fs/bun-fs-service.test.ts"
+  },
+  {
+    "old": "tests/integration/services/process/bun-process-service.test.ts",
+    "new": "tests-new/integration/services/process/bun-process-service.test.ts"
+  },
+  {
+    "old": "tests/integration/services/prompt/ink-prompt-service-real.test.ts",
+    "new": "tests-new/integration/services/prompt/ink-prompt-service-real.test.ts"
+  },
+  {
+    "old": "tests/integration/services/prompt/ink-prompt-service.test.ts",
+    "new": "tests-new/integration/services/prompt/ink-prompt-service.test.ts"
+  },
+  {
+    "old": "tests/integration/services/tmux/tmux-real.integration.test.ts",
+    "new": "tests-new/integration/services/tmux/tmux-real.integration.test.ts"
+  },
+  {
+    "old": "tests/integration/state/run-registry.test.ts",
+    "new": "tests-new/integration/state/run-registry.test.ts"
+  },
+  {
+    "old": "tests/integration/state/state-store.test.ts",
+    "new": "tests-new/integration/state/state-store.test.ts"
+  },
+  {
+    "old": "tests/integration/validators/file-produced.test.ts",
+    "new": "tests-new/integration/validators/file-produced.test.ts"
+  },
+  {
+    "old": "tests/integration/validators/git-validators.test.ts",
+    "new": "tests-new/integration/validators/git-validators.test.ts"
+  },
+  {
+    "old": "tests/integration/workflows/builtin-variants.test.ts",
+    "new": "tests-new/integration/workflows/builtin-variants.test.ts"
+  },
+  {
+    "old": "tests/integration/workflows/phased-build-decide.test.ts",
+    "new": "tests-new/integration/workflows/phased-build-decide.test.ts"
+  },
+  {
+    "old": "tests/integration/workflows/phased-build-input.test.ts",
+    "new": "tests-new/integration/workflows/phased-build-input.test.ts"
+  },
+  {
+    "old": "tests/integration/workflows/phased-build-loop.test.ts",
+    "new": "tests-new/integration/workflows/phased-build-loop.test.ts"
+  },
+  {
+    "old": "tests/unit/services/tmux/external-mouse-events.test.ts",
+    "new": "tests-new/tmux-argv/services/tmux/external-mouse-events.test.ts"
+  },
+  {
+    "old": "tests/unit/services/tmux/has-session-server.test.ts",
+    "new": "tests-new/tmux-argv/services/tmux/has-session-server.test.ts"
+  },
+  {
+    "old": "tests/unit/services/tmux/session-init.test.ts",
+    "new": "tests-new/tmux-argv/services/tmux/session-init.test.ts"
+  },
+  {
+    "old": "tests/integration/services/tmux/tmux-integration.test.ts",
+    "new": "tests-new/tmux-argv/services/tmux/tmux-integration.test.ts"
+  },
+  {
+    "old": "tests/unit/services/tmux/tmux-service-window.test.ts",
+    "new": "tests-new/tmux-argv/services/tmux/tmux-service-window.test.ts"
+  },
+  {
+    "old": "tests/unit/services/tmux/tmux-service.test.ts",
+    "new": "tests-new/tmux-argv/services/tmux/tmux-service.test.ts"
+  },
+  {
+    "old": "tests/unit/barrel.test.ts",
+    "new": "tests-new/unit/barrel.test.ts"
+  },
+  {
+    "old": "tests/unit/cli/argv.test.ts",
+    "new": "tests-new/unit/cli/argv.test.ts"
+  },
+  {
+    "old": "tests/unit/cli/banner.test.ts",
+    "new": "tests-new/unit/cli/banner.test.ts"
+  },
+  {
+    "old": "tests/unit/cli/commands/init-templates.test.ts",
+    "new": "tests-new/unit/cli/commands/init-templates.test.ts"
+  },
+  {
+    "old": "tests/unit/cli/commands/scaffold.test.ts",
+    "new": "tests-new/unit/cli/commands/scaffold.test.ts"
+  },
+  {
+    "old": "tests/unit/cli/detect-self.test.ts",
+    "new": "tests-new/unit/cli/detect-self.test.ts"
+  },
+  {
+    "old": "tests/unit/cli/detect-tmux.test.ts",
+    "new": "tests-new/unit/cli/detect-tmux.test.ts"
+  },
+  {
+    "old": "tests/unit/cli/execute-with-attach.test.ts",
+    "new": "tests-new/unit/cli/execute-with-attach.test.ts"
+  },
+  {
+    "old": "tests/unit/cli/format.test.ts",
+    "new": "tests-new/unit/cli/format.test.ts"
+  },
+  {
+    "old": "tests/unit/cli/logs-command.test.ts",
+    "new": "tests-new/unit/cli/logs-command.test.ts"
+  },
+  {
+    "old": "tests/unit/cli/run-codegen-prepass.test.ts",
+    "new": "tests-new/unit/cli/run-codegen-prepass.test.ts"
+  },
+  {
+    "old": "tests/unit/cli/tail-lines.test.ts",
+    "new": "tests-new/unit/cli/tail-lines.test.ts"
+  },
+  {
+    "old": "tests/unit/cli/types-command-watch.test.ts",
+    "new": "tests-new/unit/cli/types-command-watch.test.ts"
+  },
+  {
+    "old": "tests/unit/cli/types-command.test.ts",
+    "new": "tests-new/unit/cli/types-command.test.ts"
+  },
+  {
+    "old": "tests/unit/codegen/discover-prompts.test.ts",
+    "new": "tests-new/unit/codegen/discover-prompts.test.ts"
+  },
+  {
+    "old": "tests/unit/codegen/emit-sidecar.test.ts",
+    "new": "tests-new/unit/codegen/emit-sidecar.test.ts"
+  },
+  {
+    "old": "tests/unit/codegen/extract-placeholders.test.ts",
+    "new": "tests-new/unit/codegen/extract-placeholders.test.ts"
+  },
+  {
+    "old": "tests/unit/codegen/run-codegen.test.ts",
+    "new": "tests-new/unit/codegen/run-codegen.test.ts"
+  },
+  {
+    "old": "tests/unit/config/load-config.test.ts",
+    "new": "tests-new/unit/config/load-config.test.ts"
+  },
+  {
+    "old": "tests/unit/core/ask-types.test-d.ts",
+    "new": "tests-new/unit/core/ask-types.test-d.ts"
+  },
+  {
+    "old": "tests/unit/core/ask.test.ts",
+    "new": "tests-new/unit/core/ask.test.ts"
+  },
+  {
+    "old": "tests/unit/core/command.test.ts",
+    "new": "tests-new/unit/core/command.test.ts"
+  },
+  {
+    "old": "tests/unit/core/commit.test.ts",
+    "new": "tests-new/unit/core/commit.test.ts"
+  },
+  {
+    "old": "tests/unit/core/derive-step-key.test.ts",
+    "new": "tests-new/unit/core/derive-step-key.test.ts"
+  },
+  {
+    "old": "tests/unit/core/errors.test.ts",
+    "new": "tests-new/unit/core/errors.test.ts"
+  },
+  {
+    "old": "tests/unit/core/execution-context.test.ts",
+    "new": "tests-new/unit/core/execution-context.test.ts"
+  },
+  {
+    "old": "tests/unit/core/failure-summary.test.ts",
+    "new": "tests-new/unit/core/failure-summary.test.ts"
+  },
+  {
+    "old": "tests/unit/core/interactive-mode.test.ts",
+    "new": "tests-new/unit/core/interactive-mode.test.ts"
+  },
+  {
+    "old": "tests/unit/core/parallel-inherits-subworkflow-fields.test.ts",
+    "new": "tests-new/unit/core/parallel-inherits-subworkflow-fields.test.ts"
+  },
+  {
+    "old": "tests/unit/core/parallel.test.ts",
+    "new": "tests-new/unit/core/parallel.test.ts"
+  },
+  {
+    "old": "tests/unit/core/prompt-file/cache-key.test.ts",
+    "new": "tests-new/unit/core/prompt-file/cache-key.test.ts"
+  },
+  {
+    "old": "tests/unit/core/prompt-file/caller-dir.test.ts",
+    "new": "tests-new/unit/core/prompt-file/caller-dir.test.ts"
+  },
+  {
+    "old": "tests/unit/core/prompt-file/load-prompt.test.ts",
+    "new": "tests-new/unit/core/prompt-file/load-prompt.test.ts"
+  },
+  {
+    "old": "tests/unit/core/prompt-file/promptfile-registry.test-d.ts",
+    "new": "tests-new/unit/core/prompt-file/promptfile-registry.test-d.ts"
+  },
+  {
+    "old": "tests/unit/core/prompt-file/resolve-prompt-path.test.ts",
+    "new": "tests-new/unit/core/prompt-file/resolve-prompt-path.test.ts"
+  },
+  {
+    "old": "tests/unit/core/prompt-file/step-define-prompt-file.test.ts",
+    "new": "tests-new/unit/core/prompt-file/step-define-prompt-file.test.ts"
+  },
+  {
+    "old": "tests/unit/core/prompt-file/substitute.test.ts",
+    "new": "tests-new/unit/core/prompt-file/substitute.test.ts"
+  },
+  {
+    "old": "tests/unit/core/prompt-file/template-vars.test-d.ts",
+    "new": "tests-new/unit/core/prompt-file/template-vars.test-d.ts"
+  },
+  {
+    "old": "tests/unit/core/resume-registry.test.ts",
+    "new": "tests-new/unit/core/resume-registry.test.ts"
+  },
+  {
+    "old": "tests/unit/core/run-mode-tty-guard.test.ts",
+    "new": "tests-new/unit/core/run-mode-tty-guard.test.ts"
+  },
+  {
+    "old": "tests/unit/core/run-mode.test.ts",
+    "new": "tests-new/unit/core/run-mode.test.ts"
+  },
+  {
+    "old": "tests/unit/core/run-step-once-collision.test.ts",
+    "new": "tests-new/unit/core/run-step-once-collision.test.ts"
+  },
+  {
+    "old": "tests/unit/core/run-workflow-typing.test-d.ts",
+    "new": "tests-new/unit/core/run-workflow-typing.test-d.ts"
+  },
+  {
+    "old": "tests/unit/core/run-workflow.test.ts",
+    "new": "tests-new/unit/core/run-workflow.test.ts"
+  },
+  {
+    "old": "tests/unit/core/runner-addressing.test.ts",
+    "new": "tests-new/unit/core/runner-addressing.test.ts"
+  },
+  {
+    "old": "tests/unit/core/schema-validation.test.ts",
+    "new": "tests-new/unit/core/schema-validation.test.ts"
+  },
+  {
+    "old": "tests/unit/core/schema.test.ts",
+    "new": "tests-new/unit/core/schema.test.ts"
+  },
+  {
+    "old": "tests/unit/core/session-id-capture.test.ts",
+    "new": "tests-new/unit/core/session-id-capture.test.ts"
+  },
+  {
+    "old": "tests/unit/core/step-lifecycle.test.ts",
+    "new": "tests-new/unit/core/step-lifecycle.test.ts"
+  },
+  {
+    "old": "tests/unit/core/step-runfn-typed-vars.test-d.ts",
+    "new": "tests-new/unit/core/step-runfn-typed-vars.test-d.ts"
+  },
+  {
+    "old": "tests/unit/core/step.test.ts",
+    "new": "tests-new/unit/core/step.test.ts"
+  },
+  {
+    "old": "tests/unit/core/types-step-name-pattern.test.ts",
+    "new": "tests-new/unit/core/types-step-name-pattern.test.ts"
+  },
+  {
+    "old": "tests/unit/core/types.test.ts",
+    "new": "tests-new/unit/core/types.test.ts"
+  },
+  {
+    "old": "tests/unit/core/view-registry.test.ts",
+    "new": "tests-new/unit/core/view-registry.test.ts"
+  },
+  {
+    "old": "tests/unit/core/workflow-args.test.ts",
+    "new": "tests-new/unit/core/workflow-args.test.ts"
+  },
+  {
+    "old": "tests/unit/core/workflow-auto-stop.test.ts",
+    "new": "tests-new/unit/core/workflow-auto-stop.test.ts"
+  },
+  {
+    "old": "tests/unit/core/workflow-name-validation.test.ts",
+    "new": "tests-new/unit/core/workflow-name-validation.test.ts"
+  },
+  {
+    "old": "tests/unit/core/workflow-parallel-lifecycle.test.ts",
+    "new": "tests-new/unit/core/workflow-parallel-lifecycle.test.ts"
+  },
+  {
+    "old": "tests/unit/core/workflow-resume-registry.test.ts",
+    "new": "tests-new/unit/core/workflow-resume-registry.test.ts"
+  },
+  {
+    "old": "tests/unit/core/workflow-tmux-guards.test.ts",
+    "new": "tests-new/unit/core/workflow-tmux-guards.test.ts"
+  },
+  {
+    "old": "tests/unit/core/workflow-typing.test-d.ts",
+    "new": "tests-new/unit/core/workflow-typing.test-d.ts"
+  },
+  {
+    "old": "tests/unit/core/workflow-validators.test.ts",
+    "new": "tests-new/unit/core/workflow-validators.test.ts"
+  },
+  {
+    "old": "tests/unit/core/workflow-vars-cache-key.test.ts",
+    "new": "tests-new/unit/core/workflow-vars-cache-key.test.ts"
+  },
+  {
+    "old": "tests/unit/core/workflow.test.ts",
+    "new": "tests-new/unit/core/workflow.test.ts"
+  },
+  {
+    "old": "tests/unit/core/worktree-executor-cache.test.ts",
+    "new": "tests-new/unit/core/worktree-executor-cache.test.ts"
+  },
+  {
+    "old": "tests/unit/core/worktree-executor-conflicts.test.ts",
+    "new": "tests-new/unit/core/worktree-executor-conflicts.test.ts"
+  },
+  {
+    "old": "tests/unit/core/worktree-executor-postcreate.test.ts",
+    "new": "tests-new/unit/core/worktree-executor-postcreate.test.ts"
+  },
+  {
+    "old": "tests/unit/core/worktree-executor.test.ts",
+    "new": "tests-new/unit/core/worktree-executor.test.ts"
+  },
+  {
+    "old": "tests/unit/core/worktree.test.ts",
+    "new": "tests-new/unit/core/worktree.test.ts"
+  },
+  {
+    "old": "tests/unit/hosts/await-foreground-shutdown.test.ts",
+    "new": "tests-new/unit/hosts/await-foreground-shutdown.test.ts"
+  },
+  {
+    "old": "tests/unit/hosts/failure-text.test.ts",
+    "new": "tests-new/unit/hosts/failure-text.test.ts"
+  },
+  {
+    "old": "tests/unit/hosts/host-registry.test.ts",
+    "new": "tests-new/unit/hosts/host-registry.test.ts"
+  },
+  {
+    "old": "tests/unit/hosts/pane-queue.test.ts",
+    "new": "tests-new/unit/hosts/pane-queue.test.ts"
+  },
+  {
+    "old": "tests/unit/hosts/parallel-rollup.test.ts",
+    "new": "tests-new/unit/hosts/parallel-rollup.test.ts"
+  },
+  {
+    "old": "tests/unit/hosts/plain-host-attach-foreground.test.ts",
+    "new": "tests-new/unit/hosts/plain-host-attach-foreground.test.ts"
+  },
+  {
+    "old": "tests/unit/hosts/plain-host.test.ts",
+    "new": "tests-new/unit/hosts/plain-host.test.ts"
+  },
+  {
+    "old": "tests/unit/hosts/plain/per-step-tee.test.ts",
+    "new": "tests-new/unit/hosts/plain/per-step-tee.test.ts"
+  },
+  {
+    "old": "tests/unit/hosts/plain/plain-host-subworkflow-divider.test.ts",
+    "new": "tests-new/unit/hosts/plain/plain-host-subworkflow-divider.test.ts"
+  },
+  {
+    "old": "tests/unit/hosts/plain/render-line-no-duplicate.test.ts",
+    "new": "tests-new/unit/hosts/plain/render-line-no-duplicate.test.ts"
+  },
+  {
+    "old": "tests/unit/hosts/terminal-reset.test.ts",
+    "new": "tests-new/unit/hosts/terminal-reset.test.ts"
+  },
+  {
+    "old": "tests/unit/hosts/tmux-host-attach-foreground.test.ts",
+    "new": "tests-new/unit/hosts/tmux-host-attach-foreground.test.ts"
+  },
+  {
+    "old": "tests/unit/hosts/tmux-host.test.ts",
+    "new": "tests-new/unit/hosts/tmux-host.test.ts"
+  },
+  {
+    "old": "tests/unit/hosts/two-pane/await-interactive-pane-exit.test.ts",
+    "new": "tests-new/unit/hosts/two-pane/await-interactive-pane-exit.test.ts"
+  },
+  {
+    "old": "tests/unit/hosts/two-pane/kind-details.test.ts",
+    "new": "tests-new/unit/hosts/two-pane/kind-details.test.ts"
+  },
+  {
+    "old": "tests/unit/hosts/two-pane/lifecycle-choreographer.test.ts",
+    "new": "tests-new/unit/hosts/two-pane/lifecycle-choreographer.test.ts"
+  },
+  {
+    "old": "tests/unit/hosts/two-pane/replay-command-pane.test.ts",
+    "new": "tests-new/unit/hosts/two-pane/replay-command-pane.test.ts"
+  },
+  {
+    "old": "tests/unit/hosts/two-pane/replay-transcript.test.ts",
+    "new": "tests-new/unit/hosts/two-pane/replay-transcript.test.ts"
+  },
+  {
+    "old": "tests/unit/hosts/two-pane/session-lost-classification.test.ts",
+    "new": "tests-new/unit/hosts/two-pane/session-lost-classification.test.ts"
+  },
+  {
+    "old": "tests/unit/hosts/two-pane/stdio-capture.test.ts",
+    "new": "tests-new/unit/hosts/two-pane/stdio-capture.test.ts"
+  },
+  {
+    "old": "tests/unit/hosts/two-pane/steps-view/applyLifecycleEvent.test.ts",
+    "new": "tests-new/unit/hosts/two-pane/steps-view/applyLifecycleEvent.test.ts"
+  },
+  {
+    "old": "tests/unit/hosts/two-pane/steps-view/start-steps-view.test.ts",
+    "new": "tests-new/unit/hosts/two-pane/steps-view/start-steps-view.test.ts"
+  },
+  {
+    "old": "tests/unit/hosts/two-pane/steps-view/steps-view-model.test.ts",
+    "new": "tests-new/unit/hosts/two-pane/steps-view/steps-view-model.test.ts"
+  },
+  {
+    "old": "tests/unit/hosts/two-pane/steps-view/tail-ndjson.test.ts",
+    "new": "tests-new/unit/hosts/two-pane/steps-view/tail-ndjson.test.ts"
+  },
+  {
+    "old": "tests/unit/hosts/two-pane/steps-view/tail-state-json.test.ts",
+    "new": "tests-new/unit/hosts/two-pane/steps-view/tail-state-json.test.ts"
+  },
+  {
+    "old": "tests/unit/hosts/two-pane/steps-view/tui-overlay.test.ts",
+    "new": "tests-new/unit/hosts/two-pane/tui-overlay.test.ts"
+  },
+  {
+    "old": "tests/unit/observability/file-session-logger.test.ts",
+    "new": "tests-new/unit/observability/file-session-logger.test.ts"
+  },
+  {
+    "old": "tests/unit/observability/instrument-process-service.test.ts",
+    "new": "tests-new/unit/observability/instrument-process-service.test.ts"
+  },
+  {
+    "old": "tests/unit/observability/null-session-logger.test.ts",
+    "new": "tests-new/unit/observability/null-session-logger.test.ts"
+  },
+  {
+    "old": "tests/unit/observability/readme-template.test.ts",
+    "new": "tests-new/unit/observability/readme-template.test.ts"
+  },
+  {
+    "old": "tests/unit/observability/redact.test.ts",
+    "new": "tests-new/unit/observability/redact.test.ts"
+  },
+  {
+    "old": "tests/unit/observability/status-loop-subworkflow.test.ts",
+    "new": "tests-new/unit/observability/status-loop-subworkflow.test.ts"
+  },
+  {
+    "old": "tests/unit/observability/status-pane.test.ts",
+    "new": "tests-new/unit/observability/status-pane.test.ts"
   },
   {
     "old": "tests/unit/runners/claude/build-command.test.ts",
@@ -326,206 +922,6 @@
   {
     "old": "tests/unit/runners/scripted-fake/scripted-fake-runner.test.ts",
     "new": "tests-new/unit/runners/scripted-fake/scripted-fake-runner.test.ts"
-  },
-  {
-    "old": "tests/integration/runners/claude/claude-e2e-lite.test.ts",
-    "new": "tests-new/integration/runners/claude/claude-e2e-lite.test.ts"
-  },
-  {
-    "old": "tests/integration/runners/claude/claude-mocked.test.ts",
-    "new": "tests-new/integration/runners/claude/claude-mocked.test.ts"
-  },
-  {
-    "old": "tests/integration/runners/claude/claude-real.test.ts",
-    "new": "tests-new/integration/runners/claude/claude-real.test.ts"
-  },
-  {
-    "old": "tests/integration/runners/claude/claude-resume.test.ts",
-    "new": "tests-new/integration/runners/claude/claude-resume.test.ts"
-  },
-  {
-    "old": "tests/integration/runners/claude/claude-structured-mocked.test.ts",
-    "new": "tests-new/integration/runners/claude/claude-structured-mocked.test.ts"
-  },
-  {
-    "old": "tests/integration/runners/claude/claude-structured-real.test.ts",
-    "new": "tests-new/integration/runners/claude/claude-structured-real.test.ts"
-  },
-  {
-    "old": "tests/integration/runners/codex/codex-mocked.test.ts",
-    "new": "tests-new/integration/runners/codex/codex-mocked.test.ts"
-  },
-  {
-    "old": "tests/integration/runners/codex/codex-real.test.ts",
-    "new": "tests-new/integration/runners/codex/codex-real.test.ts"
-  },
-  {
-    "old": "tests/integration/runners/cross-runner-parallel.test.ts",
-    "new": "tests-new/integration/runners/cross-runner-parallel.test.ts"
-  },
-  {
-    "old": "tests/integration/runners/run-runner.test.ts",
-    "new": "tests-new/integration/runners/run-runner.test.ts"
-  },
-  {
-    "old": "tests/integration/runners/scripted-fake-ink.test.tsx",
-    "new": "tests-new/integration/runners/scripted-fake-ink.test.tsx"
-  },
-  {
-    "old": "tests/integration/runners/scripted-fake-interactive.test.ts",
-    "new": "tests-new/integration/runners/scripted-fake-interactive.test.ts"
-  },
-  {
-    "old": "tests/integration/runners/scripted-fake-puppet-addressing.test.ts",
-    "new": "tests-new/integration/runners/scripted-fake-puppet-addressing.test.ts"
-  },
-  {
-    "old": "tests/integration/runners/scripted-fake/entry.real.test.ts",
-    "new": "tests-new/integration/runners/scripted-fake/entry.real.test.ts"
-  },
-  {
-    "old": "tests/integration/runners/scripted-fake/two-step-linear.smoke.test.ts",
-    "new": "tests-new/integration/runners/scripted-fake/two-step-linear.smoke.test.ts"
-  },
-  {
-    "old": "tests/integration/codegen/codegen-fixture.test.ts",
-    "new": "tests-new/integration/codegen/codegen-fixture.test.ts"
-  },
-  {
-    "old": "tests/integration/hosts/plain-host-command-line.test.ts",
-    "new": "tests-new/integration/hosts/plain-host-command-line.test.ts"
-  },
-  {
-    "old": "tests/integration/hosts/plain-mode.test.ts",
-    "new": "tests-new/integration/hosts/plain-mode.test.ts"
-  },
-  {
-    "old": "tests/integration/hosts/plain/transcript-render-claude.test.ts",
-    "new": "tests-new/integration/hosts/plain/transcript-render-claude.test.ts"
-  },
-  {
-    "old": "tests/integration/hosts/tmux-host-command-line.test.ts",
-    "new": "tests-new/integration/hosts/tmux-host-command-line.test.ts"
-  },
-  {
-    "old": "tests/integration/services/fs/bun-fs-service.test.ts",
-    "new": "tests-new/integration/services/fs/bun-fs-service.test.ts"
-  },
-  {
-    "old": "tests/integration/services/process/bun-process-service.test.ts",
-    "new": "tests-new/integration/services/process/bun-process-service.test.ts"
-  },
-  {
-    "old": "tests/integration/services/prompt/ink-prompt-service-real.test.ts",
-    "new": "tests-new/integration/services/prompt/ink-prompt-service-real.test.ts"
-  },
-  {
-    "old": "tests/integration/services/prompt/ink-prompt-service.test.ts",
-    "new": "tests-new/integration/services/prompt/ink-prompt-service.test.ts"
-  },
-  {
-    "old": "tests/integration/state/run-registry.test.ts",
-    "new": "tests-new/integration/state/run-registry.test.ts"
-  },
-  {
-    "old": "tests/integration/state/state-store.test.ts",
-    "new": "tests-new/integration/state/state-store.test.ts"
-  },
-  {
-    "old": "tests/integration/validators/file-produced.test.ts",
-    "new": "tests-new/integration/validators/file-produced.test.ts"
-  },
-  {
-    "old": "tests/integration/validators/git-validators.test.ts",
-    "new": "tests-new/integration/validators/git-validators.test.ts"
-  },
-  {
-    "old": "tests/integration/workflows/builtin-variants.test.ts",
-    "new": "tests-new/integration/workflows/builtin-variants.test.ts"
-  },
-  {
-    "old": "tests/integration/workflows/phased-build-decide.test.ts",
-    "new": "tests-new/integration/workflows/phased-build-decide.test.ts"
-  },
-  {
-    "old": "tests/integration/workflows/phased-build-input.test.ts",
-    "new": "tests-new/integration/workflows/phased-build-input.test.ts"
-  },
-  {
-    "old": "tests/integration/workflows/phased-build-loop.test.ts",
-    "new": "tests-new/integration/workflows/phased-build-loop.test.ts"
-  },
-  {
-    "old": "tests/unit/codegen/discover-prompts.test.ts",
-    "new": "tests-new/unit/codegen/discover-prompts.test.ts"
-  },
-  {
-    "old": "tests/unit/codegen/emit-sidecar.test.ts",
-    "new": "tests-new/unit/codegen/emit-sidecar.test.ts"
-  },
-  {
-    "old": "tests/unit/codegen/extract-placeholders.test.ts",
-    "new": "tests-new/unit/codegen/extract-placeholders.test.ts"
-  },
-  {
-    "old": "tests/unit/codegen/run-codegen.test.ts",
-    "new": "tests-new/unit/codegen/run-codegen.test.ts"
-  },
-  {
-    "old": "tests/unit/config/load-config.test.ts",
-    "new": "tests-new/unit/config/load-config.test.ts"
-  },
-  {
-    "old": "tests/unit/hosts/await-foreground-shutdown.test.ts",
-    "new": "tests-new/unit/hosts/await-foreground-shutdown.test.ts"
-  },
-  {
-    "old": "tests/unit/hosts/failure-text.test.ts",
-    "new": "tests-new/unit/hosts/failure-text.test.ts"
-  },
-  {
-    "old": "tests/unit/hosts/host-registry.test.ts",
-    "new": "tests-new/unit/hosts/host-registry.test.ts"
-  },
-  {
-    "old": "tests/unit/hosts/pane-queue.test.ts",
-    "new": "tests-new/unit/hosts/pane-queue.test.ts"
-  },
-  {
-    "old": "tests/unit/hosts/parallel-rollup.test.ts",
-    "new": "tests-new/unit/hosts/parallel-rollup.test.ts"
-  },
-  {
-    "old": "tests/unit/hosts/plain-host-attach-foreground.test.ts",
-    "new": "tests-new/unit/hosts/plain-host-attach-foreground.test.ts"
-  },
-  {
-    "old": "tests/unit/hosts/plain-host.test.ts",
-    "new": "tests-new/unit/hosts/plain-host.test.ts"
-  },
-  {
-    "old": "tests/unit/hosts/plain/per-step-tee.test.ts",
-    "new": "tests-new/unit/hosts/plain/per-step-tee.test.ts"
-  },
-  {
-    "old": "tests/unit/hosts/plain/plain-host-subworkflow-divider.test.ts",
-    "new": "tests-new/unit/hosts/plain/plain-host-subworkflow-divider.test.ts"
-  },
-  {
-    "old": "tests/unit/hosts/plain/render-line-no-duplicate.test.ts",
-    "new": "tests-new/unit/hosts/plain/render-line-no-duplicate.test.ts"
-  },
-  {
-    "old": "tests/unit/hosts/terminal-reset.test.ts",
-    "new": "tests-new/unit/hosts/terminal-reset.test.ts"
-  },
-  {
-    "old": "tests/unit/hosts/tmux-host-attach-foreground.test.ts",
-    "new": "tests-new/unit/hosts/tmux-host-attach-foreground.test.ts"
-  },
-  {
-    "old": "tests/unit/hosts/tmux-host.test.ts",
-    "new": "tests-new/unit/hosts/tmux-host.test.ts"
   },
   {
     "old": "tests/unit/services/clock/fake-clock.test.ts",
@@ -628,6 +1024,22 @@
     "new": "tests-new/unit/state/state-store.test.ts"
   },
   {
+    "old": "tests/unit/helpers/behavioral-dsl/invariants.test.ts",
+    "new": "tests-new/unit/support/behavioral-dsl/invariants.test.ts"
+  },
+  {
+    "old": "tests/unit/helpers/behavioral-dsl/pane-matchers.test.ts",
+    "new": "tests-new/unit/support/behavioral-dsl/pane-matchers.test.ts"
+  },
+  {
+    "old": "tests/unit/helpers/behavioral-dsl/snapshot.test.ts",
+    "new": "tests-new/unit/support/behavioral-dsl/snapshot.test.ts"
+  },
+  {
+    "old": "tests/unit/setup/reap-test-sockets.test.ts",
+    "new": "tests-new/unit/support/reap-test-sockets.test.ts"
+  },
+  {
     "old": "tests/unit/validators/check.test.ts",
     "new": "tests-new/unit/validators/check.test.ts"
   },
@@ -658,313 +1070,5 @@
   {
     "old": "tests/unit/workflows/resolve-builtin.test.ts",
     "new": "tests-new/unit/workflows/resolve-builtin.test.ts"
-  },
-  {
-    "old": "tests/integration/cli/single-pane-no-terminal-clear.test.ts",
-    "new": "tests-new/integration/cli/single-pane-no-terminal-clear.test.ts"
-  },
-  {
-    "old": "tests/integration/cli/two-pane-auto-attach.test.ts",
-    "new": "tests-new/integration/cli/two-pane-auto-attach.test.ts"
-  },
-  {
-    "old": "tests/integration/cli/run-resume-cycle.test.ts",
-    "new": "tests-new/integration/cli/run-resume-cycle.test.ts"
-  },
-  {
-    "old": "tests/integration/cli/interactive-plain-error.test.ts",
-    "new": "tests-new/integration/cli/interactive-plain-error.test.ts"
-  },
-  {
-    "old": "tests/integration/cli/interactivity-flag.test.ts",
-    "new": "tests-new/integration/cli/interactivity-flag.test.ts"
-  },
-  {
-    "old": "tests/integration/cli/run-end-of-run-summary.test.ts",
-    "new": "tests-new/integration/cli/run-end-of-run-summary.test.ts"
-  },
-  {
-    "old": "tests/integration/cli/run-resume-registry-forwarding.test.ts",
-    "new": "tests-new/integration/cli/run-resume-registry-forwarding.test.ts"
-  },
-  {
-    "old": "tests/integration/cli/unknown-flag.test.ts",
-    "new": "tests-new/integration/cli/unknown-flag.test.ts"
-  },
-  {
-    "old": "tests/integration/cli/two-pane-tty-guard.test.ts",
-    "new": "tests-new/integration/cli/two-pane-tty-guard.test.ts"
-  },
-  {
-    "old": "tests/integration/cli/main-dispatch.test.ts",
-    "new": "tests-new/integration/cli/main-dispatch.test.ts"
-  },
-  {
-    "old": "tests/integration/cli/run-builtin.test.ts",
-    "new": "tests-new/integration/cli/run-builtin.test.ts"
-  },
-  {
-    "old": "tests/unit/cli/detect-self.test.ts",
-    "new": "tests-new/unit/cli/detect-self.test.ts"
-  },
-  {
-    "old": "tests/unit/cli/format.test.ts",
-    "new": "tests-new/unit/cli/format.test.ts"
-  },
-  {
-    "old": "tests/unit/cli/logs-command.test.ts",
-    "new": "tests-new/unit/cli/logs-command.test.ts"
-  },
-  {
-    "old": "tests/unit/cli/argv.test.ts",
-    "new": "tests-new/unit/cli/argv.test.ts"
-  },
-  {
-    "old": "tests/unit/cli/tail-lines.test.ts",
-    "new": "tests-new/unit/cli/tail-lines.test.ts"
-  },
-  {
-    "old": "tests/unit/cli/banner.test.ts",
-    "new": "tests-new/unit/cli/banner.test.ts"
-  },
-  {
-    "old": "tests/unit/cli/types-command-watch.test.ts",
-    "new": "tests-new/unit/cli/types-command-watch.test.ts"
-  },
-  {
-    "old": "tests/unit/cli/run-codegen-prepass.test.ts",
-    "new": "tests-new/unit/cli/run-codegen-prepass.test.ts"
-  },
-  {
-    "old": "tests/unit/cli/types-command.test.ts",
-    "new": "tests-new/unit/cli/types-command.test.ts"
-  },
-  {
-    "old": "tests/unit/cli/detect-tmux.test.ts",
-    "new": "tests-new/unit/cli/detect-tmux.test.ts"
-  },
-  {
-    "old": "tests/unit/cli/execute-with-attach.test.ts",
-    "new": "tests-new/unit/cli/execute-with-attach.test.ts"
-  },
-  {
-    "old": "tests/unit/observability/file-session-logger.test.ts",
-    "new": "tests-new/unit/observability/file-session-logger.test.ts"
-  },
-  {
-    "old": "tests/unit/observability/null-session-logger.test.ts",
-    "new": "tests-new/unit/observability/null-session-logger.test.ts"
-  },
-  {
-    "old": "tests/unit/observability/readme-template.test.ts",
-    "new": "tests-new/unit/observability/readme-template.test.ts"
-  },
-  {
-    "old": "tests/unit/observability/status-loop-subworkflow.test.ts",
-    "new": "tests-new/unit/observability/status-loop-subworkflow.test.ts"
-  },
-  {
-    "old": "tests/unit/observability/instrument-process-service.test.ts",
-    "new": "tests-new/unit/observability/instrument-process-service.test.ts"
-  },
-  {
-    "old": "tests/unit/observability/redact.test.ts",
-    "new": "tests-new/unit/observability/redact.test.ts"
-  },
-  {
-    "old": "tests/unit/observability/status-pane.test.ts",
-    "new": "tests-new/unit/observability/status-pane.test.ts"
-  },
-  {
-    "old": "tests/integration/observability/status-loop.test.ts",
-    "new": "tests-new/integration/observability/status-loop.test.ts"
-  },
-  {
-    "old": "tests/integration/observability/session-logger-debug.integration.test.ts",
-    "new": "tests-new/integration/observability/session-logger-debug.integration.test.ts"
-  },
-  {
-    "old": "tests/integration/observability/session-logger.e2e.test.ts",
-    "new": "tests-new/integration/observability/session-logger.e2e.test.ts"
-  },
-  {
-    "old": "tests/integration/observability/resume-per-step-folder.test.ts",
-    "new": "tests-new/integration/observability/resume-per-step-folder.test.ts"
-  },
-  {
-    "old": "tests/integration/observability/status-real.integration.test.ts",
-    "new": "tests-new/integration/observability/status-real.integration.test.ts"
-  },
-  {
-    "old": "tests/integration/observability/session-logger-baseline.integration.test.ts",
-    "new": "tests-new/integration/observability/session-logger-baseline.integration.test.ts"
-  },
-  {
-    "old": "tests/unit/cli/commands/scaffold.test.ts",
-    "new": "tests-new/unit/cli/commands/scaffold.test.ts"
-  },
-  {
-    "old": "tests/unit/cli/commands/init-templates.test.ts",
-    "new": "tests-new/unit/cli/commands/init-templates.test.ts"
-  },
-  {
-    "old": "tests/integration/cli/commands/logs-old-and-new-runs.test.ts",
-    "new": "tests-new/integration/cli/commands/logs-old-and-new-runs.test.ts"
-  },
-  {
-    "old": "tests/integration/cli/commands/new.test.ts",
-    "new": "tests-new/integration/cli/commands/new.test.ts"
-  },
-  {
-    "old": "tests/integration/cli/commands/init-e2e.test.ts",
-    "new": "tests-new/integration/cli/commands/init-e2e.test.ts"
-  },
-  {
-    "old": "tests/integration/cli/commands/init.test.ts",
-    "new": "tests-new/integration/cli/commands/init.test.ts"
-  },
-  {
-    "old": "tests/integration/cli/commands/status.test.ts",
-    "new": "tests-new/integration/cli/commands/status.test.ts"
-  },
-  {
-    "old": "tests/integration/cli/commands/runs.test.ts",
-    "new": "tests-new/integration/cli/commands/runs.test.ts"
-  },
-  {
-    "old": "tests/integration/cli/commands/resume.test.ts",
-    "new": "tests-new/integration/cli/commands/resume.test.ts"
-  },
-  {
-    "old": "tests/unit/core/step-runfn-typed-vars.test-d.ts",
-    "new": "tests-new/unit/core/step-runfn-typed-vars.test-d.ts"
-  },
-  {
-    "old": "tests/unit/core/ask-types.test-d.ts",
-    "new": "tests-new/unit/core/ask-types.test-d.ts"
-  },
-  {
-    "old": "tests/unit/core/run-workflow-typing.test-d.ts",
-    "new": "tests-new/unit/core/run-workflow-typing.test-d.ts"
-  },
-  {
-    "old": "tests/unit/core/workflow-typing.test-d.ts",
-    "new": "tests-new/unit/core/workflow-typing.test-d.ts"
-  },
-  {
-    "old": "tests/unit/core/prompt-file/template-vars.test-d.ts",
-    "new": "tests-new/unit/core/prompt-file/template-vars.test-d.ts"
-  },
-  {
-    "old": "tests/unit/core/prompt-file/promptfile-registry.test-d.ts",
-    "new": "tests-new/unit/core/prompt-file/promptfile-registry.test-d.ts"
-  },
-  {
-    "old": "tests/e2e/cli/orch-run.test.ts",
-    "new": "tests-new/e2e/cli/orch-run.test.ts"
-  },
-  {
-    "old": "tests/e2e/resume-real-claude.test.ts",
-    "new": "tests-new/e2e/resume-real-claude.test.ts"
-  },
-  {
-    "old": "tests/e2e/steps-tui-e2e.test.ts",
-    "new": "tests-new/e2e/steps-tui-e2e.test.ts"
-  },
-  {
-    "old": "tests/e2e/workflows/builtin-phased-build.e2e.test.ts",
-    "new": "tests-new/e2e/workflows/builtin-phased-build.e2e.test.ts"
-  },
-  {
-    "old": "tests/unit/barrel.test.ts",
-    "new": "tests-new/unit/barrel.test.ts"
-  },
-  {
-    "old": "tests/integration/examples/subworkflows-smoke.test.ts",
-    "new": "tests-new/integration/examples/subworkflows-smoke.test.ts"
-  },
-  {
-    "old": "tests/integration/real-tmux/agent-handle.test.ts",
-    "new": "tests-new/integration/real-tmux/agent-handle.test.ts"
-  },
-  {
-    "old": "tests/integration/real-tmux/teardown-leak-guard.test.ts",
-    "new": "tests-new/integration/real-tmux/teardown-leak-guard.test.ts"
-  },
-  {
-    "old": "tests/integration/real-tmux/predictable-fake-f1.test.ts",
-    "new": "tests-new/integration/real-tmux/predictable-fake-f1.test.ts"
-  },
-  {
-    "old": "tests/integration/real-tmux/predictable-fake-f2.test.ts",
-    "new": "tests-new/integration/real-tmux/predictable-fake-f2.test.ts"
-  },
-  {
-    "old": "tests/integration/real-tmux/predictable-fake-ink.test.ts",
-    "new": "tests-new/integration/real-tmux/predictable-fake-ink.test.ts"
-  },
-  {
-    "old": "tests/integration/real-tmux/predictable-fake-three-step.test.ts",
-    "new": "tests-new/integration/real-tmux/predictable-fake-three-step.test.ts"
-  },
-  {
-    "old": "tests/integration/services/tmux/tmux-real.integration.test.ts",
-    "new": "tests-new/integration/services/tmux/tmux-real.integration.test.ts"
-  },
-  {
-    "old": "tests/unit/helpers/behavioral-dsl/invariants.test.ts",
-    "new": "tests-new/unit/support/behavioral-dsl/invariants.test.ts"
-  },
-  {
-    "old": "tests/unit/helpers/behavioral-dsl/pane-matchers.test.ts",
-    "new": "tests-new/unit/support/behavioral-dsl/pane-matchers.test.ts"
-  },
-  {
-    "old": "tests/unit/helpers/behavioral-dsl/snapshot.test.ts",
-    "new": "tests-new/unit/support/behavioral-dsl/snapshot.test.ts"
-  },
-  {
-    "old": "tests/unit/setup/reap-test-sockets.test.ts",
-    "new": "tests-new/unit/support/reap-test-sockets.test.ts"
-  },
-  {
-    "old": "tests/unit/services/tmux/tmux-service.test.ts",
-    "new": "tests-new/tmux-argv/services/tmux/tmux-service.test.ts"
-  },
-  {
-    "old": "tests/unit/services/tmux/has-session-server.test.ts",
-    "new": "tests-new/tmux-argv/services/tmux/has-session-server.test.ts"
-  },
-  {
-    "old": "tests/unit/services/tmux/external-mouse-events.test.ts",
-    "new": "tests-new/tmux-argv/services/tmux/external-mouse-events.test.ts"
-  },
-  {
-    "old": "tests/unit/services/tmux/session-init.test.ts",
-    "new": "tests-new/tmux-argv/services/tmux/session-init.test.ts"
-  },
-  {
-    "old": "tests/unit/services/tmux/tmux-service-window.test.ts",
-    "new": "tests-new/tmux-argv/services/tmux/tmux-service-window.test.ts"
-  },
-  {
-    "old": "tests/integration/services/tmux/tmux-integration.test.ts",
-    "new": "tests-new/tmux-argv/services/tmux/tmux-integration.test.ts"
-  },
-  {
-    "old": "tests/unit/hosts/two-pane/real-tmux-harness/pane-handle.test.ts",
-    "new": "tests-new/integration/real-tmux/pane-handle.test.ts"
-  },
-  {
-    "old": "tests/unit/hosts/two-pane/real-tmux-harness/socket-allocation.test.ts",
-    "new": "tests-new/integration/real-tmux/socket-allocation.test.ts"
-  },
-  {
-    "old": "tests/integration/tests-setup/cleanup-reaper.real.integration.test.ts",
-    "new": "tests-new/integration/real-tmux/cleanup-reaper.real.integration.test.ts"
-  },
-  {
-    "old": "tests/unit/hosts/two-pane/steps-view/tui-overlay.test.ts",
-    "new": "tests-new/unit/hosts/two-pane/tui-overlay.test.ts"
   }
 ]

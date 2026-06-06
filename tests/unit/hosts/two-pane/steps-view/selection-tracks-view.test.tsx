@@ -1,3 +1,4 @@
+// COVERED BY → tests-new/model/selection--auto-tracks-live-and-browses.test.ts (parent U14 group-B closeout) — every case covered; see ledger. Kept skipped on disk (D2).
 // triage: keep — Tier 2 projection coverage for the HARD invariant that the
 // LEFT pane's highlighted row always equals the step the RIGHT pane shows
 // (`state.view`). Issue 2: the left highlight drifts out of sync with the
@@ -77,7 +78,7 @@ function replayState(steps: readonly StepRow[], stepName: string): StepsViewStat
   return { status: 'live', run: baseRun(), steps, view: { mode: 'replay', stepName } }
 }
 
-describe('<StepsView> left-pane selection tracks the right-pane view (Issue 2)', () => {
+describe.skip('<StepsView> left-pane selection tracks the right-pane view (Issue 2)', () => {
   it('highlights the single live step at startup so the left pane matches the right pane', async () => {
     const steps: readonly StepRow[] = [STEP_WORK]
     const state = replayState(steps, 'work')

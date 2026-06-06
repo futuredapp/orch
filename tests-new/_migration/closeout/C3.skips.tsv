@@ -1,0 +1,10 @@
+tests/integration/hosts/two-pane-mocked.test.ts	// MIGRATED → tests-new/integration/hosts/two-pane/two-pane-mocked.test.ts
+tests/integration/hosts/two-pane-interactive.test.ts	// COVERED BY → tests-new/unit/hosts/tmux-host.test.ts
+tests/integration/hosts/two-pane-sequential-runs.test.ts	// MIGRATED → tests-new/integration/hosts/two-pane/two-pane-sequential-runs.test.ts
+tests/integration/hosts/two-pane-failure-and-parallel.test.ts	// COVERED BY → tests-new/unit/hosts/tmux-host.test.ts
+tests/integration/hosts/two-pane-interactive-session-lost.test.ts	// MIGRATED → tests-new/integration/hosts/two-pane/two-pane-interactive-session-lost.test.ts
+tests/integration/hosts/two-pane/right-pane-live-output.test.ts	// COVERED BY → tests-new/unit/hosts/tmux-host.test.ts + tests-new/model/controller/right-pane-controller-sources.test.ts (mixed — see ledger)
+tests/integration/hosts/two-pane/right-pane-replay.integration.test.ts	// COVERED BY → tests-new/model/controller/right-pane-on-intent.test.ts (mixed — see ledger)
+tests/integration/hosts/two-pane/right-pane-source-invariant.test.ts	// COVERED BY → tests-new/model/controller/right-pane-controller-sources.test.ts (mixed — see ledger)
+tests/integration/hosts/two-pane/right-pane-busy-gate.integration.test.ts	// COVERED BY → tests-new/model/controller/right-pane-on-intent.test.ts
+tests/integration/hosts/two-pane/right-pane-live-doubling.real.integration.test.ts	// DROPPED → vacuous fake-tmux byte assertion; U5 no-sendKeys + tee-single-copy covered by tests-new/unit/hosts/tmux-host.test.ts (see ledger)

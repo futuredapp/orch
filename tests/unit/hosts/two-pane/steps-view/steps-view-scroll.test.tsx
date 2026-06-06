@@ -1,3 +1,4 @@
+// COVERED BY → tests-new/model/scroll--viewport-follows-window.test.ts (parent U14 group-B closeout) — every case covered; see ledger. Kept skipped on disk (D2).
 // triage: keep — Tier 2 projection coverage for the scrollable viewport.
 //
 // Covers R10/R11/R12 of the scrollable-two-pane plan (U5):
@@ -54,7 +55,7 @@ function makeState(steps: readonly StepRow[]): StepsViewState {
   }
 }
 
-describe('<StepsView> scroll viewport', () => {
+describe.skip('<StepsView> scroll viewport', () => {
   it('starts at live tail with no scrolled indicator in the footer', async () => {
     const ui = render(
       <StepsView state={makeState(manySteps(5))} onIntent={() => {}} now={() => 5_000} />,

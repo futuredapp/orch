@@ -1,0 +1,22 @@
+[
+  {
+    "old": "tests/unit/hosts/two-pane/steps-view/steps-view-model.test.ts",
+    "new": "tests-new/unit/hosts/two-pane/steps-view/steps-view-model.test.ts"
+  },
+  {
+    "old": "tests/unit/hosts/two-pane/steps-view/applyLifecycleEvent.test.ts",
+    "new": "tests-new/unit/hosts/two-pane/steps-view/applyLifecycleEvent.test.ts"
+  },
+  {
+    "old": "tests/unit/hosts/two-pane/steps-view/start-steps-view.test.ts",
+    "new": "tests-new/unit/hosts/two-pane/steps-view/start-steps-view.test.ts"
+  },
+  {
+    "old": "tests/unit/hosts/two-pane/steps-view/tail-ndjson.test.ts",
+    "new": "tests-new/unit/hosts/two-pane/steps-view/tail-ndjson.test.ts"
+  },
+  {
+    "old": "tests/unit/hosts/two-pane/steps-view/tail-state-json.test.ts",
+    "new": "tests-new/unit/hosts/two-pane/steps-view/tail-state-json.test.ts"
+  }
+]

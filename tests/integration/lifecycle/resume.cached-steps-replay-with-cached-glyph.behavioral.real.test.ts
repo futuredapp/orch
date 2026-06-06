@@ -1,3 +1,4 @@
+// COVERED BY → tests-new/integration/observability/resume-per-step-folder.test.ts (parent U14 group-B closeout) — unit behavior covered; end-to-end real-tmux/host assertion dropped (no faithful fake substrate, P14-D5); see ledger. Kept skipped on disk (D2).
 /**
  * Behavioral cell — after a crashed run, `orch resume <id>` replays cached
  * steps from `state.json` (the runner is NOT invoked again) and re-runs the
@@ -40,7 +41,7 @@ afterEach(async () => {
   if (firstHandle !== undefined) await firstHandle.teardown()
 })
 
-describe.skipIf(!canRunRealTmux())('Tier 5 behavioral — orch resume replays cached steps', () => {
+describe.skip('Tier 5 behavioral — orch resume replays cached steps', () => {
   it('cached plan survives across runs; execute re-runs and the resumed run completes', async () => {
     firstHandle = await launchOrchWorkflow('resumable-crash', {
       script: { plan: puppet(), execute: puppet() },

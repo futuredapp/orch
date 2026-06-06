@@ -1,3 +1,4 @@
+// DROPPED → vacuous fake-tmux byte assertion; U5 no-sendKeys + tee-single-copy covered by tests-new/unit/hosts/tmux-host.test.ts (see ledger)
 // Real-tmux regression guard for the "doubled live output" bug.
 //
 // History — before U5 (the file-tail rewrite):
@@ -74,7 +75,7 @@ afterEach(async () => {
   dirsToClean = []
 })
 
-describe.skipIf(!canRun)('two-pane right-pane live output (regression guard)', () => {
+describe.skip('two-pane right-pane live output (regression guard)', () => {
   it('does not double-render or echo ANSI bytes in the visible right pane (file-tail model)', async () => {
     // Drive a full TmuxHost workflow against a FakeTmuxService — the
     // assertion target is the recorded call stream. The bug surface this

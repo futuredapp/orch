@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/hosts/two-pane/two-pane-mocked.test.ts
 // two-pane-mocked: drive a two-step FakeRunner workflow through the TmuxHost
 // backed by FakeTmuxService. Asserts the recorded tmux command stream never
 // contains raw JSON on the right pane and that status frames land on the left.
@@ -33,7 +34,7 @@ function bufferStream(): { stream: NodeJS.WritableStream; text: () => string } {
 
 const RUN_ID = 'r-2026-04-23-489539-t7' as RunId
 
-describe('two-pane mocked workflow', () => {
+describe.skip('two-pane mocked workflow', () => {
   it('streams readable transcript bytes through the per-step tee (U5: no right-pane sendKeys for transcripts)', async () => {
     const fs = new FakeFsService()
     const processService = new FakeProcessService()

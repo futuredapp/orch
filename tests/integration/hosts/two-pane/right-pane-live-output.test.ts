@@ -1,3 +1,4 @@
+// COVERED BY → tests-new/unit/hosts/tmux-host.test.ts + tests-new/model/controller/right-pane-controller-sources.test.ts (mixed — see ledger)
 // triage: rewrite — multi-scenario file. argv-shape scenarios are Tier 3 territory (keep). "no sendKeys on visible right pane" scenarios are Tier 1 (autonomous-live-pane-shows-content). Split the file in U6.
 // Contract test for the *live* path that feeds the right pane while a runner
 // is producing events.
@@ -134,7 +135,7 @@ async function driveOneAssistantStep(events: ReadonlyArray<string>): Promise<Dri
   }
 }
 
-describe('two-pane host live path: file-tail source per autonomous step', () => {
+describe.skip('two-pane host live path: file-tail source per autonomous step', () => {
   it('writes runner bytes to the per-step tee instead of the visible right pane', async () => {
     const { tmux, teeAnsi, teeTxt } = await driveOneAssistantStep([
       'first thinking',

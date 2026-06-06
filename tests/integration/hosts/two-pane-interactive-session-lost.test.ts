@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/hosts/two-pane/two-pane-interactive-session-lost.test.ts
 // Bug repro: when the tmux session has died externally (e.g. the user killed
 // the tmux server while attached, then `awaitForegroundShutdown` settled with
 // `'attach-exited'` and the workflow advanced to the next interactive step),
@@ -35,7 +36,7 @@ function bufferStream(): { stream: NodeJS.WritableStream; text: () => string } {
 
 const RUN_ID = 'r-2026-05-21-993100-zz' as RunId
 
-describe('two-pane interactive step — tmux session lost externally', () => {
+describe.skip('two-pane interactive step — tmux session lost externally', () => {
   it('translates the dead-socket TmuxCommandError into a HostUnavailableError instead of letting it escape un-wrapped', async () => {
     const fs = new FakeFsService()
     const processService = new FakeProcessService()

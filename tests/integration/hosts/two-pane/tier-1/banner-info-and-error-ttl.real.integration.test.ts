@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/real-tmux/banner-info-and-error-ttl.test.ts
 // triage: keep — Tier 1 banner visibility on the left pane.
 //
 // The right-pane controller emits an error banner on `step:failed`. The
@@ -37,37 +38,34 @@ afterEach(async () => {
   fixturesToDispose = []
 })
 
-describe.skipIf(!tmuxAvailable)(
-  'Tier 1 — error banner surfaces step failure in the left pane',
-  () => {
-    it(
-      "step:failed renders 'step plan failed' in the steps-view left pane",
-      async () => {
-        const fixture = await createRealTmuxFixture({ env: {} })
-        fixturesToDispose.push(fixture)
-        const agentProcessService = new FakeProcessService()
-        const harness = await mountTmuxHost(fixture, {
-          disableStepsView: false,
-          agentProcessService,
-        })
-        harnessesToTeardown.push(harness)
+describe.skip('Tier 1 — error banner surfaces step failure in the left pane', () => {
+  it(
+    "step:failed renders 'step plan failed' in the steps-view left pane",
+    async () => {
+      const fixture = await createRealTmuxFixture({ env: {} })
+      fixturesToDispose.push(fixture)
+      const agentProcessService = new FakeProcessService()
+      const harness = await mountTmuxHost(fixture, {
+        disableStepsView: false,
+        agentProcessService,
+      })
+      harnessesToTeardown.push(harness)
 
-        const agent = new FakeRunner(agentProcessService)
-        agent.script({
-          failWith: { message: 'simulated agent failure', exitCode: 1 },
-        })
+      const agent = new FakeRunner(agentProcessService)
+      agent.script({
+        failWith: { message: 'simulated agent failure', exitCode: 1 },
+      })
 
-        // Workflow throws on step failure — `completed: false` is expected.
-        const run = await harness.runWorkflow([{ name: 'plan', agent }])
-        expect(run.completed).toBe(false)
+      // Workflow throws on step failure — `completed: false` is expected.
+      const run = await harness.runWorkflow([{ name: 'plan', agent }])
+      expect(run.completed).toBe(false)
 
-        await harness.left.waitForText('step plan failed', {
-          timeoutMs: REAL_TMUX_ASSERT_TIMEOUT_MS,
-        })
-        const frame = await harness.left.capture()
-        expect(frame).toContain('step plan failed')
-      },
-      REAL_TMUX_TEST_TIMEOUT_MS,
-    )
-  },
-)
+      await harness.left.waitForText('step plan failed', {
+        timeoutMs: REAL_TMUX_ASSERT_TIMEOUT_MS,
+      })
+      const frame = await harness.left.capture()
+      expect(frame).toContain('step plan failed')
+    },
+    REAL_TMUX_TEST_TIMEOUT_MS,
+  )
+})

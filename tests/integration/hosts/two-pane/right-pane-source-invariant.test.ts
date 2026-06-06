@@ -1,3 +1,4 @@
+// COVERED BY → tests-new/model/controller/right-pane-controller-sources.test.ts (mixed — see ledger)
 // Cross-cutting invariant guard: no `respawnPane` invocation in
 // `src/hosts/two-pane/` targets the visible right pane id.
 //
@@ -57,7 +58,7 @@ function stripComments(source: string): string {
 // span fewer than 200.
 const FORBIDDEN_PATTERN = /respawnPane\s*\([\s\S]{0,400}?target:\s*(?:[\w.]+\.)?rightPaneId\b/
 
-describe('two-pane right-pane source invariant', () => {
+describe.skip('two-pane right-pane source invariant', () => {
   it('no respawnPane call in src/hosts/two-pane/ targets rightPaneId (use controller.showSource instead)', async () => {
     const files = await listSourceFiles(TWO_PANE_DIR)
     expect(files.length).toBeGreaterThan(0)

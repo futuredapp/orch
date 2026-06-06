@@ -1,3 +1,4 @@
+// COVERED BY → tests-new/screen/launch--header-and-step-list-render.test.ts (parent U14 group-B closeout) — every case covered; see ledger. Kept skipped on disk (D2).
 // Behavioral test: re-renders + pane resize must not stack breadcrumb headers.
 //
 // Bug: in production the left-pane steps-view repeatedly prints its
@@ -296,7 +297,7 @@ function countBreadcrumbs(screen: string, breadcrumbPrefix: string): number {
   return count
 }
 
-describe('<StepsView> header re-render on resize (regression)', () => {
+describe.skip('<StepsView> header re-render on resize (regression)', () => {
   it('renders the breadcrumb header exactly once after state changes + a pane resize at a narrow width', async () => {
     const stdout = new VirtualStdout(30, 24)
     const stdin = new VirtualStdin()

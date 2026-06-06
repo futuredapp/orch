@@ -41,6 +41,7 @@
     "test:e2e": "RUN_REAL_E2E=1 bun test tests/e2e",
     "test:watch": "bun test --watch tests/unit",
     "overlap-report": "bun run tests-new/_migration/overlap-report.ts",
+    "reconcile": "bun run tests-new/_migration/reconcile.ts",
     "docs:dev": "vitepress dev docs/public",
     "docs:build": "vitepress build docs/public",
     "docs:preview": "vitepress preview docs/public"

@@ -1,0 +1,46 @@
+[
+  {
+    "old": "tests/integration/hosts/two-pane/end-of-run.real.integration.test.ts",
+    "new": "tests-new/integration/real-tmux/end-of-run.test.ts"
+  },
+  {
+    "old": "tests/integration/hosts/two-pane/pane-map-source-session.real.integration.test.ts",
+    "new": "tests-new/integration/real-tmux/pane-map-source-session.test.ts"
+  },
+  {
+    "old": "tests/integration/hosts/two-pane/real-tmux-server-killed-externally.integration.test.ts",
+    "new": "tests-new/integration/real-tmux/server-killed-externally.test.ts"
+  },
+  {
+    "old": "tests/integration/hosts/two-pane/transcript-replay-memory.smoke.test.ts",
+    "new": "tests-new/integration/hosts/two-pane/transcript-replay-memory.smoke.test.ts"
+  },
+  {
+    "old": "tests/integration/hosts/two-pane/steps-view-header-no-duplicate.real.integration.test.ts",
+    "new": "tests-new/integration/real-tmux/steps-view-header-no-duplicate.test.ts"
+  },
+  {
+    "old": "tests/integration/hosts/two-pane/steps-view/steps-tui.real.integration.test.ts",
+    "new": "tests-new/integration/real-tmux/steps-tui.test.ts"
+  },
+  {
+    "old": "tests/integration/hosts/two-pane/tier-1/banner-info-and-error-ttl.real.integration.test.ts",
+    "new": "tests-new/integration/real-tmux/banner-info-and-error-ttl.test.ts"
+  },
+  {
+    "old": "tests/integration/hosts/two-pane/tier-1/right-pane-shows-failure-summary.real.integration.test.ts",
+    "new": "tests-new/integration/real-tmux/right-pane-shows-failure-summary.test.ts"
+  },
+  {
+    "old": "tests/integration/hosts/two-pane/wheel-no-mode-error.real.test.ts",
+    "new": "tests-new/integration/real-tmux/wheel-no-mode-error.test.ts"
+  },
+  {
+    "old": "tests/integration/hosts/two-pane/wheel-up-on-ink-prompt-no-copy-mode.real.test.ts",
+    "new": "tests-new/integration/real-tmux/wheel-up-on-ink-prompt-no-copy-mode.test.ts"
+  },
+  {
+    "old": "tests/integration/hosts/two-pane/windows.real.integration.test.ts",
+    "new": "tests-new/integration/real-tmux/windows.test.ts"
+  }
+]

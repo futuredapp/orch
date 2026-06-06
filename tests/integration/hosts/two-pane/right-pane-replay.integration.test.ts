@@ -1,3 +1,4 @@
+// COVERED BY → tests-new/model/controller/right-pane-on-intent.test.ts (mixed — see ledger)
 // triage: rewrite — swap-based replay visible outcome covered at Tier 1 (replay-shows-same-transcript-as-live). Keep controller-level fallback paths (refusal text, missing tee) Tier 1 cannot easily reach.
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
@@ -90,7 +91,7 @@ afterEach(async () => {
   await rm(tempDir, { recursive: true, force: true })
 })
 
-describe('right-pane-controller swap-based replay (U8)', () => {
+describe.skip('right-pane-controller swap-based replay (U8)', () => {
   it('spawns tail -F over .replay/<step>.txt in a per-source session and swaps in for a commit step', async () => {
     const tmux = new FakeTmuxService()
     tmux.nextCreateSessionPaneId(paneId('%100'))

@@ -1,3 +1,4 @@
+// COVERED BY → tests-new/full-host/fake-agent/follow-live--right-pane-swaps-source.test.ts (+ model/controller/right-pane-controller-sources.test.ts) — starting-marker-so-live-pane-never-blank is the autonomous live-source register DECISION; visible swap proven by the U6 full-host twin
 // triage: rewrite — file-existence proxy for "the live pane shows content immediately". Tier 1 (autonomous-live-pane-shows-content) asserts the visible-pane outcome directly. Rewrite to keep only the "starting marker is the first byte" invariant Tier 1 does not pin.
 // Regression test for "autonomous step's live pane stays blank for the entire
 // run" — observed in `r-2026-05-11-163506-44`. The right pane is `tail -F` on
@@ -71,7 +72,7 @@ afterEach(async () => {
   await rm(tempDir, { recursive: true, force: true })
 })
 
-describe('tmux-host — autonomous step:start writes a starting marker so the live pane is never blank', () => {
+describe.skip('tmux-host — autonomous step:start writes a starting marker so the live pane is never blank', () => {
   it('creates the tee file with non-empty content before any runner events arrive, so tail -F has something to render immediately', async () => {
     // ----- Arrange -----
     const tmux = new FakeTmuxService()

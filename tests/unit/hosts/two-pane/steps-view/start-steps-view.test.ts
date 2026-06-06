@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/hosts/two-pane/steps-view/start-steps-view.test.ts (parent U14) — demote-relocated (pure logic); kept skipped on disk (D2).
 // Unit tests for `startStepsView`.
 //
 // We drive the parent-side factory against:
@@ -73,7 +74,7 @@ async function makeStateDir(): Promise<{ stateDir: string; intentsPath: string }
   return { stateDir, intentsPath }
 }
 
-describe('startStepsView', () => {
+describe.skip('startStepsView', () => {
   it('records intentsStartOffset = 0 for a fresh state dir and spawns the runner script onto the left pane', async () => {
     const h = makeHarness()
     h.host.setInteractiveResult({ exitCode: 0, durationMs: 0 })
@@ -314,7 +315,7 @@ describe('startStepsView', () => {
   })
 })
 
-describe('StepsIntentSchema', () => {
+describe.skip('StepsIntentSchema', () => {
   it('parses {type: "dismiss-banner"} successfully', () => {
     expect(() => StepsIntentSchema.parse({ type: 'dismiss-banner' })).not.toThrow()
   })

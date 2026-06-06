@@ -1,3 +1,4 @@
+// COVERED BY → tests-new/full-host/fake-agent/multi-step--right-pane-auto-advances.test.ts (parent U14) — superseded by the full-host DSL fixture; see ledger. Kept skipped on disk (D2).
 /**
  * Tier 5 launcher smoke. Boots the `two-step-linear` fixture via the orch
  * CLI as a real subprocess, observes `state.json` appear, drives a held
@@ -33,7 +34,7 @@ afterEach(async () => {
   }
 })
 
-describe.skipIf(!canRunRealTmux())('Tier 5 launcher — two-step-linear smoke', () => {
+describe.skip('Tier 5 launcher — two-step-linear smoke', () => {
   it('boots the fixture, parses runId, lands on a reserved socket, and exposes the rawStreams handle', async () => {
     handle = await launchOrchWorkflow('two-step-linear', {
       script: {

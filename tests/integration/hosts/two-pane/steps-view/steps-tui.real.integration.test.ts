@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/real-tmux/steps-tui.test.ts
 // Real-tmux integration for the steps-view daemon. Boots a tmux server,
 // spawns the Ink steps-view-runner script as a real child onto the left
 // pane, gives it ~600ms to read the seeded `state.json` and render, then
@@ -65,7 +66,7 @@ const RUNNER_SCRIPT = resolve(
   '../../../../../src/hosts/two-pane/steps-view/steps-view-runner.tsx',
 )
 
-describe.skipIf(!canRun)('steps-view-runner against a real tmux server', () => {
+describe.skip('steps-view-runner against a real tmux server', () => {
   it(
     'renders the seeded workflow name and step name into the left pane',
     async () => {

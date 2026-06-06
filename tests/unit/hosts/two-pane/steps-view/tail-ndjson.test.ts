@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/hosts/two-pane/steps-view/tail-ndjson.test.ts (parent U14) — demote-relocated (pure logic); kept skipped on disk (D2).
 // Unit tests for `tailNdjson` against real fs.
 //
 // Pins the line-framing contract:
@@ -24,7 +25,7 @@ afterEach(async () => {
 
 const wait = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
-describe('tailNdjson', () => {
+describe.skip('tailNdjson', () => {
   it('emits one onLine call per newline-terminated record found in the file', async () => {
     const filePath = `${tmpDir}/lifecycle.ndjson`
     await fs.writeFile(filePath, '{"a":1}\n{"a":2}\n')

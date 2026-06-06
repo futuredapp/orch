@@ -1,3 +1,4 @@
+// COVERED BY → tests-new/model/selection--auto-tracks-live-and-browses.test.ts (parent U14 group-B closeout) — every case covered; see ledger. Kept skipped on disk (D2).
 // triage: keep — Tier 2 projection coverage for the published keymap.
 //
 // Each key in the published vocabulary must produce exactly one
@@ -55,7 +56,7 @@ function baseState(opts?: { banner?: StepsViewState['banner'] }): StepsViewState
   return state
 }
 
-describe('<StepsView> key → intent mapping', () => {
+describe.skip('<StepsView> key → intent mapping', () => {
   it('⏎ on the selected step fires { type: enter, stepName }', async () => {
     const intents: StepsViewIntent[] = []
     const ui = render(

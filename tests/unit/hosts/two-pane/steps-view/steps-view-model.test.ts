@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/hosts/two-pane/steps-view/steps-view-model.test.ts (parent U14) — demote-relocated (pure logic); kept skipped on disk (D2).
 // Fixture-driven tests for `projectStepsView` — the pure projector that fuses
 // persisted RunState with the live overlay into a render-ready
 // `StepsViewState`.
@@ -14,7 +15,7 @@ import { makeRunState, makeStepEntry } from '../../../../helpers/make-step-entry
 
 const HEADER = { workflowName: 'demo', runIdFallback: 'r-2026-04-10-458000-q8' }
 
-describe('projectStepsView', () => {
+describe.skip('projectStepsView', () => {
   it('returns a live state with no steps when neither persisted state nor overlay exist', () => {
     const state = projectStepsView({
       run: undefined,

@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/real-tmux/windows.test.ts
 // Gated real-tmux test — verifies the create / select / kill window dance
 // works against a live tmux server (not a fake recorder). Each test creates
 // its own socket and kills the server in `afterEach`.
@@ -51,7 +52,7 @@ const listWindowIds = async (socket: SocketName, session: string): Promise<strin
   return stdout.split('\n').filter((l) => l.trim().length > 0)
 }
 
-describe.skipIf(!canRun)('RealTmuxService window lifecycle on real tmux', () => {
+describe.skip('RealTmuxService window lifecycle on real tmux', () => {
   // Note: detach + reattach preserving both windows is documented in the plan
   // as a desirable property; scripting it here would require a pty harness
   // beyond what this test owns. Cover the create / select / kill happy path

@@ -1,3 +1,4 @@
+// COVERED BY → tests-new/model/controller/right-pane-on-intent.test.ts
 // Integration coverage for the post-U8 invariant: there is no busy gate.
 // Past-step Enter is always allowed because the swap model is non-destructive
 // (the live source remains registered and intact; Enter swaps the visible
@@ -87,7 +88,7 @@ afterEach(async () => {
   await rm(tempDir, { recursive: true, force: true })
 })
 
-describe('right-pane: busy-gate removal (U8)', () => {
+describe.skip('right-pane: busy-gate removal (U8)', () => {
   it('issues no stray sendKeys footer or respawn-cat on the visible right pane while a step is in flight or after it completes', async () => {
     const tmux = new FakeTmuxService()
     tmux.setListPanesResult(['%0'])

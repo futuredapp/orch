@@ -1,3 +1,4 @@
+// COVERED BY → tests-new/unit/observability/file-session-logger.test.ts (parent U14 group-B closeout) — unit behavior covered; end-to-end real-tmux/host assertion dropped (no faithful fake substrate, P14-D5); see ledger. Kept skipped on disk (D2).
 /**
  * Behavioral cell — per-step artifacts (session.json, events.ndjson) land on
  * disk under `.orch/state/<runId>/agents/<step>/` after each step completes.
@@ -26,7 +27,7 @@ afterEach(async () => {
   if (handle !== undefined) await handle.teardown()
 })
 
-describe.skipIf(!canRunRealTmux())('Tier 5 behavioral — per-step artifacts', () => {
+describe.skip('Tier 5 behavioral — per-step artifacts', () => {
   it('writes session.json and events.ndjson for each completed step', async () => {
     handle = await launchOrchWorkflow('three-step-linear', {
       script: { plan: puppet(), execute: puppet(), finalize: puppet() },

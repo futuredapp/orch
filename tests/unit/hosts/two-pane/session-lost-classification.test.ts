@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/hosts/two-pane/session-lost-classification.test.ts (parent U14) — demote-relocated (pane-agnostic unit); kept skipped on disk (D2).
 // Adapter-level pinning of `isSessionLostError` / `TMUX_SESSION_LOST_PATTERN`
 // against the full set of "tmux server is gone" stderr shapes observed in the
 // wild.
@@ -23,7 +24,7 @@ import { TmuxCommandError } from '../../../../src/services/tmux/index.ts'
 const mk = (stderr: string): TmuxCommandError =>
   new TmuxCommandError(1, stderr, `tmux command failed (exit 1): ${stderr}`)
 
-describe('isSessionLostError — wild stderr shapes', () => {
+describe.skip('isSessionLostError — wild stderr shapes', () => {
   it('classifies the macOS "error connecting to ... (No such file or directory)" shape as session-lost', () => {
     // The exact shape from incident r-2026-05-22-093650-j0.
     const err = mk(
@@ -65,7 +66,7 @@ describe('isSessionLostError — wild stderr shapes', () => {
   })
 })
 
-describe('isSessionLostError — negative cases (must NOT be classified)', () => {
+describe.skip('isSessionLostError — negative cases (must NOT be classified)', () => {
   it('does NOT classify "no space for new pane" — this is in-server, not server-lost', () => {
     const err = mk('no space for new pane')
     expect(isSessionLostError(err)).toBe(false)

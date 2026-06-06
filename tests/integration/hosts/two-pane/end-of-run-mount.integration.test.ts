@@ -1,3 +1,4 @@
+// COVERED BY → tests-new/lifecycle/q-intent--tears-down-cleanly.test.ts (+ lifecycle/launch--boots-to-mid-step-and-tears-down.test.ts) — host-stays-alive-past-completion / idempotent-teardown / quit-fires-once are PROCESS lifecycle plumbing
 // Phase 4 integration: end-of-run mount lifecycle (mocked tmux).
 //
 // Drives a tmux host with a FakeTmuxService + FakeProcessService and asserts:
@@ -44,7 +45,7 @@ afterEach(async () => {
   if (tmpDir) await fs.rm(tmpDir, { recursive: true, force: true })
 })
 
-describe('end-of-run mount (mocked tmux)', () => {
+describe.skip('end-of-run mount (mocked tmux)', () => {
   it('keeps the host alive past workflow completion until awaitForegroundShutdown fires', async () => {
     const tmux = new FakeTmuxService()
     tmux.setListPanesResult(['%0'])

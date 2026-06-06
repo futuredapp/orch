@@ -1,3 +1,4 @@
+// COVERED BY → tests-new/unit/hosts/tmux-host.test.ts
 // Phase D2 integration coverage — drives the TmuxHost through the workflow
 // executor for two scenarios:
 //   - a failing autonomous step ends up rendering the Story 1.5 failure frame
@@ -40,7 +41,7 @@ function rightPayloads(tmux: FakeTmuxService, right: string): string[] {
     .map((c) => (c.method === 'sendKeys' ? c.opts.keys.join('') : ''))
 }
 
-describe('two-pane D2 — failing step', () => {
+describe.skip('two-pane D2 — failing step', () => {
   it('renders the Story 1.5 failure frame on the right pane when an autonomous step fails', async () => {
     const fs = new FakeFsService()
     const processService = new FakeProcessService()
@@ -103,7 +104,7 @@ describe('two-pane D2 — failing step', () => {
   })
 })
 
-describe('two-pane D2 — parallel rollup', () => {
+describe.skip('two-pane D2 — parallel rollup', () => {
   it('does not fan rollup bytes onto the right pane (U7 invariant) — no logger, no controller', async () => {
     const fs = new FakeFsService()
     const processService = new FakeProcessService()

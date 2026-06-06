@@ -1,3 +1,4 @@
+// COVERED BY → tests-new/model/controller/right-pane-controller-failure-recovery.test.ts (+ resume-refusal.test.ts) — resume-failure footer/file-tail/no-respawn is an error-containment controller DECISION at the FakeTmuxService seam (passes if pane empty)
 // Integration coverage for the resume failure path under the U8 swap-based
 // model. When `resumeCommand` throws, the controller writes the canonical
 // `"resume failed — press f to return..."` footer to the per-step `.replay/`
@@ -120,7 +121,7 @@ afterEach(async () => {
   await rm(tempDir, { recursive: true, force: true })
 })
 
-describe('resume launcher — failure path (U8 swap-based, mocked tmux)', () => {
+describe.skip('resume launcher — failure path (U8 swap-based, mocked tmux)', () => {
   it('writes the canonical "resume failed" footer and tails it from a hidden pane', async () => {
     const tmux = new FakeTmuxService()
     tmux.nextCreateSessionPaneId(paneId('%500'))

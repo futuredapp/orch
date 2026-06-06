@@ -537,3 +537,40 @@ two-pane-DSL-literate agent, not the relocation recipe) to disposition each as
 (`make-step-entry`, `fake-host`, `real-tmux`, `behavioral-dsl`) stay KEPT — each still has
 live old consumers among those leftovers. No `src/` file changed; the frozen baseline was
 never regenerated.
+
+## Phase 14
+
+Phase 14 is the **group-B closeout** the parent plan calls for in prose (§9) and Phase
+13's handoff named as the genuine next phase — not the U14 reconciliation itself, which
+is already well-specified and is deferred to Phase 15. Its job was to drain the migration
+gap: U13 left 57 old two-pane / lifecycle / steps-view test files still LIVE (un-skipped)
+because a relocation isn't allowed to re-derive, and those 224 cases were blocking the
+final reconciliation. This phase gave every one of them a disposition and skipped them, so
+the frozen-baseline scan now comes back clean. It is test-only — no `src/` change.
+
+The disposition split, applied with the two-pane DSL's triage rule ("would this still pass
+if the pane were empty?"): the bulk were **skip-as-covered** (a `tests-new/` twin already
+proves the risk — U5–U9 had re-derived it), **26 files were demote-relocated** verbatim
+into `tests-new/` (pane-agnostic logic/classification tests plus genuine real-tmux adapter
+tests, with gating preserved), and a handful of vacuous fake-tmux byte assertions were
+**dropped** with reasons. Zero re-derivations were needed — the coverage already existed,
+so this was a pure pruning pass. The work was fanned out across six cluster subagents that
+each produced disjoint ledger/skip/relocation fragments, then integrated centrally and
+verified by three independent oracles, all green: the new `reconcile.ts` frozen-baseline
+scanner (`bun run reconcile`, zero unaccounted cases), the import-parity guard (268
+relocation pairs), and the overlap report. `bun run lint`, `typecheck`, and the
+`tests-new` suites are green; the only red is the 5 pre-existing `.orch/` ENOENT fixture
+failures, unrelated to this phase.
+
+Two things matter for next work (Phase 15 = parent U14). First, `reconcile.ts` ships
+**non-blocking** and implements assertions #1 (skip-completeness, the load-bearing oracle)
+and #3 (marker-target existence) strictly, plus a non-blocking #2 (ledger-completeness — it
+reports noise today because the prose ledger abbreviates many older relocation paths;
+normalise the ledger to a machine-keyed table before making #2 strict). Phase 15 promotes
+it to blocking, adds assertions #4–#6, flips the default gate onto `tests-new/`, and records
+the restructure as landed. Second, **W6 (deleting the four `_support` re-export shims) was
+deferred as a discovered blocker**: those shims are imported tree-wide (not just by group-B),
+and a `describe.skip` file still resolves its top-level imports at load — verified — so
+deleting a shim breaks the old suite at module-load as long as any runner still loads the
+old tree. The shims stay KEPT; the full reasoning and the recommended resolution are written
+into the ledger's Phase 15 handoff.

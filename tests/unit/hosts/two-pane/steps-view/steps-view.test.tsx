@@ -1,3 +1,4 @@
+// COVERED BY → tests-new/model/launch--header-and-step-list-render.test.ts (parent U14 group-B closeout) — every case covered; see ledger. Kept skipped on disk (D2). (mixed — see ledger per case)
 // Frame-snapshot tests for `<StepsView>` at width 110.
 //
 // Use `renderToString` (Ink 7) — synchronous, deterministic, no terminal
@@ -69,7 +70,7 @@ const completedState: StepsViewState = {
   view: { mode: 'live' },
 }
 
-describe('<StepsView> frame snapshots at width 110', () => {
+describe.skip('<StepsView> frame snapshots at width 110', () => {
   it('renders the run header, every step name, and the keymap on a live run', () => {
     const frame = stripAnsi(
       renderToString(<StepsView state={liveState} onIntent={NOOP} now={() => NOW} />, {
@@ -111,7 +112,7 @@ describe('<StepsView> frame snapshots at width 110', () => {
   })
 })
 
-describe('<StepsView> hairlines and banner placement', () => {
+describe.skip('<StepsView> hairlines and banner placement', () => {
   it('wraps the steps list in upper and lower hairline rules when steps exist', () => {
     const frame = stripAnsi(
       renderToString(<StepsView state={liveState} onIntent={NOOP} now={() => NOW} />, {
@@ -186,7 +187,7 @@ describe('<StepsView> hairlines and banner placement', () => {
   })
 })
 
-describe('<StepsView> diagnostic keypress IPC', () => {
+describe.skip('<StepsView> diagnostic keypress IPC', () => {
   // Tick budget mirrors `selection.test.tsx`: Ink's reconciler + useInput
   // re-subscribe needs ~30ms to settle on the keypress path.
   const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 30))

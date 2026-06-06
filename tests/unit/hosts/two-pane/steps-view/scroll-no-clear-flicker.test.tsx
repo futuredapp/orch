@@ -1,3 +1,4 @@
+// COVERED BY → tests-new/screen/scroll--window-bytes.test.ts (parent U14 group-B closeout) — every case covered; see ledger. Kept skipped on disk (D2).
 // Behavioral regression: scrolling the left pane must not blank it.
 //
 // Bug (docs/findings/2026-05-25-issue-1-left-pane-blanks-on-nav.md): at a
@@ -88,7 +89,7 @@ function mountNarrowPane(state: StepsViewState): Mounted {
   }
 }
 
-describe('<StepsView> scroll does not blank the pane', () => {
+describe.skip('<StepsView> scroll does not blank the pane', () => {
   it('does not emit a full-screen clearTerminal when a scroll-up keypress is pressed at a narrow pane width', async () => {
     const pane = mountNarrowPane(liveState(10))
 

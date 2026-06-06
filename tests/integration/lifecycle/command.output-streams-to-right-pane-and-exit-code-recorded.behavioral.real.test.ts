@@ -1,3 +1,4 @@
+// COVERED BY → tests-new/unit/core/command.test.ts (parent U14 group-B closeout) — unit behavior covered; end-to-end real-tmux/host assertion dropped (no faithful fake substrate, P14-D5); see ledger. Kept skipped on disk (D2).
 /**
  * Behavioral cell — a `command(...)` step's stdout streams to the right pane
  * and the captured `CommandResult` lands in `state.json` with `exitCode: 0`.
@@ -27,7 +28,7 @@ afterEach(async () => {
   if (handle !== undefined) await handle.teardown()
 })
 
-describe.skipIf(!canRunRealTmux())('Tier 5 behavioral — command step streams + records', () => {
+describe.skip('Tier 5 behavioral — command step streams + records', () => {
   it('command stdout streams to disk and state.json records exitCode 0', async () => {
     handle = await launchOrchWorkflow('command-step-only', {
       script: { hold: puppet() },

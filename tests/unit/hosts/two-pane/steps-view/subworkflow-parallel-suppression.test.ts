@@ -1,3 +1,4 @@
+// COVERED BY → tests-new/model/projector/subworkflow-parallel-suppression.test.ts + tests-new/integration/hosts/two-pane/subworkflow-parallel-persisted-records.test.ts (parent U14 group-B closeout) — see ledger. Kept skipped on disk (D2). (mixed — see ledger)
 // AE9 + AE13 pin: when a sub runs inside a `parallel()` branch — directly OR
 // transitively via further-nested subs — the projector suppresses the sub's
 // boundary rows uniformly across the subtree, and the contained step rows
@@ -85,7 +86,7 @@ function makeWorkflowDeps(runId: RunId, logger: SessionLogger): WorkflowDeps {
   }
 }
 
-describe('projectStepsView — parallel suppression (AE9, AE13)', () => {
+describe.skip('projectStepsView — parallel suppression (AE9, AE13)', () => {
   it('suppresses sub boundary rows for sub-of-parallel branches (AE9)', () => {
     // parallel(['T-1','T-2','T-3'], (t) => runWorkflow(<distinct sub per branch>))
     // — three different subs because R20 forbids reuse. Each branch runs the

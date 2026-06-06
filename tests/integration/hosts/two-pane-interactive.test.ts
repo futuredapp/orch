@@ -1,3 +1,4 @@
+// COVERED BY → tests-new/unit/hosts/tmux-host.test.ts
 // Interactive-step-under-two-pane mocked integration. Drives an interactive
 // step through `workflow.execute` with a TmuxHost backed by FakeTmuxService
 // and asserts the respawn-pane lifecycle: runner argv first, cat restoration
@@ -33,7 +34,7 @@ function bufferStream(): { stream: NodeJS.WritableStream; text: () => string } {
 
 const RUN_ID = 'r-2026-04-23-301840-rk' as RunId
 
-describe('two-pane interactive step', () => {
+describe.skip('two-pane interactive step', () => {
   it('creates a per-source PTY session with runner argv, swaps it visible, waits pane-exit, then kills the session (U4)', async () => {
     const fs = new FakeFsService()
     const processService = new FakeProcessService()

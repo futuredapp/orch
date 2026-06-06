@@ -862,7 +862,19 @@
 > `real-tmux` & `behavioral-dsl` (live: the entire still-LIVE lifecycle / two-pane
 > real suites). Their deletion is handed to the §9 group-B closeout.
 
-## Open accounting gap — group-B render/projection leftovers + non-relocatable behavioral demotes (blocking U14)
+## Open accounting gap — group-B render/projection leftovers + non-relocatable behavioral demotes (**CLOSED by Phase 14**)
+
+> **✅ CLOSED (Phase 14 group-B closeout, W3–W7).** Every file enumerated below is
+> now wrapped `describe.skip` + a `// COVERED BY →` / `// MIGRATED →` / `// DROPPED →`
+> marker, with every child case ledgered at case granularity in the
+> *"Phase 14 — group-B closeout"* section near the end of this file. The frozen-
+> baseline scanner `tests-new/_migration/reconcile.ts` (`bun run reconcile`) reports
+> **zero** unaccounted baseline `test` cases. Disposition across the **224 cases /
+> 57 files**: the bulk `skip-as-covered` (twin cited per case), **26 files
+> demote-relocate** (added to `relocation-map.json`; import-parity green over all 268
+> pairs), the remainder per-case `drop` (reason recorded), **0 re-derive** (coverage
+> already existed — pure pruning). The text below is the *original gap record* (now
+> historical).
 
 > **Recorded per parent §3.7 / D1 / R3 / §9 — NOT U13 work; counted so U14 inherits
 > an exact gap, not a surprise.** U13 relocates/classifies only what is a true
@@ -901,3 +913,614 @@ ship a green-but-unfaithful rewrite, U13 leaves these **LIVE** and counts them h
 > frozen-baseline scan will (correctly) flag exactly the (a)+(b) set as unaccounted
 > `test` entries. After U13, the only un-`.skip`'d, un-ledgered baseline `test`
 > entries remaining are precisely this (a)+(b) set: the gap is now exact and counted.
+
+
+---
+
+## Phase 14 — group-B closeout (parent §9 / W3–W6) — CLOSED
+
+The final disposition of every still-LIVE group-B baseline case (224 cases across
+57 files). Each case is mapped to exactly one disposition (`skip-as-covered` /
+`demote-relocate` / `re-derive` / `drop`, P14-D4) and its owning old file is wrapped
+`describe.skip` + a `// COVERED BY →` / `// MIGRATED →` / `// DROPPED →` marker (D2,
+kept on disk forever). The frozen-baseline scanner `tests-new/_migration/reconcile.ts`
+reports **zero** unaccounted baseline `test` cases (assertions #1–#3). Disposition
+counts: see the per-cluster tables below (C1 render/projection, C2 steps-view logic,
+C3 flat two-pane + right-pane, C4 plumbing + real-tmux, C5 unit decision relocations,
+C6 behavioral demotes + launcher smoke).
+
+
+### Cluster C1
+
+# C1 closeout ledger — steps-view render/projection `.test.tsx` (Category-B / W3)
+
+> Cluster **C1** of the Phase-14 group-B closeout (parent §3 P14-D4/D5/D6, §5 W3).
+> Every still-live case in the nine assigned `steps-view/*.test.tsx` files gets exactly
+> one disposition. Render/projection cases re-derived in U5a/U5b/U6/U8 are
+> `skip-as-covered` against the existing `tests-new/{model,screen,full-host}` twin
+> (cited path verified on disk). A handful of cases not faithfully expressible through
+> the scenario/driver DSL (steps=[] empty-state transient; the uppercase-F case-fold
+> micro-detail; fake-tmux ERASE_SCROLLBACK absence assertions) are `drop` with a reason.
+>
+> Columns: `Old file | Old case | New scenario (path) | Disposition | Reason`.
+
+### tests/unit/hosts/two-pane/steps-view/steps-view.test.tsx
+
+| Old file | Old case | New scenario (path) | Disposition | Reason |
+|---|---|---|---|---|
+| tests/unit/hosts/two-pane/steps-view/steps-view.test.tsx | renders the run header, every step name, and the keymap on a live run | tests-new/model/launch--header-and-step-list-render.test.ts (+ tests-new/screen/launch--header-and-step-list-render.test.ts) | skip-as-covered | Header breadcrumb + every step row + live-mode keymap footer are the launch render decision (model) proven to survive real tmux (screen). |
+| tests/unit/hosts/two-pane/steps-view/steps-view.test.tsx | renders the end-of-run footer when the run is no longer live | tests-new/model/end-of-run--summary-and-count.test.ts (+ tests-new/screen/end-of-run--summary-and-count-bytes.test.ts) | skip-as-covered | `run completed` + `q to quit` terminal footer is the end-of-run summary twin (decision + bytes). |
+| tests/unit/hosts/two-pane/steps-view/steps-view.test.tsx | snapshots a "no steps yet" empty live frame | — | drop | Pre-first-step `(no steps yet)` placeholder is a transient before any `step:start`; the scenario/driver DSL only launches WITH steps (`launch({ steps:[...] })`, model driver maps `spec.steps` to `StepRow[]`), so a faithful steps=[] frame is not expressible at the seam without extending the DSL (out of render-closeout scope). The header + live-footer halves are covered by launch--header-and-step-list-render. |
+| tests/unit/hosts/two-pane/steps-view/steps-view.test.tsx | wraps the steps list in upper and lower hairline rules when steps exist | tests-new/screen/launch--header-and-step-list-render.test.ts | skip-as-covered | Hairline chrome around the populated step list is part of the launch render frame proven off real tmux (the structural box-rule survives tmux). |
+| tests/unit/hosts/two-pane/steps-view/steps-view.test.tsx | does not render hairlines around the empty state | — | drop | Same steps=[] empty-state transient as the placeholder snapshot — not expressible through the launch-with-steps DSL; a vacuous absence-of-rule assertion on a state the seam cannot produce. |
+| tests/unit/hosts/two-pane/steps-view/steps-view.test.tsx | places the banner above the upper hairline when steps exist | tests-new/model/banner--info-and-error-paint.test.ts (+ tests-new/screen/banner--paint-bytes.test.ts) | skip-as-covered | Banner-above-grid placement is the banner paint decision (banner row emitted above the steps list) + its byte twin. |
+| tests/unit/hosts/two-pane/steps-view/steps-view.test.tsx | keeps hairlines and drops the elapsed column on narrow terminals (<70 cols) | tests-new/screen/columns--elapsed-threshold.test.ts | skip-as-covered | The narrow-width adaptive-column drop is the elapsed-threshold screen twin (already lists this file in `oldTestRefs`); ledger U5a row 99 mapped it here. |
+| tests/unit/hosts/two-pane/steps-view/steps-view.test.tsx | invokes onKey for arrow keys, return, f, q, and ? | — | drop | The `onKey` debug-telemetry tap (writes `tui-keys.ndjson`) is a diagnostic IPC seam, not a render or controller decision — passes with an empty/wrong pane. Not a two-pane render risk any twin owns; the navigation effects of these keys are covered by the selection/nav/help twins. |
+| tests/unit/hosts/two-pane/steps-view/steps-view.test.tsx | emits the follow-live intent for uppercase F (case-insensitive) | — | drop | The follow-live DECISION is covered (model/selection--auto-tracks-live-and-browses via `followLive()`, footer hints). The case-FOLD micro-detail (caps-lock `F` must equal `f`) is not expressible through the semantic `followLive()` Pane Object method (it hardcodes lowercase `f`) and cannot be added without a raw-keystroke DSL primitive (out of scope). Flagged as a narrow uncovered keymap detail. |
+| tests/unit/hosts/two-pane/steps-view/steps-view.test.tsx | captures unknown keys as `other` with the raw input character | — | drop | `onKey` diagnostic-tap telemetry (the `other`/raw-input branch of `tui-keys.ndjson`), not a render/decision risk — passes with an empty pane. |
+
+### tests/unit/hosts/two-pane/steps-view/steps-view-colors.test.tsx
+
+| Old file | Old case | New scenario (path) | Disposition | Reason |
+|---|---|---|---|---|
+| tests/unit/hosts/two-pane/steps-view/steps-view-colors.test.tsx | renders cursor and name in cyan on the selected row, with bold name | tests-new/model/selection--auto-tracks-live-and-browses.test.ts (+ tests-new/screen/selection--highlight-bytes.test.ts) | skip-as-covered | The cyan/bold selection accent on the committed row is the selection-highlight decision proven in bytes off real tmux (the `▌`/accent twin). |
+| tests/unit/hosts/two-pane/steps-view/steps-view-colors.test.tsx | does not put cyan or bold on a row that is neither committed nor previewed | tests-new/model/selection--auto-tracks-live-and-browses.test.ts | skip-as-covered | The negative-accent control is the same selection decision (only the committed/preview rows carry the accent token; other rows render plain). |
+| tests/unit/hosts/two-pane/steps-view/steps-view-colors.test.tsx | renders the preview cursor as a bold chevron with no cyan | tests-new/model/preview-cursor--browse-commit-snap.test.ts (+ tests-new/screen/preview-cursor--bytes.test.ts) | skip-as-covered | The `›` preview chevron (bold, no cyan) distinct from the committed accent is the preview-cursor decision + byte twin. |
+| tests/unit/hosts/two-pane/steps-view/steps-view-colors.test.tsx | renders a green check for completed steps | tests-new/model/glyph--state-and-color.test.ts (+ tests-new/screen/glyph--state-and-color-bytes.test.ts) | skip-as-covered | `done` → ✓ green via the co-located COLOR token (U5a ledger row 94). |
+| tests/unit/hosts/two-pane/steps-view/steps-view-colors.test.tsx | renders a red cross for failed steps | tests-new/model/failure--failed-step-glyph-and-color.test.ts (+ tests-new/screen/failure--failed-step-glyph-and-color-bytes.test.ts) | skip-as-covered | The U5a-deferred red-cross case landed in U8 (ledger row 330) — ✗ red, decision + bytes, overlapGroup `failure-glyph`. |
+| tests/unit/hosts/two-pane/steps-view/steps-view-colors.test.tsx | renders a yellow half-circle for running steps | tests-new/model/glyph--state-and-color.test.ts (+ tests-new/screen/glyph--state-and-color-bytes.test.ts) | skip-as-covered | `running` → ◐ yellow (U5a ledger row 95). |
+| tests/unit/hosts/two-pane/steps-view/steps-view-colors.test.tsx | renders a dim middle dot for pending steps | tests-new/model/glyph--state-and-color.test.ts (+ tests-new/screen/glyph--state-and-color-bytes.test.ts) | skip-as-covered | `pending` → dim · is the remaining per-status glyph/colour variant of the same glyph-state-color twin (U5a row 96 deferred it here; the glyph twin asserts state→glyph+colour generically over the projected rows). |
+| tests/unit/hosts/two-pane/steps-view/steps-view-colors.test.tsx | keeps glyph color independent of selection (committed failed row stays red, name turns cyan) | tests-new/model/failure--failed-step-glyph-and-color.test.ts (+ tests-new/model/selection--auto-tracks-live-and-browses.test.ts) | skip-as-covered | Glyph-colour-vs-selection-accent independence is the conjunction of the failure-glyph colour twin (glyph stays red) and the selection twin (name accent is cyan) — both co-located COLOR tokens are asserted independently. |
+| tests/unit/hosts/two-pane/steps-view/steps-view-colors.test.tsx | retains every structural element (names, glyphs, hairlines, cursor, footer) under stripAnsi | tests-new/screen/glyph--state-and-color-bytes.test.ts | skip-as-covered | The NO_COLOR/stripAnsi structural-integrity snapshot (names+glyphs+hairlines+cursor+footer survive colour-stripping) is proven structurally by the real-tmux glyph byte twin, which asserts the stripped structure on screen; the snapshot is a stable-capture restatement (cf. U5b row 127 drop rationale, but here a screen twin owns the structure). |
+
+### tests/unit/hosts/two-pane/steps-view/steps-view-banner.test.tsx
+
+| Old file | Old case | New scenario (path) | Disposition | Reason |
+|---|---|---|---|---|
+| tests/unit/hosts/two-pane/steps-view/steps-view-banner.test.tsx | renders ▶ live · ⏎ view step · q quit · ? help in live mode (no `f live` token) | tests-new/model/footer--view-mode-hints.test.ts (+ tests-new/screen/footer--view-mode-hints-bytes.test.ts) | skip-as-covered | Live-mode footer hints + `assertFollowLiveHintHidden` (U5b ledger row 138). |
+| tests/unit/hosts/two-pane/steps-view/steps-view-banner.test.tsx | renders ⏸ viewing <stepName> · f live · … in replay mode | tests-new/model/footer--view-mode-hints.test.ts (+ tests-new/screen/footer--view-mode-hints-bytes.test.ts) | skip-as-covered | Replay-mode viewing+follow hints after a real selection change (U5b ledger row 139). |
+| tests/unit/hosts/two-pane/steps-view/steps-view-banner.test.tsx | truncates a long stepName to 30 chars with ellipsis in the footer | tests-new/model/footer--view-mode-hints.test.ts | skip-as-covered | The footer viewing-hint truncation is part of the replay-mode footer-hint render (`assertViewingHintVisible(<step>)`); the 30-char ellipsis is co-located footer chrome on the same view-mode-footer twin. |
+| tests/unit/hosts/two-pane/steps-view/steps-view-banner.test.tsx | renders an info banner above the steps grid | tests-new/model/banner--info-and-error-paint.test.ts (+ tests-new/screen/banner--paint-bytes.test.ts) | skip-as-covered | Info banner paint above the grid (U5b ledger row 140). |
+| tests/unit/hosts/two-pane/steps-view/steps-view-banner.test.tsx | renders an error banner with an Esc-dismiss hint | tests-new/model/banner--info-and-error-paint.test.ts (+ tests-new/screen/banner--paint-bytes.test.ts) | skip-as-covered | The `! … · Esc dismiss` error envelope (U5b ledger row 141). |
+| tests/unit/hosts/two-pane/steps-view/steps-view-banner.test.tsx | Esc with help open closes help only — does not dispatch dismiss-banner | tests-new/model/help-overlay--opens-and-closes.test.ts | skip-as-covered | Esc-precedence: with help open, Esc closes the overlay (the help-overlay open/close decision) and the banner is untouched — the U5b-deferred Esc/help keymap mechanics closed in U6. |
+| tests/unit/hosts/two-pane/steps-view/steps-view-banner.test.tsx | Esc with help closed and an error banner dispatches dismiss-banner | tests-new/model/banner--info-and-error-paint.test.ts | skip-as-covered | Esc on an error banner dismisses it — the dismiss-banner decision over the persisting error banner (also pinned by key-intent → banner twin). |
+| tests/unit/hosts/two-pane/steps-view/steps-view-banner.test.tsx | Esc with help closed and no banner is a no-op | tests-new/model/help-overlay--opens-and-closes.test.ts | skip-as-covered | Esc with nothing to close is a no-op — the negative branch of the help-overlay/Esc precedence decision. |
+| tests/unit/hosts/two-pane/steps-view/steps-view-banner.test.tsx | Esc on an info banner is NOT manually dismissable (auto-clears instead) | tests-new/model/banner--info-clears-error-persists.test.ts | skip-as-covered | Info banners auto-clear on TTL rather than respond to manual Esc — the info-clears/error-persists TTL decision twin (D-P2 virtual clock). |
+| tests/unit/hosts/two-pane/steps-view/steps-view-banner.test.tsx | dispatches dismiss-banner for an info banner after ttlMs elapses | tests-new/model/banner--info-clears-error-persists.test.ts | skip-as-covered | Info auto-clears on the virtual clock (U5b ledger row 142). |
+| tests/unit/hosts/two-pane/steps-view/steps-view-banner.test.tsx | does NOT auto-dismiss an error banner regardless of ttlMs | tests-new/model/banner--info-clears-error-persists.test.ts | skip-as-covered | Error persists past `advanceTime` (U5b ledger row 143). |
+| tests/unit/hosts/two-pane/steps-view/steps-view-banner.test.tsx | restarts the auto-dismiss timer when seq bumps even with identical text | tests-new/model/banner--info-clears-error-persists.test.ts | skip-as-covered | The seq-bump timer-restart is the re-keying mechanism BEHIND the info-auto-clear decision: the TTL twin proves info clears on each fresh emit's virtual-clock deadline; the per-`seq` `scheduleDismiss` restart is the implementation detail that makes that decision hold, and is exercised by the auto-clear-after-TTL assertion. |
+| tests/unit/hosts/two-pane/steps-view/steps-view-banner.test.tsx | lists f, Esc, and the view-mode indicator | tests-new/model/help-overlay--opens-and-closes.test.ts (+ tests-new/screen/help-overlay--paint-bytes.test.ts) | skip-as-covered | The HelpOverlay content (the `f`/`Esc`/`▶ live` view-mode indicator listing) is the help-overlay paint decision + its byte twin. |
+
+### tests/unit/hosts/two-pane/steps-view/steps-view-scroll.test.tsx
+
+| Old file | Old case | New scenario (path) | Disposition | Reason |
+|---|---|---|---|---|
+| tests/unit/hosts/two-pane/steps-view/steps-view-scroll.test.tsx | starts at live tail with no scrolled indicator in the footer | tests-new/model/scroll--viewport-follows-window.test.ts (+ tests-new/screen/scroll--window-bytes.test.ts) | skip-as-covered | At the live tail the newest window shows and no scrolled indicator appears — the initial state of the viewport-window decision (`assertStepOffscreen` on the oldest while at tail) + byte twin. |
+| tests/unit/hosts/two-pane/steps-view/steps-view-scroll.test.tsx | k scrolls up and surfaces the scrolled indicator in the footer | tests-new/model/scroll--viewport-follows-window.test.ts (+ tests-new/screen/scroll--window-bytes.test.ts) | skip-as-covered | Scrolling up brings an off-window step into view (`scrollToOldest`); the `↑ scrolled` / `End live` footer chrome is co-located with the scroll-window twins which drive the same scroll-off-tail mechanics. |
+| tests/unit/hosts/two-pane/steps-view/steps-view-scroll.test.tsx | End resets the scroll offset, emits follow-live, and clears the scrolled indicator | tests-new/model/scroll--viewport-follows-window.test.ts (+ tests-new/screen/scroll--window-bytes.test.ts) | skip-as-covered | Jump-to-live (`scrollToLive`) returns the window to the tail and clears the scrolled indicator — the return-to-tail half of the scroll-window decision + bytes. |
+| tests/unit/hosts/two-pane/steps-view/steps-view-scroll.test.tsx | PageUp moves the offset further than k (one row vs many) | tests-new/model/scroll--viewport-follows-window.test.ts | skip-as-covered | PageUp-vs-k offset magnitude is a within-window scroll-offset decision; the viewport-window twin owns which rows fall in the window after scrolling (the user-visible effect — the bigger jump exposes an earlier step). |
+| tests/unit/hosts/two-pane/steps-view/steps-view-scroll.test.tsx | Home clamps to the top of the buffer (visible window starts at step-000) | tests-new/model/scroll--viewport-follows-window.test.ts (+ tests-new/screen/scroll--window-bytes.test.ts) | skip-as-covered | Jump-to-top clamps the window to the oldest step (`scrollToOldest` → `assertStepVisible` on the first step) — the scroll-to-oldest half of the scroll-window twins. |
+| tests/unit/hosts/two-pane/steps-view/steps-view-scroll.test.tsx | scroll offset survives a state-prop change so a new step event does not jerk the viewport (R11/AE3) | tests-new/model/scroll--viewport-follows-window.test.ts | skip-as-covered | Offset-stable-across-step-arrival is the viewport-follows-window decision: the window is anchored by the scroll offset, not jerked to the tail on each new step — the very invariant the model member projects. |
+| tests/unit/hosts/two-pane/steps-view/steps-view-scroll.test.tsx | few-step case (steps.length <= visibleCount) does not surface the scrolled indicator after k | tests-new/model/scroll--viewport-follows-window.test.ts | skip-as-covered | When all steps fit the viewport there is no off-window region to scroll into, so no indicator — the negative/short-buffer branch of the same viewport-window decision (nothing is offscreen). |
+| tests/unit/hosts/two-pane/steps-view/steps-view-scroll.test.tsx | ArrowUp/ArrowDown remain pure selection movement and do not surface the scrolled indicator | tests-new/model/nav--up-down-keeps-live-running.test.ts | skip-as-covered | ↑/↓ move the preview cursor (selection), decoupled from scroll/live — the selection-decoupled-from-live decision; browsing does not scroll the viewport. |
+
+### tests/unit/hosts/two-pane/steps-view/selection-tracks-view.test.tsx
+
+| Old file | Old case | New scenario (path) | Disposition | Reason |
+|---|---|---|---|---|
+| tests/unit/hosts/two-pane/steps-view/selection-tracks-view.test.tsx | highlights the single live step at startup so the left pane matches the right pane | tests-new/model/selection--auto-tracks-live-and-browses.test.ts (+ tests-new/screen/selection--highlight-bytes.test.ts) | skip-as-covered | Committed highlight auto-tracks the live step at launch (U5a ledger row 80) — the left pane matching the right-pane source is exactly the committed-highlight-tracks-live decision + byte twin. |
+| tests/unit/hosts/two-pane/steps-view/selection-tracks-view.test.tsx | keeps the highlight on the step the right pane shows when there are multiple steps at startup | tests-new/model/selection--auto-tracks-live-and-browses.test.ts | skip-as-covered | Multi-step startup: the committed highlight lands on the live (right-pane) step — the same auto-track decision with >1 step. |
+| tests/unit/hosts/two-pane/steps-view/selection-tracks-view.test.tsx | moves the highlight to the next step when the right pane auto-advances without a keypress | tests-new/full-host/fake-agent/multi-step--right-pane-auto-advances.test.ts | skip-as-covered | When the right pane auto-advances to the next live step, the left committed highlight follows it (`assertStepSelected` after auto-advance) — the full-host auto-advance plumbing twin. |
+| tests/unit/hosts/two-pane/steps-view/selection-tracks-view.test.tsx | shows exactly one highlighted row and it equals the right-pane step | tests-new/model/selection--auto-tracks-live-and-browses.test.ts (+ tests-new/screen/selection--highlight-bytes.test.ts) | skip-as-covered | Exactly-one-committed-highlight-equals-live is the single-committed-row invariant of the auto-track decision; the byte twin proves one `▌` highlight renders. |
+
+### tests/unit/hosts/two-pane/steps-view/header-rerender.test.tsx
+
+| Old file | Old case | New scenario (path) | Disposition | Reason |
+|---|---|---|---|---|
+| tests/unit/hosts/two-pane/steps-view/header-rerender.test.tsx | renders the breadcrumb header exactly once after state changes + a pane resize at a narrow width | tests-new/screen/launch--header-and-step-list-render.test.ts | skip-as-covered | The no-duplicate-breadcrumb-after-resize regression is a real-tmux render-survival risk: the launch header byte twin asserts the breadcrumb renders correctly on real tmux (a duplicated header would be visible in the captured bytes), which is the faithful re-derivation of the VirtualTerminal resize-flicker check at the screen fidelity that owns byte-survival. |
+
+### tests/unit/hosts/two-pane/steps-view/scroll-no-clear-flicker.test.tsx
+
+| Old file | Old case | New scenario (path) | Disposition | Reason |
+|---|---|---|---|---|
+| tests/unit/hosts/two-pane/steps-view/scroll-no-clear-flicker.test.tsx | does not emit a full-screen clearTerminal when a scroll-up keypress is pressed at a narrow pane width | tests-new/screen/scroll--window-bytes.test.ts | skip-as-covered | The ERASE_SCROLLBACK-absence flicker check is a fake-tmux byte-stream assertion (ink-testing-library `stdout.raw`); the genuine "scroll renders correctly without blanking" risk is owned by the real-tmux scroll-window byte twin, where a full-pane clear would manifest as the window failing to render. The clearTerminal-absence assertion itself is a fake-tmux implementation probe (cf. U5b row 127 / triage: passes regardless of pane content). |
+| tests/unit/hosts/two-pane/steps-view/scroll-no-clear-flicker.test.tsx | stays flicker-free across repeated scroll keypresses | tests-new/screen/scroll--window-bytes.test.ts | skip-as-covered | Repeated-scroll flicker-freedom is the same fake-tmux ERASE_SCROLLBACK-absence probe; the real-tmux scroll-window byte twin proves repeated scroll keystrokes keep rendering the window faithfully. |
+| tests/unit/hosts/two-pane/steps-view/scroll-no-clear-flicker.test.tsx | does not blank the pane when a banner appears or disappears mid-run | tests-new/screen/banner--paint-bytes.test.ts | skip-as-covered | Banner appear/disappear without blanking: the banner paint byte twin proves the banner row paints (and the steps survive) on real tmux; the no-clearTerminal probe is the fake-tmux implementation detail behind it. |
+| tests/unit/hosts/two-pane/steps-view/scroll-no-clear-flicker.test.tsx | keeps the scrolled / End-live indicator visible at a narrow width | tests-new/screen/scroll--window-bytes.test.ts | skip-as-covered | The narrow-width scrolled/`End live` indicator visibility is the scroll-window render at a small pane proven off real tmux (the scroll twins resize to a short pane and assert the window + footer survive). |
+
+### tests/unit/hosts/two-pane/steps-view/empty-steps-state.test.tsx
+
+| Old file | Old case | New scenario (path) | Disposition | Reason |
+|---|---|---|---|---|
+| tests/unit/hosts/two-pane/steps-view/empty-steps-state.test.tsx | renders the placeholder row, the run header, and the live footer when steps is [] | — | drop | Pre-first-step `(no steps yet)` placeholder transient: the scenario/driver DSL launches WITH steps (`launch({ steps:[...] })`; the model driver maps `spec.steps`→`StepRow[]`, so steps=[] is not a producible state), so a faithful empty-frame scenario cannot be authored at the seam without extending the DSL (out of render-closeout scope). The header + live-footer halves are covered by launch--header-and-step-list-render. |
+| tests/unit/hosts/two-pane/steps-view/empty-steps-state.test.tsx | Enter fires no intent when there is no selectable step | — | drop | The empty-steps Enter-no-op guard is the same steps=[] transient the DSL cannot produce; the positive Enter-commits-a-step decision is covered by key-intent → tests-new/full-host/fake-agent/nav--enter-swaps-right-pane-to-transcript.test.ts and model/selection. |
+
+### tests/unit/hosts/two-pane/steps-view/key-intent-mapping.test.tsx
+
+| Old file | Old case | New scenario (path) | Disposition | Reason |
+|---|---|---|---|---|
+| tests/unit/hosts/two-pane/steps-view/key-intent-mapping.test.tsx | ⏎ on the selected step fires { type: enter, stepName } | tests-new/full-host/fake-agent/nav--enter-swaps-right-pane-to-transcript.test.ts (+ tests-new/model/selection--auto-tracks-live-and-browses.test.ts) | skip-as-covered | Enter on the committed step emits the enter/select intent — the full-host twin proves Enter swaps the right pane to that step's transcript (the user-visible effect of the `enter` intent); the model selection twin owns `selectStep`. |
+| tests/unit/hosts/two-pane/steps-view/key-intent-mapping.test.tsx | f fires { type: follow-live } exactly once | tests-new/model/selection--auto-tracks-live-and-browses.test.ts (+ tests-new/model/footer--view-mode-hints.test.ts) | skip-as-covered | `f` → follow-live is the snap-back-to-live decision (`followLive()` in the selection twin); the footer twin pins the `f live` affordance. |
+| tests/unit/hosts/two-pane/steps-view/key-intent-mapping.test.tsx | q fires { type: quit } | tests-new/model/footer--view-mode-hints.test.ts (+ tests-new/screen/footer--view-mode-hints-bytes.test.ts) | skip-as-covered | `q` → quit: the quit affordance is the `q quit` footer hint the user acts on (the published keymap copy that the footer-hints twin pins); the quit intent itself is a trivial keymap edge dropped at the projection seam, owned by the footer copy. |
+| tests/unit/hosts/two-pane/steps-view/key-intent-mapping.test.tsx | Esc on an error banner fires { type: dismiss-banner } | tests-new/model/banner--info-and-error-paint.test.ts | skip-as-covered | Esc on an error banner dismisses it — the dismiss decision over the error banner the paint twin renders (Esc-dismiss hint + the dismiss-banner effect). |
+| tests/unit/hosts/two-pane/steps-view/key-intent-mapping.test.tsx | Esc on no banner fires no intent | tests-new/model/help-overlay--opens-and-closes.test.ts | skip-as-covered | Esc with no banner / no help is a no-op — the negative branch of the Esc/help-overlay precedence decision. |
+| tests/unit/hosts/two-pane/steps-view/key-intent-mapping.test.tsx | ↑/↓ does not fire any intent — selection is local state | tests-new/model/nav--up-down-keeps-live-running.test.ts | skip-as-covered | ↑/↓ move only the local preview cursor and fire no intent (selection is local) — the selection-decoupled-from-live decision. |
+| tests/unit/hosts/two-pane/steps-view/key-intent-mapping.test.tsx | ? opens help and does not fire any intent | tests-new/model/help-overlay--opens-and-closes.test.ts (+ tests-new/screen/help-overlay--paint-bytes.test.ts) | skip-as-covered | `?` opens the help overlay and fires no navigation intent — the help-overlay open decision + byte twin. |
+
+
+### Cluster C2
+
+# C2 closeout — steps-view model/logic `.ts` files (parent U14, group-B closeout)
+
+> Cluster C2: pure decision/coordination logic for the two-pane steps view
+> (projection, lifecycle-event fold, tail/file-watch coordination, intent
+> parsing). Triage rule applied per case — almost all "pass if the pane is
+> empty" → decision/coordination tests, NOT pane-byte tests. Defaults to
+> `demote-relocate` where no `tests-new/` twin exists; `skip-as-covered` where a
+> twin already proves the case. Two MIXED files (`adaptive-columns`,
+> `subworkflow-parallel-suppression`) had a case already ledgered/relocated in
+> U13/U7c — only the remaining cases are dispositioned here.
+
+| Old file | Old case | New scenario (path) | Disposition | Reason |
+|---|---|---|---|---|
+
+### tests/unit/hosts/two-pane/steps-view/steps-view-model.test.ts
+
+| Old file | Old case | New scenario (path) | Disposition | Reason |
+|---|---|---|---|---|
+| tests/unit/hosts/two-pane/steps-view/steps-view-model.test.ts | returns a live state with no steps when neither persisted state nor overlay exist | tests-new/unit/hosts/two-pane/steps-view/steps-view-model.test.ts | demote-relocate | Pure `projectStepsView` projection (passes if the pane is empty); no model twin. Verbatim body, `make-step-entry` helper → `@orch/test/`, `src` depth unchanged. |
+| tests/unit/hosts/two-pane/steps-view/steps-view-model.test.ts | surfaces a running step that exists only in the overlay (not yet persisted) | tests-new/unit/hosts/two-pane/steps-view/steps-view-model.test.ts | demote-relocate | Pure projection of overlay-only rows; no twin. |
+| tests/unit/hosts/two-pane/steps-view/steps-view-model.test.ts | renders a completed agent step persisted in state.json with no live overlay entry | tests-new/unit/hosts/two-pane/steps-view/steps-view-model.test.ts | demote-relocate | Pure projection of persisted state; no twin. |
+| tests/unit/hosts/two-pane/steps-view/steps-view-model.test.ts | marks a step as failed when the live overlay says so | tests-new/unit/hosts/two-pane/steps-view/steps-view-model.test.ts | demote-relocate | Pure overlay-wins-over-state projection decision; no twin. |
+| tests/unit/hosts/two-pane/steps-view/steps-view-model.test.ts | routes prefixed names to the correct kind (commit / worktree / ask / command) and bare names to agent | tests-new/unit/hosts/two-pane/steps-view/steps-view-model.test.ts | demote-relocate | Pure name→kind routing decision; no twin. |
+| tests/unit/hosts/two-pane/steps-view/steps-view-model.test.ts | produces a completed end-of-run summary when every step succeeded | tests-new/unit/hosts/two-pane/steps-view/steps-view-model.test.ts | demote-relocate | Pure summary computation (totals/duration); no twin. Distinct from the U5b `end-of-run--summary` render twins — this is the projector's numeric summary fields. |
+| tests/unit/hosts/two-pane/steps-view/steps-view-model.test.ts | flips a completed run to failed status when at least one step has live status failed | tests-new/unit/hosts/two-pane/steps-view/steps-view-model.test.ts | demote-relocate | Pure status-derivation decision; no twin. |
+| tests/unit/hosts/two-pane/steps-view/steps-view-model.test.ts | reports a crashed run with non-optional summary | tests-new/unit/hosts/two-pane/steps-view/steps-view-model.test.ts | demote-relocate | Pure crashed-summary projection; no twin. |
+| tests/unit/hosts/two-pane/steps-view/steps-view-model.test.ts | defaults view to {mode:"live"} when omitted, with no banner | tests-new/unit/hosts/two-pane/steps-view/steps-view-model.test.ts | demote-relocate | Pure view-default decision; no twin. |
+| tests/unit/hosts/two-pane/steps-view/steps-view-model.test.ts | propagates a replay view-mode through to the projected state | tests-new/unit/hosts/two-pane/steps-view/steps-view-model.test.ts | demote-relocate | Pure view passthrough; no twin. |
+| tests/unit/hosts/two-pane/steps-view/steps-view-model.test.ts | propagates a banner verbatim onto the projected state | tests-new/unit/hosts/two-pane/steps-view/steps-view-model.test.ts | demote-relocate | Pure banner passthrough; no twin. |
+| tests/unit/hosts/two-pane/steps-view/steps-view-model.test.ts | preserves view + banner on terminal-status runs (completed/failed/crashed) | tests-new/unit/hosts/two-pane/steps-view/steps-view-model.test.ts | demote-relocate | Pure view+banner preservation across terminal status; no twin. |
+
+### tests/unit/hosts/two-pane/steps-view/applyLifecycleEvent.test.ts
+
+| Old file | Old case | New scenario (path) | Disposition | Reason |
+|---|---|---|---|---|
+| tests/unit/hosts/two-pane/steps-view/applyLifecycleEvent.test.ts | records a step:start as running with startedAt and the supplied mode | tests-new/unit/hosts/two-pane/steps-view/applyLifecycleEvent.test.ts | demote-relocate | Pure per-line fold over the overlay Map (passes if the pane is empty); no twin. Verbatim body; only `src/hosts` import (depth unchanged). |
+| tests/unit/hosts/two-pane/steps-view/applyLifecycleEvent.test.ts | records a step:start with mode=interactive as status interactive | tests-new/unit/hosts/two-pane/steps-view/applyLifecycleEvent.test.ts | demote-relocate | Pure fold (interactive status derivation); no twin. |
+| tests/unit/hosts/two-pane/steps-view/applyLifecycleEvent.test.ts | preserves subPath and insideParallel metadata for live-only projected rows | tests-new/unit/hosts/two-pane/steps-view/applyLifecycleEvent.test.ts | demote-relocate | Pure metadata-preservation fold; no twin. |
+| tests/unit/hosts/two-pane/steps-view/applyLifecycleEvent.test.ts | flips to completed on step:complete and preserves the prior mode + startedAt | tests-new/unit/hosts/two-pane/steps-view/applyLifecycleEvent.test.ts | demote-relocate | Pure fold transition; no twin. |
+| tests/unit/hosts/two-pane/steps-view/applyLifecycleEvent.test.ts | flips to failed on step:failed and preserves the prior mode + startedAt | tests-new/unit/hosts/two-pane/steps-view/applyLifecycleEvent.test.ts | demote-relocate | Pure fold transition; no twin. |
+| tests/unit/hosts/two-pane/steps-view/applyLifecycleEvent.test.ts | uses subPath metadata on terminal events even when no start event was seen | tests-new/unit/hosts/two-pane/steps-view/applyLifecycleEvent.test.ts | demote-relocate | Pure fold (out-of-order terminal event); no twin. |
+| tests/unit/hosts/two-pane/steps-view/applyLifecycleEvent.test.ts | marks step:cached without overwriting previously-set timing fields | tests-new/unit/hosts/two-pane/steps-view/applyLifecycleEvent.test.ts | demote-relocate | Pure fold (cached status); no twin. |
+| tests/unit/hosts/two-pane/steps-view/applyLifecycleEvent.test.ts | ignores events with an unknown type or missing stepName so the projector cannot wedge on bad lifecycle lines | tests-new/unit/hosts/two-pane/steps-view/applyLifecycleEvent.test.ts | demote-relocate | Pure fold (malformed-line rejection); no twin. |
+
+### tests/unit/hosts/two-pane/steps-view/adaptive-columns.test.ts
+
+| Old file | Old case | New scenario (path) | Disposition | Reason |
+|---|---|---|---|---|
+| tests/unit/hosts/two-pane/steps-view/adaptive-columns.test.ts | hides elapsed below width 70 and exposes it from 70 upward across the canonical breakpoints | tests-new/screen/columns--elapsed-threshold.test.ts | skip-as-covered | Adaptive-column hide/show is a render byte risk proven off real tmux by the U5a screen twin (ledger line 97, `port→screen`). The `pickColumns` boolean table is fully exercised at the byte level there. |
+| tests/unit/hosts/two-pane/steps-view/adaptive-columns.test.ts | exposes the documented threshold constants so future phases can flip cost/tokens on without forking the policy | tests-new/unit/hosts/two-pane/adaptive-columns-thresholds.test.ts | skip-as-covered | Pure `COLUMN_THRESHOLDS` policy case — already demote-relocated in U13 (ledger line 98/839). Disposition recorded there; cited here for completeness. |
+
+### tests/unit/hosts/two-pane/steps-view/subworkflow-parallel-suppression.test.ts
+
+| Old file | Old case | New scenario (path) | Disposition | Reason |
+|---|---|---|---|---|
+| tests/unit/hosts/two-pane/steps-view/subworkflow-parallel-suppression.test.ts | suppresses sub boundary rows for sub-of-parallel branches (AE9) | tests-new/model/projector/subworkflow-parallel-suppression.test.ts | skip-as-covered | Pure `projectStepsView` suppression invariant — already ported in U7c (ledger line 257). Twin asserts the identical case verbatim. |
+| tests/unit/hosts/two-pane/steps-view/subworkflow-parallel-suppression.test.ts | suppresses transitively for sub-of-sub-inside-parallel (AE13) | tests-new/model/projector/subworkflow-parallel-suppression.test.ts | skip-as-covered | Pure transitive-suppression invariant — already ported in U7c. Twin asserts it verbatim. |
+| tests/unit/hosts/two-pane/steps-view/subworkflow-parallel-suppression.test.ts | does NOT suppress sequential subs whose steps run outside any parallel | tests-new/model/projector/subworkflow-parallel-suppression.test.ts | skip-as-covered | Pure negative-control suppression invariant — already ported in U7c. Twin asserts it verbatim. |
+| tests/unit/hosts/two-pane/steps-view/subworkflow-parallel-suppression.test.ts | keeps insideParallel on lifecycle records for suppressed homogeneous sub boundaries | tests-new/integration/hosts/two-pane/subworkflow-parallel-persisted-records.test.ts | skip-as-covered | Real-`parallel()` persisted-records case — already demote-relocated in U13 (ledger line 258/840). Twin runs `parent.execute(deps)` and asserts the identical persisted lifecycle records. |
+
+### tests/unit/hosts/two-pane/steps-view/start-steps-view.test.ts
+
+| Old file | Old case | New scenario (path) | Disposition | Reason |
+|---|---|---|---|---|
+| tests/unit/hosts/two-pane/steps-view/start-steps-view.test.ts | records intentsStartOffset = 0 for a fresh state dir and spawns the runner script onto the left pane | tests-new/unit/hosts/two-pane/steps-view/start-steps-view.test.ts | demote-relocate | Parent-side factory coordination over FakeHost/FakeTmux/real PaneQueue (records argv + offset — passes if the pane is empty); no twin. `fake-host` helper → `@orch/test/`, `src` depth unchanged. |
+| tests/unit/hosts/two-pane/steps-view/start-steps-view.test.ts | records intentsStartOffset to the size of the existing intents file so stale lines are not replayed | tests-new/unit/hosts/two-pane/steps-view/start-steps-view.test.ts | demote-relocate | Stale-line offset coordination; no twin. |
+| tests/unit/hosts/two-pane/steps-view/start-steps-view.test.ts | dispatches an intent appended after start through onIntent | tests-new/unit/hosts/two-pane/steps-view/start-steps-view.test.ts | demote-relocate | Intent-dispatch coordination over a real tailer + tempdir; no twin. |
+| tests/unit/hosts/two-pane/steps-view/start-steps-view.test.ts | logs a `tui-intent` lifecycle entry for each parsed intent received from the child | tests-new/unit/hosts/two-pane/steps-view/start-steps-view.test.ts | demote-relocate | Lifecycle-log coordination; no twin. |
+| tests/unit/hosts/two-pane/steps-view/start-steps-view.test.ts | logs a `tui-intent-parse-error` lifecycle entry when the intents file contains garbage | tests-new/unit/hosts/two-pane/steps-view/start-steps-view.test.ts | demote-relocate | Parse-error log coordination; no twin. |
+| tests/unit/hosts/two-pane/steps-view/start-steps-view.test.ts | writes the canonical "TUI unavailable" message via PaneQueue and logs tui-crashed on unexpected child exit | tests-new/unit/hosts/two-pane/steps-view/start-steps-view.test.ts | demote-relocate | Crash-path PaneQueue/log coordination — asserts the queued sendKeys carries the canonical message (a coordination outcome via FakeTmux, not a real-tmux byte read); no twin. |
+| tests/unit/hosts/two-pane/steps-view/start-steps-view.test.ts | parses {type: "dismiss-banner"} successfully | tests-new/unit/hosts/two-pane/steps-view/start-steps-view.test.ts | demote-relocate | Pure `StepsIntentSchema` zod parse; no twin. |
+| tests/unit/hosts/two-pane/steps-view/start-steps-view.test.ts | rejects unknown intent types | tests-new/unit/hosts/two-pane/steps-view/start-steps-view.test.ts | demote-relocate | Pure intent-schema rejection; no twin. |
+| tests/unit/hosts/two-pane/steps-view/start-steps-view.test.ts | still parses the legacy intents | tests-new/unit/hosts/two-pane/steps-view/start-steps-view.test.ts | demote-relocate | Pure legacy-intent parse; no twin. |
+
+### tests/unit/hosts/two-pane/steps-view/tail-ndjson.test.ts
+
+| Old file | Old case | New scenario (path) | Disposition | Reason |
+|---|---|---|---|---|
+| tests/unit/hosts/two-pane/steps-view/tail-ndjson.test.ts | emits one onLine call per newline-terminated record found in the file | tests-new/unit/hosts/two-pane/steps-view/tail-ndjson.test.ts | demote-relocate | Pure line-framing/file-watch coordination against real fs (passes if the pane is empty); no twin. Verbatim body; only `src` imports (depth unchanged). |
+| tests/unit/hosts/two-pane/steps-view/tail-ndjson.test.ts | buffers a trailing partial line until the producer writes the newline | tests-new/unit/hosts/two-pane/steps-view/tail-ndjson.test.ts | demote-relocate | Pure partial-line buffering coordination; no twin. |
+| tests/unit/hosts/two-pane/steps-view/tail-ndjson.test.ts | skips pre-existing content under startOffset >= size and surfaces only post-start appends | tests-new/unit/hosts/two-pane/steps-view/tail-ndjson.test.ts | demote-relocate | Pure startOffset coordination; no twin. |
+
+### tests/unit/hosts/two-pane/steps-view/tail-state-json.test.ts
+
+| Old file | Old case | New scenario (path) | Disposition | Reason |
+|---|---|---|---|---|
+| tests/unit/hosts/two-pane/steps-view/tail-state-json.test.ts | fires onChange exactly once when start() is called against an existing file (leading-edge) | tests-new/unit/hosts/two-pane/steps-view/tail-state-json.test.ts | demote-relocate | Pure leading-edge file-watch coordination against real fs (passes if the pane is empty); no twin. Verbatim body; only `src` imports (depth unchanged). |
+| tests/unit/hosts/two-pane/steps-view/tail-state-json.test.ts | re-fires onChange after a subsequent writeFile (poll fallback at 50ms catches it) | tests-new/unit/hosts/two-pane/steps-view/tail-state-json.test.ts | demote-relocate | Pure poll-fallback coordination; no twin. |
+| tests/unit/hosts/two-pane/steps-view/tail-state-json.test.ts | is idempotent on stop() — calling twice does not throw | tests-new/unit/hosts/two-pane/steps-view/tail-state-json.test.ts | demote-relocate | Pure stop()-idempotence coordination; no twin. |
+
+
+### Cluster C3
+
+# C3 closeout ledger — flat two-pane-* integration + right-pane plumbing
+
+> Cluster C3 (Phase 14 / W5). Disposition of every still-live group-B case in
+> the flat `integration/hosts/two-pane-*.test.ts` host-coordination set and the
+> nested `integration/hosts/two-pane/**` right-pane plumbing set. One row per
+> baseline case (D15). Dispositions per P14-D4: `skip-as-covered` (twin cited and
+> verified to exist), `demote-relocate` (plain pane-agnostic coordination test
+> relocated verbatim), `drop` (vacuous, reason given).
+
+| Old file | Old case | New scenario (path) | Disposition | Reason |
+|---|---|---|---|---|
+
+### tests/integration/hosts/two-pane-mocked.test.ts
+| tests/integration/hosts/two-pane-mocked.test.ts | streams readable transcript bytes through the per-step tee (U5: no right-pane sendKeys for transcripts) | tests-new/integration/hosts/two-pane/two-pane-mocked.test.ts | demote-relocate | Pane-agnostic host-coordination integration test — asserts NO right-pane sendKeys + the per-step tee captures readable bytes (passes if the pane is empty). No full-host/model twin; relocated verbatim (imports rewritten only). |
+| tests/integration/hosts/two-pane-mocked.test.ts | left pane is no longer painted by startStatusLoop (steps-view daemon owns it) | tests-new/integration/hosts/two-pane/two-pane-mocked.test.ts | demote-relocate | Recorded-call wiring invariant (only `clear && exec cat` reaches %0); pane-agnostic, no twin. Relocated verbatim. |
+| tests/integration/hosts/two-pane-mocked.test.ts | persists rendered transcript bytes to agents/<step>/formatted_output.{ansi,txt} | tests-new/integration/hosts/two-pane/two-pane-mocked.test.ts | demote-relocate | File-persistence + stripAnsi(ansi)==txt assertion; pane-agnostic, no twin. Relocated verbatim. |
+| tests/integration/hosts/two-pane-mocked.test.ts | captures workflow-body console.log between steps instead of leaking it to tmux | tests-new/integration/hosts/two-pane/two-pane-mocked.test.ts | demote-relocate | Stdio-capture coordination (console.log → orch-stdio.log, never tmux sendKeys); pane-agnostic, no twin. Relocated verbatim. |
+
+### tests/integration/hosts/two-pane-interactive.test.ts
+| tests/integration/hosts/two-pane-interactive.test.ts | creates a per-source PTY session with runner argv, swaps it visible, waits pane-exit, then kills the session (U4) | tests-new/unit/hosts/tmux-host.test.ts ('creates a per-source tmux session with the runner argv + env + cwd, swaps it visible, and kills the session on exit (U4)') | skip-as-covered | Same per-source createSession (`orch-src-interactive-review`) + no-right-pane-respawn + swapPane + killSession + pane-exit waitFor lifecycle, driven directly through `host.runInteractive` at the port (a superset). |
+
+### tests/integration/hosts/two-pane-sequential-runs.test.ts
+| tests/integration/hosts/two-pane-sequential-runs.test.ts | two consecutive runs in the same process both finish cleanly | tests-new/integration/hosts/two-pane/two-pane-sequential-runs.test.ts | demote-relocate | Real-tmux "second run blinks and exits" host-coordination regression; asserts run completion only (pane-agnostic). No twin. Relocated verbatim, real-tmux `skipIf` gating preserved. |
+| tests/integration/hosts/two-pane-sequential-runs.test.ts | two consecutive runs against the same workspace filesystem both finish cleanly | tests-new/integration/hosts/two-pane/two-pane-sequential-runs.test.ts | demote-relocate | Workspace-leak host-coordination regression; pane-agnostic completion assertion. No twin. Relocated verbatim. |
+| tests/integration/hosts/two-pane-sequential-runs.test.ts | two consecutive CLI subprocess invocations both produce a state directory | tests-new/integration/hosts/two-pane/two-pane-sequential-runs.test.ts | demote-relocate | Cross-process socket-layer regression (exit 0 + 2 state dirs); pane-agnostic. No twin. Relocated verbatim. |
+
+### tests/integration/hosts/two-pane-failure-and-parallel.test.ts
+| tests/integration/hosts/two-pane-failure-and-parallel.test.ts | renders the Story 1.5 failure frame on the right pane when an autonomous step fails | tests-new/unit/hosts/tmux-host.test.ts ('TmuxHost.onLifecycleEvent — step:failed' → 'does not sendKeys the failure frame to the right pane — it is appended to the per-step tee (U5)') | skip-as-covered | The live assertion here is the U5 invariant: zero right-pane sendKeys on failure (the failure-frame behavior is explicitly deferred to the tmux-host unit by the file's own comment, this fixture having no controller). The no-sendKeys-on-failure invariant is the cited twin. |
+| tests/integration/hosts/two-pane-failure-and-parallel.test.ts | does not fan rollup bytes onto the right pane (U7 invariant) — no logger, no controller | tests-new/unit/hosts/tmux-host.test.ts ('TmuxHost.onLifecycleEvent — step:parallel-branch-update' → 'does not fan rollup bytes onto the right pane (U7 invariant — rollup lives in the _rollup tee)') | skip-as-covered | Identical U7 no-fan-out invariant, asserted at the host port. The happy-path-with-controller rollup pane-map path is covered separately by the right-pane-controller sources/lifecycle twins. |
+
+### tests/integration/hosts/two-pane-interactive-session-lost.test.ts
+| tests/integration/hosts/two-pane-interactive-session-lost.test.ts | translates the dead-socket TmuxCommandError into a HostUnavailableError instead of letting it escape un-wrapped | tests-new/integration/hosts/two-pane/two-pane-interactive-session-lost.test.ts | demote-relocate | Host-level error-mapping decision (`host.runInteractive` → `HostUnavailableError`); pane-agnostic. The model/controller right-pane-controller-session-lost twin covers the CONTROLLER surfacing the dead-socket error, NOT the host-port translation — so no twin covers this; relocated verbatim. |
+
+### tests/integration/hosts/two-pane/right-pane-live-output.test.ts
+| tests/integration/hosts/two-pane/right-pane-live-output.test.ts | writes runner bytes to the per-step tee instead of the visible right pane | tests-new/unit/hosts/tmux-host.test.ts ('TmuxHost.onRunnerEvent' → 'does not sendKeys to the right pane — runner bytes flow through the per-step tee (U5)') | skip-as-covered | Same U5 no-right-pane-sendKeys + tee-captures-bytes invariant, asserted at the host port. |
+| tests/integration/hosts/two-pane/right-pane-live-output.test.ts | does not respawn the right pane during the autonomous step (file-tail model) | tests-new/model/controller/right-pane-controller-sources.test.ts (+ right-pane-on-intent.test.ts) | skip-as-covered | "No respawnPane on the visible right pane" is the swap-model invariant asserted on every controller path (`respawns…toHaveLength(0)`). |
+| tests/integration/hosts/two-pane/right-pane-live-output.test.ts | writes ANSI-colored payloads to the tee (color: true) | tests-new/unit/hosts/tmux-host.test.ts ('does not sendKeys to the right pane — runner bytes flow through the per-step tee (U5)') | skip-as-covered | The tee writes color bytes; the file-session-logger formatter color path is covered by tests-new/unit/observability/file-session-logger.test.ts and the host tee twin. Pane-agnostic. |
+| tests/integration/hosts/two-pane/right-pane-live-output.test.ts | registers a file-tail source on step:start (createSession for per-source session with tail command) (U4) | tests-new/model/controller/right-pane-controller-sources.test.ts ('creates a per-source tmux session whose initial pane runs the file-tail argv') | skip-as-covered | Same per-source `live:plan` (`orch-src-live-plan`) createSession with `['tail','-n','5000','-F', <tee>]` argv, asserted at the controller seam. |
+| tests/integration/hosts/two-pane/right-pane-live-output.test.ts | left-pane bootstrap respawn is unrelated to the right-pane live path | tests-new/model/controller/right-pane-controller-sources.test.ts | drop | Vacuous: asserts `rightRespawns===0` (covered above) and `leftRespawns>=0` (always true — tautological). No load-bearing content. |
+
+### tests/integration/hosts/two-pane/right-pane-replay.integration.test.ts
+| tests/integration/hosts/two-pane/right-pane-replay.integration.test.ts | spawns tail -F over .replay/<step>.txt in a per-source session and swaps in for a commit step | tests-new/model/controller/right-pane-on-intent.test.ts ('prefers the persisted ANSI tee for autonomous replay when the file is non-empty') + right-pane-controller-sources.test.ts (swapPane src→dst) | skip-as-covered | Enter→replay createSession(`orch-src-replay-…`, tail argv) + swapPane(src=createdPane,dst=visible) + no-right-respawn — a controller DECISION re-derived at the FakeTmux seam. |
+| tests/integration/hosts/two-pane/right-pane-replay.integration.test.ts | tails .replay/<step>.txt for an autonomous step with no persisted tee (JSON fallback) | tests-new/model/controller/right-pane-on-intent.test.ts ('prefers the persisted ANSI tee for autonomous replay …') (+ tests-new/integration/hosts/plain/transcript-render-claude.test.ts for the re-render) | skip-as-covered | The tee-vs-`.replay` fallback path selection is the on-intent ANSI-tee-preference decision; the JSON re-render content is covered by the transcript-render twin + format-event unit. |
+| tests/integration/hosts/two-pane/right-pane-replay.integration.test.ts | does not call newWindow / selectWindow / killWindow / respawnPane(rightPaneId) on any path | tests-new/model/controller/right-pane-on-intent.test.ts (+ right-pane-controller-sources.test.ts, right-pane-controller-lifecycle.test.ts) | skip-as-covered | The window-API-free / no-right-respawn invariant is asserted across the controller twins; the source-invariant static net is the static analogue (also covered). |
+| tests/integration/hosts/two-pane/right-pane-replay.integration.test.ts | renders Claude assistant text via toClaudeTranscriptLines when the host wires it as transcriptRenderer | tests-new/integration/hosts/plain/transcript-render-claude.test.ts ('renders the captured NDJSON into a readable plain-text transcript …', asserts `assistant>`) + tests-new/unit/runners/claude/format-event.test.ts | skip-as-covered | The `toClaudeTranscriptLines` → readable `assistant>` (no raw `info:assistant`) renderer decision is covered by the plain transcript-render integration twin + the claude format-event unit. |
+| tests/integration/hosts/two-pane/right-pane-replay.integration.test.ts | warm-caches the replay pane: re-Enter on the same step swaps without re-spawning | tests-new/model/controller/right-pane-on-intent.test.ts ('warm-caches the replay pane: re-enter on the same step does not create a second per-source session') | skip-as-covered | Identical warm-cache re-Enter decision (no second createSession) at the controller seam. |
+| tests/integration/hosts/two-pane/right-pane-replay.integration.test.ts | swaps to placeholder on follow-live after a prior Enter when no live/rollup is registered | tests-new/model/controller/right-pane-on-intent.test.ts ('on follow-live with no rollup/live registered swaps to placeholder when one exists') | skip-as-covered | Identical follow-live→placeholder swap decision + no-right-respawn at the controller seam. |
+
+### tests/integration/hosts/two-pane/right-pane-source-invariant.test.ts
+| tests/integration/hosts/two-pane/right-pane-source-invariant.test.ts | no respawnPane call in src/hosts/two-pane/ targets rightPaneId (use controller.showSource instead) | tests-new/model/controller/right-pane-controller-sources.test.ts, right-pane-on-intent.test.ts, right-pane-controller-replay-dead-pane.test.ts (every path asserts `respawns(rightPaneId)===0`) | skip-as-covered | Static-regex meta-guard for the runtime invariant the controller twins assert dynamically on every visible-pane path (live, replay, follow-live, interactive). The risk (a path respawning the visible slot) is covered dynamically. |
+| tests/integration/hosts/two-pane/right-pane-source-invariant.test.ts | exercises the matcher on a synthetic forbidden snippet (self-test) | — | drop | Vacuous self-test of the regex matcher in the deleted meta-guard — asserts nothing about orch behavior. |
+
+### tests/integration/hosts/two-pane/right-pane-busy-gate.integration.test.ts
+| tests/integration/hosts/two-pane/right-pane-busy-gate.integration.test.ts | issues no stray sendKeys footer or respawn-cat on the visible right pane while a step is in flight or after it completes | tests-new/model/controller/right-pane-on-intent.test.ts + right-pane-controller-sources.test.ts (no-right-respawn on every path) | skip-as-covered | Post-U8 busy-gate removal is structural (`isRightPaneBusy` deleted from src); the negative invariant (no cat-respawn / no busy footer on the visible pane) is the swap-model no-right-respawn invariant covered by the controller twins. Pane-agnostic. |
+
+### tests/integration/hosts/two-pane/right-pane-live-doubling.real.integration.test.ts
+| tests/integration/hosts/two-pane/right-pane-live-doubling.real.integration.test.ts | does not double-render or echo ANSI bytes in the visible right pane (file-tail model) | tests-new/unit/hosts/tmux-host.test.ts ('does not sendKeys to the right pane — runner bytes flow through the per-step tee (U5)') + full-host/fake-agent/follow-live--right-pane-swaps-source.test.ts ('autonomous transcript reaches the right pane with no caret echo') | drop | Despite the `.real` name this drives a FakeTmuxService and asserts the same no-right-pane-sendKeys + tee-single-copy + no-caret invariant the U5 host tee twin pins; the kernel-pty echo-doubling it guarded is structurally impossible post-U5 (no sendKeys path to the visible pane). The on-screen no-caret survival is independently covered by the full-host fake-agent swaps-source scenario. Vacuous fake-tmux byte assertion. |
+
+
+### Cluster C4
+
+# C4 closeout ledger — integration/hosts/two-pane/** plumbing + real-tmux adapter
+
+> Cluster C4 (W5 of Phase 14). Disposition vocab: `skip-as-covered` (cite twin) /
+> `demote-relocate` / `re-derive` / `drop`. Genuine real-tmux adapter/mechanics
+> tests relocate into `tests-new/integration/real-tmux/<name>.test.ts` preserving
+> `describe.skipIf(...)` gating (R13/D8). Controller-decision tests at the
+> `FakeTmuxService` seam are `skip-as-covered` by the U7 `model/controller/*`
+> twins; lifecycle/process trios by the U8 `tests-new/lifecycle/*` twins.
+
+| Old file | Old case | New scenario (path) | Disposition | Reason |
+|---|---|---|---|---|
+
+### tests/integration/hosts/two-pane/resume-failure-mocked.integration.test.ts
+| tests/integration/hosts/two-pane/resume-failure-mocked.integration.test.ts | writes the canonical "resume failed" footer and tails it from a hidden pane | tests-new/model/controller/right-pane-controller-failure-recovery.test.ts (+ model/controller/resume-refusal.test.ts) | skip-as-covered | Mocked `FakeTmuxService` controller test: resume-failure footer → `.replay/` file-tail, no respawn on the visible right pane, no stderr bleed — an error-containment controller DECISION at the fake seam. Passes if the pane is empty. The error-containment + resume-refusal branches are the U7b `failure-recovery` / `resume-refusal` twins. |
+
+### tests/integration/hosts/two-pane/resume-launcher-mocked.integration.test.ts
+| tests/integration/hosts/two-pane/resume-launcher-mocked.integration.test.ts | spawns the resume argv as a pty source in a per-source session and swaps it in | tests-new/model/controller/resume-refusal.test.ts | skip-as-covered | Mocked `FakeTmuxService` test: resume `RunnerCommand` argv/env (`--resume <sessionId>`, `FORCE_COLOR=3`, `HOME`) registered as a `pty` per-source session + `swapPane` in, no respawn. This is the resume-refusal twin's `happy path: registry hit + sessionId + resumeCommand spawns the runner` case — a controller DECISION at the fake seam (passes if pane empty). |
+
+### tests/integration/hosts/two-pane/kind-details.integration.test.ts
+| tests/integration/hosts/two-pane/kind-details.integration.test.ts | writes commit / worktree / ask payloads to .replay/<step>.txt and tails them on scratch | tests-new/model/controller/right-pane-on-intent.test.ts | skip-as-covered | Mocked `FakeTmuxService` test: kind-details payload → `.replay/<step>.txt` → `file-tail` per-source register on `onIntent('enter')`. This is the `onIntent("enter")` warm-cache / file-tail dispatch DECISION the U7b `right-pane-on-intent` twin pins (passes if pane empty). Old header itself tags it `triage: rewrite … interim Keep`. |
+
+### tests/integration/hosts/two-pane/end-of-run-mount.integration.test.ts
+| tests/integration/hosts/two-pane/end-of-run-mount.integration.test.ts | keeps the host alive past workflow completion until awaitForegroundShutdown fires | tests-new/lifecycle/q-intent--tears-down-cleanly.test.ts (+ lifecycle/launch--boots-to-mid-step-and-tears-down.test.ts) | skip-as-covered | Mocked-tmux PROCESS-lifecycle assertion: workflow completion alone does not tear the host down; shutdown latches only on a `quit` intent. The host-stays-mounted-past-completion-until-quit plumbing is the U8 `q-intent` lifecycle twin. Passes if pane empty. |
+| tests/integration/hosts/two-pane/end-of-run-mount.integration.test.ts | tears down idempotently — second teardown is a no-op | tests-new/lifecycle/q-intent--tears-down-cleanly.test.ts (+ lifecycle/launch--boots-to-mid-step-and-tears-down.test.ts) | skip-as-covered | Idempotent teardown (no double kill-session) is process-teardown plumbing proven by the U8 lifecycle teardown twins. Passes if pane empty. |
+| tests/integration/hosts/two-pane/end-of-run-mount.integration.test.ts | quit intent fires the canonical shutdown signal exactly once | tests-new/lifecycle/q-intent--tears-down-cleanly.test.ts | skip-as-covered | Quit-intent-fires-shutdown-once (latched tagged deferred, re-await returns `'quit'`) is the U8 `q-intent` lifecycle twin's exact concern. Passes if pane empty. |
+
+### tests/integration/hosts/two-pane/end-of-run.real.integration.test.ts
+| tests/integration/hosts/two-pane/end-of-run.real.integration.test.ts | renders the end-of-run footer when the seeded run is in a terminal state | tests-new/integration/real-tmux/end-of-run.test.ts | demote-relocate | Genuine real-tmux: boots a real `tmux` server, spawns the steps-view-runner SUBPROCESS over a seeded `status:'completed'` state.json, polls `capture-pane` for the terminal-state footer + workflow name. `describe.skipIf(!canRunRealTmux())` gating preserved; only import specifiers rewritten (depth 4→3, helpers→`@orch/test/real-tmux`). |
+
+### tests/integration/hosts/two-pane/interactive-unregister-keeps-visible-slot-alive.integration.test.ts
+| tests/integration/hosts/two-pane/interactive-unregister-keeps-visible-slot-alive.integration.test.ts | leaves visiblePaneId pointing at a live pane so a subsequent replay swap does not target the killed pane | tests-new/model/controller/right-pane-controller-interactive-dead-pane.test.ts | skip-as-covered | Regression for r-2026-05-11-154533-le run as a `FakeTmuxService` controller test: unregistering a currently-visible interactive source must not leave `visiblePaneId` on a dead pane (lazy placeholder / defensive kill ordering). This is the dead-resume-pane DECISION class the U7b `interactive-dead-pane` twin pins at the fake ownership seam (passes if pane empty). |
+
+### tests/integration/hosts/two-pane/autonomous-live-pane-shows-content-immediately.integration.test.ts
+| tests/integration/hosts/two-pane/autonomous-live-pane-shows-content-immediately.integration.test.ts | creates the tee file with non-empty content before any runner events arrive, so tail -F has something to render immediately | tests-new/full-host/fake-agent/follow-live--right-pane-swaps-source.test.ts (+ model/controller/right-pane-controller-sources.test.ts) | skip-as-covered | `FakeTmuxService` host test asserting the starting-marker tee write on `step:start` so `tail -F` is never blank — the autonomous live-source register DECISION (white-box tee bytes, passes with an empty pane). The user-visible "autonomous transcript reaches the live right pane" risk is the U6 full-host `follow-live--right-pane-swaps-source` twin; the register decision is the U7b `sources` twin. |
+
+### tests/integration/hosts/two-pane/pane-map-source-session.real.integration.test.ts
+| tests/integration/hosts/two-pane/pane-map-source-session.real.integration.test.ts | creates a per-source session as a sibling of the visible orch session, on the same socket | tests-new/integration/real-tmux/pane-map-source-session.test.ts | demote-relocate | Genuine real-tmux per-source-session mechanics (KTD2/KTD3). skipIf gating preserved; imports rewritten only. |
+| tests/integration/hosts/two-pane/pane-map-source-session.real.integration.test.ts | runs the cat holder argv as the placeholder session initial pane | tests-new/integration/real-tmux/pane-map-source-session.test.ts | demote-relocate | Genuine real-tmux: placeholder session uses the `cat` holder as its initial pane. Relocated, gating preserved. |
+| tests/integration/hosts/two-pane/pane-map-source-session.real.integration.test.ts | runs the file-tail argv as the initial pane for a non-placeholder source | tests-new/integration/real-tmux/pane-map-source-session.test.ts | demote-relocate | Genuine real-tmux: file-tail argv as a non-placeholder source's initial pane. Relocated, gating preserved. |
+| tests/integration/hosts/two-pane/pane-map-source-session.real.integration.test.ts | rounds the sanitizer output trip — a colon/dot key produces a session name actually present on the socket | tests-new/integration/real-tmux/pane-map-source-session.test.ts | demote-relocate | Genuine real-tmux: session-name sanitizer round-trips against the live socket. Relocated, gating preserved. |
+| tests/integration/hosts/two-pane/pane-map-source-session.real.integration.test.ts | teardownSourceSession kills the per-source session and leaves orch alive | tests-new/integration/real-tmux/pane-map-source-session.test.ts | demote-relocate | Genuine real-tmux teardown mechanics. Relocated, gating preserved. |
+| tests/integration/hosts/two-pane/pane-map-source-session.real.integration.test.ts | teardownSourceSession tolerates double-teardown without erroring | tests-new/integration/real-tmux/pane-map-source-session.test.ts | demote-relocate | Genuine real-tmux idempotent teardown. Relocated, gating preserved. |
+| tests/integration/hosts/two-pane/pane-map-source-session.real.integration.test.ts | two file-tail per-source sessions can be swapped through the visible pane (cross-session swap-pane) | tests-new/integration/real-tmux/pane-map-source-session.test.ts | demote-relocate | Genuine real-tmux cross-session `swap-pane` smoke. Relocated, gating preserved. |
+
+### tests/integration/hosts/two-pane/real-tmux-server-killed-externally.integration.test.ts
+| tests/integration/hosts/two-pane/real-tmux-server-killed-externally.integration.test.ts | translates the dead socket into HostUnavailableError and reports unreachable | tests-new/integration/real-tmux/server-killed-externally.test.ts | demote-relocate | Genuine real-tmux host behaviour (r-2026-05-22-093650-j0): after external `kill-server`, `runInteractive` throws `HostUnavailableError` and `probeReachability()` reports unreachable. `describe.skipIf(!canRunRealTmux())` preserved; imports rewritten only. |
+| tests/integration/hosts/two-pane/real-tmux-server-killed-externally.integration.test.ts | records tmuxReachabilityProbeFailed in the lifecycle log on the failure path | tests-new/integration/real-tmux/server-killed-externally.test.ts | demote-relocate | Genuine real-tmux: lifecycle-log `tmuxReachabilityProbeFailed:true` on the dead-socket path. Relocated, gating preserved. |
+| tests/integration/hosts/two-pane/real-tmux-server-killed-externally.integration.test.ts | host.teardown() against a dead server completes without throwing | tests-new/integration/real-tmux/server-killed-externally.test.ts | demote-relocate | Genuine real-tmux: teardown against a dead server is non-throwing. Relocated, gating preserved. |
+
+### tests/integration/hosts/two-pane/tmux-host-rollup-pane-map.integration.test.ts
+| tests/integration/hosts/two-pane/tmux-host-rollup-pane-map.integration.test.ts | writes rollup snapshots to the _rollup tee instead of the visible right pane | tests-new/model/controller/right-pane-controller-sources.test.ts (+ model/controller/right-pane-controller-lifecycle.test.ts, unit/hosts/parallel-rollup.test.ts) | skip-as-covered | `FakeTmuxService` host test: rollup payloads go to the `_rollup` meta tee, not the visible right pane (zero `sendKeys`) — a controller wiring DECISION (white-box tee bytes / no-sendKeys, passes if pane empty). Rollup register/teardown decisions are the U7b `sources`/`lifecycle` twins; the rollup payload rendering is `unit/hosts/parallel-rollup.test.ts`. Old header tags it `triage: rewrite … interim Keep`. |
+| tests/integration/hosts/two-pane/tmux-host-rollup-pane-map.integration.test.ts | registers a file-tail source on step:parallel-start (createSession for the rollup per-source session with tail command) | tests-new/model/controller/right-pane-controller-sources.test.ts | skip-as-covered | Rollup per-source `createSession`/file-tail register on `parallel-start` is the `registerSource` controller DECISION at the fake seam (passes if pane empty). |
+| tests/integration/hosts/two-pane/tmux-host-rollup-pane-map.integration.test.ts | does not respawn the right pane during a parallel block | tests-new/model/controller/right-pane-controller-sources.test.ts | drop | Vacuous fake-tmux negative invariant ("no respawn on the visible right pane") — passes with an empty pane and asserts the absence of a call; the positive rollup register/swap DECISIONs are covered by the U7b `sources`/`lifecycle` twins. |
+| tests/integration/hosts/two-pane/tmux-host-rollup-pane-map.integration.test.ts | kills the rollup per-source session on step:parallel-complete (warm cache is live-only) | tests-new/model/controller/right-pane-controller-lifecycle.test.ts | skip-as-covered | Rollup per-source-session teardown on `parallel-complete` (warm cache live-only) is the `teardownSessions`/lifecycle controller DECISION the U7b `lifecycle` twin pins (passes if pane empty). |
+
+### tests/integration/hosts/two-pane/transcript-replay-memory.smoke.test.ts
+| tests/integration/hosts/two-pane/transcript-replay-memory.smoke.test.ts | keeps resident-set growth under 120MB on a 10MB synthetic transcript | tests-new/integration/hosts/two-pane/transcript-replay-memory.smoke.test.ts | demote-relocate | Pure-function RSS memory-bound perf guard on `renderTranscriptToString` (`src/hosts/two-pane/replay-transcript.ts`) — not pane-shaped, no two-pane twin, genuinely uncovered. Plain non-pane smoke; relocated same-depth so the body and imports are byte-identical (no specifier rewrite needed). |
+
+### tests/integration/hosts/two-pane/steps-tui-e2e.mocked.test.ts
+| tests/integration/hosts/two-pane/steps-tui-e2e.mocked.test.ts | keeps the TUI mounted through workflow completion until quit fires | tests-new/lifecycle/q-intent--tears-down-cleanly.test.ts (+ lifecycle/launch--boots-to-mid-step-and-tears-down.test.ts) | skip-as-covered | Mocked `FakeTmuxService`+`FakeProcessService` e2e of the same PROCESS-lifecycle trio as `end-of-run-mount`: stays mounted through completion, `awaitForegroundShutdown` pending until `quit`, teardown in canonical order. Covered by the U8 lifecycle twins; passes if pane empty. |
+
+### tests/integration/hosts/two-pane/steps-view-header-no-duplicate.real.integration.test.ts
+| tests/integration/hosts/two-pane/steps-view-header-no-duplicate.real.integration.test.ts | renders the run breadcrumb exactly once after several state changes and pane resizes | tests-new/integration/real-tmux/steps-view-header-no-duplicate.test.ts | demote-relocate | Genuine real-tmux behavioural test (mountTmuxHost + real tmux): the `orch · <workflow> · <runId>` breadcrumb must not stack across state changes/resizes — a no-stale-frame property that needs the real terminal (would not pass if the pane were empty). `describe.skipIf(!canRunRealTmux())` preserved; imports rewritten only. |
+
+### tests/integration/hosts/two-pane/steps-view/steps-tui.real.integration.test.ts
+| tests/integration/hosts/two-pane/steps-view/steps-tui.real.integration.test.ts | renders the seeded workflow name and step name into the left pane | tests-new/integration/real-tmux/steps-tui.test.ts | demote-relocate | Genuine real-tmux: boots a real tmux server, spawns the Ink steps-view-runner child onto the left pane, captures and asserts the workflow + step name render. skipIf gating preserved; imports rewritten (depth 5→3) + the runtime `resolve()` runner-script arg corrected by the same specifier rewrite. |
+
+### tests/integration/hosts/two-pane/tier-1/banner-info-and-error-ttl.real.integration.test.ts
+| tests/integration/hosts/two-pane/tier-1/banner-info-and-error-ttl.real.integration.test.ts | step:failed renders 'step plan failed' in the steps-view left pane | tests-new/integration/real-tmux/banner-info-and-error-ttl.test.ts | demote-relocate | Genuine full-host-on-real-tmux: `mountTmuxHost` + `FakeRunner` failing step, assert the error banner survives the real host plumbing to the visible left pane (would not pass if pane empty). The banner DECISION is the U7b `banner` twin and the banner bytes are `screen/banner--paint-bytes`, but the end-to-end host-on-real-tmux survival is genuine real-tmux integration. skipIf preserved; imports rewritten only. |
+
+### tests/integration/hosts/two-pane/tier-1/right-pane-shows-failure-summary.real.integration.test.ts
+| tests/integration/hosts/two-pane/tier-1/right-pane-shows-failure-summary.real.integration.test.ts | right.capture() contains the failure headline and error message after the step throws | tests-new/integration/real-tmux/right-pane-shows-failure-summary.test.ts | demote-relocate | Genuine full-host-on-real-tmux: `mountTmuxHost` + `FakeRunner` failing step, assert `renderFailurePanePayload` reaches the visible right pane via the tee→warm-replay swap (would not pass if pane empty). Distinct from the left-pane banner test; end-to-end host survival is genuine real-tmux. skipIf preserved; imports rewritten only. |
+
+### tests/integration/hosts/two-pane/wheel-no-mode-error.real.test.ts
+| tests/integration/hosts/two-pane/wheel-no-mode-error.real.test.ts | list-keys -T root after init exposes WheelUpPane with the nested if-shell shape gating copy-mode entry on both mouse_any_flag and alternate_on | tests-new/integration/real-tmux/wheel-no-mode-error.test.ts | demote-relocate | Genuine real-tmux keytable adapter assertion (`list-keys -T root`). skipIf gating preserved; imports rewritten only. |
+| tests/integration/hosts/two-pane/wheel-no-mode-error.real.test.ts | WheelDownPane in the root table NEVER falls back to copy-mode at the live tail — only WheelUp opens scrollback (regression guard for trapped-in-copy-mode) | tests-new/integration/real-tmux/wheel-no-mode-error.test.ts | demote-relocate | Genuine real-tmux keytable regression guard. Relocated, gating preserved. |
+| tests/integration/hosts/two-pane/wheel-no-mode-error.real.test.ts | copy-mode and copy-mode-vi tables contain ONLY the audited allowlist after init — exit (q/Escape/C-c) and scroll (j/k/Up/Down/PageUp/PageDown/g/G/wheel) — so the user can never get trapped | tests-new/integration/real-tmux/wheel-no-mode-error.test.ts | demote-relocate | Genuine real-tmux copy-mode keytable allowlist audit. Relocated, gating preserved. |
+| tests/integration/hosts/two-pane/wheel-no-mode-error.real.test.ts | the if-shell format strings evaluate against tmux 3.3+ without errors when probed via display-message | tests-new/integration/real-tmux/wheel-no-mode-error.test.ts | demote-relocate | Genuine real-tmux: if-shell format strings evaluate without error on the live server. Relocated, gating preserved. |
+
+### tests/integration/hosts/two-pane/wheel-up-on-ink-prompt-no-copy-mode.real.test.ts
+| tests/integration/hosts/two-pane/wheel-up-on-ink-prompt-no-copy-mode.real.test.ts | the visible right pane reports alternate_on == 1 while the prompt is open so the smart-wheel binding does not enter copy-mode | tests-new/integration/real-tmux/wheel-up-on-ink-prompt-no-copy-mode.test.ts | demote-relocate | Genuine real-tmux behavioural test (r-2026-05-22-212450-07): the open ink-prompt pane must report `alternate_on == 1` so the smart-wheel binding skips copy-mode. skipIf preserved; imports rewritten + the runtime `join(here, '..'×4)` REPO_ROOT corrected to `'..'×3` for the new depth (the runner spawn path is computed from file location, not an import specifier). |
+
+### tests/integration/hosts/two-pane/windows.real.integration.test.ts
+| tests/integration/hosts/two-pane/windows.real.integration.test.ts | creates a second window via newWindow, leaving list-windows showing two windows | tests-new/integration/real-tmux/windows.test.ts | demote-relocate | Genuine `RealTmuxService` window-lifecycle adapter test against a live tmux server. skipIf gating preserved; imports rewritten only. |
+| tests/integration/hosts/two-pane/windows.real.integration.test.ts | selectWindow back to window 0, then killWindow on window 1, leaves only one window | tests-new/integration/real-tmux/windows.test.ts | demote-relocate | Genuine `RealTmuxService` select/kill window adapter test. Relocated, gating preserved. |
+| tests/integration/hosts/two-pane/windows.real.integration.test.ts | killWindow tolerates a missing window id (idempotent teardown) | tests-new/integration/real-tmux/windows.test.ts | demote-relocate | Genuine `RealTmuxService` idempotent killWindow adapter test. Relocated, gating preserved. |
+
+
+### Cluster C5
+
+# C5 closeout ledger — unit/hosts/two-pane decision/coordination tests (demote-relocate)
+
+Cluster C5 (W5): plain non-pane class tests mis-filed under `unit/hosts/two-pane`.
+All pass the triage rule ("would it still pass if the pane were empty?" → YES):
+they assert classification logic, lifecycle choreography, codec/replay
+coordination, and stdio capture — never pane bytes. Default disposition
+`demote-relocate`: faithful verbatim copy into the mirror path under `tests-new/`,
+import specifiers rewritten only (bodies byte-identical), `import-parity` guard
+verifies the relocation contract centrally.
+
+| Old file | Old case | New scenario (path) | Disposition | Reason |
+| --- | --- | --- | --- | --- |
+
+### tests/unit/hosts/two-pane/await-interactive-pane-exit.test.ts
+
+| Old file | Old case | New scenario (path) | Disposition | Reason |
+| --- | --- | --- | --- | --- |
+| tests/unit/hosts/two-pane/await-interactive-pane-exit.test.ts | awaitInteractivePaneExit > resolves via the pane-died hook when the hook signal arrives | tests-new/unit/hosts/two-pane/await-interactive-pane-exit.test.ts | demote-relocate | plain liveness-backstop coordination logic over fake tmux/clock — pane-agnostic; relocated verbatim, imports only |
+| tests/unit/hosts/two-pane/await-interactive-pane-exit.test.ts | awaitInteractivePaneExit > falls back to the liveness poll when the hook signal is lost, reporting the dead status | tests-new/unit/hosts/two-pane/await-interactive-pane-exit.test.ts | demote-relocate | plain liveness-backstop coordination logic over fake tmux/clock — pane-agnostic; relocated verbatim, imports only |
+| tests/unit/hosts/two-pane/await-interactive-pane-exit.test.ts | awaitInteractivePaneExit > releases the parked hook waiter via signalChannel when the poll wins | tests-new/unit/hosts/two-pane/await-interactive-pane-exit.test.ts | demote-relocate | plain liveness-backstop coordination logic over fake tmux/clock — pane-agnostic; relocated verbatim, imports only |
+| tests/unit/hosts/two-pane/await-interactive-pane-exit.test.ts | awaitInteractivePaneExit > keeps waiting while the pane is alive and never fails a live pane | tests-new/unit/hosts/two-pane/await-interactive-pane-exit.test.ts | demote-relocate | plain liveness-backstop coordination logic over fake tmux/clock — pane-agnostic; relocated verbatim, imports only |
+| tests/unit/hosts/two-pane/await-interactive-pane-exit.test.ts | awaitInteractivePaneExit > treats a vanished pane (display-message throws) as exited | tests-new/unit/hosts/two-pane/await-interactive-pane-exit.test.ts | demote-relocate | plain liveness-backstop coordination logic over fake tmux/clock — pane-agnostic; relocated verbatim, imports only |
+
+### tests/unit/hosts/two-pane/kind-details.test.ts
+
+| Old file | Old case | New scenario (path) | Disposition | Reason |
+| --- | --- | --- | --- | --- |
+| tests/unit/hosts/two-pane/kind-details.test.ts | renderKindDetails for commit kind > renders the SHA on a CommitResult-shaped value | tests-new/unit/hosts/two-pane/kind-details.test.ts | demote-relocate | pure string-in/string-out presentation formatting — pane-agnostic; relocated verbatim, imports only |
+| tests/unit/hosts/two-pane/kind-details.test.ts | renderKindDetails for commit kind > renders the no-commit fallback when value is null (clean tree) | tests-new/unit/hosts/two-pane/kind-details.test.ts | demote-relocate | pure string-in/string-out presentation formatting — pane-agnostic; relocated verbatim, imports only |
+| tests/unit/hosts/two-pane/kind-details.test.ts | renderKindDetails for worktree kind > renders path / branch / fromRef from a WorktreeResult-shaped value | tests-new/unit/hosts/two-pane/kind-details.test.ts | demote-relocate | pure string-in/string-out presentation formatting — pane-agnostic; relocated verbatim, imports only |
+| tests/unit/hosts/two-pane/kind-details.test.ts | renderKindDetails for ask kind > shows the cancelled marker when the prompt was cancelled | tests-new/unit/hosts/two-pane/kind-details.test.ts | demote-relocate | pure string-in/string-out presentation formatting — pane-agnostic; relocated verbatim, imports only |
+| tests/unit/hosts/two-pane/kind-details.test.ts | renderKindDetails for ask kind > shows the chosen button + scalar fields when the user submitted | tests-new/unit/hosts/two-pane/kind-details.test.ts | demote-relocate | pure string-in/string-out presentation formatting — pane-agnostic; relocated verbatim, imports only |
+
+### tests/unit/hosts/two-pane/lifecycle-choreographer.test.ts
+
+| Old file | Old case | New scenario (path) | Disposition | Reason |
+| --- | --- | --- | --- | --- |
+| tests/unit/hosts/two-pane/lifecycle-choreographer.test.ts | LifecycleChoreographer — step:start > opens the tee, writes the starting marker, then registers a live file-tail source for an autonomous step | tests-new/unit/hosts/two-pane/lifecycle-choreographer.test.ts | demote-relocate | lifecycle choreography ordered-call assertions over recording fakes — pane-agnostic; relocated verbatim, helper import → @orch/test/* only |
+| tests/unit/hosts/two-pane/lifecycle-choreographer.test.ts | LifecycleChoreographer — step:start > emits a no-transcript banner and registers no source when no logs directory is configured | tests-new/unit/hosts/two-pane/lifecycle-choreographer.test.ts | demote-relocate | lifecycle choreography ordered-call assertions over recording fakes — pane-agnostic; relocated verbatim, helper import → @orch/test/* only |
+| tests/unit/hosts/two-pane/lifecycle-choreographer.test.ts | LifecycleChoreographer — step:start > produces no side effects for a non-autonomous step | tests-new/unit/hosts/two-pane/lifecycle-choreographer.test.ts | demote-relocate | lifecycle choreography ordered-call assertions over recording fakes — pane-agnostic; relocated verbatim, helper import → @orch/test/* only |
+| tests/unit/hosts/two-pane/lifecycle-choreographer.test.ts | LifecycleChoreographer — step:cached > emits a single cached-no-transcript info banner | tests-new/unit/hosts/two-pane/lifecycle-choreographer.test.ts | demote-relocate | lifecycle choreography ordered-call assertions over recording fakes — pane-agnostic; relocated verbatim, helper import → @orch/test/* only |
+| tests/unit/hosts/two-pane/lifecycle-choreographer.test.ts | LifecycleChoreographer — step:complete > unregisters the live source before closing the tee | tests-new/unit/hosts/two-pane/lifecycle-choreographer.test.ts | demote-relocate | lifecycle choreography ordered-call assertions over recording fakes — pane-agnostic; relocated verbatim, helper import → @orch/test/* only |
+| tests/unit/hosts/two-pane/lifecycle-choreographer.test.ts | LifecycleChoreographer — step:failed > writes the failure summary, unregisters with the completion banner suppressed, emits the error, then closes the tee | tests-new/unit/hosts/two-pane/lifecycle-choreographer.test.ts | demote-relocate | lifecycle choreography ordered-call assertions over recording fakes — pane-agnostic; relocated verbatim, helper import → @orch/test/* only |
+| tests/unit/hosts/two-pane/lifecycle-choreographer.test.ts | LifecycleChoreographer — step:failed > skips the failure-summary write when the host is already tearing down | tests-new/unit/hosts/two-pane/lifecycle-choreographer.test.ts | demote-relocate | lifecycle choreography ordered-call assertions over recording fakes — pane-agnostic; relocated verbatim, helper import → @orch/test/* only |
+| tests/unit/hosts/two-pane/lifecycle-choreographer.test.ts | LifecycleChoreographer — parallel block > opens the rollup tee and registers a rollup file-tail source on parallel-start | tests-new/unit/hosts/two-pane/lifecycle-choreographer.test.ts | demote-relocate | lifecycle choreography ordered-call assertions over recording fakes — pane-agnostic; relocated verbatim, helper import → @orch/test/* only |
+| tests/unit/hosts/two-pane/lifecycle-choreographer.test.ts | LifecycleChoreographer — parallel block > aggregates every branch update into one rollup snapshot written to the rollup tee | tests-new/unit/hosts/two-pane/lifecycle-choreographer.test.ts | demote-relocate | lifecycle choreography ordered-call assertions over recording fakes — pane-agnostic; relocated verbatim, helper import → @orch/test/* only |
+| tests/unit/hosts/two-pane/lifecycle-choreographer.test.ts | LifecycleChoreographer — parallel block > closes the rollup tee only after unregistering the rollup source on parallel-complete | tests-new/unit/hosts/two-pane/lifecycle-choreographer.test.ts | demote-relocate | lifecycle choreography ordered-call assertions over recording fakes — pane-agnostic; relocated verbatim, helper import → @orch/test/* only |
+| tests/unit/hosts/two-pane/lifecycle-choreographer.test.ts | LifecycleChoreographer — parallel block > resets the rollup aggregator so a later parallel block starts with a fresh snapshot | tests-new/unit/hosts/two-pane/lifecycle-choreographer.test.ts | demote-relocate | lifecycle choreography ordered-call assertions over recording fakes — pane-agnostic; relocated verbatim, helper import → @orch/test/* only |
+| tests/unit/hosts/two-pane/lifecycle-choreographer.test.ts | LifecycleChoreographer — FIFO serialization > settles an earlier event's full effect sequence before a later event's begins | tests-new/unit/hosts/two-pane/lifecycle-choreographer.test.ts | demote-relocate | lifecycle choreography ordered-call assertions over recording fakes — pane-agnostic; relocated verbatim, helper import → @orch/test/* only |
+| tests/unit/hosts/two-pane/lifecycle-choreographer.test.ts | LifecycleChoreographer — FIFO serialization > keeps processing later events after one event rejects, routing the rejection to onSendError | tests-new/unit/hosts/two-pane/lifecycle-choreographer.test.ts | demote-relocate | lifecycle choreography ordered-call assertions over recording fakes — pane-agnostic; relocated verbatim, helper import → @orch/test/* only |
+| tests/unit/hosts/two-pane/lifecycle-choreographer.test.ts | LifecycleChoreographer — no controller > still runs the tee effects and never throws when no controller is wired | tests-new/unit/hosts/two-pane/lifecycle-choreographer.test.ts | demote-relocate | lifecycle choreography ordered-call assertions over recording fakes — pane-agnostic; relocated verbatim, helper import → @orch/test/* only |
+
+### tests/unit/hosts/two-pane/replay-command-pane.test.ts
+
+| Old file | Old case | New scenario (path) | Disposition | Reason |
+| --- | --- | --- | --- | --- |
+| tests/unit/hosts/two-pane/replay-command-pane.test.ts | resolveCommandPaneSource > returns the captured pane log path when the file exists and has bytes | tests-new/unit/hosts/two-pane/replay-command-pane.test.ts | demote-relocate | replay source-resolution coordination over real fs — pane-agnostic; relocated verbatim, imports only |
+| tests/unit/hosts/two-pane/replay-command-pane.test.ts | resolveCommandPaneSource > returns the inline placeholder when paneLogPath is undefined | tests-new/unit/hosts/two-pane/replay-command-pane.test.ts | demote-relocate | replay source-resolution coordination over real fs — pane-agnostic; relocated verbatim, imports only |
+| tests/unit/hosts/two-pane/replay-command-pane.test.ts | resolveCommandPaneSource > returns the inline placeholder when the pane log file is empty | tests-new/unit/hosts/two-pane/replay-command-pane.test.ts | demote-relocate | replay source-resolution coordination over real fs — pane-agnostic; relocated verbatim, imports only |
+| tests/unit/hosts/two-pane/replay-command-pane.test.ts | resolveCommandPaneSource > returns the inline placeholder when the pane log file is missing on disk | tests-new/unit/hosts/two-pane/replay-command-pane.test.ts | demote-relocate | replay source-resolution coordination over real fs — pane-agnostic; relocated verbatim, imports only |
+
+### tests/unit/hosts/two-pane/replay-transcript.test.ts
+
+| Old file | Old case | New scenario (path) | Disposition | Reason |
+| --- | --- | --- | --- | --- |
+| tests/unit/hosts/two-pane/replay-transcript.test.ts | renderTranscriptToString with the default JSON-fallback renderer > renders assistant info events into the replay payload | tests-new/unit/hosts/two-pane/replay-transcript.test.ts | demote-relocate | transcript codec/render coordination over real fs sidecar — pane-agnostic; relocated verbatim, imports only |
+| tests/unit/hosts/two-pane/replay-transcript.test.ts | renderTranscriptToString with the default JSON-fallback renderer > renders the no-events placeholder when the sidecar contains no parseable events | tests-new/unit/hosts/two-pane/replay-transcript.test.ts | demote-relocate | transcript codec/render coordination over real fs sidecar — pane-agnostic; relocated verbatim, imports only |
+| tests/unit/hosts/two-pane/replay-transcript.test.ts | renderTranscriptToString with the default JSON-fallback renderer > skips malformed lines silently rather than crashing the replay | tests-new/unit/hosts/two-pane/replay-transcript.test.ts | demote-relocate | transcript codec/render coordination over real fs sidecar — pane-agnostic; relocated verbatim, imports only |
+| tests/unit/hosts/two-pane/replay-transcript.test.ts | renderTranscriptToString with an injected runner-shaped renderer > runs every event through the supplied toTranscriptLines instead of the JSON fallback | tests-new/unit/hosts/two-pane/replay-transcript.test.ts | demote-relocate | transcript codec/render coordination over real fs sidecar — pane-agnostic; relocated verbatim, imports only |
+| tests/unit/hosts/two-pane/replay-transcript.test.ts | renderTranscriptToString with an injected runner-shaped renderer > still renders the no-events placeholder when the sidecar is empty even with a custom renderer | tests-new/unit/hosts/two-pane/replay-transcript.test.ts | demote-relocate | transcript codec/render coordination over real fs sidecar — pane-agnostic; relocated verbatim, imports only |
+
+### tests/unit/hosts/two-pane/session-lost-classification.test.ts
+
+| Old file | Old case | New scenario (path) | Disposition | Reason |
+| --- | --- | --- | --- | --- |
+| tests/unit/hosts/two-pane/session-lost-classification.test.ts | isSessionLostError — wild stderr shapes > classifies the macOS "error connecting to ... (No such file or directory)" shape as session-lost | tests-new/unit/hosts/two-pane/session-lost-classification.test.ts | demote-relocate | pure error-string classification logic — pane-agnostic; relocated verbatim, imports only |
+| tests/unit/hosts/two-pane/session-lost-classification.test.ts | isSessionLostError — wild stderr shapes > classifies the Linux-style "no server running on ..." shape as session-lost | tests-new/unit/hosts/two-pane/session-lost-classification.test.ts | demote-relocate | pure error-string classification logic — pane-agnostic; relocated verbatim, imports only |
+| tests/unit/hosts/two-pane/session-lost-classification.test.ts | isSessionLostError — wild stderr shapes > classifies "session not found" with a session name as session-lost | tests-new/unit/hosts/two-pane/session-lost-classification.test.ts | demote-relocate | pure error-string classification logic — pane-agnostic; relocated verbatim, imports only |
+| tests/unit/hosts/two-pane/session-lost-classification.test.ts | isSessionLostError — wild stderr shapes > classifies "can't find session" as session-lost | tests-new/unit/hosts/two-pane/session-lost-classification.test.ts | demote-relocate | pure error-string classification logic — pane-agnostic; relocated verbatim, imports only |
+| tests/unit/hosts/two-pane/session-lost-classification.test.ts | isSessionLostError — wild stderr shapes > classifies "lost server" as session-lost | tests-new/unit/hosts/two-pane/session-lost-classification.test.ts | demote-relocate | pure error-string classification logic — pane-agnostic; relocated verbatim, imports only |
+| tests/unit/hosts/two-pane/session-lost-classification.test.ts | isSessionLostError — wild stderr shapes > matches case-insensitively (tmux/macOS sometimes capitalize "No such file") | tests-new/unit/hosts/two-pane/session-lost-classification.test.ts | demote-relocate | pure error-string classification logic — pane-agnostic; relocated verbatim, imports only |
+| tests/unit/hosts/two-pane/session-lost-classification.test.ts | isSessionLostError — wild stderr shapes > handles a bare "No such file or directory" in stderr (the canonical macOS connect-time variant) | tests-new/unit/hosts/two-pane/session-lost-classification.test.ts | demote-relocate | pure error-string classification logic — pane-agnostic; relocated verbatim, imports only |
+| tests/unit/hosts/two-pane/session-lost-classification.test.ts | isSessionLostError — negative cases (must NOT be classified) > does NOT classify "no space for new pane" — this is in-server, not server-lost | tests-new/unit/hosts/two-pane/session-lost-classification.test.ts | demote-relocate | pure error-string classification logic — pane-agnostic; relocated verbatim, imports only |
+| tests/unit/hosts/two-pane/session-lost-classification.test.ts | isSessionLostError — negative cases (must NOT be classified) > does NOT classify "duplicate session" — server is alive, name collision | tests-new/unit/hosts/two-pane/session-lost-classification.test.ts | demote-relocate | pure error-string classification logic — pane-agnostic; relocated verbatim, imports only |
+| tests/unit/hosts/two-pane/session-lost-classification.test.ts | isSessionLostError — negative cases (must NOT be classified) > does NOT classify "can't find pane: %99" — pane-level lookup, server alive | tests-new/unit/hosts/two-pane/session-lost-classification.test.ts | demote-relocate | pure error-string classification logic — pane-agnostic; relocated verbatim, imports only |
+| tests/unit/hosts/two-pane/session-lost-classification.test.ts | isSessionLostError — negative cases (must NOT be classified) > does NOT classify a generic "tmux: unknown command" error | tests-new/unit/hosts/two-pane/session-lost-classification.test.ts | demote-relocate | pure error-string classification logic — pane-agnostic; relocated verbatim, imports only |
+| tests/unit/hosts/two-pane/session-lost-classification.test.ts | isSessionLostError — negative cases (must NOT be classified) > returns false for non-TmuxCommandError instances (plain Error, string, undefined, null) | tests-new/unit/hosts/two-pane/session-lost-classification.test.ts | demote-relocate | pure error-string classification logic — pane-agnostic; relocated verbatim, imports only |
+| tests/unit/hosts/two-pane/session-lost-classification.test.ts | isSessionLostError — negative cases (must NOT be classified) > returns false for a TmuxCommandError with empty stderr | tests-new/unit/hosts/two-pane/session-lost-classification.test.ts | demote-relocate | pure error-string classification logic — pane-agnostic; relocated verbatim, imports only |
+
+### tests/unit/hosts/two-pane/stdio-capture.test.ts
+
+| Old file | Old case | New scenario (path) | Disposition | Reason |
+| --- | --- | --- | --- | --- |
+| tests/unit/hosts/two-pane/stdio-capture.test.ts | installStdioCapture > captures console.log output with object formatting | tests-new/unit/hosts/two-pane/stdio-capture.test.ts | demote-relocate | stdio interception/capture coordination over fake sinks — pane-agnostic; relocated verbatim, imports only |
+| tests/unit/hosts/two-pane/stdio-capture.test.ts | installStdioCapture > captures console.warn and console.error as stderr lines | tests-new/unit/hosts/two-pane/stdio-capture.test.ts | demote-relocate | stdio interception/capture coordination over fake sinks — pane-agnostic; relocated verbatim, imports only |
+| tests/unit/hosts/two-pane/stdio-capture.test.ts | installStdioCapture > captures direct stdout.write calls without touching the original stream | tests-new/unit/hosts/two-pane/stdio-capture.test.ts | demote-relocate | stdio interception/capture coordination over fake sinks — pane-agnostic; relocated verbatim, imports only |
+| tests/unit/hosts/two-pane/stdio-capture.test.ts | installStdioCapture > restores console and stdout.write so later writes use the original stream | tests-new/unit/hosts/two-pane/stdio-capture.test.ts | demote-relocate | stdio interception/capture coordination over fake sinks — pane-agnostic; relocated verbatim, imports only |
+| tests/unit/hosts/two-pane/stdio-capture.test.ts | installStdioCapture > restore is idempotent and closes the target once | tests-new/unit/hosts/two-pane/stdio-capture.test.ts | demote-relocate | stdio interception/capture coordination over fake sinks — pane-agnostic; relocated verbatim, imports only |
+
+## Helper migration note
+
+`lifecycle-choreographer.test.ts`'s only test-helper dependency,
+`tests/helpers/recording-lifecycle-collaborators.ts` (sole consumer = that test),
+was copied **byte-identically** into `tests-new/_support/recording-lifecycle-collaborators.ts`
+(its own `../../src/...` imports resolve unchanged at the same depth) so the
+relocated test's `@orch/test/recording-lifecycle-collaborators.ts` specifier
+resolves on disk. The old `tests/helpers/` copy is left untouched (out of this
+cluster's file scope) — converting it to a D13/R11 re-export shim, or deleting
+it, is W6 shim-lifecycle work.
+
+
+### Cluster C6
+
+# C6 closeout — four non-relocatable real-tmux/host behavioral demotes + behavioral-dsl launcher smoke
+
+Parent: Phase 14 group-B closeout (W4 + the behavioral-dsl launcher smoke), plan
+§5 W4 + decision **P14-D5**; ledger "Open accounting gap — (b) Non-relocatable
+Category-A behavioral demotes". Disposition vocab: `skip-as-covered` (twin cited,
+verified on disk) / `drop` (reason required) / `re-derive` (gated real scenario).
+
+Default per P14-D5 for the four real-tmux/host files: **skip-as-covered + drop** —
+cite the existing COMPONENT twin that covers the unit-level behavior with fakes,
+and drop the end-to-end host-wiring / real-tmux-race assertion (no faithful fake
+substrate; re-deriving the gated real-tmux scenario is disproportionate). **No new
+fake stop-channel / fake command-host substrate was built** (forbidden — the Phase
+13 trap). **No new gated scenario was authored**: the one headline real-fidelity
+case that warranted re-derivation (interactive auto-stop closes the pane with no
+keystroke) was **already re-derived in Phase 9** at
+`tests-new/full-host/real-agent/auto-stop.test.ts`, so C6 cites it rather than
+duplicating it.
+
+| Old file | Old case | New scenario (path) | Disposition | Reason |
+|---|---|---|---|---|
+
+### tests/integration/hosts/two-pane/tier-1/auto-stop.real.integration.test.ts
+
+| Old file | Old case | New scenario (path) | Disposition | Reason |
+|---|---|---|---|---|
+| auto-stop.real.integration.test.ts | closes itself when the stop channel is signaled, with no manual close | tests-new/full-host/real-agent/auto-stop.test.ts | skip-as-covered | The headline end-to-end behavior (a finished interactive turn fires the real Stop hook → `tmux wait-for` → orch closes the pane with NO keystroke) is already re-derived at real fidelity in the Phase 9 gated `full-host:real-agent` smoke `an interactive auto-stop step finishes its turn and the pane closes with no keystroke`. Auto-stop WIRING (arm/signal/terminate) additionally covered by `tests-new/unit/core/workflow-auto-stop.test.ts`. |
+| auto-stop.real.integration.test.ts | records armed → signaled → terminated lifecycle events in order | — | drop | The armed→signaled→terminated lifecycle WIRING is covered as a unit by `tests-new/unit/core/workflow-auto-stop.test.ts`. Dropped end-to-end assertion: the *real-tmux* ordered `wait-for` stop-channel event sequence observed through the real host. No faithful fake substrate (`createFakeHost` has no stop-channel — building one is re-derivation forbidden by P14-D5); re-deriving a gated per-event-order real-tmux scenario is disproportionate to the unit coverage already in place. |
+| auto-stop.real.integration.test.ts | resolves via pane-exit when an armed autoStop pane is manually closed, with no stop signal | — | drop | Auto-stop arm/resolve WIRING covered by `tests-new/unit/core/workflow-auto-stop.test.ts`. Dropped end-to-end assertion: the real PTY **pane-exit RACE** (an armed pane that resolves via manual pane-exit *before* any stop signal). This needs a real tmux pane lifecycle; no faithful fake exists, and a gated race scenario is disproportionate (P14-D5). |
+| auto-stop.real.integration.test.ts | a step without autoStop never arms and ignores a stop-channel signal | — | drop | The "no-autoStop step never arms / ignores a stop signal" decision is covered as a unit by `tests-new/unit/core/workflow-auto-stop.test.ts` (auto-stop wiring is gated on the step opting in). Dropped end-to-end assertion: that the real-tmux stop-channel signal is ignored by a non-armed host pane. No faithful fake stop-channel substrate (P14-D5); gated re-derivation disproportionate. |
+
+### tests/integration/lifecycle/progression.per-step-artifacts-land-on-disk.behavioral.real.test.ts
+
+| Old file | Old case | New scenario (path) | Disposition | Reason |
+|---|---|---|---|---|
+| progression.per-step-artifacts-land-on-disk.behavioral.real.test.ts | writes session.json and events.ndjson for each completed step | tests-new/unit/observability/file-session-logger.test.ts | skip-as-covered | Per-step disk-persistence component behavior (session.json + events.ndjson emitted per completed step) is covered by the `file-session-logger` component twin `tests-new/unit/observability/file-session-logger.test.ts`, with the baseline integration twin `tests-new/integration/observability/session-logger-baseline.integration.test.ts` exercising the logger+store on disk. Dropped end-to-end assertion: that these artifacts land "via the REAL host's logger+store wiring through a driven subprocess" — fakes would need that host wiring assembled (re-derivation, no faithful substrate, P14-D5); the component twins prove the unit behavior. |
+
+### tests/integration/lifecycle/resume.cached-steps-replay-with-cached-glyph.behavioral.real.test.ts
+
+| Old file | Old case | New scenario (path) | Disposition | Reason |
+|---|---|---|---|---|
+| resume.cached-steps-replay-with-cached-glyph.behavioral.real.test.ts | cached plan survives across runs; execute re-runs and the resumed run completes | tests-new/integration/observability/resume-per-step-folder.test.ts | skip-as-covered | Resume component behavior — cached per-step folders survive across runs and replay — is covered by `tests-new/integration/observability/resume-per-step-folder.test.ts`; the controller-side resume decision (cached-glyph / refusal) is covered by `tests-new/model/controller/resume-refusal.test.ts`. Dropped end-to-end assertion: the resume **orchestration proven through the real driven host** (a full cross-run replay driven via the real subprocess host). A faithful fake would need the same host wiring assembled (re-derivation forbidden, P14-D5); the component twins cover the unit behavior. |
+
+### tests/integration/lifecycle/command.output-streams-to-right-pane-and-exit-code-recorded.behavioral.real.test.ts
+
+| Old file | Old case | New scenario (path) | Disposition | Reason |
+|---|---|---|---|---|
+| command.output-streams-to-right-pane-and-exit-code-recorded.behavioral.real.test.ts | command stdout streams to disk and state.json records exitCode 0 | tests-new/unit/core/command.test.ts | skip-as-covered | Command-step component behavior is covered by the command twins: `tests-new/unit/core/command.test.ts` (command step semantics), `tests-new/integration/core/command-mocked.test.ts` (command step at the integration edge), and `tests-new/unit/hosts/plain/per-step-tee.test.ts` (per-step stdout tee → disk). Dropped end-to-end assertion: that command stdout streams to the right pane **through the real command-host pipe-pane fixture**. That fixture (a `command(...)` step + pipe-pane capture) **does not exist** in `tests-new/_support/real-tmux/` (per the U6 ledger note); building a fake command-host substrate is forbidden (P14-D5), so the end-to-end host pipe assertion is dropped while the component tee/exit-code behavior is covered. |
+
+### tests/integration/behavioral-dsl/launch-smoke.real.test.ts
+
+The old behavioral-dsl real launcher smoke. The new full-host DSL fixtures
+(`app.launch` boots the fixture + parses runId + reserves an isolated socket;
+`app.complete` holds/releases steps; the driver tears the host down) supersede it.
+The old behavioral-dsl harness is being retired (its `_support` copy is a shim
+slated for deletion) — **not relocated** (D-per-prompt).
+
+| Old file | Old case | New scenario (path) | Disposition | Reason |
+|---|---|---|---|---|
+| launch-smoke.real.test.ts | boots the fixture, parses runId, lands on a reserved socket, and exposes the rawStreams handle | tests-new/full-host/fake-agent/multi-step--right-pane-auto-advances.test.ts | skip-as-covered | Booting a fixture, parsing the runId, landing on the reserved isolated test socket, and exposing the driven-host handle is exactly what every full-host driver scenario does via `app.launch(...)`. Covered by the full-host fixtures (e.g. `tests-new/full-host/fake-agent/multi-step--right-pane-auto-advances.test.ts` and siblings under `tests-new/full-host/fake-agent/`, and the gated `tests-new/full-host/real-agent/` smokes). The runId-format / socket-reservation assertions were old-harness `launchOrchWorkflow` handle internals; the surviving behavior (a real isolated host boots and runs) is covered by the driver. |
+| launch-smoke.real.test.ts | drives a held step to mid-run, releases it via the gate file, and finishes | tests-new/full-host/fake-agent/multi-step--right-pane-auto-advances.test.ts | skip-as-covered | Driving a step to mid-run, releasing it, and finishing the run is the core full-host plumbing the DSL exercises (`app.launch` → step holds → `app.complete(<step>)` releases and the run finishes). Covered by the full-host fixtures under `tests-new/full-host/fake-agent/` (multi-step / follow-live / replay scenarios all hold and release steps). The raw `state.json` status/`endedAt` polling was old-harness mechanics, superseded by the driver's `app.complete` step-progression semantics. |
+| launch-smoke.real.test.ts | teardown is idempotent and removes the isolated stateBase | tests-new/full-host/fake-agent/multi-step--right-pane-auto-advances.test.ts | skip-as-covered | Per-scenario isolated-stateBase teardown is performed by the full-host driver after every scenario (every `tests-new/full-host/fake-agent/*` and `tests-new/full-host/real-agent/*` scenario relies on it). Idempotent teardown of the isolated stateBase is a property of the new driver, not a behavior needing its own old-harness assertion. |
+| launch-smoke.real.test.ts | throws a clear error when the fixture name is not registered | — | drop | Pure old-harness API assertion: `launchOrchWorkflow('does-not-exist')` rejects. This tests the retiring behavioral-dsl `_support` shim's own fixture-registry guard, not any orch behavior. The shim is slated for deletion (W6); the full-host DSL has no equivalent public unregistered-fixture API surface to re-derive against. Dropped with no covering twin needed — it asserts the dead harness, not the product. |
+
+
+
+---
+
+## Phase 15 handoff (parent U14 — reconciliation + gate flip)
+
+Phase 14 (group-B closeout) closed the migration gap and built the forward core of
+the U14 reconciliation oracle. What Phase 15 (parent U14) still owns:
+
+1. **Promote `reconcile.ts` to blocking + add assertions #4–#6.** Today it ships
+   non-blocking (`bun run reconcile`, not on `check`) and implements #1 (skip-
+   completeness, the load-bearing oracle), #3 (marker-target existence), and a
+   **non-blocking** #2 (ledger-completeness — currently reports ~2.2k "unledgered"
+   names because the prose ledger abbreviates many U10–U13 relocation paths/case
+   names; **normalise the ledger to a machine-keyed table first**, then make #2
+   strict). Add #4 (overlap report green for the *whole* suite — wire `bun run
+   overlap-report` into the assertion), #5 (`check`/`check:release` green pointing at
+   `tests-new/`), #6 (docs **and** `.claude/skills/**` tier-grep clean repo-wide).
+2. **Flip the default gate onto `tests-new/`.** Repoint `test`/`check` per parent §8
+   (`test:new-unit`/`test:new-int`/`test:new-e2e` + `test:two-pane`), and rename the
+   all-`.skip` old tree script to `test:legacy-archive`.
+3. **Update `docs/plans/implementation-phases.md`** to record the restructure as landed.
+
+### ⚠️ Blocker discovered in Phase 14 — the four `_support` shims are NOT deletable yet (W6 deferred)
+
+W6 ("delete the four D13 re-export shims": `make-step-entry`, `fake-host`, `real-tmux`,
+`behavioral-dsl`) **could not be done** and is deferred. The W6 premise — that W3–W5
+skipped the *last* live consumer of each shim — is **false**: these shims are imported
+**tree-wide**, not just by group-B files (`fake-host` 44 consumers, `real-tmux` 72,
+`behavioral-dsl` 42, `make-step-entry` 19 — mostly core/state/cli/observability/lifecycle
+old tests this phase never touched).
+
+**The load-bearing fact (verified empirically):** a `describe.skip` file *still resolves
+its top-level `import`s at load time* — Bun loads the module and errors on a missing
+specifier even when the whole suite is skipped. So a shim stays required as long as **any**
+old file that imports it is still *loaded by a runner*, regardless of `.skip`. Deleting a
+shim now breaks `test:legacy` at module-load.
+
+**Consequence for Phase 15:** the shims are deletable only once the old `tests/` tree is
+**no longer loaded by any script**. The parent §7 plan keeps a `test:legacy-archive` that
+*runs the all-`.skip` old tree as a cheap record* — which still loads it, so even after the
+gate flip the shims must stay unless `test:legacy-archive` is also dropped. Phase 15 should
+decide explicitly: either (a) keep the four shims KEPT forever alongside the archived old
+tree (they cost nothing), or (b) drop `test:legacy-archive` entirely (stop loading the old
+tree) and *then* delete the shims. Recommendation: **(a)** — the shims are 5-line re-exports
+and the archive's grep-able record is worth more than their removal. Status unchanged from
+pre-Phase-14: **all four KEPT.**
+
+> Minor hygiene note (C5): the relocation of `lifecycle-choreographer` needed
+> `recording-lifecycle-collaborators` under `_support`, so Phase 14 added
+> `tests-new/_support/recording-lifecycle-collaborators.ts` (byte-identical copy). The old
+> `tests/helpers/recording-lifecycle-collaborators.ts` is left in place (still imported by
+> its now-skipped old consumer). Converting it to a re-export shim is optional Phase-15
+> hygiene, same lifecycle as the four shims above.

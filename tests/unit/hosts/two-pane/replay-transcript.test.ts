@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/hosts/two-pane/replay-transcript.test.ts (parent U14) — demote-relocated (pane-agnostic unit); kept skipped on disk (D2).
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { renderTranscriptToString } from '../../../../src/hosts/two-pane/replay-transcript.ts'
@@ -21,7 +22,7 @@ afterEach(async () => {
   await rm(tempDir, { recursive: true, force: true })
 })
 
-describe('renderTranscriptToString with the default JSON-fallback renderer', () => {
+describe.skip('renderTranscriptToString with the default JSON-fallback renderer', () => {
   it('renders assistant info events into the replay payload', async () => {
     const lines = [
       JSON.stringify({ kind: 'info', type: 'assistant', payload: { text: 'hi' } }),
@@ -77,7 +78,7 @@ describe('renderTranscriptToString with the default JSON-fallback renderer', () 
   })
 })
 
-describe('renderTranscriptToString with an injected runner-shaped renderer', () => {
+describe.skip('renderTranscriptToString with an injected runner-shaped renderer', () => {
   it('runs every event through the supplied toTranscriptLines instead of the JSON fallback', async () => {
     const sidecar = toPath(`${tempDir}/events.ndjson`)
     const ndjson = [

@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/hosts/two-pane/replay-command-pane.test.ts (parent U14) — demote-relocated (pane-agnostic unit); kept skipped on disk (D2).
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { resolveCommandPaneSource } from '../../../../src/hosts/two-pane/replay-command-pane.ts'
@@ -21,7 +22,7 @@ afterEach(async () => {
   await rm(tempDir, { recursive: true, force: true })
 })
 
-describe('resolveCommandPaneSource', () => {
+describe.skip('resolveCommandPaneSource', () => {
   it('returns the captured pane log path when the file exists and has bytes', async () => {
     const ansiBody = '\x1b[31mred\x1b[0m\r\nplain\r\n'
     const logPath = toPath(`${tempDir}/pane.log`)

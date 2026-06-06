@@ -1,0 +1,14 @@
+[
+  {
+    "old": "tests/integration/hosts/two-pane-mocked.test.ts",
+    "new": "tests-new/integration/hosts/two-pane/two-pane-mocked.test.ts"
+  },
+  {
+    "old": "tests/integration/hosts/two-pane-sequential-runs.test.ts",
+    "new": "tests-new/integration/hosts/two-pane/two-pane-sequential-runs.test.ts"
+  },
+  {
+    "old": "tests/integration/hosts/two-pane-interactive-session-lost.test.ts",
+    "new": "tests-new/integration/hosts/two-pane/two-pane-interactive-session-lost.test.ts"
+  }
+]
