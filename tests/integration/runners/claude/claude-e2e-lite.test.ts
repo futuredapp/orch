@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/runners/claude/claude-e2e-lite.test.ts (parent U11) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { afterEach, describe, expect, it } from 'bun:test'
 import * as fs from 'node:fs/promises'
 import { step } from '../../../../src/core/step.ts'
@@ -24,7 +25,7 @@ afterEach(async () => {
   }
 })
 
-describe.skipIf(!canRun)('ClaudeRunner e2e-lite (workflow DSL + real CLI)', () => {
+describe.skip('ClaudeRunner e2e-lite (workflow DSL + real CLI)', () => {
   it('runs a single-step workflow and persists completed state', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-claude-e2e-')
     const runIdVal = 'r-2026-04-11-143160-11' as RunId

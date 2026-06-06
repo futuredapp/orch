@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/runners/scripted-fake/command-engine.test.ts (parent U11) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // U2 — the shared command engine. The engine is pure: it maps both channels
 // (control NDJSON + manual stdin) onto the same two-op vocabulary
 // (`type_and_send` / `finish`) and routes ops to a mode-injected sink. These
@@ -34,7 +35,7 @@ function recordingSink(): RecordingSink {
   }
 }
 
-describe('U2 — runEngineOp applies ops to the injected sink', () => {
+describe.skip('U2 — runEngineOp applies ops to the injected sink', () => {
   it('appends exactly one line for a non-empty type_and_send and continues', () => {
     const sink = recordingSink()
 
@@ -72,7 +73,7 @@ describe('U2 — runEngineOp applies ops to the injected sink', () => {
   })
 })
 
-describe('U2 — parseManualLine maps stdin to the vocabulary (R5)', () => {
+describe.skip('U2 — parseManualLine maps stdin to the vocabulary (R5)', () => {
   it('parses a bare line to type_and_send of that exact text (AE1)', () => {
     expect(parseManualLine('hello')).toEqual({ op: 'type_and_send', text: 'hello' })
   })
@@ -96,7 +97,7 @@ describe('U2 — parseManualLine maps stdin to the vocabulary (R5)', () => {
   })
 })
 
-describe('U2 — control and manual channels produce identical engine ops (R3)', () => {
+describe.skip('U2 — control and manual channels produce identical engine ops (R3)', () => {
   it('control type_and_send and a manual bare line yield the same op', () => {
     const control = parseControlLine(JSON.stringify({ cmd: 'type_and_send', text: 'hi' }))
     const controlOp = control.kind === 'ok' ? controlToEngineOp(control.value) : null
@@ -128,7 +129,7 @@ describe('U2 — control and manual channels produce identical engine ops (R3)',
   })
 })
 
-describe('U2 — control parsing tolerates bad input (R4)', () => {
+describe.skip('U2 — control parsing tolerates bad input (R4)', () => {
   it('returns an error result for malformed JSON without throwing', () => {
     const result = parseControlLine('{not json')
 

@@ -1,7 +1,8 @@
+// MIGRATED → tests-new/unit/runners/codex/capture-lock.test.ts (parent U11) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { createCaptureLock } from '../../../../src/runners/codex/capture-lock.ts'
 
-describe('createCaptureLock', () => {
+describe.skip('createCaptureLock', () => {
   it('returns independent lock instances that do not block each other', async () => {
     const lockA = createCaptureLock()
     const lockB = createCaptureLock()

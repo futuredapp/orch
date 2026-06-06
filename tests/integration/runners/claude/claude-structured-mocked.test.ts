@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/runners/claude/claude-structured-mocked.test.ts (parent U11) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -57,7 +58,7 @@ const researchSchema = z.object({
   count: z.number(),
 })
 
-describe('ClaudeRunner structured output — mocked integration', () => {
+describe.skip('ClaudeRunner structured output — mocked integration', () => {
   it('full round-trip: schema step through ClaudeRunner with structured-output-success fixture', async () => {
     const deps = makeDeps()
     const runner = claude()

@@ -1,0 +1,2 @@
+{"type":"system","subtype":"init","session_id":"sess-so-003","uuid":"uuid-so-020"}
+{"type":"result","subtype":"error_max_structured_output_retries","session_id":"sess-so-003","duration_ms":3000,"is_error":true,"errors":["Max structured output retries reached"],"uuid":"uuid-so-021"}

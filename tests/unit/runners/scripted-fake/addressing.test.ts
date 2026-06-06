@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/runners/scripted-fake/addressing.test.ts (parent U11) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Pins the load-bearing property of the addressing transport: encodeKey is
 // injective (R10). Distinct logical keys MUST map to distinct filename stems,
 // or two instances silently share a control file and per-instance / per-run
@@ -10,7 +11,7 @@ import {
   resolveControlPaths,
 } from '../../../../src/runners/scripted-fake/index.ts'
 
-describe('encodeKey — injectivity (R10)', () => {
+describe.skip('encodeKey — injectivity (R10)', () => {
   it('maps the cache-key separators > and : to distinct stems', () => {
     expect(encodeKey('a>b')).not.toBe(encodeKey('a:b'))
   })
@@ -41,7 +42,7 @@ describe('encodeKey — injectivity (R10)', () => {
   })
 })
 
-describe('resolveControlPaths / controlPathsForControlFile', () => {
+describe.skip('resolveControlPaths / controlPathsForControlFile', () => {
   it('derives the .acks and .ready siblings from the key under test-control', () => {
     const paths = resolveControlPaths({ runStateDir: '/base/run-1', key: 's1' })
 

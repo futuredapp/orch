@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/runners/claude/claude-structured-real.test.ts (parent U11) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { z } from 'zod'
 import { schema } from '../../../../src/core/schema.ts'
@@ -39,7 +40,7 @@ function makeDeps(): WorkflowDeps {
   }
 }
 
-describe.skipIf(!canRun)('ClaudeRunner real CLI — structured output', () => {
+describe.skip('ClaudeRunner real CLI — structured output', () => {
   it('real Claude with --json-schema returns Zod-parsed, type-safe value', async () => {
     // `bare: false` so the CLI can use the dev machine's keychain auth.
     const runner = claude({ bare: false })

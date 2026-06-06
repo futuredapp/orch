@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/runners/claude/format-event.test.ts (parent U11) — relocated verbatim (import paths only); kept skipped on disk (D2).
 // Unit tests for the Claude RunnerEvent → TranscriptLine formatter.
 //
 // One assertion per test; full-sentence test names. Each test exercises one
@@ -20,7 +21,7 @@ function userWithContent(content: ReadonlyArray<Record<string, unknown>>): InfoE
   return info('user', { message: { role: 'user', content } })
 }
 
-describe('toClaudeTranscriptLines — system init', () => {
+describe.skip('toClaudeTranscriptLines — system init', () => {
   it('renders the synthesized session-started event as one line with model, tool count, and mcp server count', () => {
     const evt = info('session-started', {
       sessionId: 'sess-1',
@@ -63,7 +64,7 @@ describe('toClaudeTranscriptLines — system init', () => {
   })
 })
 
-describe('toClaudeTranscriptLines — non-init system events', () => {
+describe.skip('toClaudeTranscriptLines — non-init system events', () => {
   it('suppresses high-frequency task_progress system events emitted by background workflows', () => {
     const evt = info('system', { type: 'system', subtype: 'task_progress', taskId: 'wa9h5dr4w' })
 
@@ -93,7 +94,7 @@ describe('toClaudeTranscriptLines — non-init system events', () => {
   })
 })
 
-describe('toClaudeTranscriptLines — assistant messages', () => {
+describe.skip('toClaudeTranscriptLines — assistant messages', () => {
   it('expands an assistant message into ordered lines per content block (thinking, tool_use, text)', () => {
     const evt = assistantWithContent([
       { type: 'thinking', thinking: '', signature: 'sig' },
@@ -142,7 +143,7 @@ describe('toClaudeTranscriptLines — assistant messages', () => {
   })
 })
 
-describe('toClaudeTranscriptLines — tool_use formatting', () => {
+describe.skip('toClaudeTranscriptLines — tool_use formatting', () => {
   it('renders Read tool_use with middle-ellipsis on a long file path', () => {
     const longPath = `/Users/foo/very/long/intermediate/path/segments/that/keeps/going/${'x'.repeat(80)}.txt`
     const evt = assistantWithContent([
@@ -205,7 +206,7 @@ describe('toClaudeTranscriptLines — tool_use formatting', () => {
   })
 })
 
-describe('toClaudeTranscriptLines — tool_result formatting', () => {
+describe.skip('toClaudeTranscriptLines — tool_result formatting', () => {
   it('renders a tool_result with is_error=true as the tool-error category', () => {
     const evt = userWithContent([
       {
@@ -240,7 +241,7 @@ describe('toClaudeTranscriptLines — tool_result formatting', () => {
   })
 })
 
-describe('toClaudeTranscriptLines — terminal events', () => {
+describe.skip('toClaudeTranscriptLines — terminal events', () => {
   it('renders turn-complete as a done block with rows present in usage', () => {
     const evt: TerminalEvent = {
       kind: 'terminal',
@@ -309,7 +310,7 @@ describe('toClaudeTranscriptLines — terminal events', () => {
   })
 })
 
-describe('toClaudeTranscriptLines — suppression and edge cases', () => {
+describe.skip('toClaudeTranscriptLines — suppression and edge cases', () => {
   it('returns [] for rate_limit_event, missing content, and empty content', () => {
     expect(toClaudeTranscriptLines(info('rate_limit_event', { foo: 'bar' }))).toEqual([])
     expect(toClaudeTranscriptLines(info('assistant', { message: { content: [] } }))).toEqual([])

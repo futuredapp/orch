@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/runners/codex/format-event.test.ts (parent U11) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { toCodexTranscriptLines } from '../../../../src/runners/codex/format-event.ts'
 import type { InfoEvent, TerminalEvent } from '../../../../src/runners/types.ts'
@@ -10,7 +11,7 @@ function itemCompleted(item: Readonly<Record<string, unknown>>): InfoEvent {
   return infoEvent('item.completed', { item })
 }
 
-describe('toCodexTranscriptLines — info dispatch', () => {
+describe.skip('toCodexTranscriptLines — info dispatch', () => {
   it('dispatches item.completed events to the per-item formatter', () => {
     const lines = toCodexTranscriptLines(
       itemCompleted({ id: 'i1', type: 'agent_message', text: 'hi' }),
@@ -38,7 +39,7 @@ describe('toCodexTranscriptLines — info dispatch', () => {
   })
 })
 
-describe('toCodexTranscriptLines — item.completed: agent_message', () => {
+describe.skip('toCodexTranscriptLines — item.completed: agent_message', () => {
   it('renders agent_message as an assistant line, truncated at MAX_ASSISTANT_TEXT', () => {
     const longText = 'a'.repeat(5000)
     const lines = toCodexTranscriptLines(
@@ -57,7 +58,7 @@ describe('toCodexTranscriptLines — item.completed: agent_message', () => {
   })
 })
 
-describe('toCodexTranscriptLines — item.completed: reasoning', () => {
+describe.skip('toCodexTranscriptLines — item.completed: reasoning', () => {
   it('renders reasoning as a thinking marker line with no body', () => {
     const lines = toCodexTranscriptLines(itemCompleted({ id: 'i1', type: 'reasoning' }))
 
@@ -65,7 +66,7 @@ describe('toCodexTranscriptLines — item.completed: reasoning', () => {
   })
 })
 
-describe('toCodexTranscriptLines — item.completed: command_execution', () => {
+describe.skip('toCodexTranscriptLines — item.completed: command_execution', () => {
   it('renders successful command_execution as a tool-call bash line with the first line of the command, truncated', () => {
     const lines = toCodexTranscriptLines(
       itemCompleted({
@@ -102,7 +103,7 @@ describe('toCodexTranscriptLines — item.completed: command_execution', () => {
   })
 })
 
-describe('toCodexTranscriptLines — item.completed: file_change', () => {
+describe.skip('toCodexTranscriptLines — item.completed: file_change', () => {
   it('renders file_change as a tool-call edit line with a middle-ellipsised path', () => {
     const longPath = '/very/long/nested/directory/structure/leading/to/some/deep/file.ts'
     const lines = toCodexTranscriptLines(
@@ -122,7 +123,7 @@ describe('toCodexTranscriptLines — item.completed: file_change', () => {
   })
 })
 
-describe('toCodexTranscriptLines — item.completed: mcp_tool_call', () => {
+describe.skip('toCodexTranscriptLines — item.completed: mcp_tool_call', () => {
   it.each([
     ['success', false, 'tool-call'],
     ['error', true, 'tool-error'],
@@ -148,7 +149,7 @@ describe('toCodexTranscriptLines — item.completed: mcp_tool_call', () => {
   })
 })
 
-describe('toCodexTranscriptLines — item.completed: web_search', () => {
+describe.skip('toCodexTranscriptLines — item.completed: web_search', () => {
   it('renders web_search as a tool-call web line with the query', () => {
     const lines = toCodexTranscriptLines(
       itemCompleted({ id: 'i1', type: 'web_search', query: 'rust ratatui colors' }),
@@ -160,7 +161,7 @@ describe('toCodexTranscriptLines — item.completed: web_search', () => {
   })
 })
 
-describe('toCodexTranscriptLines — item.completed: error', () => {
+describe.skip('toCodexTranscriptLines — item.completed: error', () => {
   it('renders an error item as a tool-error line with the message truncated at MAX_ERROR_TEXT', () => {
     const longMsg = 'x'.repeat(300)
     const lines = toCodexTranscriptLines(
@@ -177,7 +178,7 @@ describe('toCodexTranscriptLines — item.completed: error', () => {
   })
 })
 
-describe('toCodexTranscriptLines — item.completed: unknown item.type', () => {
+describe.skip('toCodexTranscriptLines — item.completed: unknown item.type', () => {
   it('renders an unknown item.type as a single system fallback line', () => {
     const lines = toCodexTranscriptLines(itemCompleted({ id: 'i1', type: 'future_thing' }))
 
@@ -185,7 +186,7 @@ describe('toCodexTranscriptLines — item.completed: unknown item.type', () => {
   })
 })
 
-describe('toCodexTranscriptLines — terminal events', () => {
+describe.skip('toCodexTranscriptLines — terminal events', () => {
   it('renders turn-complete as a done block with tokens, cache, reasoning, and a truncated result row, omitting rows whose data is absent', () => {
     const event: TerminalEvent = {
       kind: 'terminal',

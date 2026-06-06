@@ -242,5 +242,149 @@
   {
     "old": "tests/integration/core/worktree-real.test.ts",
     "new": "tests-new/integration/core/worktree-real.test.ts"
+  },
+  {
+    "old": "tests/unit/runners/claude/build-command.test.ts",
+    "new": "tests-new/unit/runners/claude/build-command.test.ts"
+  },
+  {
+    "old": "tests/unit/runners/claude/claude-auto-stop.test.ts",
+    "new": "tests-new/unit/runners/claude/claude-auto-stop.test.ts"
+  },
+  {
+    "old": "tests/unit/runners/claude/format-event.test.ts",
+    "new": "tests-new/unit/runners/claude/format-event.test.ts"
+  },
+  {
+    "old": "tests/unit/runners/claude/parse-events.test.ts",
+    "new": "tests-new/unit/runners/claude/parse-events.test.ts"
+  },
+  {
+    "old": "tests/unit/runners/codex/build-command.test.ts",
+    "new": "tests-new/unit/runners/codex/build-command.test.ts"
+  },
+  {
+    "old": "tests/unit/runners/codex/capture-lock.test.ts",
+    "new": "tests-new/unit/runners/codex/capture-lock.test.ts"
+  },
+  {
+    "old": "tests/unit/runners/codex/capture-session-id.test.ts",
+    "new": "tests-new/unit/runners/codex/capture-session-id.test.ts"
+  },
+  {
+    "old": "tests/unit/runners/codex/capture-thread-id.test.ts",
+    "new": "tests-new/unit/runners/codex/capture-thread-id.test.ts"
+  },
+  {
+    "old": "tests/unit/runners/codex/codex-auto-stop.test.ts",
+    "new": "tests-new/unit/runners/codex/codex-auto-stop.test.ts"
+  },
+  {
+    "old": "tests/unit/runners/codex/format-event.test.ts",
+    "new": "tests-new/unit/runners/codex/format-event.test.ts"
+  },
+  {
+    "old": "tests/unit/runners/codex/parse-events.test.ts",
+    "new": "tests-new/unit/runners/codex/parse-events.test.ts"
+  },
+  {
+    "old": "tests/unit/runners/default-view.test.ts",
+    "new": "tests-new/unit/runners/default-view.test.ts"
+  },
+  {
+    "old": "tests/unit/runners/define-runner.test.ts",
+    "new": "tests-new/unit/runners/define-runner.test.ts"
+  },
+  {
+    "old": "tests/unit/runners/execute-interactive.test.ts",
+    "new": "tests-new/unit/runners/execute-interactive.test.ts"
+  },
+  {
+    "old": "tests/unit/runners/execute.test.ts",
+    "new": "tests-new/unit/runners/execute.test.ts"
+  },
+  {
+    "old": "tests/unit/runners/fake/fake-runner.test.ts",
+    "new": "tests-new/unit/runners/fake/fake-runner.test.ts"
+  },
+  {
+    "old": "tests/unit/runners/runner-resume.test.ts",
+    "new": "tests-new/unit/runners/runner-resume.test.ts"
+  },
+  {
+    "old": "tests/unit/runners/scripted-fake/addressing.test.ts",
+    "new": "tests-new/unit/runners/scripted-fake/addressing.test.ts"
+  },
+  {
+    "old": "tests/unit/runners/scripted-fake/command-engine.test.ts",
+    "new": "tests-new/unit/runners/scripted-fake/command-engine.test.ts"
+  },
+  {
+    "old": "tests/unit/runners/scripted-fake/script-loader.test.ts",
+    "new": "tests-new/unit/runners/scripted-fake/script-loader.test.ts"
+  },
+  {
+    "old": "tests/unit/runners/scripted-fake/scripted-fake-runner.test.ts",
+    "new": "tests-new/unit/runners/scripted-fake/scripted-fake-runner.test.ts"
+  },
+  {
+    "old": "tests/integration/runners/claude/claude-e2e-lite.test.ts",
+    "new": "tests-new/integration/runners/claude/claude-e2e-lite.test.ts"
+  },
+  {
+    "old": "tests/integration/runners/claude/claude-mocked.test.ts",
+    "new": "tests-new/integration/runners/claude/claude-mocked.test.ts"
+  },
+  {
+    "old": "tests/integration/runners/claude/claude-real.test.ts",
+    "new": "tests-new/integration/runners/claude/claude-real.test.ts"
+  },
+  {
+    "old": "tests/integration/runners/claude/claude-resume.test.ts",
+    "new": "tests-new/integration/runners/claude/claude-resume.test.ts"
+  },
+  {
+    "old": "tests/integration/runners/claude/claude-structured-mocked.test.ts",
+    "new": "tests-new/integration/runners/claude/claude-structured-mocked.test.ts"
+  },
+  {
+    "old": "tests/integration/runners/claude/claude-structured-real.test.ts",
+    "new": "tests-new/integration/runners/claude/claude-structured-real.test.ts"
+  },
+  {
+    "old": "tests/integration/runners/codex/codex-mocked.test.ts",
+    "new": "tests-new/integration/runners/codex/codex-mocked.test.ts"
+  },
+  {
+    "old": "tests/integration/runners/codex/codex-real.test.ts",
+    "new": "tests-new/integration/runners/codex/codex-real.test.ts"
+  },
+  {
+    "old": "tests/integration/runners/cross-runner-parallel.test.ts",
+    "new": "tests-new/integration/runners/cross-runner-parallel.test.ts"
+  },
+  {
+    "old": "tests/integration/runners/run-runner.test.ts",
+    "new": "tests-new/integration/runners/run-runner.test.ts"
+  },
+  {
+    "old": "tests/integration/runners/scripted-fake-ink.test.tsx",
+    "new": "tests-new/integration/runners/scripted-fake-ink.test.tsx"
+  },
+  {
+    "old": "tests/integration/runners/scripted-fake-interactive.test.ts",
+    "new": "tests-new/integration/runners/scripted-fake-interactive.test.ts"
+  },
+  {
+    "old": "tests/integration/runners/scripted-fake-puppet-addressing.test.ts",
+    "new": "tests-new/integration/runners/scripted-fake-puppet-addressing.test.ts"
+  },
+  {
+    "old": "tests/integration/runners/scripted-fake/entry.real.test.ts",
+    "new": "tests-new/integration/runners/scripted-fake/entry.real.test.ts"
+  },
+  {
+    "old": "tests/integration/runners/scripted-fake/two-step-linear.smoke.test.ts",
+    "new": "tests-new/integration/runners/scripted-fake/two-step-linear.smoke.test.ts"
   }
 ]

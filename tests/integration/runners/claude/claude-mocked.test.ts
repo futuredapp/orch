@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/runners/claude/claude-mocked.test.ts (parent U11) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -18,7 +19,7 @@ function loadFixtureLines(name: string): string[] {
     .filter((l) => l.trim() !== '')
 }
 
-describe('ClaudeRunner mocked integration', () => {
+describe.skip('ClaudeRunner mocked integration', () => {
   it('round-trips simple-success.jsonl through runRunner with correct events and terminal', async () => {
     const fps = new FakeProcessService()
     const clock = new FakeClock(1000)

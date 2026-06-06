@@ -416,3 +416,47 @@ parameterised and idempotent). No `src/` file was touched. The only failing test
 on the gate are the 5 long-standing `ENOENT` fixture failures under gitignored
 `.orch/` — pre-existing infra, identical in the old and new locations, not a
 relocation regression. The frozen U1 baseline was never regenerated.
+
+## Phase 11
+
+Phase 11 (U11) is the second "migrate the rest of the repo" relocation: the
+`runners/**` tests move from `tests/{unit,integration}/runners` into their
+`tests-new/{unit,integration}/runners` mirror, reusing the U10 machinery
+end-to-end with no new infrastructure. All 36 files (21 unit + 15 integration,
+~328 cases, all baseline-classified `test`) were copied byte-for-byte. The 21
+unit files needed zero import edits (depth preserved, no cross-tree deps); the
+integration files had only their cross-tree specifiers rewritten — `fake-host`
+and the one lifecycle-fixture ES import to the `@orch/test/*` alias. Old copies
+are wrapped unconditional `describe.skip` with a `// MIGRATED →` marker (kept on
+disk forever, D2) via the new idempotent `scripts/skip-migrated-u11.sh`. No
+`src/` file was touched and there are no `.test-d.ts` type-tests under
+`runners/**`. Import-parity (`check:import-parity`) is green for all 97 relocation
+pairs.
+
+The plan's import-only inventory missed one real dependency: four mocked
+integration files (`claude-mocked`, `claude-resume`, `claude-structured-mocked`,
+`codex-mocked`) load raw CLI parser fixtures at **runtime** via
+`resolve(import.meta.dir, '../../../fixtures/{claude,codex}', …)`, which would
+resolve into a non-existent `tests-new/fixtures/...` after the move. Following the
+plan's PD2 copy-fallback (and to keep `tests-new/` from reaching into `tests/` at
+runtime, D13), the `claude/`, `codex/`, and the single `lifecycle/two-step-linear.ts`
+fixtures were **copied** into `tests-new/_support/fixtures/` and the relocated tests
+repointed there; the originals stay in place because they still have live
+non-runner consumers and the full `tests/fixtures/lifecycle/` directory move is
+deferred. One other plan inaccuracy worth knowing: the gated set is
+`claude-real`, `claude-e2e-lite`, `claude-structured-real`, `codex-real`, and
+`cross-runner-parallel` (the plan's PD4 listed `entry.real`, which is actually an
+unconditional in-repo subprocess test, and omitted `cross-runner-parallel`). The
+mechanical rule — keep `skipIf` in the new copy, flip it to unconditional `.skip`
+on the old copy (R13) — handled this correctly regardless.
+
+What matters for next work: U12 (services/state/validators/workflows/config/codegen
++ non-two-pane hosts) and U13 (cli/observability/e2e + the deferred `.test-d.ts`
+type-tests) follow the identical recipe — copy, rewrite cross-tree specifiers,
+parity-guard, `describe.skip` the old copy, one ledger row per file, append to the
+relocation map. Watch for the same runtime-path (`import.meta.dir`) fixture trap
+that the import-only inventory misses. The frozen U1 baseline was never
+regenerated, and `bun run check` is green except for the same 5 long-standing
+ENOENT fixture failures under gitignored `.orch/` (`file-prompts-demo` /
+`typed-vars` / `codegen` — unrelated to runners, identical before and after this
+phase).

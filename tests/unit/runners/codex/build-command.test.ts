@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/runners/codex/build-command.test.ts (parent U11) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { CodexVersionError, codex } from '../../../../src/runners/codex/index.ts'
 import type { RunnerContext } from '../../../../src/runners/types.ts'
@@ -22,7 +23,7 @@ function makeDeps(): { fs: FakeFsService; ps: FakeProcessService } {
   return { fs, ps }
 }
 
-describe('codex() factory', () => {
+describe.skip('codex() factory', () => {
   it('returns a runner with name "codex" and structuredOutput true', () => {
     const deps = makeDeps()
     const runner = codex({}, deps)
@@ -40,7 +41,7 @@ describe('codex() factory', () => {
   })
 })
 
-describe('buildCommand', () => {
+describe.skip('buildCommand', () => {
   it('produces correct default argv (exec, json, full-auto, skip-git-repo-check, ephemeral, -- separator)', async () => {
     const deps = makeDeps()
     const runner = codex({}, deps)
@@ -165,7 +166,7 @@ describe('buildCommand', () => {
   })
 })
 
-describe('buildCommand flag denylist', () => {
+describe.skip('buildCommand flag denylist', () => {
   it('rejects --yolo in flags', async () => {
     const deps = makeDeps()
     const runner = codex({ flags: ['--yolo'] }, deps)
@@ -228,7 +229,7 @@ describe('buildCommand flag denylist', () => {
   })
 })
 
-describe('checkCodexVersion (via buildCommand)', () => {
+describe.skip('checkCodexVersion (via buildCommand)', () => {
   it('resolves when version is sufficient', async () => {
     const deps = makeDeps()
     const runner = codex({}, deps)
@@ -312,7 +313,7 @@ describe('checkCodexVersion (via buildCommand)', () => {
   })
 })
 
-describe('buildCommand interactive mode', () => {
+describe.skip('buildCommand interactive mode', () => {
   it('builds the default interactive argv with --full-auto, --no-alt-screen, the -- separator, and the prompt', async () => {
     const deps = makeDeps()
     const runner = codex({}, deps)

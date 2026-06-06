@@ -510,3 +510,82 @@
 |---|---|---|---|
 | fake-host.ts | tests/helpers/fake-host.ts | tests-new/_support/fake-host.ts | tests/helpers/fake-host.ts (`export * from '@orch/test/...'`) |
 | temp-git-repo.ts | tests/helpers/temp-git-repo.ts | tests-new/_support/temp-git-repo.ts | tests/helpers/temp-git-repo.ts (`export * from '@orch/test/...'`) |
+
+## Relocated — `runners/**` (parent U11)
+
+> **Phase 11 / U11 is a RELOCATION, not a re-derivation (parent D1).** The
+> `runners/**` tests are already plain class/integration tests with fakes at the
+> `*Service` seam — today's `unit` concept *is* the parent's `unit` category.
+> Each file below was COPIED to its `tests-new/{unit,integration}/runners` mirror
+> with its body **byte-identical**; the only edits are cross-tree specifiers
+> (`fake-host` and the one lifecycle ES import → `@orch/test/*`, parent D13) and,
+> in four mocked integration files, the **runtime** raw-CLI-fixture path
+> (`resolve(import.meta.dir, '../../../fixtures/{claude,codex}', …)`) repointed to
+> the `_support` copies. Every relocated file imports the **same `src/` symbols**
+> as its baseline original, machine-verified per file by `import-parity`
+> (`bun run check:import-parity`, parent R10) — so the 1:1 case identity D15
+> requires is preserved by construction, and one `port` row per file (the
+> U7/U10 relocation precedent, PD5) is the accounting. No case was split, merged,
+> demoted, or dropped; no `src/` file was touched. The 21 unit files needed **no**
+> specifier rewrite at all (pure byte copies). The old copies are wrapped
+> unconditional `describe.skip` with a `// MIGRATED →` marker and kept on disk
+> forever (D2); the **five** capability-gated real/e2e-lite files
+> (`claude-real`, `claude-e2e-lite`, `claude-structured-real`, `codex-real`,
+> `cross-runner-parallel`) had their OLD copy flipped from `describe.skipIf(!canRun)`
+> to unconditional `describe.skip` so U14's reconcile reads them as MIGRATED, while
+> the NEW copies keep `skipIf` (legitimate capability gating, D8). *(Correction to
+> the phase plan's PD4 inventory: the gated set is these five — `cross-runner-parallel`
+> is gated; `scripted-fake/entry.real` is **not** gated, it runs an in-repo subprocess
+> unconditionally.)* Embedded synthetic `RunId` constants travel verbatim with the
+> byte-identical bodies. There are **no** `.test-d.ts` type-tests under `runners/**`.
+
+> **Fixture handling (D13 `_support` move — infra, not test rows).** Three raw
+> fixture sets the relocated tests need were **copied** into
+> `tests-new/_support/fixtures/` (the PD2 copy fallback): `lifecycle/two-step-linear.ts`
+> (its `src/` imports switched to `@orch/*` aliases, one dir deeper), `claude/`
+> (6 files), and `codex/` (4 files). Originals are **left in place** — they still
+> have live non-runner consumers (`hosts/plain/transcript-render-claude`, the
+> behavioral-dsl `FIXTURES_DIR` directory consumer + the `.orch/orch.config.ts`
+> CLI boot path) and the full `tests/fixtures/lifecycle/` directory move stays
+> deferred (PD2). U14 reconcile accounts for these baseline `fixture` entries via
+> this `_support` copy, **not** as relocated `test` rows.
+
+| Old file | Old case | New file (path) | Disposition | Reason |
+|---|---|---|---|---|
+| unit/runners/claude/build-command.test.ts | (all 27 cases) | tests-new/unit/runners/claude/build-command.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/runners/claude/claude-auto-stop.test.ts | (all 7 cases) | tests-new/unit/runners/claude/claude-auto-stop.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/runners/claude/format-event.test.ts | (all 20 cases) | tests-new/unit/runners/claude/format-event.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/runners/claude/parse-events.test.ts | (all 21 cases) | tests-new/unit/runners/claude/parse-events.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/runners/codex/build-command.test.ts | (all 36 cases) | tests-new/unit/runners/codex/build-command.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/runners/codex/capture-lock.test.ts | (all 5 cases) | tests-new/unit/runners/codex/capture-lock.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/runners/codex/capture-session-id.test.ts | (all 7 cases) | tests-new/unit/runners/codex/capture-session-id.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/runners/codex/capture-thread-id.test.ts | (all 18 cases) | tests-new/unit/runners/codex/capture-thread-id.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/runners/codex/codex-auto-stop.test.ts | (all 14 cases) | tests-new/unit/runners/codex/codex-auto-stop.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/runners/codex/format-event.test.ts | (all 14 cases) | tests-new/unit/runners/codex/format-event.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/runners/codex/parse-events.test.ts | (all 18 cases) | tests-new/unit/runners/codex/parse-events.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/runners/default-view.test.ts | (all 3 cases) | tests-new/unit/runners/default-view.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/runners/define-runner.test.ts | (all 11 cases) | tests-new/unit/runners/define-runner.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/runners/execute-interactive.test.ts | (all 2 cases) | tests-new/unit/runners/execute-interactive.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/runners/execute.test.ts | (all 3 cases) | tests-new/unit/runners/execute.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/runners/fake/fake-runner.test.ts | (all 9 cases) | tests-new/unit/runners/fake/fake-runner.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/runners/runner-resume.test.ts | (all 10 cases) | tests-new/unit/runners/runner-resume.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/runners/scripted-fake/addressing.test.ts | (all 7 cases) | tests-new/unit/runners/scripted-fake/addressing.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/runners/scripted-fake/command-engine.test.ts | (all 15 cases) | tests-new/unit/runners/scripted-fake/command-engine.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/runners/scripted-fake/script-loader.test.ts | (all 9 cases) | tests-new/unit/runners/scripted-fake/script-loader.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| unit/runners/scripted-fake/scripted-fake-runner.test.ts | (all 11 cases) | tests-new/unit/runners/scripted-fake/scripted-fake-runner.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| integration/runners/claude/claude-e2e-lite.test.ts | (all 1 cases) | tests-new/integration/runners/claude/claude-e2e-lite.test.ts | port | Verbatim relocation — `fake-host` specifier → `@orch/test/*`; OLD copy's `describe.skipIf(!canRun)` flipped to unconditional `describe.skip` (R13); NEW copy keeps `skipIf` (capability gating, D8). `src` import set unchanged. |
+| integration/runners/claude/claude-mocked.test.ts | (all 3 cases) | tests-new/integration/runners/claude/claude-mocked.test.ts | port | Verbatim relocation — only the runtime raw-fixture path `../../../fixtures/claude` → `../../../_support/fixtures/claude` (fixtures copied to `_support`, PD2). `src` import set unchanged, parity guard green. |
+| integration/runners/claude/claude-real.test.ts | (all 1 cases) | tests-new/integration/runners/claude/claude-real.test.ts | port | Verbatim relocation — body byte-identical; OLD copy's `describe.skipIf(!canRun)` flipped to unconditional `describe.skip` (R13); NEW copy keeps `skipIf` (capability gating, D8). No `src` import change. |
+| integration/runners/claude/claude-resume.test.ts | (all 1 cases) | tests-new/integration/runners/claude/claude-resume.test.ts | port | Verbatim relocation — `fake-host` specifier → `@orch/test/*`; runtime raw-fixture path `../../../fixtures/claude` → `../../../_support/fixtures/claude` (fixtures copied to `_support`, PD2). `src` import set unchanged, parity guard green. |
+| integration/runners/claude/claude-structured-mocked.test.ts | (all 6 cases) | tests-new/integration/runners/claude/claude-structured-mocked.test.ts | port | Verbatim relocation — `fake-host` specifier → `@orch/test/*`; runtime raw-fixture path `../../../fixtures/claude` → `../../../_support/fixtures/claude` (fixtures copied to `_support`, PD2). `src` import set unchanged, parity guard green. |
+| integration/runners/claude/claude-structured-real.test.ts | (all 1 cases) | tests-new/integration/runners/claude/claude-structured-real.test.ts | port | Verbatim relocation — `fake-host` specifier → `@orch/test/*`; OLD copy's `describe.skipIf(!canRun)` flipped to unconditional `describe.skip` (R13); NEW copy keeps `skipIf` (capability gating, D8). `src` import set unchanged. |
+| integration/runners/codex/codex-mocked.test.ts | (all 5 cases) | tests-new/integration/runners/codex/codex-mocked.test.ts | port | Verbatim relocation — only the runtime raw-fixture path `../../../fixtures/codex` → `../../../_support/fixtures/codex` (fixtures copied to `_support`, PD2). `src` import set unchanged, parity guard green. |
+| integration/runners/codex/codex-real.test.ts | (all 1 cases) | tests-new/integration/runners/codex/codex-real.test.ts | port | Verbatim relocation — body byte-identical; OLD copy's `describe.skipIf(!canRun)` flipped to unconditional `describe.skip` (R13); NEW copy keeps `skipIf` (capability gating, D8). No `src` import change. |
+| integration/runners/cross-runner-parallel.test.ts | (all 1 cases) | tests-new/integration/runners/cross-runner-parallel.test.ts | port | Verbatim relocation — body byte-identical; OLD copy's `describe.skipIf(!canRun)` flipped to unconditional `describe.skip` (R13); NEW copy keeps `skipIf` (capability gating, D8). No `src` import change. |
+| integration/runners/run-runner.test.ts | (all 6 cases) | tests-new/integration/runners/run-runner.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| integration/runners/scripted-fake-ink.test.tsx | (all 4 cases) | tests-new/integration/runners/scripted-fake-ink.test.tsx | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| integration/runners/scripted-fake-interactive.test.ts | (all 11 cases) | tests-new/integration/runners/scripted-fake-interactive.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| integration/runners/scripted-fake-puppet-addressing.test.ts | (all 10 cases) | tests-new/integration/runners/scripted-fake-puppet-addressing.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| integration/runners/scripted-fake/entry.real.test.ts | (all 9 cases) | tests-new/integration/runners/scripted-fake/entry.real.test.ts | port | Verbatim relocation — body byte-identical; no cross-tree imports to rewrite (`src` import set unchanged, parity guard green). |
+| integration/runners/scripted-fake/two-step-linear.smoke.test.ts | (all 1 cases) | tests-new/integration/runners/scripted-fake/two-step-linear.smoke.test.ts | port | Verbatim relocation — `fake-host` and the `two-step-linear.ts` lifecycle-fixture ES import both → `@orch/test/*` (fixture copied to `_support`, PD2). `src` import set unchanged, parity guard green. |
+

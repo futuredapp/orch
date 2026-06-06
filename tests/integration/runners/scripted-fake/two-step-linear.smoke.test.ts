@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/runners/scripted-fake/two-step-linear.smoke.test.ts (parent U11) — relocated verbatim (import paths only); kept skipped on disk (D2).
 /**
  * Smoke: the `tier5-two-step-linear` fixture workflow runs end-to-end
  * in-process when both steps are scripted as `instant-ok`.
@@ -47,7 +48,7 @@ afterEach(async () => {
   await rm(workDir, { recursive: true, force: true })
 })
 
-describe('tier5-two-step-linear fixture (in-process smoke)', () => {
+describe.skip('tier5-two-step-linear fixture (in-process smoke)', () => {
   it('runs both steps to completion when scripted as instant-ok × 2', async () => {
     const script: ScriptedFakeScriptFile = {
       steps: {

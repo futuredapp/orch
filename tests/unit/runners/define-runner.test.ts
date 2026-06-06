@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/runners/define-runner.test.ts (parent U11) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import {
   defineRunner,
@@ -29,7 +30,7 @@ function makeValidAdapter(): Runner {
   }
 }
 
-describe('defineRunner', () => {
+describe.skip('defineRunner', () => {
   it('accepts a valid adapter and returns a frozen copy', () => {
     const adapter = makeValidAdapter()
 
@@ -93,7 +94,7 @@ describe('defineRunner', () => {
   })
 })
 
-describe('isTerminalEvent', () => {
+describe.skip('isTerminalEvent', () => {
   it('narrows a turn-complete event to TerminalEvent', () => {
     const evt: RunnerEvent = { kind: 'terminal', type: 'turn-complete' }
 

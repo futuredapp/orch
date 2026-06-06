@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/runners/claude/claude-resume.test.ts (parent U11) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -48,7 +49,7 @@ function makeDeps(overrides?: {
   }
 }
 
-describe('ClaudeRunner crash+resume (mocked)', () => {
+describe.skip('ClaudeRunner crash+resume (mocked)', () => {
   it('step 1 memoized on resume, step 2 re-runs with success fixture', async () => {
     const runner = claude()
     const sharedFs = new FakeFsService()

@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/runners/run-runner.test.ts (parent U11) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import {
   FakeRunner,
@@ -14,7 +15,7 @@ function ctxFor(prompt: string): RunnerContext {
   return { cwd: path('/tmp'), env: {}, prompt, extraArgs: [] }
 }
 
-describe('runRunner', () => {
+describe.skip('runRunner', () => {
   it('round-trips info events, terminal event, and structured output through a FakeRunner', async () => {
     const fps = new FakeProcessService()
     const clock = new FakeClock(1000)

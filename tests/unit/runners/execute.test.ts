@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/runners/execute.test.ts (parent U11) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import {
   defineRunner,
@@ -113,7 +114,7 @@ function rejectingStdout(message: string): AsyncIterable<string> {
   }
 }
 
-describe('runRunner cleanup on failure paths', () => {
+describe.skip('runRunner cleanup on failure paths', () => {
   it('runRunner kills the subprocess when parseEvents throws mid-stream', async () => {
     const handle = makeHandle(oneLineStdout('line-1'))
     const ps = new StubProcessService()
@@ -155,7 +156,7 @@ describe('runRunner cleanup on failure paths', () => {
   })
 })
 
-describe('runRunner onEvent hook (phase 13c observe mode)', () => {
+describe.skip('runRunner onEvent hook (phase 13c observe mode)', () => {
   it('forwards every parsed RunnerEvent to the onEvent callback in order', async () => {
     const lines = ['info-1', 'info-2', 'terminal']
     const stdout: AsyncIterable<string> = {

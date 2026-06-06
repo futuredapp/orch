@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/runners/codex/codex-mocked.test.ts (parent U11) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -31,7 +32,7 @@ function makeDeps(): {
   return { fs, ps, clock }
 }
 
-describe('CodexRunner mocked integration', () => {
+describe.skip('CodexRunner mocked integration', () => {
   it('round-trips simple-success.jsonl through runRunner with correct events and terminal', async () => {
     const { fs, ps, clock } = makeDeps()
     const runner = codex({}, { fs, ps })

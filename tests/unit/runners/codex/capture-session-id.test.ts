@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/runners/codex/capture-session-id.test.ts (parent U11) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { claude } from '../../../../src/runners/claude/index.ts'
 import { createCaptureLock } from '../../../../src/runners/codex/capture-lock.ts'
@@ -44,7 +45,7 @@ function makeCtx(
   }
 }
 
-describe('codex().captureSessionId', () => {
+describe.skip('codex().captureSessionId', () => {
   const prevEnv = process.env.ORCH_CODEX_SESSIONS_ROOT
   beforeEach(() => {
     process.env.ORCH_CODEX_SESSIONS_ROOT = SESSIONS_ROOT
@@ -232,7 +233,7 @@ describe('codex().captureSessionId', () => {
   })
 })
 
-describe('claude().captureSessionId', () => {
+describe.skip('claude().captureSessionId', () => {
   it('is undefined because Claude pre-sets its session id via --session-id', () => {
     const runner = claude({})
 

@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/integration/runners/scripted-fake-interactive.test.ts (parent U11) — relocated verbatim (import paths only); kept skipped on disk (D2).
 /**
  * Integration (U4): drive `interactive-entry.ts` as a real subprocess.
  *
@@ -145,7 +146,7 @@ function track(entry: DrivenEntry): DrivenEntry {
   return entry
 }
 
-describe('scriptedFake({ interactive }) construction', () => {
+describe.skip('scriptedFake({ interactive }) construction', () => {
   it('reports supports.interactive true only when constructed interactive', () => {
     const headless = scriptedFake({ stepName: 's' })
     const interactive = scriptedFake({ stepName: 's', interactive: true })
@@ -166,7 +167,7 @@ describe('scriptedFake({ interactive }) construction', () => {
   })
 })
 
-describe('interactive-entry.ts control channel (real subprocess)', () => {
+describe.skip('interactive-entry.ts control channel (real subprocess)', () => {
   it('writes the .ready marker once idle-waiting after render setup', async () => {
     const entry = track(spawnInteractive(runStateDir, 'step'))
 
@@ -211,7 +212,7 @@ describe('interactive-entry.ts control channel (real subprocess)', () => {
   })
 })
 
-describe('interactive-entry.ts manual stdin channel (real subprocess)', () => {
+describe.skip('interactive-entry.ts manual stdin channel (real subprocess)', () => {
   it('renders a bare manual line identically to a control type_and_send (R3, R5)', async () => {
     const entry = track(spawnInteractive(runStateDir, 'step'))
     await entry.waitForReady()
@@ -254,7 +255,7 @@ describe('interactive-entry.ts manual stdin channel (real subprocess)', () => {
   })
 })
 
-describe('interactive-entry.ts cross-channel ordering (R12 — no silent ack hang)', () => {
+describe.skip('interactive-entry.ts cross-channel ordering (R12 — no silent ack hang)', () => {
   it('acks a control command even when a stdin finish arrives concurrently', async () => {
     const entry = track(spawnInteractive(runStateDir, 'step'))
     await entry.waitForReady()

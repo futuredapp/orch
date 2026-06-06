@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/runners/execute-interactive.test.ts (parent U11) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { runInteractive } from '../../../src/runners/execute.ts'
 import type { Runner, RunnerCommand, RunnerContext } from '../../../src/runners/types.ts'
@@ -32,7 +33,7 @@ function ctxFor(prompt: string): RunnerContext {
   return { cwd: path('/workspace'), env: {}, prompt, extraArgs: [], mode: 'interactive' }
 }
 
-describe('runInteractive', () => {
+describe.skip('runInteractive', () => {
   it('returns exit code 0 and elapsed duration on successful foreground process', async () => {
     const fps = new FakeProcessService()
     const clock = new FakeClock(1000)

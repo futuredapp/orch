@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/runners/runner-resume.test.ts (parent U11) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import { claude } from '../../../src/runners/claude/index.ts'
 import { createCaptureLock } from '../../../src/runners/codex/capture-lock.ts'
@@ -30,7 +31,7 @@ function resumeOf(runner: Runner): NonNullable<Runner['resumeCommand']> {
   return runner.resumeCommand
 }
 
-describe('claude().resumeCommand', () => {
+describe.skip('claude().resumeCommand', () => {
   it('returns argv that resumes the named session via claude --resume', async () => {
     const runner = claude()
 
@@ -64,7 +65,7 @@ describe('claude().resumeCommand', () => {
   })
 })
 
-describe('codex().resumeCommand', () => {
+describe.skip('codex().resumeCommand', () => {
   it('returns argv that resumes the named thread via codex resume with --no-alt-screen before the sessionId positional', async () => {
     const runner = codex({}, { fs: new FakeFsService(), ps: new FakeProcessService() })
 
@@ -92,7 +93,7 @@ describe('codex().resumeCommand', () => {
   })
 })
 
-describe('FakeRunner.resumeCommand', () => {
+describe.skip('FakeRunner.resumeCommand', () => {
   it('is undefined until withResumeCommand is called', () => {
     const runner = new FakeRunner(new FakeProcessService())
 
@@ -118,7 +119,7 @@ function captureCtxFor(): CaptureSessionIdContext {
   }
 }
 
-describe('FakeRunner.captureSessionId', () => {
+describe.skip('FakeRunner.captureSessionId', () => {
   it('is undefined until withCaptureSessionId is called (mirrors a runner with no capture primitive)', () => {
     const runner = new FakeRunner(new FakeProcessService())
 

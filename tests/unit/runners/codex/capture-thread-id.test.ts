@@ -1,3 +1,4 @@
+// MIGRATED → tests-new/unit/runners/codex/capture-thread-id.test.ts (parent U11) — relocated verbatim (import paths only); kept skipped on disk (D2).
 import { describe, expect, it } from 'bun:test'
 import {
   captureCodexThreadId,
@@ -35,7 +36,7 @@ function flushPendingPolls(): Promise<void> {
   return new Promise((resolve) => setImmediate(resolve))
 }
 
-describe('captureCodexThreadId', () => {
+describe.skip('captureCodexThreadId', () => {
   it('resolves snapshotReady before the first new file can appear and then yields the matching sessionId', async () => {
     const clock = new FakeClock(FIXED_EPOCH)
     const fs = new FakeFsService({ clock })
@@ -451,7 +452,7 @@ describe('captureCodexThreadId', () => {
   })
 })
 
-describe('resolveCodexSessionsRoot', () => {
+describe.skip('resolveCodexSessionsRoot', () => {
   it('returns the ORCH_CODEX_SESSIONS_ROOT override when set to a non-empty value', () => {
     const root = resolveCodexSessionsRoot({
       envOverride: '/custom/codex',
