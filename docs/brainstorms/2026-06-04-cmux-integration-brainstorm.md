@@ -188,31 +188,36 @@ RUN STARTS
 - **[Affects R3, R4][Technical] Exact cmux CLI invocations** — confirm the precise `set-status` / `clear-status` / `notify` flags, JSON payload shape, icon/color/priority values, and notification urgency levels against the installed cmux version (cross-check the cloned source from the item above).
 - **[Affects R5, R6][Technical] Pill key namespacing** — whether a single cmux workspace can host more than one concurrent orch run; if so, namespace pill keys by `runId`, otherwise static keys suffice.
 - **[Affects R13][Technical] Composition-root hook for run-end notifications** — wire the completed/failed notify where the run settles (around `executeWorkflowFn` in `src/cli/main.ts`), since `run-ended` is append-only to `lifecycle.ndjson` and not delivered to the host.
+- **[Affects R14, AT-9][Technical] Exact probe mechanism for cmux availability at startup** — whether CmuxHost probes via a cmux CLI call, a socket connect, or a secondary env var; must be pinned during planning to write AT-9.
+- **[Affects R16, AT-11][Technical] Config switch form** — whether the disable switch is a field in `OrchestratorConfig` (e.g. `cmux.enabled: false`), an env var (e.g. `ORCH_CMUX_DISABLED`), or both; must be pinned during planning to write AT-11.
 
 ---
 
 ## Acceptance Tests
 
-Plain-language behavioral acceptance criteria for this feature live in the sidecar
-[2026-06-04-cmux-integration-brainstorm-acceptance-tests.md](./2026-06-04-cmux-integration-brainstorm-acceptance-tests.md).
-Each is meant to become a real, executing test describing observable behavior at the
-cmux CLI / host-seam boundary — read them to know the feature works without reading the
-code. Because this is a brainstorm (not a plan), a planning pass should confirm the test
-infrastructure to run them exists (notably a recorded-spawns surface on `FakeProcessService`,
-`stepIndex`/`stepTotal`/`workflowName` on the lifecycle events, and the composition-root
-run-end hook). At a glance:
+The behavioral acceptance criteria for this feature have been derived from this brainstorm and live in the sidecar: **[2026-06-04-cmux-integration-brainstorm-acceptance-tests.md](2026-06-04-cmux-integration-brainstorm-acceptance-tests.md)**.
 
-- **AT-1** — Pills reflect workflow / step (N/M) / runner / mode while active *(Phase 1)*
-- **AT-2** — Step + mode pills update in place, not accumulate *(Phase 1)*
-- **AT-3** — All pills cleared on any terminal state (completed / failed / crashed) *(Phase 1)*
-- **AT-4** — Interactive step start fires a "needs you" notification *(Phase 1)*
-- **AT-5** — A run with no interactive steps fires no "needs you" notification *(Phase 1)*
-- **AT-6** — Successful run fires a completion notification with duration *(Phase 1)*
-- **AT-7** — Failed run fires a failure notification naming the failing step *(Phase 1)*
-- **AT-8** — Notifications carry own-workflow identity (parallel-run disambiguation) *(Phase 1)*
-- **AT-9** — No `CMUX_SURFACE_ID` → zero cmux CLI calls, identical run *(Phase 1)*
-- **AT-10** — cmux socket off/unreachable → zero cmux CLI calls *(Phase 1)*
-- **AT-11** — A cmux CLI failure mid-run is swallowed *(Phase 1)*
-- **AT-12** — A config switch disables the integration inside cmux *(Phase 1)*
-- **AT-13** — Agent awaiting-input fires a notification naming the agent *(Phase 2, research-gated)*
-- **AT-14** — Awaiting-input detection is cmux-agnostic on the host seam *(Phase 2, research-gated)*
+If all listed tests pass, the feature works as specified without reading the implementation. Each test is identified by a stable AT-ID; track implementation status there.
+
+**Phase 1 tests (AT-1 – AT-12):** cover status pills, notifications, no-op safety, error swallowing, and workflow identity — all directly implementable once planning pins the cmux CLI shapes, the probe mechanism (AT-9), and the config switch form (AT-11).
+
+**Phase 2 tests (AT-13 – AT-16):** cover the normalized `awaiting-input` signal from runners and its translation to a cmux notification. Research-gated pending the hook-routing investigation.
+
+| AT-ID | Behavior |
+| ----- | -------- |
+| AT-1  | First step start sets all four sidebar pills with step position |
+| AT-2  | Step transition refreshes step and mode pills in place, no accumulation |
+| AT-3  | Interactive step start fires "needs you" notification (not fired for autonomous) |
+| AT-4  | Successful run fires completion notification with duration and workflow name |
+| AT-5  | Failed run fires failure notification with failing step name and workflow name |
+| AT-6  | All pills cleared when run ends successfully |
+| AT-7  | All pills cleared when run ends with failure |
+| AT-8  | CMUX_SURFACE_ID absent → zero cmux CLI invocations, identical run behavior |
+| AT-9  | cmux unavailable at startup → zero subsequent cmux calls, run proceeds normally |
+| AT-10 | cmux CLI failure mid-run is swallowed; step and run complete normally |
+| AT-11 | Config switch disables integration even when CMUX_SURFACE_ID is set |
+| AT-12 | Notification identifies the specific workflow (parallel-run disambiguation) |
+| AT-13 | *(Phase 2)* Claude runner emits normalized awaiting-input event when agent blocks |
+| AT-14 | *(Phase 2)* Codex runner emits normalized awaiting-input event when agent blocks |
+| AT-15 | *(Phase 2)* awaiting-input event contains no cmux-specific content |
+| AT-16 | *(Phase 2)* CmuxHost fires agent-blocked notification on awaiting-input event |
