@@ -3,3 +3,12 @@ preload = [
   "./tests/_support/setup/cleanup-stale-tmux.ts",
   "./tests/dsl/preload-warn-bare-bun-test.ts",
 ]
+coverageReporter = ["text", "lcov"]
+coverageDir = "coverage"
+coverageSkipTestFiles = true
+coveragePathIgnorePatterns = [
+  "tests/**",
+  "scripts/**",
+  "**/*.d.ts",
+  "**/*.config.ts",
+]

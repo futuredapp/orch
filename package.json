@@ -42,6 +42,9 @@
     "test:project": "bun run check:int-dirs && bun run test:unit && bun run test:int && bun run test:int:real-tmux && bun run test:e2e && bun run test:two-pane",
     "test": "bun run test:project",
     "test:watch": "bun test --watch tests/unit",
+    "test:coverage": "bun test --coverage tests/unit tests/integration/cli tests/integration/codegen tests/integration/core tests/integration/examples tests/integration/hosts tests/integration/observability tests/integration/runners tests/integration/services tests/integration/state tests/integration/validators tests/integration/workflows",
+    "coverage:html": "genhtml coverage/lcov.info --output-directory coverage/html && echo 'Report: coverage/html/index.html'",
+    "coverage:open": "bun run test:coverage && bun run coverage:html && open coverage/html/index.html",
     "docs:dev": "vitepress dev docs/public",
     "docs:build": "vitepress build docs/public",
     "docs:preview": "vitepress preview docs/public"
