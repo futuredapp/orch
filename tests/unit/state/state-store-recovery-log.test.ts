@@ -4,13 +4,13 @@
 // written by a future phase cannot reject a whole Phase-1 state-file load.
 
 import { describe, expect, it } from 'bun:test'
+import { makeStepEntry } from '@orch/test/make-step-entry.ts'
 import { FakeFsService, path } from '../../../src/services/index.ts'
 import {
   FileStateStore,
   type PersistedRecoveryLogEntry,
   type RunId,
 } from '../../../src/state/index.ts'
-import { makeStepEntry } from '../../helpers/make-step-entry.ts'
 
 const BASE = path('/runs')
 const RID = 'r-2026-06-02-200001-a1' as RunId

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test'
+import { createFakeHost } from '@orch/test/fake-host.ts'
 import { backoffResume, noRetry } from '../../../src/core/index.ts'
 import { step } from '../../../src/core/step.ts'
 import type { WorkflowDeps } from '../../../src/core/workflow.ts'
@@ -15,7 +16,6 @@ import {
 } from '../../../src/services/index.ts'
 import { FakePromptService } from '../../../src/services/prompt/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
-import { createFakeHost } from '../../helpers/fake-host.ts'
 
 // U7: the recovery loop wired at the autonomous executor seam. These drive the
 // public executor with a FakeRunner whose recovery capabilities are scripted,

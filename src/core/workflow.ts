@@ -14,7 +14,6 @@ import { envKeys as envKeyList, orchLog, redactReproduceCommand } from '../obser
 // since Codex is the only consumer; promote to `src/services/` if a second
 // runner ever needs it.
 import { createCaptureLock } from '../runners/codex/capture-lock.ts'
-import { runRunner } from '../runners/index.ts'
 import type {
   CaptureError,
   CaptureHandle,
@@ -25,6 +24,7 @@ import type {
   RunnerContext,
   RunnerEvent,
 } from '../runners/index.ts'
+import { runRunner } from '../runners/index.ts'
 // Addressing env-var names live on the Runner port (the executor↔runner spawn
 // contract) — not in a concrete runner — so the core executor can name them
 // without importing a runner adapter. They are value constants not surfaced on

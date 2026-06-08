@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test'
+import { createFakeHost } from '@orch/test/fake-host.ts'
 import { parallel } from '../../../src/core/parallel.ts'
 import { step } from '../../../src/core/step.ts'
 import type { WorkflowDeps } from '../../../src/core/workflow.ts'
@@ -14,7 +15,6 @@ import {
 } from '../../../src/services/index.ts'
 import { FakePromptService } from '../../../src/services/prompt/index.ts'
 import { FileStateStore, type RunId } from '../../../src/state/index.ts'
-import { createFakeHost } from '../../helpers/fake-host.ts'
 
 // U4/U6: produceAgentStep now runs the post-spawn session-id capture on the
 // AUTONOMOUS path (it previously lived only on the interactive path). These
