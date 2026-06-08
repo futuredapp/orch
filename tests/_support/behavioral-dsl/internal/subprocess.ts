@@ -39,6 +39,11 @@ const DEFAULT_STATE_POLL_INTERVAL_MS = 50
 const ORCH_LIFECYCLE_SCRIPT_ENV = 'ORCH_LIFECYCLE_SCRIPT'
 const ORCH_STATE_BASE_ENV = 'ORCH_STATE_BASE'
 const ORCH_TMUX_SOCKET_ENV = 'ORCH_TMUX_SOCKET'
+// Hermetic-cmux guard. The spawned `orch` inherits the parent's
+// CMUX_SURFACE_ID via env passthrough; without this it would drive the
+// developer's real cmux sidebar/notifications during the test run. Force the
+// cmux host to its no-op path. See src/hosts/cmux/cmux-host.ts gate 0.
+const ORCH_DISABLE_CMUX_ENV = 'ORCH_DISABLE_CMUX'
 
 export interface SpawnOrchOptions {
   readonly workflowFixture: string
@@ -130,6 +135,7 @@ export const spawnOrch = async (opts: SpawnOrchOptions): Promise<OrchHandle> => 
       [ORCH_LIFECYCLE_SCRIPT_ENV]: scriptPath,
       [ORCH_STATE_BASE_ENV]: stateBaseRaw,
       [ORCH_TMUX_SOCKET_ENV]: tmuxSocket,
+      [ORCH_DISABLE_CMUX_ENV]: '1',
     },
     opts.env ?? {},
   )

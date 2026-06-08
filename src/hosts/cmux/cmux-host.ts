@@ -49,13 +49,23 @@ const PILL_KEYS = ['orch_workflow', 'orch_step', 'orch_runner', 'orch_mode'] as 
 // ---------------------------------------------------------------------------
 
 /**
- * Three-gate factory:
+ * Four-gate factory:
+ *  0. ORCH_DISABLE_CMUX set → no-op (force-disable; wins over a present surface
+ *     id and skips the probe). This is the hermetic-test escape hatch: tests
+ *     that spawn a real `orch` subprocess inherit the parent's CMUX_SURFACE_ID
+ *     via env passthrough, so without this they would drive the developer's
+ *     actual cmux surface. The harness sets ORCH_DISABLE_CMUX=1 on the spawn.
  *  1. CMUX_SURFACE_ID absent → no-op (zero cmux calls, zero probe)
  *  2. cmux.enabled === false → no-op
  *  3. `cmux ping` non-zero → no-op
  * Otherwise returns the live CmuxHost.
  */
 export async function createCmuxHost(opts: CmuxHostOptions): Promise<CmuxHost> {
+  if (opts.env?.ORCH_DISABLE_CMUX) {
+    logGateOutcome(opts.logger, 'disabled-env')
+    return createNoOpCmuxHost()
+  }
+
   if (!opts.env?.CMUX_SURFACE_ID) {
     logGateOutcome(opts.logger, 'disabled-no-surface-id')
     return createNoOpCmuxHost()
@@ -76,6 +86,7 @@ export async function createCmuxHost(opts: CmuxHostOptions): Promise<CmuxHost> {
 }
 
 type CmuxGateOutcome =
+  | 'disabled-env'
   | 'disabled-no-surface-id'
   | 'disabled-config'
   | 'disabled-ping-failed'

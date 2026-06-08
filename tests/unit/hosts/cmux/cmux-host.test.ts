@@ -57,6 +57,24 @@ describe('createCmuxHost — probe / availability', () => {
     expect(fps.cmuxCalls()).toHaveLength(0)
   })
 
+  it('returns a no-op host with zero ProcessService calls when ORCH_DISABLE_CMUX is set, even with a surface id', async () => {
+    const fps = new FakeProcessService()
+    fps.when(['cmux', 'ping']).respondWith({ exitCode: 0 })
+
+    const host = await createCmuxHost({
+      processService: fps,
+      clock: new FakeClock(0),
+      workflowName: WF,
+      env: { ...ENV_WITH_SURFACE, ORCH_DISABLE_CMUX: '1' },
+      cwd: CWD,
+    })
+
+    host.onLifecycleEvent({ type: 'step:start', stepName: STEP, mode: 'autonomous' })
+    await host.flush()
+
+    expect(fps.cmuxCalls()).toHaveLength(0)
+  })
+
   it('returns a no-op host when ping exits non-zero and fires no further cmux calls', async () => {
     const fps = new FakeProcessService()
     fps.when(['cmux', 'ping']).respondWith({ exitCode: 1 })
@@ -493,6 +511,22 @@ describe('createCmuxHost — gate-outcome logging', () => {
     })
 
     expect(gateOutcomes(records)).toEqual(['disabled-no-surface-id'])
+  })
+
+  it('records outcome "disabled-env" when ORCH_DISABLE_CMUX is set', async () => {
+    const fps = new FakeProcessService()
+    const { logger, records } = capturingLogger()
+
+    await createCmuxHost({
+      processService: fps,
+      clock: new FakeClock(0),
+      workflowName: WF,
+      env: { ...ENV_WITH_SURFACE, ORCH_DISABLE_CMUX: '1' },
+      cwd: CWD,
+      logger,
+    })
+
+    expect(gateOutcomes(records)).toEqual(['disabled-env'])
   })
 
   it('records outcome "disabled-config" when cmux.enabled is false', async () => {
