@@ -229,7 +229,11 @@ export function createLifecycleChoreographer(
     if (
       event.type === 'subworkflow:enter' ||
       event.type === 'subworkflow:exit' ||
-      event.type === 'host-error'
+      event.type === 'host-error' ||
+      // Run-scoped finalization event consumed by the cmux host; the two-pane
+      // choreographer renders per-step panes and the end-of-run summary comes
+      // from the steps-view projection, so there's nothing to do here.
+      event.type === 'run:ended'
     ) {
       return
     }

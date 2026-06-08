@@ -24,6 +24,12 @@ export interface OrchestratorConfig {
    * (`.orch/workflows/` and `.orch/prompts/`); see `PROMPTS_DISCOVERY_DEFAULTS`.
    */
   readonly prompts?: PromptsDiscoveryConfig
+  /**
+   * cmux integration settings. Absence is equivalent to `enabled: true`.
+   * Set `enabled: false` to disable the cmux sidebar integration even when
+   * `CMUX_SURFACE_ID` is present in the environment.
+   */
+  readonly cmux?: { readonly enabled?: boolean }
 }
 
 export interface PromptsDiscoveryConfig {
@@ -70,6 +76,7 @@ const ConfigSchema = z.object({
   workflows: z.record(z.string().min(1), z.string().min(1)),
   defaultMode: RunModeSchema.optional(),
   prompts: PromptsSchema.optional(),
+  cmux: z.object({ enabled: z.boolean().optional() }).optional(),
 })
 
 // ---------------------------------------------------------------------------

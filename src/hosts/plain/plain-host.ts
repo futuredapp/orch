@@ -244,6 +244,11 @@ function textLifecycle(event: StepLifecycleEvent): string {
     }
     case 'host-error':
       return `── ! host-error on ${event.source} for ${event.name}: ${event.message} ──`
+    case 'run:ended':
+      // Run-scoped finalization event for hosts with run-level UI (cmux). The
+      // plain host already prints the end-of-run summary via executeWithAttach,
+      // so suppress the line here (same idiom as the parallel-divider skip).
+      return ''
   }
 }
 
@@ -293,6 +298,8 @@ function jsonLifecycle(event: StepLifecycleEvent): Record<string, unknown> {
         depth: event.depth,
         message: event.message,
       }
+    case 'run:ended':
+      return { ev: 'run.ended', status: event.status, durationMs: event.durationMs }
   }
 }
 

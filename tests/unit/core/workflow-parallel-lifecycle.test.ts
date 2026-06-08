@@ -138,7 +138,7 @@ describe('parallel() block lifecycle events', () => {
     // Zero branches, but the block boundaries still fire — hosts that
     // register a rollup source on start must symmetrically unregister on
     // complete or they leak hidden panes.
-    expect(types).toEqual(['step:parallel-start', 'step:parallel-complete'])
+    expect(types).toEqual(['step:parallel-start', 'step:parallel-complete', 'run:ended'])
   })
 
   it('emits start/complete even when a branch throws (parallel still settles)', async () => {
@@ -171,7 +171,10 @@ describe('parallel() block lifecycle events', () => {
     expect(types.filter((t) => t === 'step:parallel-start')).toHaveLength(1)
     expect(types.filter((t) => t === 'step:parallel-complete')).toHaveLength(1)
 
-    // Complete fires LAST — after the branches settle, regardless of failure.
-    expect(types.at(-1)).toBe('step:parallel-complete')
+    // Complete fires after the branches settle, regardless of failure. The
+    // terminal `run:ended` (the failed run settling) follows it — so
+    // parallel-complete is the last step-scoped event before run end.
+    expect(types.at(-1)).toBe('run:ended')
+    expect(types[types.length - 2]).toBe('step:parallel-complete')
   })
 })

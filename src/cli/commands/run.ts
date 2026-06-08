@@ -8,7 +8,12 @@ import {
   ViewResolutionError,
 } from '../../core/index.ts'
 import type { WorkflowArgs, WorkflowDeps } from '../../core/workflow.ts'
-import { HostCreationError, HostUnavailableError } from '../../hosts/index.ts'
+import {
+  createCmuxHost,
+  createCompositeHost,
+  HostCreationError,
+  HostUnavailableError,
+} from '../../hosts/index.ts'
 import {
   buildRunMeta,
   instrumentProcessService,
@@ -201,6 +206,17 @@ export async function runCmd(
       throw err
     }
 
+    const cmuxHost = await createCmuxHost({
+      processService: instrumentedProcess,
+      clock: deps.clock,
+      workflowName: name,
+      cmuxConfig: result.config.cmux,
+      env: process.env,
+      cwd: deps.cwd,
+      logger,
+    })
+    const compositeHost = createCompositeHost(host, cmuxHost)
+
     const transcriptSidecar = createTranscriptSidecar({
       fs: deps.fsService,
       runId,
@@ -217,7 +233,7 @@ export async function runCmd(
       gitService: deps.gitService,
       workflowName: name,
       args,
-      host,
+      host: compositeHost,
       transcriptSidecar,
       logger,
       promptService: deps.promptServiceFor(host.mode),
@@ -226,7 +242,7 @@ export async function runCmd(
     }
 
     return await executeWithAttach({
-      host,
+      host: compositeHost,
       workflow: result.executor.execute(wfDeps),
       runId,
       stderr: process.stderr,
@@ -234,6 +250,7 @@ export async function runCmd(
       summary: { workflowName: name, runDir: relativeRunDir(deps.cwd, deps.statePath, runId) },
       logger,
       skipAttach: opts.noAttach,
+      beforeTeardown: (exitCode) => cmuxHost.notifyRunEnd(exitCode),
     })
   } finally {
     await logger.close()

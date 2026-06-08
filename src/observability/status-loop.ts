@@ -143,7 +143,10 @@ export function applyEvent(
   if (
     event.type === 'subworkflow:enter' ||
     event.type === 'subworkflow:exit' ||
-    event.type === 'host-error'
+    event.type === 'host-error' ||
+    // Run-scoped finalization event (carries no `stepName`); the per-step
+    // status rollup is unaffected.
+    event.type === 'run:ended'
   ) {
     return
   }

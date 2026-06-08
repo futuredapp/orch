@@ -156,7 +156,13 @@ describe('runWorkflow — sub-frame and lifecycle events (R7, R8, R14, R15)', ()
 
     const events = recordedLifecycleEvents(deps)
     const types = events.map((e) => e.type)
-    expect(types).toEqual(['subworkflow:enter', 'step:start', 'step:complete', 'subworkflow:exit'])
+    expect(types).toEqual([
+      'subworkflow:enter',
+      'step:start',
+      'step:complete',
+      'subworkflow:exit',
+      'run:ended',
+    ])
     const enter = events.find((e) => e.type === 'subworkflow:enter')
     expect(enter).toMatchObject({ name: 'simple-feature', depth: 1 })
     const exit = events.find((e) => e.type === 'subworkflow:exit')

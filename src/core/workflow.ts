@@ -168,6 +168,7 @@ export type StepLifecycleEvent =
       readonly type: 'step:start'
       readonly stepName: StepName
       readonly mode: StepMode
+      readonly runnerName?: string
       readonly subPath?: readonly string[]
       readonly insideParallel?: true
     }
@@ -253,6 +254,19 @@ export type StepLifecycleEvent =
       readonly name: string
       readonly depth: number
       readonly message: string
+    }
+  | {
+      /** Fired once when the workflow body settles — after the terminal
+       *  `step:*` events, on BOTH the success and failure paths (on failure,
+       *  immediately before the executor re-throws). Mirrors the `run-ended`
+       *  logger line, but fanned through `host.onLifecycleEvent` so hosts can
+       *  finalize run-scoped UI (e.g. the cmux host clears its sidebar pills
+       *  and fires the completion/failure notification) the moment the run
+       *  ends — NOT at host teardown, which two-pane defers until the user
+       *  dismisses the end-of-run summary. */
+      readonly type: 'run:ended'
+      readonly status: 'completed' | 'failed' | 'crashed'
+      readonly durationMs: number
     }
 
 // ---------------------------------------------------------------------------
@@ -671,7 +685,15 @@ async function runInteractiveStep(
   }
 
   return withStepLifecycle(
-    { host: deps.host, stepSpan, clock: deps.clock, key, mode: 'interactive', trackParallel: true },
+    {
+      host: deps.host,
+      stepSpan,
+      clock: deps.clock,
+      key,
+      mode: 'interactive',
+      trackParallel: true,
+      runnerName: config.agent.name,
+    },
     (timer) =>
       produceInteractiveStep(deps, captureLock, config, key, overrides, stepSpan, autoStop, timer),
   )
@@ -1037,7 +1059,15 @@ async function runAgentStep(
   })
 
   return withStepLifecycle(
-    { host: deps.host, stepSpan, clock: deps.clock, key, mode: 'autonomous', trackParallel: true },
+    {
+      host: deps.host,
+      stepSpan,
+      clock: deps.clock,
+      key,
+      mode: 'autonomous',
+      trackParallel: true,
+      runnerName: config.agent.name,
+    },
     () => produceAgentStep(deps, config, key, overrides, stepSpan, isSilent),
   )
 }
@@ -1572,15 +1602,15 @@ async function executeWorkflowFn(fn: WorkflowFn, deps: WorkflowDeps): Promise<vo
     ) as Promise<T>
 
   const startedAt = deps.clock.now()
+  // `emitLifecycle` + `parallelBlockIdRef` give `parallel()` (in core/) a
+  // narrow seam to fire `step:parallel-start` / `step:parallel-complete`
+  // without depending on the host or WorkflowDeps. Hoisted above the try so the
+  // catch branch can fan the terminal `run:ended` event too.
+  const emitLifecycle = (event: StepLifecycleEvent): void => deps.host.onLifecycleEvent(event)
   try {
     // Wrap the workflow body in an executionContext store so steps inside it
     // (including setWorkflowCwd from createWorktree) can mutate workflowCwd
     // and have subsequent run() calls observe the new cwd via currentCwd().
-    //
-    // `emitLifecycle` + `parallelBlockIdRef` give `parallel()` (in core/) a
-    // narrow seam to fire `step:parallel-start` / `step:parallel-complete`
-    // without depending on the host or WorkflowDeps.
-    const emitLifecycle = (event: StepLifecycleEvent): void => deps.host.onLifecycleEvent(event)
     // U3: populate `runFnRef`, `loggerRef`, and `maxSubworkflowDepth` at the
     // root frame so `runWorkflow` reads them via ALS without taking
     // WorkflowDeps directly. The snapshot makes the depth bound
@@ -1598,13 +1628,15 @@ async function executeWorkflowFn(fn: WorkflowFn, deps: WorkflowDeps): Promise<vo
       () => fn(run, deps.args ?? {}),
     )
     await deps.stateStore.setStatus(deps.runId, 'completed', deps.clock.now())
+    const completedDurationMs = deps.clock.now() - startedAt
     void deps.logger
       ?.append('lifecycle', {
         type: 'run-ended',
         status: 'completed',
-        totalDurationMs: deps.clock.now() - startedAt,
+        totalDurationMs: completedDurationMs,
       })
       .catch(() => {})
+    emitLifecycle({ type: 'run:ended', status: 'completed', durationMs: completedDurationMs })
   } catch (err) {
     // Step-level failures mean the step ran to completion and produced an
     // unacceptable result — runner exited non-zero (StepError), a validator
@@ -1629,13 +1661,18 @@ async function executeWorkflowFn(fn: WorkflowFn, deps: WorkflowDeps): Promise<vo
       // For the resume() path, the run is known to exist (loadRun succeeded),
       // so this only fires on I/O errors (disk full, permissions).
     }
+    const failedDurationMs = deps.clock.now() - startedAt
     void deps.logger
       ?.append('lifecycle', {
         type: 'run-ended',
         status: terminalStatus,
-        totalDurationMs: deps.clock.now() - startedAt,
+        totalDurationMs: failedDurationMs,
       })
       .catch(() => {})
+    // Fan the terminal event BEFORE re-throwing so hosts finalize run-scoped UI
+    // (cmux failure notify + pill clear) the moment the run settles, not at the
+    // teardown that the re-thrown error eventually triggers.
+    emitLifecycle({ type: 'run:ended', status: terminalStatus, durationMs: failedDurationMs })
     throw err
   }
 }

@@ -69,6 +69,12 @@ export interface ExecuteWithAttachOpts {
    * to `false`. Plain mode ignores this flag.
    */
   readonly skipAttach?: boolean
+  /**
+   * Called with the exit code immediately before every `host.teardown()`.
+   * Errors are swallowed — a failing hook never blocks teardown. Signal
+   * handler sites call this fire-and-forget (no await).
+   */
+  readonly beforeTeardown?: (exitCode: number) => Promise<void>
 }
 
 async function handleAttachExitedTwoPane(
@@ -111,6 +117,7 @@ export async function executeWithAttach(opts: ExecuteWithAttachOpts): Promise<nu
     orchLog(opts.logger, 'signal-received', { exitCode: code })
     // Fire-and-forget: signal handlers cannot await. The `.finally` exits
     // either way — a teardown failure still unblocks the TTY.
+    void opts.beforeTeardown?.(code).catch(() => {})
     void opts.host.teardown().finally(() => process.exit(code))
     // Hard cap: if teardown hangs (tmux socket gone mid-command) we still
     // exit. `unref` so a fast teardown doesn't keep the loop alive.
@@ -166,6 +173,7 @@ export async function executeWithAttach(opts: ExecuteWithAttachOpts): Promise<nu
       // the §2.1 (`q`) and `attach-tty-ctrl-c` bugs.
       if (winner.reason === 'quit') {
         orchLog(opts.logger, 'foreground-quit', { runId: opts.runId })
+        await opts.beforeTeardown?.(EXIT.SIGINT).catch(() => {})
         await opts.host.teardown()
         return EXIT.SIGINT
       }
@@ -188,6 +196,7 @@ export async function executeWithAttach(opts: ExecuteWithAttachOpts): Promise<nu
           // host-loss boundary instead of waiting for a later ask()/interactive
           // step to fail with a derivative pane error.
           void trackedWorkflow.catch(() => {})
+          await opts.beforeTeardown?.(EXIT.STEP_FAILURE).catch(() => {})
           await opts.host.teardown()
           writeFailureSummary(opts.stderr, opts.summary, reachability.reason)
           return EXIT.STEP_FAILURE
@@ -220,6 +229,7 @@ export async function executeWithAttach(opts: ExecuteWithAttachOpts): Promise<nu
     process.off('SIGHUP', sighupHandler)
   }
 
+  await opts.beforeTeardown?.(EXIT.OK).catch(() => {})
   await opts.host.teardown()
   writeSuccessSummary(opts.stderr, opts.summary)
   return EXIT.OK
@@ -236,6 +246,8 @@ export async function executeWithAttach(opts: ExecuteWithAttachOpts): Promise<nu
 // `<runDir>/logs/lifecycle.ndjson`.
 async function resolveCaughtError(opts: ExecuteWithAttachOpts, err: unknown): Promise<number> {
   const mapped = opts.mapError(err)
+  const exitCode = mapped !== undefined ? mapped.code : EXIT.STEP_FAILURE
+  await opts.beforeTeardown?.(exitCode).catch(() => {})
   await opts.host.teardown()
   if (mapped !== undefined) {
     writeFailureSummary(opts.stderr, opts.summary, mapped.reason)

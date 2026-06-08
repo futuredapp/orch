@@ -144,7 +144,13 @@ describe('subworkflow examples — runWorkflow end-to-end with fake runner', () 
 
     const events = lifecycleEvents(deps)
     const types = events.map((e) => e.type)
-    expect(types).toEqual(['subworkflow:enter', 'step:start', 'step:complete', 'subworkflow:exit'])
+    expect(types).toEqual([
+      'subworkflow:enter',
+      'step:start',
+      'step:complete',
+      'subworkflow:exit',
+      'run:ended',
+    ])
 
     // Persisted step key uses the `sub>name` form so the parent can run
     // another sub with a colliding leaf name without tripping R20.

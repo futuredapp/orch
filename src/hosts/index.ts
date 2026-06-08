@@ -6,6 +6,9 @@
 // `single-pane` host will land here when it does. Every cross-module import
 // goes through this barrel — see CLAUDE.md rule #7.
 
+export type { CmuxHost, CmuxHostOptions } from './cmux/index.ts'
+export { createCmuxHost } from './cmux/index.ts'
+export { createCompositeHost } from './composite/index.ts'
 export type {
   CommandLine,
   ForegroundShutdownReason,

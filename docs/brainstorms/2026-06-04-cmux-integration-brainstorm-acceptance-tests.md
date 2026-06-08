@@ -160,18 +160,18 @@
 
 | ID    | Behavior                                                     | Status   | Test file | Notes                          |
 | ----- | ------------------------------------------------------------ | -------- | --------- | ------------------------------ |
-| AT-1  | First step sets all four sidebar pills                       | ⬜ todo  |           |                                |
-| AT-2  | Step transition refreshes pills in place, no accumulation    | ⬜ todo  |           |                                |
-| AT-3  | Interactive step start fires "needs you" notification        | ⬜ todo  |           |                                |
-| AT-4  | Successful run fires completion notification with duration   | ⬜ todo  |           | Requires composition-root hook |
-| AT-5  | Failed run fires failure notification with step name         | ⬜ todo  |           | Requires composition-root hook |
-| AT-6  | Pills cleared on successful run end                          | ⬜ todo  |           |                                |
-| AT-7  | Pills cleared on failed run end                              | ⬜ todo  |           |                                |
-| AT-8  | CMUX_SURFACE_ID absent → zero cmux invocations               | ⬜ todo  |           |                                |
-| AT-9  | cmux unavailable at startup → zero subsequent cmux calls     | ⬜ todo  |           | Probe mechanism TBD in planning|
-| AT-10 | cmux CLI failure mid-run is swallowed                        | ⬜ todo  |           |                                |
-| AT-11 | Config switch disables integration regardless of env var     | ⬜ todo  |           | Config switch form TBD in planning |
-| AT-12 | Notification identifies the specific workflow                | ⬜ todo  |           |                                |
+| AT-1  | First step sets all four sidebar pills                       | ✅ implemented | tests/integration/hosts/cmux/cmux-host.test.ts |                                |
+| AT-2  | Step transition refreshes pills in place, no accumulation    | ✅ implemented | tests/integration/hosts/cmux/cmux-host.test.ts |                                |
+| AT-3  | Interactive step start fires "needs you" notification        | ✅ implemented | tests/integration/hosts/cmux/cmux-host.test.ts |                                |
+| AT-4  | Successful run fires completion notification with duration   | ✅ implemented | tests/integration/hosts/cmux/cmux-host.test.ts | Drives executeWithAttach hook  |
+| AT-5  | Failed run fires failure notification with step name         | ✅ implemented | tests/integration/hosts/cmux/cmux-host.test.ts | Drives executeWithAttach hook  |
+| AT-6  | Pills cleared on successful run end                          | ✅ implemented | tests/integration/hosts/cmux/cmux-host.test.ts |                                |
+| AT-7  | Pills cleared on failed run end                              | ✅ implemented | tests/integration/hosts/cmux/cmux-host.test.ts |                                |
+| AT-8  | CMUX_SURFACE_ID absent → zero cmux invocations               | ✅ implemented | tests/integration/hosts/cmux/cmux-host.test.ts |                                |
+| AT-9  | cmux unavailable at startup → zero subsequent cmux calls     | ✅ implemented | tests/integration/hosts/cmux/cmux-host.test.ts | Probe = `cmux ping`            |
+| AT-10 | cmux CLI failure mid-run is swallowed                        | ✅ implemented | tests/integration/hosts/cmux/cmux-host.test.ts |                                |
+| AT-11 | Config switch disables integration regardless of env var     | ✅ implemented | tests/integration/hosts/cmux/cmux-host.test.ts | Switch = `cmux.enabled: false` |
+| AT-12 | Notification identifies the specific workflow                | ✅ implemented | tests/integration/hosts/cmux/cmux-host.test.ts |                                |
 | AT-13 | Claude runner emits awaiting-input event *(Phase 2)*         | ⬜ todo  |           | Research-gated; runner hook TBD|
 | AT-14 | Codex runner emits awaiting-input event *(Phase 2)*          | ⬜ todo  |           | Research-gated; runner hook TBD|
 | AT-15 | awaiting-input event has no cmux content *(Phase 2)*         | ⬜ todo  |           | Depends on AT-13/AT-14         |

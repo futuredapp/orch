@@ -329,8 +329,9 @@ describe('host lifecycle events', () => {
       .filter((r) => r.kind === 'lifecycle')
       .map((r) => (r as { kind: 'lifecycle'; event: unknown }).event)
     expect(events).toEqual([
-      { type: 'step:start', stepName: 'brainstorm', mode: 'interactive' },
+      { type: 'step:start', stepName: 'brainstorm', mode: 'interactive', runnerName: 'fake' },
       { type: 'step:complete', stepName: 'brainstorm', durationMs: 2000 },
+      { type: 'run:ended', status: 'completed', durationMs: expect.any(Number) },
     ])
   })
 
@@ -365,7 +366,10 @@ describe('host lifecycle events', () => {
     const events = deps2.host.recorded
       .filter((r) => r.kind === 'lifecycle')
       .map((r) => (r as { kind: 'lifecycle'; event: unknown }).event)
-    expect(events).toEqual([{ type: 'step:cached', stepName: 'plan' }])
+    expect(events).toEqual([
+      { type: 'step:cached', stepName: 'plan' },
+      { type: 'run:ended', status: 'completed', durationMs: expect.any(Number) },
+    ])
   })
 })
 

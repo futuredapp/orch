@@ -39,6 +39,41 @@ export interface FakeForegroundResponse {
 export class FakeProcessService implements ProcessService {
   #queues = new Map<string, FakeResponse[]>()
   #foregroundQueues = new Map<string, FakeForegroundResponse[]>()
+  readonly #calls: {
+    readonly argv: readonly string[]
+    readonly env: Readonly<Record<string, string>>
+  }[] = []
+
+  /** All `spawn()` calls recorded in arrival order. */
+  get calls(): ReadonlyArray<{
+    readonly argv: readonly string[]
+    readonly env: Readonly<Record<string, string>>
+  }> {
+    return this.#calls
+  }
+
+  /** Subset of `calls` where `argv[0] === 'cmux'`. */
+  cmuxCalls(): ReadonlyArray<{
+    readonly argv: readonly string[]
+    readonly env: Readonly<Record<string, string>>
+  }> {
+    return this.#calls.filter((c) => c.argv[0] === 'cmux')
+  }
+
+  /**
+   * Throws if any scripted response was never consumed — catches over-scripting
+   * that would otherwise silently pass. Call in `afterEach` to enforce tight
+   * test setup.
+   */
+  assertAllConsumed(): void {
+    for (const [key, queue] of this.#queues) {
+      if (queue.length > 0) {
+        throw new Error(
+          `FakeProcessService: ${queue.length} unconsumed response(s) for argv ${key}`,
+        )
+      }
+    }
+  }
 
   when(argv: readonly string[]): { respondWith(response: FakeResponse): void } {
     const key = JSON.stringify(argv)
@@ -69,6 +104,7 @@ export class FakeProcessService implements ProcessService {
   }
 
   spawn(opts: SpawnOptions): SpawnHandle {
+    this.#calls.push({ argv: opts.argv, env: opts.env })
     const key = JSON.stringify(opts.argv)
     const queue = this.#queues.get(key)
     const response = queue?.shift()

@@ -98,6 +98,8 @@ export interface StepLifecycleContext {
    * a parallel scope, so it never produces a branch.
    */
   readonly trackParallel: boolean
+  /** Populated for agent steps (autonomous + interactive); absent for ask/command. */
+  readonly runnerName?: string
 }
 
 // What a per-kind executor produces. The envelope adds nothing to it — it just
@@ -136,7 +138,13 @@ export async function withStepLifecycle<T>(
     ...(isInsideParallel() ? { insideParallel: true as const } : {}),
   }
 
-  emitStepLifecycle(host, stepSpan, { type: 'step:start', stepName: key, mode, ...stepFrame })
+  emitStepLifecycle(host, stepSpan, {
+    type: 'step:start',
+    stepName: key,
+    mode,
+    ...(ctx.runnerName !== undefined ? { runnerName: ctx.runnerName } : {}),
+    ...stepFrame,
+  })
   if (inParallel) {
     emitStepLifecycle(host, stepSpan, {
       type: 'step:parallel-branch-update',
