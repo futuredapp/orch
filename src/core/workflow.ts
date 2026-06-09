@@ -1,3 +1,9 @@
+// NOTE (CLAUDE.md rule #5): this file exceeds the 300-line soft budget. It is
+// the single workflow executor — the produce-bodies for every step kind, the
+// resume/cache short-circuit, and the autonomous recovery seam all live here
+// because they share one lifecycle envelope and the same `deps`/`key` context.
+// Splitting them would scatter the lifecycle invariants across files. New
+// recovery helpers were extracted to `src/core/recovery/` to limit the growth.
 import { randomUUID } from 'node:crypto'
 import type { Host } from '../hosts/index.ts'
 import type { JsonObject, SessionLogger, StepSpan } from '../observability/index.ts'
@@ -8,18 +14,22 @@ import { envKeys as envKeyList, orchLog, redactReproduceCommand } from '../obser
 // since Codex is the only consumer; promote to `src/services/` if a second
 // runner ever needs it.
 import { createCaptureLock } from '../runners/codex/capture-lock.ts'
+import type {
+  CaptureError,
+  CaptureHandle,
+  CaptureLock,
+  ForkResumeContext,
+  InfoEvent,
+  RunnerCommand,
+  RunnerContext,
+  RunnerEvent,
+} from '../runners/index.ts'
 import { runRunner } from '../runners/index.ts'
 // Addressing env-var names live on the Runner port (the executor↔runner spawn
 // contract) — not in a concrete runner — so the core executor can name them
-// without importing a runner adapter.
-import {
-  type CaptureError,
-  type CaptureLock,
-  ORCH_PARENT_PID_ENV,
-  ORCH_RUN_STATE_DIR_ENV,
-  ORCH_STEP_KEY_ENV,
-  type RunnerContext,
-} from '../runners/types.ts'
+// without importing a runner adapter. They are value constants not surfaced on
+// the public barrel, so they come from the port module directly.
+import { ORCH_PARENT_PID_ENV, ORCH_RUN_STATE_DIR_ENV, ORCH_STEP_KEY_ENV } from '../runners/types.ts'
 import type { Clock, FsService, GitService, ProcessService } from '../services/index.ts'
 import { GitCommandError, mergeEnv } from '../services/index.ts'
 import type { PromptService } from '../services/prompt/index.ts'
@@ -49,6 +59,14 @@ import {
   executionContext,
   isInsideParallel,
 } from './execution-context.ts'
+import {
+  type AttemptOutcome,
+  formatRecoveryFailure,
+  type RecoveryLogEntry,
+  type RecoveryStrategy,
+  resolveRecoveryStrategy,
+  runRecoveryLoop,
+} from './recovery/index.ts'
 import type { ResumeRegistry } from './resume-registry.ts'
 import { type StepTimer, withStepLifecycle } from './step-lifecycle.ts'
 import { resolveView } from './view-registry.ts'
@@ -310,6 +328,13 @@ export interface WorkflowDeps {
   readonly onInteractive?: (ctx: InteractiveContext) => Promise<InteractiveResult>
   /** Injectable session ID generator. Defaults to crypto.randomUUID(). */
   readonly generateSessionId?: () => string
+  /**
+   * Workflow-level default error-recovery strategy for autonomous agent steps
+   * (R14). A step's own `recovery:` overrides this; when neither is set the
+   * built-in `backoffResume()` applies. Resolved per step via
+   * `resolveRecoveryStrategy`. Consumed by the recovery loop (U7).
+   */
+  readonly recovery?: RecoveryStrategy
   /** CLI-supplied arguments. When omitted, the workflow callback sees `{}`. */
   readonly args?: WorkflowArgs
   /**
@@ -1034,6 +1059,7 @@ function safeToTranscriptLines(
 
 async function runAgentStep(
   deps: WorkflowDeps,
+  captureLock: CaptureLock,
   config: AgentStepConfig,
   key: StepName,
   overrides: RunOverrides | undefined,
@@ -1068,8 +1094,53 @@ async function runAgentStep(
       trackParallel: true,
       runnerName: config.agent.name,
     },
-    () => produceAgentStep(deps, config, key, overrides, stepSpan, isSilent),
+    () => produceAgentStep(deps, captureLock, config, key, overrides, stepSpan, isSilent),
   )
+}
+
+// Start post-spawn session-id capture for runners that mint their own id (U4/U6).
+// Runs for EVERY autonomous step of such a runner (even `noRetry()` ones) — lazy
+// capture is impossible because the baseline snapshot must precede the spawn.
+// Returns the handle (awaiting `snapshotReady` so the caller can spawn safely),
+// or `undefined` for runners that pre-set the id (Claude via --session-id). The
+// per-workflow `captureLock` serializes concurrent windows under `parallel()`.
+async function startAutonomousCapture(
+  deps: WorkflowDeps,
+  agent: AgentStepConfig['agent'],
+  cwd: Path,
+  captureLock: CaptureLock,
+): Promise<CaptureHandle | undefined> {
+  const captureFn = agent.captureSessionId
+  if (typeof captureFn !== 'function') return undefined
+  // Fail loud if the lock didn't reach this path (guards an out-of-order landing
+  // where the autonomous capture wiring is incomplete).
+  if (captureLock === undefined) {
+    throw new Error(
+      `produceAgentStep: captureSessionId-capable runner "${agent.name}" reached the autonomous ` +
+        'path without a CaptureLock — capture cannot be serialized',
+    )
+  }
+  const handle = captureFn({ cwd, fs: deps.fsService, clock: deps.clock, lock: captureLock })
+  await handle.snapshotReady
+  return handle
+}
+
+// Resolve the capture result into the resumable checkpoint id, or the typed
+// failure reason. Awaiting `result` here never extends a user-visible wait — by
+// the time the runner returns the rollout has almost always landed; the helper's
+// own timeout bounds the worst case.
+async function resolveAutonomousCapture(
+  handle: CaptureHandle | undefined,
+  orchSessionId: string,
+): Promise<{ checkpointSessionId: string; sessionIdCaptureError: CaptureError | undefined }> {
+  if (handle === undefined) {
+    return { checkpointSessionId: orchSessionId, sessionIdCaptureError: undefined }
+  }
+  const captureResult = await handle.result
+  if ('sessionId' in captureResult) {
+    return { checkpointSessionId: captureResult.sessionId, sessionIdCaptureError: undefined }
+  }
+  return { checkpointSessionId: orchSessionId, sessionIdCaptureError: captureResult.error }
 }
 
 // The run-and-produce body for an autonomous step, lifted out of the
@@ -1077,8 +1148,15 @@ async function runAgentStep(
 // already-branchy executor. Throws `StepError` / `ValidationError` /
 // `SchemaValidationError`; the envelope turns those into `step:failed`. Uses
 // wall-clock for the lifecycle duration (no `timer.stamp`).
+//
+// Over the cognitive-complexity budget (CLAUDE.md rule #5): this body sequences
+// validators, schema extraction, the session-id capture window, spawn/session
+// logging, and the agent-error seam in one place — the capture helpers above are
+// already extracted; splitting further would scatter the spawn ordering the
+// comments exist to make legible. Revisit when the recovery loop (U7) lands here.
 async function produceAgentStep(
   deps: WorkflowDeps,
+  captureLock: CaptureLock,
   config: AgentStepConfig,
   key: StepName,
   overrides: RunOverrides | undefined,
@@ -1098,15 +1176,27 @@ async function produceAgentStep(
   // a step failure from a fs hiccup is not.
   const stepTranscript = deps.transcriptSidecar?.forStep(key)
   const rawCapture = openRawCapture(deps.logger, key)
-  const runnerDeps = {
-    processService: deps.processService,
-    clock: deps.clock,
-    onEvent: makeAgentEventHandler(deps, key, config.agent, stepTranscript, stepSpan, isSilent),
-    ...(rawCapture !== undefined ? { onRawLine: rawCapture.onRawLine } : {}),
-  }
-  // Build the runner command up front so spawn records capture argv/env even
-  // when the runner fails mid-run. Agents that error before exec still land a
-  // spawn entry with the argv the executor would have used.
+  // Shared event fan-out (sidecar / span / host). `runOneAttempt` layers the
+  // per-attempt recovery observers (progress predicate, session-started capture,
+  // info-event accumulation) on top of it. The raw-capture sink stays open
+  // across every attempt — it truncates once per process, so the forked
+  // attempts append rather than overwrite — and closes once after the loop.
+  const baseEventHandler = makeAgentEventHandler(
+    deps,
+    key,
+    config.agent,
+    stepTranscript,
+    stepSpan,
+    isSilent,
+  )
+  // U4: mint a fresh session id per produce-body invocation (mirroring the
+  // interactive path) and propagate it into the autonomous runner context so
+  // the persisted session has a known checkpoint id to fork from. Must be fresh
+  // on every invocation — including workflow-level re-execution — because the
+  // session is now persisted on disk and a reused id would collide (where
+  // `--no-session-persistence` previously made reuse harmless). Runners that
+  // mint their own id (Codex) ignore this field.
+  const orchSessionId = deps.generateSessionId?.() ?? randomUUID()
   const runnerCtx = {
     cwd,
     // U1: addressing values ride ctx.env (passthrough policy). The fake reads
@@ -1114,29 +1204,44 @@ async function produceAgentStep(
     env: addressingEnv(deps, key),
     prompt,
     extraArgs: [],
+    sessionId: orchSessionId,
     ...(config.returns !== undefined ? { schema: { jsonSchema: config.returns.jsonSchema } } : {}),
   }
-  let result: Awaited<ReturnType<typeof runRunner>>
+
+  // Recovery prerequisite (U4/U6): for runners that mint their own session id
+  // post-spawn (Codex's thread_id), the snapshot of `~/.codex/sessions/` must be
+  // taken BEFORE the runner spawns, so capture starts here and resolves after.
+  const captureHandle = await startAutonomousCapture(deps, config.agent, cwd, captureLock)
+
+  const attemptDeps: AttemptDeps = {
+    deps,
+    key,
+    config,
+    stepSpan,
+    cwd,
+    baseEventHandler,
+    ...(rawCapture !== undefined ? { onRawLine: rawCapture.onRawLine } : {}),
+  }
+
+  let agentRun: AgentRunResult
   try {
-    result = await runRunner(config.agent, runnerCtx, runnerDeps)
+    // First (pre-recovery) attempt. On a terminal error the recovery loop takes
+    // over (R7–R10); on a fail-fast class or `noRetry` it throws as today.
+    const first = await runOneAttempt(attemptDeps, runnerCtx, { sinceResume: false })
+    const capture = await resolveAutonomousCapture(captureHandle, orchSessionId)
+    agentRun = await runAgentWithRecovery({
+      attemptDeps,
+      runnerCtx,
+      captureLock,
+      first,
+      checkpointSessionId: capture.checkpointSessionId,
+      sessionIdCaptureError: capture.sessionIdCaptureError,
+      startedAt,
+    })
   } finally {
     await rawCapture?.close().catch(() => {})
   }
-  const durationMs = deps.clock.now() - startedAt
-
-  await logAgentSpawn(stepSpan, config, runnerCtx, {
-    cwd,
-    exitCode: result.exitCode,
-    durationMs,
-  })
-
-  if (result.finalEvent.type === 'error' || result.exitCode !== 0) {
-    const msg =
-      result.finalEvent.type === 'error'
-        ? result.finalEvent.message
-        : `runner exited ${result.exitCode}`
-    throw new StepError(key, result.exitCode, msg)
-  }
+  const { result, durationMs, checkpointSessionId, sessionIdCaptureError, recoveryLog } = agentRun
 
   const rawValue = config.agent.extractStructuredOutput(result.finalEvent)
   const value = validateSchemaOutput(config, key, rawValue)
@@ -1154,6 +1259,19 @@ async function produceAgentStep(
     throw new ValidationError(key, failures)
   }
 
+  // Persist the resumable checkpoint id (the substrate the recovery loop forks
+  // from) when the runner can resume/fork and capture didn't fail — mirroring the
+  // interactive path's `persistsSessionId` gate. A capture error is recorded so a
+  // later resume can name the cause rather than silently lacking an id.
+  const hasResumeSupport =
+    typeof config.agent.resumeCommand === 'function' ||
+    typeof config.agent.forkResumeCommand === 'function'
+  const persistsSessionId = hasResumeSupport && sessionIdCaptureError === undefined
+  // The step's resumable id is the LAST successful fork's id when recovery ran
+  // (R8/U8), else the original checkpoint — so `orch resume` resumes the right
+  // branch.
+  const resumeSessionId = agentRun.recoveredSessionId ?? checkpointSessionId
+
   const entry = buildAgentEntry({
     key,
     value,
@@ -1162,6 +1280,9 @@ async function produceAgentStep(
     preRunSnapshot,
     outcomes,
     transcriptMeta: stepTranscript?.snapshot(),
+    ...(persistsSessionId ? { sessionId: resumeSessionId } : {}),
+    ...(sessionIdCaptureError !== undefined ? { sessionIdCaptureError } : {}),
+    ...(recoveryLog !== undefined ? { recoveryLog } : {}),
   })
 
   await writeAgentSession(deps.logger, stepSpan, {
@@ -1178,14 +1299,258 @@ async function produceAgentStep(
   return { value, entry }
 }
 
+// ---------------------------------------------------------------------------
+// Recovery wiring (U7) — one attempt + the backoffResume loop at the seam.
+// ---------------------------------------------------------------------------
+
+type RunnerRunResult = Awaited<ReturnType<typeof runRunner>>
+
+interface AttemptDeps {
+  readonly deps: WorkflowDeps
+  readonly key: StepName
+  readonly config: AgentStepConfig
+  readonly stepSpan: StepSpan | undefined
+  readonly cwd: Path
+  readonly baseEventHandler: (evt: RunnerEvent) => void
+  readonly onRawLine?: (stream: 'stdout' | 'stderr', line: string) => void
+}
+
+interface AttemptResult extends AttemptOutcome {
+  readonly result: RunnerRunResult
+}
+
+interface AgentRunResult {
+  readonly result: RunnerRunResult
+  readonly durationMs: number
+  readonly checkpointSessionId: string
+  readonly sessionIdCaptureError: CaptureError | undefined
+  readonly recoveryLog?: readonly RecoveryLogEntry[]
+  readonly recoveredSessionId?: string
+}
+
+/** The single "continue" nudge a forked attempt sends (R7 — at most one). */
+const RECOVERY_NUDGE = 'continue'
+
+// Run one runner invocation (initial or forked) under the per-attempt event
+// observers, and emit one `spawns` span entry. `sinceResume` gates the progress
+// predicate so a forked nudge's own pre-work events never count as progress (R9).
+async function runOneAttempt(
+  ad: AttemptDeps,
+  runnerCtx: RunnerContext,
+  opts: {
+    readonly sinceResume: boolean
+    readonly command?: RunnerCommand
+    readonly signal?: AbortSignal
+  },
+): Promise<AttemptResult> {
+  const { config } = ad
+  const isProgress = config.agent.isProgressEvent
+  let sawProgress = false
+  let forkSessionId: string | undefined
+  const infoEvents: InfoEvent[] = []
+
+  const onEvent = (evt: RunnerEvent): void => {
+    ad.baseEventHandler(evt)
+    if (evt.kind === 'info') {
+      infoEvents.push(evt)
+      if (evt.type === 'session-started') {
+        const sid = (evt.payload as { readonly sessionId?: unknown } | undefined)?.sessionId
+        if (typeof sid === 'string') forkSessionId = sid
+      }
+    }
+    if (
+      opts.sinceResume &&
+      typeof isProgress === 'function' &&
+      isProgress(evt, { sinceResume: true })
+    ) {
+      sawProgress = true
+    }
+  }
+
+  // Build the command once so the spawn record and the runner share an argv —
+  // the fork argv on a recovery attempt, else the runner's autonomous argv.
+  const command = opts.command ?? (await config.agent.buildCommand(runnerCtx))
+  const result = await runRunner(config.agent, runnerCtx, {
+    processService: ad.deps.processService,
+    clock: ad.deps.clock,
+    onEvent,
+    command,
+    ...(ad.onRawLine !== undefined ? { onRawLine: ad.onRawLine } : {}),
+    ...(opts.signal !== undefined ? { signal: opts.signal } : {}),
+  })
+  await logAgentSpawn(ad.stepSpan, config, runnerCtx, {
+    cwd: ad.cwd,
+    exitCode: result.exitCode,
+    durationMs: result.durationMs,
+    command,
+  })
+
+  return {
+    result,
+    sawProgress,
+    infoEvents,
+    ...(forkSessionId !== undefined ? { forkSessionId } : {}),
+  }
+}
+
+interface RecoveryArgs {
+  readonly attemptDeps: AttemptDeps
+  readonly runnerCtx: RunnerContext
+  readonly captureLock: CaptureLock
+  readonly first: AttemptResult
+  readonly checkpointSessionId: string
+  readonly sessionIdCaptureError: CaptureError | undefined
+  readonly startedAt: number
+}
+
+// Reconcile the first attempt's result: success first try returns immediately;
+// a terminal error consults the resolved strategy and either fails fast (today's
+// behavior for `noRetry` / non-recovery-capable runners) or drives the loop.
+async function runAgentWithRecovery(args: RecoveryArgs): Promise<AgentRunResult> {
+  const { attemptDeps, first, checkpointSessionId, sessionIdCaptureError, startedAt } = args
+  const { deps, key, config } = attemptDeps
+
+  if (first.result.finalEvent.type !== 'error' && first.result.exitCode === 0) {
+    return {
+      result: first.result,
+      durationMs: deps.clock.now() - startedAt,
+      checkpointSessionId,
+      sessionIdCaptureError,
+    }
+  }
+
+  const strategy = resolveRecoveryStrategy(config.recovery, deps.recovery)
+  const classifyError = config.agent.classifyError
+  const forkFn = config.agent.forkResumeCommand
+  const resumeFn = config.agent.resumeCommand
+  if (
+    strategy.kind !== 'backoffResume' ||
+    typeof classifyError !== 'function' ||
+    (typeof forkFn !== 'function' && typeof resumeFn !== 'function')
+  ) {
+    throw new StepError(key, first.result.exitCode, terminalErrorMessage(first.result))
+  }
+
+  const loop = await runRecoveryLoop({
+    strategy,
+    clock: deps.clock,
+    checkpointSessionId,
+    classify: (signal) => classifyError(signal, 'autonomous'),
+    initial: first,
+    runAttempt: (signal) => runForkAttempt(args, signal),
+  })
+
+  if (loop.ok) {
+    const totalDurationMs = deps.clock.now() - startedAt
+    return {
+      result: {
+        finalEvent: loop.result.finalEvent,
+        exitCode: loop.result.exitCode,
+        durationMs: totalDurationMs,
+      },
+      durationMs: totalDurationMs,
+      checkpointSessionId,
+      sessionIdCaptureError,
+      recoveryLog: loop.recoveryLog,
+      ...(loop.forkSessionId !== undefined ? { recoveredSessionId: loop.forkSessionId } : {}),
+    }
+  }
+
+  // Give-up / mid-recovery fail-fast. Persist the partial entry (carrying the
+  // recovery log) BEFORE throwing — `executeWorkflowFn`'s catch only sets the
+  // run status, never `saveStep`, so a naive throw would lose the failed run's
+  // recovery log for exactly the runs most needing audit (R16).
+  if (loop.recoveryLog.length > 0) await persistRecoveryFailure(args, loop.recoveryLog)
+  throw new StepError(
+    key,
+    first.result.exitCode,
+    formatRecoveryFailure(loop.failure, loop.recoveryLog),
+  )
+}
+
+// One forked attempt: build the fork (or resume-in-place) command under the
+// watchdog signal, then run it with `sinceResume: true`.
+async function runForkAttempt(args: RecoveryArgs, signal: AbortSignal): Promise<AttemptResult> {
+  const command = await buildRecoveryCommand(args, signal)
+  return runOneAttempt(args.attemptDeps, args.runnerCtx, { sinceResume: true, command, signal })
+}
+
+async function buildRecoveryCommand(
+  args: RecoveryArgs,
+  signal: AbortSignal,
+): Promise<RunnerCommand> {
+  const { config, cwd, deps } = args.attemptDeps
+  const forkFn = config.agent.forkResumeCommand
+  if (typeof forkFn === 'function') {
+    const forkCtx: ForkResumeContext = {
+      cwd,
+      fs: deps.fsService,
+      clock: deps.clock,
+      lock: args.captureLock,
+      signal,
+      env: {},
+      extraArgs: [],
+    }
+    return forkFn(forkCtx, args.checkpointSessionId, RECOVERY_NUDGE)
+  }
+  // Resume-in-place fallback (R4/R7): no clean parent to fork from; the loop's
+  // one-attempt-per-verdict cadence is what preserves the no-stacking discipline.
+  const resumeFn = config.agent.resumeCommand
+  if (typeof resumeFn === 'function') {
+    return resumeFn({ ...args.runnerCtx, prompt: RECOVERY_NUDGE }, args.checkpointSessionId)
+  }
+  throw new Error(`recovery: runner "${config.agent.name}" has no fork or resume primitive`)
+}
+
+async function persistRecoveryFailure(
+  args: RecoveryArgs,
+  recoveryLog: readonly RecoveryLogEntry[],
+): Promise<void> {
+  const { attemptDeps, sessionIdCaptureError, startedAt } = args
+  const { deps, key } = attemptDeps
+  const entry = buildAgentEntry({
+    key,
+    value: undefined,
+    startedAt,
+    endedAt: deps.clock.now(),
+    preRunSnapshot: undefined,
+    outcomes: [],
+    transcriptMeta: undefined,
+    ...(sessionIdCaptureError !== undefined ? { sessionIdCaptureError } : {}),
+    recoveryLog,
+    recoveryGaveUp: true,
+  })
+  // This write IS the durability guarantee for the failed run's recovery log
+  // (R16) — the run still fails via the throw at the call site, but a silently
+  // dropped write loses exactly the audit trail a human needs. Surface it.
+  await deps.stateStore
+    .saveStep(deps.runId, entry)
+    .catch((err: unknown) =>
+      orchLog(deps.logger, 'recovery-log-persist-failed', { error: String(err) }),
+    )
+}
+
+function terminalErrorMessage(result: RunnerRunResult): string {
+  return result.finalEvent.type === 'error'
+    ? result.finalEvent.message
+    : `runner exited ${result.exitCode}`
+}
+
 async function logAgentSpawn(
   stepSpan: StepSpan | undefined,
   config: AgentStepConfig,
   runnerCtx: import('../runners/index.ts').RunnerContext,
-  r: { readonly cwd: Path; readonly exitCode: number; readonly durationMs: number },
+  r: {
+    readonly cwd: Path
+    readonly exitCode: number
+    readonly durationMs: number
+    // The actual command this attempt ran — the fork argv on a recovery attempt,
+    // else rebuilt from the runner. One spawn record per attempt (U7).
+    readonly command?: RunnerCommand
+  },
 ): Promise<void> {
   if (stepSpan === undefined) return
-  const cmd = await tryBuildCommand(config, runnerCtx)
+  const cmd = r.command ?? (await tryBuildCommand(config, runnerCtx))
   void stepSpan
     .append('spawns', {
       runnerName: config.agent.name,
@@ -1276,6 +1641,15 @@ function buildAgentEntry(inputs: {
   readonly transcriptMeta:
     | { readonly transcriptPath: string; readonly transcriptEventCount: number }
     | undefined
+  // The resumable checkpoint id (U4) and, when post-spawn capture failed, the
+  // typed reason — both additive-optional, mirroring the interactive entry.
+  readonly sessionId?: string
+  readonly sessionIdCaptureError?: CaptureError
+  // Per-attempt recovery log (U8/R16) — present only when recovery forked.
+  readonly recoveryLog?: readonly RecoveryLogEntry[]
+  // Marks a partial entry persisted before a give-up throw so `orch resume`
+  // re-executes instead of replaying this entry's `undefined` value.
+  readonly recoveryGaveUp?: true
 }): StepEntry {
   const { transcriptMeta, preRunSnapshot } = inputs
   return {
@@ -1292,6 +1666,12 @@ function buildAgentEntry(inputs: {
       : {}),
     transcriptEventCount: transcriptMeta?.transcriptEventCount ?? 0,
     transcriptTruncated: false,
+    ...(inputs.sessionId !== undefined ? { sessionId: inputs.sessionId } : {}),
+    ...(inputs.sessionIdCaptureError !== undefined
+      ? { sessionIdCaptureError: inputs.sessionIdCaptureError }
+      : {}),
+    ...(inputs.recoveryLog !== undefined ? { recoveryLog: inputs.recoveryLog } : {}),
+    ...(inputs.recoveryGaveUp !== undefined ? { recoveryGaveUp: inputs.recoveryGaveUp } : {}),
   }
 }
 
@@ -1439,7 +1819,13 @@ async function runStepOnce(
     // invalid, we log a one-liner and fall through to the normal execution
     // path, which atomically replaces the stale entry. Cancelled cache stays
     // valid across button/field changes — cancel doesn't depend on shape.
-    if (s.config.kind === 'ask' && !isAskCacheValid(s.config, cached.value)) {
+    if (cached.recoveryGaveUp === true) {
+      // A recovery give-up persists a partial entry (value: undefined) solely
+      // to preserve its recovery log (R16). It is NOT a successful result, so
+      // `orch resume` must re-execute the step — replaying `undefined` as a
+      // cache hit would silently skip the work and propagate undefined.
+      orchLog(deps.logger, 'cache-skip-recovery-failure', { stepName: key })
+    } else if (s.config.kind === 'ask' && !isAskCacheValid(s.config, cached.value)) {
       orchLog(deps.logger, 'cache-stale', { stepName: key, kind: 'ask' })
     } else {
       // Kind-agnostic cache-hit dispatch: agent re-validates schema, worktree
@@ -1473,7 +1859,7 @@ async function runStepOnce(
       if (mode === 'interactive') {
         result = await runInteractiveStep(deps, captureLock, config, key, overrides, stepSpan)
       } else {
-        result = await runAgentStep(deps, config, key, overrides, stepSpan)
+        result = await runAgentStep(deps, captureLock, config, key, overrides, stepSpan)
       }
       break
     }

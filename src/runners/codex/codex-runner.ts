@@ -4,8 +4,10 @@
 // the auto-stop CODEX_HOME injection. These are one adapter's cohesive concerns;
 // splitting for size alone would scatter them. Revisit if a new capability lands.
 
+import { randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
 import { z } from 'zod'
+import type { ClassifiedError } from '../../core/recovery/index.ts'
 import type { FsService } from '../../services/fs/fs-service.ts'
 import { BunFsService, BunProcessService, mergeEnv } from '../../services/index.ts'
 import type { ProcessService } from '../../services/process/process-service.ts'
@@ -15,6 +17,9 @@ import type {
   CaptureHandle,
   CaptureResult,
   CaptureSessionIdContext,
+  ClassifyErrorSignal,
+  ForkResumeContext,
+  ProgressContext,
   RunnerCommand,
   RunnerContext,
   RunnerEvent,
@@ -22,6 +27,8 @@ import type {
 } from '../types.ts'
 import { defineRunner } from '../types.ts'
 import { captureCodexThreadId, resolveCodexSessionsRoot } from './capture-thread-id.ts'
+import { classifyCodexError } from './classify-error.ts'
+import { forkCodexRollout } from './fork-rollout.ts'
 import { toCodexTranscriptLines } from './format-event.ts'
 
 // Section order: schemas, types, denylist, parser, version preflight, factory.
@@ -262,7 +269,14 @@ async function buildAutonomousArgv(
   ctx: RunnerContext,
   opts: { model?: string; sandbox: SandboxMode; flags?: readonly string[]; fs: FsService },
 ): Promise<readonly string[]> {
-  const argv: string[] = ['codex', 'exec', '--json', '--skip-git-repo-check', '--ephemeral']
+  // U4: autonomous now persists a forkable rollout (the prerequisite for
+  // emulated fork-resume recovery). `--ephemeral` is gone — the rollout the CLI
+  // writes under `$CODEX_HOME/sessions/` is what the recovery loop captures
+  // (up front, via captureSessionId) and copies to fork from (R8, R11a). The
+  // session-id capture in `produceAgentStep` runs for EVERY autonomous Codex
+  // step (lazy capture is impossible — the baseline must be snapshotted before
+  // spawn), even `noRetry()` ones.
+  const argv: string[] = ['codex', 'exec', '--json', '--skip-git-repo-check']
 
   if (opts.sandbox === 'full-auto') {
     argv.push('--full-auto')
@@ -284,6 +298,32 @@ async function buildAutonomousArgv(
   argv.push(...(opts.flags ?? []))
   argv.push(...ctx.extraArgs)
   argv.push('--', ctx.prompt)
+  return argv
+}
+
+// ---------------------------------------------------------------------------
+// Recovery — emulated fork-resume argv (R6, R9, R11a, R12)
+// ---------------------------------------------------------------------------
+//
+// `codex exec resume [OPTIONS] <SESSION_ID> <PROMPT>` re-runs the (copied) session
+// headlessly with one nudge. We mirror the autonomous flag matrix (--json,
+// --skip-git-repo-check, sandbox, model) so the resumed turn behaves like the
+// original spawn, then place the id + nudge after a `--` so a nudge that starts
+// with `-` can't be parsed as a flag.
+
+function buildCodexForkArgv(
+  resumeSessionId: string,
+  nudge: string,
+  opts: { model?: string; sandbox: SandboxMode; flags?: readonly string[] },
+  extraArgs: readonly string[],
+): readonly string[] {
+  const argv: string[] = ['codex', 'exec', 'resume', '--json', '--skip-git-repo-check']
+  if (opts.sandbox === 'full-auto') argv.push('--full-auto')
+  else argv.push('--sandbox', opts.sandbox)
+  if (opts.model) argv.push('-m', opts.model)
+  argv.push(...(opts.flags ?? []))
+  argv.push(...extraArgs)
+  argv.push('--', resumeSessionId, nudge)
   return argv
 }
 
@@ -567,6 +607,49 @@ export function codex(
 
     prepareAutoStop(ctx: RunnerContext): Promise<AutoStopPreparation> {
       return prepareCodexAutoStop(fs, ctx)
+    },
+
+    // Classify off the lossy exec stream (R6, R12): exit-1 + turn.failed is the
+    // authoritative terminal trigger; the category is best-effort string match.
+    classifyError(signal: ClassifyErrorSignal): ClassifiedError {
+      return classifyCodexError(signal)
+    },
+
+    // Reset the give-up counter only on output actually produced (R9). Gate on
+    // `item.completed`, NOT `item.started`: a resumed turn emits `item.started`
+    // for processing the nudge itself before any model work, so counting it
+    // would reset the counter every attempt and defeat the ceiling.
+    isProgressEvent(event: RunnerEvent, ctx: ProgressContext): boolean {
+      if (!ctx.sinceResume) return false
+      return event.kind === 'info' && event.type === 'item.completed'
+    },
+
+    // Emulated fork (R11a): copy + rewrite the checkpoint rollout to a fresh id
+    // and resume that copy, so the original checkpoint stays clean (R8). On any
+    // sanity-check/copy failure, degrade to resume-in-place against the original
+    // (the no-stacking discipline still holds — R7).
+    async forkResumeCommand(
+      ctx: ForkResumeContext,
+      checkpointSessionId: string,
+      nudge: string,
+    ): Promise<RunnerCommand> {
+      for (const flag of flags ?? []) assertFlagAllowed(flag)
+      for (const flag of ctx.extraArgs) assertFlagAllowed(flag)
+
+      const sessionsRoot = resolveCodexSessionsRoot({
+        envOverride: process.env.ORCH_CODEX_SESSIONS_ROOT,
+        homedir: homedir(),
+      })
+      const fork = await forkCodexRollout({
+        fs: ctx.fs,
+        sessionsRoot,
+        checkpointSessionId,
+        newSessionId: randomUUID(),
+        now: ctx.clock.now(),
+      })
+      const resumeId = fork.ok ? fork.newSessionId : checkpointSessionId
+      const argv = buildCodexForkArgv(resumeId, nudge, { model, sandbox, flags }, ctx.extraArgs)
+      return { argv, env: mergeEnv(process.env, {}, ctx.env) }
     },
   })
 }

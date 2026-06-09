@@ -95,9 +95,29 @@ describe('workflow executor — sessionId capture (Phase 3)', () => {
     expect(state?.steps.plan?.sessionId).toBeUndefined()
   })
 
-  it('omits StepEntry.sessionId for autonomous steps (resume only applies to interactive)', async () => {
+  it('persists the orch checkpoint sessionId for a resume-capable autonomous step (U4 — fork-resume substrate)', async () => {
+    // Pre-U4 the autonomous path never persisted a sessionId. U4 reverses that:
+    // the autonomous session is now forkable, so a resume/fork-capable runner
+    // records its checkpoint id (the orch-minted UUID for a pre-set-id runner).
     const deps = makeDeps()
     const agent = new FakeRunner(deps.processService).withResumeCommand()
+    agent.script({ structuredOutput: 'done' })
+    const STEP = step.define('analyze', { agent })
+
+    const wf = workflow('test', async (run) => {
+      await run(STEP)
+    })
+    await wf.execute(deps)
+
+    const state = await deps.store.loadRun(deps.rid)
+    expect(state?.steps.analyze?.mode).toBe('autonomous')
+    expect(typeof state?.steps.analyze?.sessionId).toBe('string')
+    expect(state?.steps.analyze?.sessionIdCaptureError).toBeUndefined()
+  })
+
+  it('omits the autonomous sessionId for a runner with no resume/fork capability', async () => {
+    const deps = makeDeps()
+    const agent = new FakeRunner(deps.processService) // no resume, no fork
     agent.script({ structuredOutput: 'done' })
     const STEP = step.define('analyze', { agent })
 

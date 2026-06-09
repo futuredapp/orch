@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import { z } from 'zod'
 import { executionContext } from '../../../src/core/execution-context.ts'
+import { backoffResume, noRetry } from '../../../src/core/index.ts'
 import { schema } from '../../../src/core/schema.ts'
 import { onCacheHit, type StepConfig, step } from '../../../src/core/step.ts'
 import { type Path, path, stepName } from '../../../src/core/types.ts'
@@ -167,6 +168,51 @@ describe('step.define', () => {
 
     expect(() => step.define('work', badConfig as never)).toThrow(
       'autoStop:true is only valid on interactive steps',
+    )
+  })
+
+  it('carries a recovery strategy on an autonomous step config', () => {
+    const agent = makeFakeRunner()
+
+    const s = step.define('work', { agent, recovery: noRetry() })
+
+    expect(s.config.kind).toBe('agent')
+    if (s.config.kind === 'agent') {
+      expect(s.config.recovery?.kind).toBe('noRetry')
+    }
+  })
+
+  it('carries a backoffResume override with its options on an autonomous step config', () => {
+    const agent = makeFakeRunner()
+
+    const s = step.define('work', { agent, recovery: backoffResume({ ceiling: 3 }) })
+
+    expect(s.config.kind).toBe('agent')
+    if (s.config.kind === 'agent') {
+      expect(s.config.recovery?.kind).toBe('backoffResume')
+      expect(s.config.recovery?.options?.ceiling).toBe(3)
+    }
+  })
+
+  it('leaves recovery absent on an autonomous step that does not set it', () => {
+    const agent = makeFakeRunner()
+
+    const s = step.define('work', { agent })
+
+    expect(s.config.kind).toBe('agent')
+    if (s.config.kind === 'agent') {
+      expect(s.config.recovery).toBeUndefined()
+    }
+  })
+
+  it('throws at definition time when recovery is set on an interactive step', () => {
+    const agent = makeFakeRunner()
+
+    // Cast to bypass the autonomous-only typing — exercising the runtime guard.
+    const badConfig = { agent, mode: 'interactive' as const, recovery: noRetry() }
+
+    expect(() => step.define('brainstorm', badConfig as never)).toThrow(
+      'recovery is only valid on autonomous agent steps',
     )
   })
 

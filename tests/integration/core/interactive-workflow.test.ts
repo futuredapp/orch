@@ -70,6 +70,8 @@ describe('interactive workflow mocked round-trip', () => {
       env: {},
       prompt: 'implement the plan',
       extraArgs: [],
+      // U4: the autonomous step now mints --session-id via generateSessionId.
+      sessionId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
     })
     const successLine = JSON.stringify({
       type: 'result',

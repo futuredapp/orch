@@ -11,6 +11,7 @@ import type { PromptFileRegistry } from './prompt-file/registry.ts'
 import { resolvePromptPath } from './prompt-file/resolve-prompt-path.ts'
 import type { PromptVars, PromptVarsBound } from './prompt-file/substitute.ts'
 import type { VarsOf } from './prompt-file/template-vars.ts'
+import type { RecoveryStrategy } from './recovery/index.ts'
 import { SchemaValidationError, type SchemaWrapper } from './schema.ts'
 import type { InteractiveResult, Path, StepMode } from './types.ts'
 import { type StepName, stepName } from './types.ts'
@@ -61,6 +62,14 @@ export interface AgentStepConfig<T = unknown> {
    * or the executor fails fast with `AutoStopUnsupportedError`.
    */
   readonly autoStop?: boolean
+  /**
+   * Autonomous-only error-recovery strategy (R14). Defaults to
+   * `backoffResume()` when unset; opt out with `recovery: noRetry()`. A
+   * workflow-level default (`WorkflowDeps.recovery`) sits between the two.
+   * Setting it on an interactive step is a definition-time error — interactive
+   * recovery is a separate Phase 2 capability.
+   */
+  readonly recovery?: RecoveryStrategy
   /**
    * The resolved absolute path of the prompt file used to build `prompt`,
    * when the step was authored with `promptFile:`. Kept for observability
@@ -281,6 +290,12 @@ function defineStep(
     throw new Error(
       `step.define("${name}"): autoStop:true is only valid on interactive steps — ` +
         'autonomous steps self-terminate, so there is no idle turn to auto-stop',
+    )
+  }
+  if ('recovery' in config && config.recovery !== undefined && config.mode === 'interactive') {
+    throw new Error(
+      `step.define("${name}"): recovery is only valid on autonomous agent steps — ` +
+        'interactive recovery is a separate Phase 2 capability',
     )
   }
   assertPromptFieldsValid(name, config)

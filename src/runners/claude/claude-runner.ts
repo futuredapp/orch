@@ -5,16 +5,22 @@
 // Revisit if a second large capability lands here.
 
 import { z } from 'zod'
+import type { ClassifiedError } from '../../core/recovery/index.ts'
 import { BunFsService, type FsService, mergeEnv } from '../../services/index.ts'
 import { type Path, path } from '../../services/types.ts'
 import type {
   AutoStopPreparation,
+  ClassifyErrorSignal,
+  ForkResumeContext,
+  ProgressContext,
   Runner,
   RunnerCommand,
   RunnerContext,
+  RunnerEvent,
   TerminalEvent,
 } from '../types.ts'
 import { defineRunner } from '../types.ts'
+import { classifyClaudeError } from './classify-error.ts'
 import { toClaudeTranscriptLines } from './format-event.ts'
 
 // ---------------------------------------------------------------------------
@@ -298,13 +304,67 @@ function buildAutonomousArgv(
     '--output-format',
     'stream-json',
     '--verbose',
-    '--no-session-persistence',
+    // U4: autonomous now persists a forkable session (the prerequisite for
+    // fork-resume recovery). `--no-session-persistence` is gone; the
+    // orch-generated `--session-id` rides when the executor supplies one so the
+    // fork checkpoint id is known up front (surfaced via system/init).
+    ...(ctx.sessionId ? ['--session-id', ctx.sessionId] : []),
     ...(opts.model ? ['--model', opts.model] : []),
     ...(opts.maxTurns !== undefined ? ['--max-turns', String(opts.maxTurns)] : []),
     ...(ctx.schema ? ['--json-schema', ctx.schema.jsonSchema] : []),
     ...(opts.flags ?? []),
     ...ctx.extraArgs,
   ]
+}
+
+// ---------------------------------------------------------------------------
+// Recovery — fork-resume argv + progress predicate (R5, R9, R11, R12)
+// ---------------------------------------------------------------------------
+
+/**
+ * Build the native fork-resume argv (R11): re-run `claude -p <nudge>` against the
+ * clean checkpoint with `--resume <id> --fork-session`, so the parent session is
+ * left untouched and the forked stream mints a fresh id (read by the loop from
+ * the forked stream's first `system/init`). Mirrors the autonomous argv minus
+ * `--session-id` (the fork mints its own) and the schema (the nudge is a plain
+ * "continue"; the structured result still rides the forked turn-complete).
+ */
+function buildForkArgv(
+  checkpointSessionId: string,
+  nudge: string,
+  opts: { model?: string; maxTurns?: number; bare: boolean; flags?: readonly string[] },
+  extraArgs: readonly string[],
+): readonly string[] {
+  return [
+    'claude',
+    ...(opts.bare ? ['--bare'] : []),
+    '-p',
+    nudge,
+    '--output-format',
+    'stream-json',
+    '--verbose',
+    '--resume',
+    checkpointSessionId,
+    '--fork-session',
+    ...(opts.model ? ['--model', opts.model] : []),
+    ...(opts.maxTurns !== undefined ? ['--max-turns', String(opts.maxTurns)] : []),
+    ...(opts.flags ?? []),
+    ...extraArgs,
+  ]
+}
+
+/** True when an assistant info event is the synthetic "API Error…" turn rather
+ *  than real model output. The synthetic record carries `isApiErrorMessage:true`
+ *  and `message.model:"<synthetic>"` — it IS a transcript event but is NOT
+ *  progress (R9), so the give-up counter must not reset on it. */
+function isSyntheticApiErrorTurn(payload: Readonly<Record<string, unknown>> | undefined): boolean {
+  if (payload === undefined) return false
+  if (payload.isApiErrorMessage === true) return true
+  const message = payload.message
+  if (typeof message === 'object' && message !== null) {
+    return (message as Record<string, unknown>).model === '<synthetic>'
+  }
+  return false
 }
 
 // ---------------------------------------------------------------------------
@@ -379,6 +439,41 @@ export function claude(
       // host order guarantees this happens before the pane spawns). Claude
       // reads it from cwd, so no env additions are needed.
       return prepareClaudeAutoStop(fs, ctx.cwd)
+    },
+
+    // Classify the terminal API error off the numeric status (R5, R12). The
+    // status lives on the result envelope's `api_error_status` and on the
+    // `api_retry` events' `error_status` — both threaded in via `signal`.
+    classifyError(signal: ClassifyErrorSignal): ClassifiedError {
+      return classifyClaudeError(signal)
+    },
+
+    // Real progress on a resumed attempt resets the give-up counter (R9). True
+    // for genuine assistant/tool-use activity after resume; false for the
+    // synthetic "API Error…" turn and for pre-resume events.
+    isProgressEvent(event: RunnerEvent, ctx: ProgressContext): boolean {
+      if (!ctx.sinceResume) return false
+      if (event.kind !== 'info') return false
+      if (event.type !== 'assistant') return false
+      return !isSyntheticApiErrorTurn(event.payload)
+    },
+
+    // Native fork-resume (R11): branch the clean checkpoint and send one nudge.
+    forkResumeCommand(
+      ctx: ForkResumeContext,
+      checkpointSessionId: string,
+      nudge: string,
+    ): RunnerCommand {
+      for (const flag of flags ?? []) assertFlagAllowed(flag)
+      for (const flag of ctx.extraArgs) assertFlagAllowed(flag)
+      const argv = buildForkArgv(
+        checkpointSessionId,
+        nudge,
+        { model, maxTurns, bare, flags },
+        ctx.extraArgs,
+      )
+      const env = mergeEnv(process.env, {}, ctx.env)
+      return { argv, env }
     },
   })
 }

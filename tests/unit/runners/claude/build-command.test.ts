@@ -41,10 +41,12 @@ describe('claude() factory', () => {
 })
 
 describe('buildCommand', () => {
-  it('produces correct argv with defaults (bare, stream-json, verbose, no-session-persistence)', async () => {
+  it('produces correct argv with defaults (bare, stream-json, verbose) and persists the session', async () => {
     const runner = claude()
     const cmd = await runner.buildCommand(ctxFor('hello world'))
 
+    // Autonomous now persists a forkable session (U4): --no-session-persistence
+    // is gone, and --session-id rides only when the executor supplies one.
     expect(cmd.argv).toEqual([
       'claude',
       '--bare',
@@ -53,8 +55,19 @@ describe('buildCommand', () => {
       '--output-format',
       'stream-json',
       '--verbose',
-      '--no-session-persistence',
     ])
+    expect(cmd.argv).not.toContain('--no-session-persistence')
+  })
+
+  it('emits --session-id on the autonomous argv when the executor supplies one (U4)', async () => {
+    const runner = claude()
+    const cmd = await runner.buildCommand(
+      ctxFor('hello world', { sessionId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' }),
+    )
+
+    expect(cmd.argv).toContain('--session-id')
+    expect(cmd.argv).toContain('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
+    expect(cmd.argv).not.toContain('--no-session-persistence')
   })
 
   it('includes --model when provided', async () => {

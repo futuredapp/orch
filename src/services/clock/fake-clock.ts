@@ -17,12 +17,27 @@ export class FakeClock implements Clock {
     return this.#time
   }
 
-  sleep(ms: number): Promise<void> {
+  sleep(ms: number, signal?: AbortSignal): Promise<void> {
     if (ms < 0) {
       throw new Error('FakeClock.sleep: ms must be >= 0')
     }
     return new Promise<void>((resolve) => {
-      this.#sleepers.push({ dueAt: this.#time + ms, resolve })
+      if (signal?.aborted === true) {
+        resolve()
+        return
+      }
+      const sleeper: Sleeper = { dueAt: this.#time + ms, resolve }
+      this.#sleepers.push(sleeper)
+      signal?.addEventListener(
+        'abort',
+        () => {
+          // Drop the sleeper so a later advance() can't double-resolve it, and
+          // resolve now — mirrors BunClock clearing its timeout on abort.
+          this.#sleepers = this.#sleepers.filter((s) => s !== sleeper)
+          resolve()
+        },
+        { once: true },
+      )
     })
   }
 

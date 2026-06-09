@@ -23,6 +23,14 @@ export interface FakeResponse {
    * spawn finishes.
    */
   readonly stdinObservations?: Buffer[]
+  /**
+   * Recovery stall-watchdog substrate (U7): when `true`, the stdout iterator
+   * yields the scripted lines, then HANGS (never completes) until the handle
+   * is killed — simulating a forked CLI that emits one progress event then
+   * wedges with stdout open. `runRunner`'s abort path unwinds it. Without a
+   * kill the spawn never settles, so only the watchdog test sets this.
+   */
+  readonly stallUntilKilled?: boolean
 }
 
 export interface FakeForegroundResponse {
@@ -121,6 +129,12 @@ export class FakeProcessService implements ProcessService {
     const iterationPromise = new Promise<void>((resolve) => {
       iterationDone = resolve
     })
+    // Resolved by `kill()` — lets a `stallUntilKilled` stdout iterator wake up
+    // and unwind (U7 stall-watchdog substrate).
+    let releaseStall: () => void = () => {}
+    const stallReleased = new Promise<void>((resolve) => {
+      releaseStall = resolve
+    })
 
     const stdoutIterable: AsyncIterable<string> = {
       [Symbol.asyncIterator]: () => {
@@ -128,9 +142,14 @@ export class FakeProcessService implements ProcessService {
         return {
           async next() {
             const result = await inner.next()
-            if (result.done) {
-              iterationDone()
+            if (!result.done) return result
+            // Lines exhausted. A stalling response keeps stdout open until the
+            // watchdog kills the handle, at which point we unwind via AbortError.
+            if (response.stallUntilKilled === true && !killed) {
+              await stallReleased
+              throw new DOMException('Aborted', 'AbortError')
             }
+            iterationDone()
             return result
           },
         }
@@ -147,6 +166,7 @@ export class FakeProcessService implements ProcessService {
       kill() {
         if (!killed) {
           killed = true
+          releaseStall()
           iterationDone()
         }
       },

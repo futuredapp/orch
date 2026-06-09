@@ -41,21 +41,22 @@ describe('codex() factory', () => {
 })
 
 describe('buildCommand', () => {
-  it('produces correct default argv (exec, json, full-auto, skip-git-repo-check, ephemeral, -- separator)', async () => {
+  it('produces correct default argv (exec, json, skip-git-repo-check, full-auto, -- separator) and no --ephemeral', async () => {
     const deps = makeDeps()
     const runner = codex({}, deps)
     const cmd = await runner.buildCommand(ctxFor('hello world'))
 
+    // U4: `--ephemeral` is gone so the autonomous run writes a forkable rollout.
     expect(cmd.argv).toEqual([
       'codex',
       'exec',
       '--json',
       '--skip-git-repo-check',
-      '--ephemeral',
       '--full-auto',
       '--',
       'hello world',
     ])
+    expect(cmd.argv).not.toContain('--ephemeral')
     expect(cmd.env.FORCE_COLOR).toBeUndefined()
   })
 

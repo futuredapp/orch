@@ -113,6 +113,7 @@ const PLAN = step.define('plan', {
 | `pane` | `'left' \| 'right'` | Pane override (two-pane). Mutually exclusive with `silent`. |
 | `silent` | `boolean` | Run the step but render nothing. Logs still capture. |
 | `autoStop` | `boolean` | Interactive-only: auto-close the pane when the agent finishes its turn. Requires a runner with `prepareAutoStop`. Setting it on an autonomous step is a definition-time error. |
+| `recovery` | `RecoveryStrategy` | Autonomous-only: how to handle a transient terminal API failure. `backoffResume()` (the default) waits, forks the session from the last clean checkpoint, sends one nudge, and watches for progress, bounded by an attempt ceiling and a wall-clock cap; `noRetry()` fails fast (pre-recovery behavior). Precedence: step option > workflow default (`WorkflowDeps.recovery`) > built-in `backoffResume()`. Setting it on a non-agent step is a definition-time error. Import `noRetry` / `backoffResume` from `orch`. |
 
 ::: tip Interactive steps cannot declare `returns`
 Structured output is unavailable in interactive mode — `step.define` throws at definition time if you combine `mode: 'interactive'` with `returns`.

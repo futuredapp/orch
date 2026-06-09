@@ -25,6 +25,13 @@ describe('orch public barrel', () => {
     expect(typeof orch.step.define).toBe('function')
   })
 
+  it('re-exports the recovery strategy factories (noRetry, backoffResume) for step authors', () => {
+    expect(typeof orch.noRetry).toBe('function')
+    expect(typeof orch.backoffResume).toBe('function')
+    expect(orch.noRetry().kind).toBe('noRetry')
+    expect(orch.backoffResume().kind).toBe('backoffResume')
+  })
+
   it('re-exports loadPrompt and PromptFileError so workflow authors can compose prompt fragments', () => {
     expect(typeof orch.loadPrompt).toBe('function')
     expect(typeof orch.PromptFileError).toBe('function')

@@ -141,7 +141,7 @@ Legend: ☐ not started · ◐ in progress · ✓ landed
 **Goal:** first real end-to-end execution. **This is the "real feedback early" milestone.**
 
 **Deliverables:**
-- `src/runners/claude/claude-runner.ts` — Zod schemas, NDJSON parser, `claude()` factory via `defineRunner()`. `buildCommand` producing `claude --bare -p <prompt> --output-format stream-json --verbose --no-session-persistence`. Env policy: passthrough — see [2026-04-27 env passthrough plan](2026-04-27-feat-env-passthrough-plan.md).
+- `src/runners/claude/claude-runner.ts` — Zod schemas, NDJSON parser, `claude()` factory via `defineRunner()`. `buildCommand` producing `claude --bare -p <prompt> --output-format stream-json --verbose --session-id <uuid>` (autonomous now persists a forkable session — `--no-session-persistence` was reversed and an orch-generated `--session-id` added by the error-recovery work, U4; see [2026-06-02 agent error-recovery plan](2026-06-02-002-feat-agent-error-recovery-headless-plan.md)). Env policy: passthrough — see [2026-04-27 env passthrough plan](2026-04-27-feat-env-passthrough-plan.md).
 - `src/runners/claude/index.ts` — module barrel.
 - `claude()` factory exported from `src/runners/index.ts`.
 
@@ -237,7 +237,7 @@ Legend: ☐ not started · ◐ in progress · ✓ landed
 
 **Deliverables:**
 - **Prerequisite:** `Runner.buildCommand` return type widened to `RunnerCommand | Promise<RunnerCommand>` (backwards-compatible; `await syncValue === syncValue`). `runRunner` updated with `await`.
-- `src/runners/codex/codex-runner.ts` — Zod schemas (terminal events only), standalone `parseCodexLine` (exported), expanded flag denylist (`--yolo`, `--config`, `--sandbox`, `-c`, `--approval-mode`), `CodexVersionError`, lazy version preflight, `codex()` factory via `defineRunner()`. Command shape: `codex exec --json --full-auto --skip-git-repo-check --ephemeral [--output-schema <tmpfile>] [-m <model>] -- <prompt>`. Env policy: passthrough — see [2026-04-27 env passthrough plan](2026-04-27-feat-env-passthrough-plan.md).
+- `src/runners/codex/codex-runner.ts` — Zod schemas (terminal events only), standalone `parseCodexLine` (exported), expanded flag denylist (`--yolo`, `--config`, `--sandbox`, `-c`, `--approval-mode`), `CodexVersionError`, lazy version preflight, `codex()` factory via `defineRunner()`. Command shape: `codex exec --json --full-auto --skip-git-repo-check --ephemeral [--output-schema <tmpfile>] [-m <model>] -- <prompt>`. Env policy: passthrough — see [2026-04-27 env passthrough plan](2026-04-27-feat-env-passthrough-plan.md). **Update (error-recovery, 2026-06):** `--ephemeral` was dropped from the autonomous shape so the run writes a forkable rollout for backoff-resume recovery — see [2026-06-02 error-recovery plan](2026-06-02-002-feat-agent-error-recovery-headless-plan.md). Current shape: `codex exec --json --skip-git-repo-check --full-auto [--output-schema <tmpfile>] [-m <model>] -- <prompt>`.
 - `src/runners/codex/index.ts` — module barrel.
 - Security: argv-only `--` separator before prompt. (Env policy was originally an allowlist; superseded by passthrough — see [2026-04-27 env passthrough plan](2026-04-27-feat-env-passthrough-plan.md).)
 - NDJSON test fixtures: `tests/fixtures/codex/{simple-success,with-output-schema,turn-failed}.jsonl`.

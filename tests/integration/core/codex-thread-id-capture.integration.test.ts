@@ -230,7 +230,10 @@ describe('workflow.execute — codex-style captureSessionId integration', () => 
     expect(events).toEqual(['snapshotReady.resolve', 'host.runInteractive'])
   })
 
-  it('does not invoke captureSessionId for autonomous steps and writes no runnerName', async () => {
+  it('invokes captureSessionId for autonomous steps and persists the captured thread_id (U4/U6)', async () => {
+    // U4/U6 reverse the pre-recovery behavior: the autonomous path now runs the
+    // post-spawn capture for runners that mint their own id, so the rollout the
+    // (now non-ephemeral) Codex run writes becomes the forkable checkpoint.
     const deps = makeDeps({ runId: rid('r-2026-05-13-100007-cd') })
 
     let captureInvoked = false
@@ -254,9 +257,9 @@ describe('workflow.execute — codex-style captureSessionId integration', () => 
       await run(STEP)
     }).execute(deps)
 
-    expect(captureInvoked).toBe(false)
+    expect(captureInvoked).toBe(true)
     const entry = (await deps.stateStore.loadRun(deps.runId))?.steps['autonomous-codex']
     expect(entry?.mode).toBe('autonomous')
-    expect(entry?.runnerName).toBeUndefined()
+    expect(entry?.sessionId).toBe(CAPTURED_THREAD_ID)
   })
 })

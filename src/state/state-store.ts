@@ -91,6 +91,43 @@ export interface StepEntry {
    * steps that ran outside any parallel block. (U9)
    */
   readonly insideParallel?: true
+  /**
+   * Per-attempt error-recovery log (R16) — one entry per forked recovery
+   * attempt, plus a terminal `gave-up` marker when the envelope was exhausted.
+   * Present only on autonomous agent steps that actually recovered (the
+   * `backoffResume` strategy forked at least once); absent on `noRetry` steps,
+   * steps that succeeded first try, and pre-feature state files. Additive
+   * optional — no `schemaVersion` bump. Persisted even on the failure path
+   * (the loop saves a partial entry before the give-up `StepError`) so the
+   * fork chain of a failed run survives in `state.json` for audit. The
+   * canonical shape lives in `src/core/recovery/loop.ts` (`RecoveryLogEntry`);
+   * this is its structural mirror, keeping `src/state` free of a `src/core`
+   * dependency (same convention as `PersistedWorkflowArgs`).
+   */
+  readonly recoveryLog?: readonly PersistedRecoveryLogEntry[]
+  /**
+   * Set only on the partial entry the recovery loop persists *before* throwing
+   * a give-up `StepError` (so the failure-path recovery log survives — R16).
+   * Such an entry carries `value: undefined` and is NOT a successful result, so
+   * `orch resume` must treat it as a cache miss and re-execute the step rather
+   * than replaying `undefined`. Additive optional — no `schemaVersion` bump.
+   */
+  readonly recoveryGaveUp?: true
+}
+
+/**
+ * One recovery-attempt record (R16). `errorClass` and `outcome` are typed as
+ * `string` here — NOT a `z.enum` — so a value written by a future phase (Phase 2
+ * shares this field) can never reject a whole Phase-1 state-file load. The core
+ * loop produces the richer `RecoveryLogEntry` union; it is assignable to this.
+ */
+export interface PersistedRecoveryLogEntry {
+  readonly attemptIndex: number
+  readonly errorClass: string
+  readonly waitMs: number
+  readonly parentSessionId: string
+  readonly forkSessionId?: string
+  readonly outcome: string
 }
 
 /** Mirrors `WorkflowArgs` from `src/core/workflow.ts`. Kept structural here
@@ -197,6 +234,25 @@ export const StepEntrySchema = z.object({
   subPath: z.array(z.string()).optional(),
   subCallId: z.string().min(1).optional(),
   insideParallel: z.literal(true).optional(),
+  // Recovery log (U8/R16) — additive, no schemaVersion bump. `errorClass` and
+  // `outcome` are `z.string()` (NOT a `z.enum`) so a forward/Phase-2 value never
+  // rejects the whole state-file load; the TypeScript-level union lives in core.
+  recoveryLog: z
+    .array(
+      z.object({
+        attemptIndex: z.number().int().nonnegative(),
+        errorClass: z.string(),
+        waitMs: z.number().nonnegative(),
+        parentSessionId: z.string(),
+        forkSessionId: z.string().optional(),
+        outcome: z.string(),
+      }),
+    )
+    .optional(),
+  // Recovery give-up marker (R16/resume-safety) — additive, no schemaVersion
+  // bump. Marks a partial entry persisted before a give-up throw so resume
+  // re-executes instead of replaying its `undefined` value as a cache hit.
+  recoveryGaveUp: z.literal(true).optional(),
 })
 
 const PersistedWorkflowArgsSchema = z.object({
@@ -247,6 +303,8 @@ function rebuildSteps(
       ...(s.subPath !== undefined ? { subPath: s.subPath } : {}),
       ...(s.subCallId !== undefined ? { subCallId: s.subCallId } : {}),
       ...(s.insideParallel !== undefined ? { insideParallel: s.insideParallel } : {}),
+      ...(s.recoveryLog !== undefined ? { recoveryLog: s.recoveryLog } : {}),
+      ...(s.recoveryGaveUp !== undefined ? { recoveryGaveUp: s.recoveryGaveUp } : {}),
     }
   }
   return steps

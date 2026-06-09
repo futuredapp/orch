@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createFakeHost } from '@orch/test/fake-host.ts'
 import { z } from 'zod'
+import { noRetry } from '../../../../src/core/index.ts'
 import { SchemaValidationError, schema } from '../../../../src/core/schema.ts'
 import { step } from '../../../../src/core/step.ts'
 import type { WorkflowDeps } from '../../../../src/core/workflow.ts'
@@ -21,6 +22,9 @@ import { check } from '../../../../src/validators/index.ts'
 
 const rid = (s: string): RunId => s as RunId
 const BASE = path('/runs')
+// U4: the executor now mints a per-step --session-id for autonomous Claude. Pin
+// it deterministically so the scripted-argv registrations below still match.
+const SESSION_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 
 function loadFixtureLines(name: string): string[] {
   const filePath = resolve(import.meta.dir, '../../../_support/fixtures/claude', name)
@@ -48,6 +52,7 @@ function makeDeps(overrides?: {
     host: createFakeHost(),
     promptService: new FakePromptService(),
     interactivity: 'interactive' as const,
+    generateSessionId: () => SESSION_ID,
   }
 }
 
@@ -66,6 +71,7 @@ describe('ClaudeRunner structured output — mocked integration', () => {
       env: {},
       prompt: 'Analyze risks',
       extraArgs: [] as string[],
+      sessionId: SESSION_ID,
       schema: { jsonSchema: schema(researchSchema).jsonSchema },
     }
     const cmd = await runner.buildCommand(ctx)
@@ -96,6 +102,7 @@ describe('ClaudeRunner structured output — mocked integration', () => {
       env: {},
       prompt: 'Analyze risks',
       extraArgs: [] as string[],
+      sessionId: SESSION_ID,
       schema: { jsonSchema: schema(researchSchema).jsonSchema },
     }
     const cmd = await runner.buildCommand(ctx)
@@ -133,6 +140,7 @@ describe('ClaudeRunner structured output — mocked integration', () => {
       env: {},
       prompt: 'Analyze risks',
       extraArgs: [] as string[],
+      sessionId: SESSION_ID,
       schema: { jsonSchema: schema(researchSchema).jsonSchema },
     }
     const cmd = await runner.buildCommand(ctx)
@@ -140,10 +148,14 @@ describe('ClaudeRunner structured output — mocked integration', () => {
     const fixtureLines = loadFixtureLines('structured-output-retries-exhausted.jsonl')
     deps.processService.when(cmd.argv).respondWith({ stdout: fixtureLines, exitCode: 1 })
 
+    // noRetry: this is a deterministic terminal error (schema retries exhausted),
+    // not a transient API failure — opt out of the default backoffResume so the
+    // test asserts the runner's error routing, not the recovery envelope.
     const STEP = step.define('research', {
       agent: runner,
       prompt: 'Analyze risks',
       returns: schema(researchSchema),
+      recovery: noRetry(),
     })
 
     const wf = workflow('test', async (run) => {
@@ -218,6 +230,7 @@ describe('ClaudeRunner structured output — mocked integration', () => {
       env: {},
       prompt: 'Analyze risks',
       extraArgs: [] as string[],
+      sessionId: SESSION_ID,
       schema: { jsonSchema: s.jsonSchema },
     }
     const cmd = await runner.buildCommand(ctx)

@@ -51,6 +51,32 @@ export type {
   VarsOf,
 } from './prompt-file/index.ts'
 export { loadPrompt, PromptFileError } from './prompt-file/index.ts'
+export type {
+  AttemptState,
+  BackoffResumeOptions,
+  ClassifiedError,
+  ErrorCategory,
+  GiveUpSummary,
+  RecoveryStrategy,
+  ResolvedBackoffOptions,
+  Verdict,
+  WaitCurve,
+} from './recovery/index.ts'
+export {
+  backoffResume,
+  categoryForStatus,
+  DEFAULT_CEILING,
+  DEFAULT_STALL_TIMEOUT_MS,
+  DEFAULT_WAIT_MS,
+  DEFAULT_WALL_CLOCK_CAP_MS,
+  FAIL_FAST_CATEGORIES,
+  isFailFast,
+  isTransientCategory,
+  noRetry,
+  onErrorAgain,
+  onProgress,
+  pickDelay,
+} from './recovery/index.ts'
 export type { ResumeRegistry } from './resume-registry.ts'
 export { createResumeRegistry } from './resume-registry.ts'
 export type { RunMode, RunModeInputs, RunModeResolution, RunModeSource } from './run-mode.ts'
