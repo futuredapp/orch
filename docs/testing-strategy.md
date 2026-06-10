@@ -165,6 +165,7 @@ The tmux-booting drivers (`screen`, `full-host`, `lifecycle`) round-trip a `pane
 4. **Interactive completion is hook-signal + liveness backstop**, not a bare wait — a missed `pane-died` hook resolves in ~1s via the poll, logged as `interactive-wait-hook-missed`.
 5. **Reap the tmux server, not just the process** — a subprocess-spawned run boots a detached server; teardown must `kill-server` and remove the socket, or servers accumulate to the per-uid limit.
 6. **Idempotent probe-driven keys poll-and-resend, not fire-and-forget** — a single `send-keys` for an idempotent key (`f` for snap-to-live, boundary nav) can be lost under contention or arrive before `useInput` subscribes. Capture the pane between keystrokes and re-press until the observed state matches.
+7. **`canRunRealTmux()` is the *single* skip predicate for every real-tmux surface** — the `screen` / `full-host` / `lifecycle` drivers' `skip()` and the legacy `tests/integration/real-tmux/` describes all route through it. Gate any new tmux-booting test through `canRunRealTmux()`, **never** a raw `Bun.which('tmux')` — a raw predicate silently bypasses the PR-CI gate and fails headless (this is how `steps-view-runner` slipped the first gate, 2026-06-10). The runner needs **tmux ≥ 3.5**: `ubuntu-24.04` ships 3.4, whose `split-window` on a *detached* session fails with `size missing` ([tmux/tmux#3060](https://github.com/tmux/tmux/issues/3060)), so `pr.yml` builds a checksum-pinned 3.6b. See [`docs/issues/2026-06-10-pr-ci-real-tmux-and-env-gaps.md`](issues/2026-06-10-pr-ci-real-tmux-and-env-gaps.md).
 
 Ink projection tests (`model` and the `<StepsView>` unit tests) drive Ink via `ink-testing-library`; never read `lastFrame()` after a fixed `setTimeout` — use the polling helpers in `tests/_support/ink-frame.ts` (`waitForFrame`, `pressUntilFrame`, `waitForIntents`) and `tests/_support/` `manual-timer` for component timers.
 
@@ -177,8 +178,11 @@ Selection is **by path only**: the filesystem is the manifest. Cost levels are n
 | Tight two-pane dev loop | `bun run test:two-pane:fast` | model + tmux-argv + DSL unit tests (ms, no tmux) |
 | Touched rendering / panes | `bun run test:two-pane:screen` / `:full:fake` / `:full:recorded` / `:tmux` | that bucket (seconds) |
 | Touched process lifecycle | `bun run test:two-pane:lifecycle` | lifecycle (serial, `--max-concurrency=1`) |
-| Pre-commit / the gate | `bun run check` | everything **except** real-agent; includes `check:migration` (overlap-report + import-parity) |
+| Pre-commit / the gate (local) | `bun run check` | everything **except** real-agent; includes `check:migration` (overlap-report + import-parity) |
+| Pre-merge (PR CI) | `bun run check` with `ORCH_DISABLE_REAL_TMUX=1` | same, **minus the entire real-tmux surface** (see below) |
 | Release | `bun run check:release` | **everything** (`preflight:release` checks `which claude codex` first) |
+
+**PR CI deliberately runs no real tmux (AE3).** `.github/workflows/pr.yml` exports `ORCH_DISABLE_REAL_TMUX=1`, which `canRunRealTmux()` honors — so the `screen` / `full-host` / `lifecycle` drivers **and** the `tests/integration/real-tmux/` level all skip on pull requests. The fast surface (`model`, `tmux-argv`, `unit`) and the low-level tmux *ops* tests that use their own `Bun.which('tmux')` predicate (service-level `RealTmuxService`, `windows`, fixture lifecycle) still run on PR CI. Full real-tmux coverage lives on **release CI and local `bun run check`** (flag unset). Rationale and history: [`docs/issues/2026-06-10-pr-ci-real-tmux-and-env-gaps.md`](issues/2026-06-10-pr-ci-real-tmux-and-env-gaps.md).
 
 Concurrency is **encoded as flags**, not a comment: `--max-concurrency=2` bounds the tmux pane levels; `--max-concurrency=1` makes `lifecycle` serial. `real-agent` is unreachable except by naming `test:two-pane:full:real` (gated on `tmux` + the CLI + `RUN_REAL_TMUX_E2E=1`).
 
