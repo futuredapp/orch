@@ -7,8 +7,7 @@
  * choice is visible in the two-pane projector.
  */
 
-import { step, workflow, type WorkflowArgs } from '../../src/core/index.ts'
-import { claude } from '../../src/runners/index.ts'
+import { claude, step, workflow, type WorkflowArgs } from 'orch'
 
 export interface ComplexFeatureArgs extends WorkflowArgs {
   readonly prompt: string

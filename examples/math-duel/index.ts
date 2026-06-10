@@ -25,10 +25,7 @@
  */
 
 import { writeFile } from 'node:fs/promises'
-import { z } from 'zod'
-import { parallel, schema, step, workflow } from '../../src/core/index.ts'
-import { claude, codex } from '../../src/runners/index.ts'
-import { BunFsService, BunProcessService } from '../../src/services/index.ts'
+import { BunFsService, BunProcessService, claude, codex, parallel, schema, step, workflow, z } from 'orch'
 
 const OUTPUT_FILE = 'duel-results.md'
 

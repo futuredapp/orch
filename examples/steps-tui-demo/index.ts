@@ -28,8 +28,7 @@
  * exercise the command-replay path on its own with --mode=two-pane.
  */
 
-import { command, commit, parallel, step, workflow } from '../../src/core/index.ts'
-import { claude } from '../../src/runners/index.ts'
+import { claude, command, commit, parallel, step, workflow } from 'orch'
 
 const AUTONOMOUS = claude({ bare: false, flags: ['--permission-mode', 'bypassPermissions'] })
 

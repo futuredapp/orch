@@ -12,8 +12,7 @@
  * parent's pwd is unchanged.
  */
 
-import { runWorkflow, step, workflow } from '../../src/core/index.ts'
-import { claude } from '../../src/runners/index.ts'
+import { claude, runWorkflow, step, workflow } from 'orch'
 import branchIsolated from '../branch-isolated/index.ts'
 
 const HELLO = step.define('hello', {

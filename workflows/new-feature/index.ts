@@ -35,10 +35,7 @@
 
 import { mkdir } from 'node:fs/promises'
 import * as nodePath from 'node:path'
-import { z } from 'zod'
-import { schema, step, workflow } from '../../src/core/index.ts'
-import { claude } from '../../src/runners/index.ts'
-import type { Runner } from '../../src/runners/index.ts'
+import { claude, schema, step, workflow, z, type Runner } from 'orch'
 
 // Mark the spawned Claude processes as sandboxed so they're willing to run
 // with `--dangerously-skip-permissions`. `IS_SANDBOX` is in the Claude

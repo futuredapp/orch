@@ -32,6 +32,7 @@ import { statusCmd } from './commands/status.ts'
 import { typesCmd } from './commands/types.ts'
 import { createDeps } from './deps.ts'
 import { meetsMinimumTmuxVersion, probeTmuxVersion } from './detect-tmux.ts'
+import { findInternalSubcommand } from './internal-subcommands.ts'
 
 export class ArgvError extends Error {
   constructor(message: string) {
@@ -430,6 +431,24 @@ function commandWithoutHost(
 
 export async function main(): Promise<never> {
   const argv = Bun.argv.slice(2)
+
+  // Internal re-entry subcommands (compiled-binary TUI children, e.g.
+  // `__steps-view`) are routed BEFORE flag parsing, mode resolution, and the
+  // `[orch] mode=...` banner — none of which apply to a child pane, and the
+  // banner would corrupt the pane's TTY. The runner owns its own lifecycle;
+  // we map its outcome to a process exit code here.
+  const internal = findInternalSubcommand(argv[0])
+  if (internal !== undefined) {
+    try {
+      await internal(argv.slice(1))
+      process.exit(EXIT.OK)
+    } catch (err) {
+      process.stderr.write(
+        `[orch internal:${argv[0]}] ${err instanceof Error ? err.message : String(err)}\n`,
+      )
+      process.exit(EXIT.STEP_FAILURE)
+    }
+  }
 
   let parsed: ReturnType<typeof parseArgv>
   try {

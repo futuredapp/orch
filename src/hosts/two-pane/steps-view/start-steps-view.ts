@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url'
 import { z } from 'zod'
 import { stepName as toStepName } from '../../../core/types.ts'
 import { orchLog, type SessionLogger } from '../../../observability/index.ts'
-import { mergeEnv } from '../../../services/process/index.ts'
+import { embeddedChildArgv, mergeEnv } from '../../../services/process/index.ts'
 import type { PaneId, SocketName, TmuxService } from '../../../services/tmux/index.ts'
 import { type Path, path as toPath } from '../../../services/types.ts'
 import type { RunId } from '../../../state/index.ts'
@@ -42,6 +42,24 @@ export const StepsIntentSchema = z.discriminatedUnion('type', [
 ])
 
 export type StepsIntent = z.infer<typeof StepsIntentSchema>
+
+// ---------------------------------------------------------------------------
+// Compiled-binary re-entry contract.
+// ---------------------------------------------------------------------------
+//
+// In a dev checkout `process.execPath` is the `bun` interpreter, so the child
+// can be launched as `[bun, <abs>/steps-view-runner.tsx, ...]` and bun runs the
+// file directly. In a `bun build --compile` binary (Homebrew install) there is
+// no generic interpreter: `process.execPath` IS the `orch` binary, and the
+// runner path resolves under Bun's embedded FS (`/$bunfs/root/...`). Re-invoking
+// `[orch, /$bunfs/root/steps-view-runner.tsx, ...]` makes the CLI treat that
+// path as a *command* — "Unknown command" → exit 2 → the left pane dies.
+//
+// So when the runner is embedded we re-invoke the binary through this internal
+// subcommand instead. `main.ts` routes it straight to `runStepsViewRunner`.
+// The SAME constant is the producer (here) and the consumer (dispatcher), so
+// the two halves cannot silently drift.
+export const STEPS_VIEW_SUBCOMMAND = '__steps-view'
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -124,7 +142,14 @@ export async function startStepsView(opts: StartStepsViewOptions): Promise<Start
   const optsB64 = Buffer.from(JSON.stringify(optsForChild), 'utf8').toString('base64')
   const runnerScript = opts.runnerScript ?? defaultRunnerScript()
   const bunExecPath = opts.bunExecPath ?? process.execPath
-  const argv = [bunExecPath, runnerScript as string, '--opts', optsB64]
+  // Compiled binary: re-invoke through the internal subcommand the CLI
+  // dispatcher recognizes. Dev checkout: run the runner script directly.
+  const argv = embeddedChildArgv({
+    execPath: bunExecPath,
+    runnerScript: runnerScript as string,
+    subcommand: STEPS_VIEW_SUBCOMMAND,
+    trailing: ['--opts', optsB64],
+  })
   const env = mergeEnv(opts.env, {}, {})
 
   // Tail intent file starting at the recorded offset (`startAtEnd: true`).

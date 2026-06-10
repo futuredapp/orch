@@ -28,10 +28,7 @@
  */
 
 import * as nodePath from 'node:path'
-import { z } from 'zod'
-import { command, commit, schema, step, workflow } from '../../src/core/index.ts'
-import { claude } from '../../src/runners/index.ts'
-import type { Runner } from '../../src/runners/index.ts'
+import { claude, command, commit, schema, step, workflow, z, type Runner } from 'orch'
 
 // Mark spawned Claude processes as sandboxed so `--dangerously-skip-permissions`
 // is honored. `IS_SANDBOX` is in the Claude runner's env passthrough, so setting

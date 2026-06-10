@@ -10,6 +10,7 @@ You write the workflow as a plain async function; `orch` handles process lifecyc
 
 ```bash
 brew tap futuredapp/orch
+brew trust futuredapp/orch   # Homebrew 5.1+ only — see note below
 brew install orch
 orch --help
 ```
@@ -17,6 +18,8 @@ orch --help
 This installs a standalone binary. **No Bun, Node, or TypeScript toolchain is required** — the runtime is embedded in the binary, and your TypeScript workflows are imported and run directly.
 
 Upgrade later with `brew upgrade orch`.
+
+> **Homebrew 5.1+ requires trusting third-party taps.** Since Homebrew 5.1, formulae from taps outside the official set are not loaded until you explicitly trust the tap, so `brew install orch` fails with `Refusing to load formula … from untrusted tap futuredapp/orch`. Run `brew trust futuredapp/orch` once (it records the tap in `~/.homebrew/trust.json`) and re-run the install. Older Homebrew versions don't recognise the `trust` command — skip that line if `brew trust --help` errors.
 
 ### Direct binary download (Linux & macOS)
 

@@ -2,9 +2,16 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { HostUnavailableError } from '../../hosts/host.ts'
 import type { FsService } from '../fs/index.ts'
+import { embeddedChildArgv } from '../process/embedded-child.ts'
 import { mergeEnv } from '../process/merge-env.ts'
 import { type Path, path as toPath } from '../types.ts'
 import type { PromptCtx, PromptResult, PromptService, PromptSpec } from './prompt-service.ts'
+
+// Internal CLI re-entry subcommand for the `ask()` prompt child. Used by this
+// launcher (producer) and the CLI dispatcher (consumer); see embedded-child.ts.
+// A compiled binary cannot exec the embedded `ink-runner.ts` directly, so it
+// re-invokes `orch __ask --spec ... --result ...`.
+export const ASK_SUBCOMMAND = '__ask'
 
 // ---------------------------------------------------------------------------
 // InkPromptService — spawn-Ink-child orchestrator (two-pane mode).
@@ -26,10 +33,11 @@ import type { PromptCtx, PromptResult, PromptService, PromptSpec } from './promp
 // ≥250 ms. Spawn is invisible to the user — see plan § Spawn cost
 // back-of-envelope.
 //
-// TODO(distribution): v1 ships as checkout-only. The default `runnerScript`
-// resolves via `import.meta.url` to the in-repo path. Before publishing
-// orch as a binary (`npm install -g orch`), give `ink-runner.ts` a `bin`
-// entry in package.json so it resolves under any install layout.
+// Distribution: in a dev checkout the default `runnerScript` resolves via
+// `import.meta.url` to the in-repo `ink-runner.ts` and is run as `bun
+// <path>`. In a `bun build --compile` binary that path is under Bun's
+// embedded FS and can't be exec'd, so `embeddedChildArgv` re-invokes the
+// binary as `orch __ask ...` instead — `main.ts` routes it to `runAskRunner`.
 
 export interface InkPromptServiceDeps {
   readonly fs: FsService
@@ -60,14 +68,14 @@ export class InkPromptService implements PromptService {
     const dir = await this.#fs.tempDir('orch-ask-')
     const resultPath = toPath(join(dir as string, 'result.json'))
     const specB64 = Buffer.from(JSON.stringify(spec), 'utf8').toString('base64')
-    const argv = [
-      this.#bunExecPath,
-      this.#runnerScript as string,
-      '--spec',
-      specB64,
-      '--result',
-      resultPath as string,
-    ]
+    // Dev checkout: `[bun, ink-runner.ts, ...]`. Compiled binary: `[orch,
+    // __ask, ...]` — the runner is embedded and must be reached via the CLI.
+    const argv = embeddedChildArgv({
+      execPath: this.#bunExecPath,
+      runnerScript: this.#runnerScript as string,
+      subcommand: ASK_SUBCOMMAND,
+      trailing: ['--spec', specB64, '--result', resultPath as string],
+    })
     const env = mergeEnv(process.env, {}, {})
     const cwd = toPath(process.cwd())
 

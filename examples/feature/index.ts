@@ -11,9 +11,7 @@
  * stays readable.
  */
 
-import { z } from 'zod'
-import { runWorkflow, schema, step, workflow, type WorkflowArgs } from '../../src/core/index.ts'
-import { claude } from '../../src/runners/index.ts'
+import { claude, runWorkflow, schema, step, workflow, z, type WorkflowArgs } from 'orch'
 import complexFeature from '../complex-feature/index.ts'
 import simpleFeature from '../simple-feature/index.ts'
 

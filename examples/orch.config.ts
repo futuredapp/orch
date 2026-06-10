@@ -1,5 +1,4 @@
-import { defineConfig } from '../src/config/index.ts'
-
+import { defineConfig } from 'orch'
 export default defineConfig({
   workflows: {
     'riddle-solver': 'riddle-solver/index.ts',

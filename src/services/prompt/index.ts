@@ -3,7 +3,10 @@ export { confirmSuffix, parseYesNo } from './confirm-service.ts'
 export { FakeConfirmService } from './fake-confirm-service.ts'
 export { FakePromptService } from './fake-prompt-service.ts'
 export type { InkPromptServiceDeps } from './ink-prompt-service.ts'
-export { InkPromptService } from './ink-prompt-service.ts'
+export { ASK_SUBCOMMAND, InkPromptService } from './ink-prompt-service.ts'
+// Runner re-entry surface — the CLI dispatcher routes `__ask` here when the
+// compiled binary re-invokes itself to render an `ask()` prompt.
+export { parseAskRunnerArgs, runAskRunner } from './ink-runner.ts'
 export type {
   PromptCtx,
   PromptField,

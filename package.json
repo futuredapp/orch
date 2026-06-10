@@ -1,6 +1,6 @@
 {
   "name": "orch",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Code-first orchestrator for chaining coding-agent CLIs (Claude Code, Codex)",
   "type": "module",
   "license": "MIT",
@@ -13,6 +13,7 @@
   "scripts": {
     "check": "bun run lint && bun run typecheck && bun run test && bun run test:two-pane:lifecycle && bun run check:migration",
     "build:binary": "bun scripts/build-binary.ts",
+    "orch:binary": "bun scripts/orch-binary.ts",
     "check:actions": "bun scripts/check-action-pins.ts",
     "check:migration": "bun run overlap-report && bun run import-parity && bun test tests/_migration/__tests__",
     "overlap-report": "bun tests/_migration/overlap-report.ts",
@@ -20,7 +21,7 @@
     "reconcile": "bun tests/_migration/reconcile.ts",
     "check:int-dirs": "bun scripts/check-integration-dirs.ts",
     "preflight:release": "bash scripts/preflight-release.sh",
-    "check:release": "bun run preflight:release && bun run lint && bun run typecheck && bun run test:project && bun run test:e2e:real && bun run test:two-pane:lifecycle && bun run test:two-pane:full:real",
+    "check:release": "bun run preflight:release && bun run lint && bun run typecheck && bun run test:binary-smoke && bun run test:project && bun run test:e2e:real && bun run test:two-pane:lifecycle && bun run test:two-pane:full:real",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
@@ -41,6 +42,7 @@
     "test:int:real-tmux": "bun test --max-concurrency=2 tests/integration/real-tmux",
     "test:e2e": "bun test tests/e2e",
     "test:e2e:real": "RUN_REAL_E2E=1 bun test tests/e2e",
+    "test:binary-smoke": "bun test tests/binary-smoke",
     "test:project": "bun run check:int-dirs && bun run test:unit && bun run test:int && bun run test:int:real-tmux && bun run test:e2e && bun run test:two-pane",
     "test": "bun run test:project",
     "test:watch": "bun test --watch tests/unit",

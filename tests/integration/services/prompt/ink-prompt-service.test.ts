@@ -9,7 +9,7 @@ import type {
   InteractiveSpawn,
 } from '../../../../src/hosts/index.ts'
 import { BunFsService } from '../../../../src/services/index.ts'
-import { InkPromptService } from '../../../../src/services/prompt/index.ts'
+import { ASK_SUBCOMMAND, InkPromptService } from '../../../../src/services/prompt/index.ts'
 import type { PromptResult, PromptSpec } from '../../../../src/services/prompt/prompt-service.ts'
 import { type Path, path as toPath } from '../../../../src/services/types.ts'
 
@@ -100,6 +100,38 @@ describe('InkPromptService (mocked host)', () => {
     expect(decoded.question).toBe(SPEC.question)
     expect(decoded.buttons).toEqual([...SPEC.buttons])
     expect(decoded.fields).toEqual([...SPEC.fields])
+  })
+
+  it('launches the child via the internal subcommand (not the embedded script path) when orch runs from a compiled binary', async () => {
+    const fs = new BunFsService()
+    // The two strings a `bun build --compile` binary produces: execPath is the
+    // orch binary, and the runner resolves under Bun's embedded FS.
+    const svc = new InkPromptService({
+      fs,
+      runnerScript: toPath('/$bunfs/root/ink-runner.ts'),
+      bunExecPath: '/opt/homebrew/bin/orch',
+    })
+
+    let capturedArgv: readonly string[] | undefined
+    const host = makeHost({
+      handler: async (spawn) => {
+        capturedArgv = spawn.argv
+        const ridx = spawn.argv.indexOf('--result')
+        const resultPath = spawn.argv[ridx + 1]
+        if (resultPath === undefined) throw new Error('test bug: --result missing')
+        await writeFile(resultPath, JSON.stringify({ cancelled: true, fields: {} }), 'utf8')
+        return { exitCode: 0, durationMs: 1 }
+      },
+    })
+
+    await svc.ask(SPEC, { stepName: 'ask:compiled' as StepName, host })
+
+    expect(capturedArgv?.[0]).toBe('/opt/homebrew/bin/orch')
+    // argv[1] is what the re-invoked binary treats as positionals[0] — it MUST
+    // be a command the dispatcher recognizes, never the embedded path.
+    expect(capturedArgv?.[1]).toBe(ASK_SUBCOMMAND)
+    expect(capturedArgv).not.toContain('/$bunfs/root/ink-runner.ts')
+    expect(capturedArgv).toContain('--spec')
   })
 
   it('throws a clear error when the child exits without writing a result file', async () => {

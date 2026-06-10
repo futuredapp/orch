@@ -41,8 +41,7 @@
  * step itself has no external dep.
  */
 
-import { ask, step, workflow } from '../../src/core/index.ts'
-import { claude } from '../../src/runners/index.ts'
+import { ask, claude, step, workflow } from 'orch'
 
 const MAX_ITERATIONS = 5
 const FEATURE_DIR = 'feature'

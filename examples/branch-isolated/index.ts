@@ -8,8 +8,7 @@
  * relies on this isolation contract.
  */
 
-import { createWorktree, step, workflow } from '../../src/core/index.ts'
-import { claude } from '../../src/runners/index.ts'
+import { claude, createWorktree, step, workflow } from 'orch'
 
 const WORK = step.define('work', {
   agent: claude({ bare: false, flags: ['--dangerously-skip-permissions'] }),

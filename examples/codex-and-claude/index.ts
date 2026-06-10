@@ -21,10 +21,7 @@
  * Requires `codex` (>= 0.118.0) and `claude` on PATH, a TTY, and tmux ≥ 3.2.
  */
 
-import { ask, step, workflow } from '../../src/core/index.ts'
-import { claude, codex } from '../../src/runners/index.ts'
-import { BunFsService, BunProcessService } from '../../src/services/index.ts'
-import { fileProduced } from '../../src/validators/index.ts'
+import { BunFsService, BunProcessService, ask, claude, codex, fileProduced, step, workflow } from 'orch'
 
 const bunFs = new BunFsService()
 const processService = new BunProcessService()

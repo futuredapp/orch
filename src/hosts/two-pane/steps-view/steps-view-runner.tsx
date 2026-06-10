@@ -211,8 +211,15 @@ export async function runStepsViewRunner(opts: ParsedOpts): Promise<void> {
 // ---------------------------------------------------------------------------
 
 const isDirect = (): boolean => {
-  // `import.meta.main` is true under Bun when this file is the entrypoint.
-  // Falls back to argv[1] under Node.
+  // In a `bun build --compile` binary this module is bundled into the single
+  // `bin.ts` entrypoint and re-entry is routed explicitly by `main.ts` (the
+  // `__steps-view` internal subcommand). The import-time self-exec block below
+  // must NOT fire there — it would hijack the startup of EVERY orch command
+  // (`--help`, `runs`, …) and parse their argv as steps-view opts. An embedded
+  // module's `import.meta.url` lives under Bun's virtual FS (`/$bunfs/...`).
+  if (import.meta.url.includes('/$bunfs/')) return false
+  // Dev checkout only: the launcher spawns `bun <abs>/steps-view-runner.tsx`,
+  // so `import.meta.main` is true (argv[1] fallback covers Node).
   const meta = import.meta as unknown as { readonly main?: boolean }
   if (meta.main === true) return true
   return process.argv[1]?.endsWith('steps-view-runner.tsx') ?? false

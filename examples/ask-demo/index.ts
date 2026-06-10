@@ -21,7 +21,7 @@
  *   bunx orch run ask-demo --noninteractive
  */
 
-import { ask, workflow } from '../../src/core/index.ts'
+import { ask, workflow } from 'orch'
 
 const ASK_START = ask({
   name: 'start',

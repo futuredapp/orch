@@ -13,7 +13,7 @@
  *   bunx orch run command-tick-demo --mode=two-pane
  */
 
-import { command, workflow } from '../../src/core/index.ts'
+import { command, workflow } from 'orch'
 
 const TICK_COUNT = 10
 

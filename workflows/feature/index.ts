@@ -19,6 +19,10 @@
  *  12. triage            autonomous claude  select fixes + write issues/ files → fix-plan.md
  *  13. fix loop (<=8)    /ce-work next group; same { done } return    → work/fix-group-<i>.md [blocker]
  *  14. green gate (<=3)  `bun run check`; on failure a fix agent     → check-report.md
+ *  15. docs-update      autonomous claude  load orch-docs-updater:
+ *                        route the shipped change to the docs it touches
+ *                        (README/CLAUDE.md/AGENTS.md/docs/public, auto-applied)
+ *                        + capture learnings to docs/solutions/ → docs-update.md
  *
  * Blocker protocol: plan, plan-apply, work, and code-review steps may raise a
  * critical blocker by writing `docs/sessions/<slug>/blockers/<step>.md`. After
@@ -42,21 +46,7 @@
 import { existsSync } from 'node:fs'
 import { mkdir } from 'node:fs/promises'
 import * as nodePath from 'node:path'
-import { z } from 'zod'
-import {
-  ask,
-  command,
-  commit,
-  loadPrompt,
-  parallel,
-  schema,
-  step,
-  tail,
-  workflow,
-} from '../../src/core/index.ts'
-import type { RunFn } from '../../src/core/index.ts'
-import { claude, codex } from '../../src/runners/index.ts'
-import type { Runner } from '../../src/runners/index.ts'
+import { ask, claude, codex, command, commit, loadPrompt, parallel, schema, step, tail, workflow, z, type RunFn, type Runner } from 'orch'
 
 // `--dangerously-skip-permissions` is only honored when IS_SANDBOX=1 is in the
 // env; setting it here propagates to every spawned Claude step.
@@ -402,4 +392,19 @@ export default workflow('feature', async (run, args) => {
     })
     await run(commit(`fix(${slug}): lint + tests round ${i}`))
   }
+
+  // 15. Docs update — autonomous; load the orch-docs-updater skill, route the
+  //     shipped change to the docs it touches (README / CLAUDE.md / AGENTS.md /
+  //     docs/public, auto-applied), and capture learnings to docs/solutions/.
+  const docsUpdateStep = step.define('docs-update', {
+    agent: claudeFor(`${slug}-docs-update`),
+    prompt: stepPrompt({
+      bodyFile: 'docs-update.md',
+      bodyVars: { sessionsDir },
+      sessionsDir,
+      artifactName: 'docs-update.md',
+    }),
+  })
+  await run(docsUpdateStep)
+  await run(commit(`docs(${slug}): doc impact + learnings`))
 })

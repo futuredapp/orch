@@ -6,8 +6,7 @@
  * placeholder "thing that gets done" to compose.
  */
 
-import { step, workflow } from '../../src/core/index.ts'
-import { claude } from '../../src/runners/index.ts'
+import { claude, step, workflow } from 'orch'
 
 const PLAN = step.define('plan', {
   agent: claude({ bare: false, flags: ['--dangerously-skip-permissions'] }),

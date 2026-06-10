@@ -14,7 +14,20 @@ There is no `orch login` — each runner uses its own auth (`claude` via its own
 
 ## Install
 
-orch is invoked through the `orch` CLI. Run it with `bunx`:
+The recommended path is Homebrew, which installs a standalone binary — no Bun is required for orch itself (you still need Bun only if you run workflows that import Bun APIs):
+
+```bash
+brew tap futuredapp/orch
+brew trust futuredapp/orch   # Homebrew 5.1+ only — see note below
+brew install orch
+orch --help
+```
+
+> **Homebrew 5.1+ requires trusting third-party taps.** Since Homebrew 5.1, formulae from taps outside the official set are not loaded until you trust the tap, so `brew install orch` fails with `Refusing to load formula … from untrusted tap futuredapp/orch`. Run `brew trust futuredapp/orch` once, then re-run the install. On older Homebrew versions the `trust` command does not exist — skip that line if `brew trust --help` errors.
+
+Upgrade later with `brew upgrade orch`.
+
+Alternatively, run orch through `bunx` without installing it (requires Bun from the prerequisites above):
 
 ```bash
 bunx orch --help
