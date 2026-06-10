@@ -1,10 +1,13 @@
-# Release pipeline (R5, R6, R7, R13, R14, R11a, AE2): on a `v*` tag, verify the
-# changelog, build + smoke a binary on each native OS, publish a Release with the
-# three binaries + SHA256SUMS, then bump the homebrew-orch tap formula.
+# Release pipeline (R5, R6, R7, R13, R14, R11a, R15, AE2): on a `v*` tag, verify
+# the changelog, build + smoke a binary on each native OS, publish a Release with
+# the three binaries + SHA256SUMS, then bump the homebrew-orch tap formula AND
+# deploy the docs site. Docs deploy ONLY here (gated on publish), never on a
+# push to main — so the live site never describes a version that didn't ship.
 #
 # Topology: fan-out build (one job per OS, contents:read) → fan-in publish (the
 # only contents:write job) → bump-formula (no GITHUB_TOKEN write; authenticates
-# to the tap with a step-scoped fine-grained PAT).
+# to the tap with a step-scoped fine-grained PAT) ‖ deploy-docs (Pages, gated on
+# publish, parallel to bump-formula).
 name: Release
 
 on:
@@ -31,17 +34,13 @@ jobs:
       - name: Assert CHANGELOG has a non-stub entry for the tag
         run: bun scripts/changelog-section.ts --version "${GITHUB_REF_NAME#v}"
 
-  # 2. Full check suite (the same gate PRs pass).
+  # 2. Full check suite — the SAME reusable gate PRs pass (shared check.yml), so
+  #    a tag can never trip a level the PR job quietly accommodated. Previously a
+  #    hand-copied job here drifted: it lacked the modern-tmux build, the git
+  #    identity, and ORCH_DISABLE_REAL_TMUX, so the real-tmux/real-git levels that
+  #    pass on PRs failed on the tag.
   check:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version: latest
-      - run: bun install --frozen-lockfile
-      - run: bun run check:actions
-      - run: bun run check
+    uses: ./.github/workflows/check.yml
 
   # 3. Build + smoke each platform's binary on its OWN native OS. A
   #    cross-compiled binary that is never executed is unverified (Decision 2).
@@ -186,3 +185,52 @@ jobs:
             git commit -am "orch $TAG"
             git push
           fi
+
+  # 6. Build + deploy the VitePress docs to GitHub Pages — but ONLY after the
+  #    Release is published (needs: publish), so docs never describe a version
+  #    that didn't ship. Runs in parallel with bump-formula. This is the ONLY
+  #    place the docs site deploys: there is no push-to-main docs workflow.
+  #    The deploy originates from the `v*` tag ref, so the `github-pages`
+  #    environment's deployment-branch policy must allow the `v*` tag (see
+  #    docs/release-setup-guide.md B9) — a one-time repo-admin setting.
+  deploy-docs:
+    needs: publish
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    # Serialize Pages deploys so one is never cancelled mid-flight.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-24.04
+    steps:
+      # fetch-depth: 0 so VitePress `lastUpdated` can read git history.
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: latest
+
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # Also the dead-link gate; a broken build fails before anything deploys.
+      - name: Build docs
+        run: bun run docs:build
+
+      # The site root is docs/public, so the build output is UNDER it:
+      # docs/public/.vitepress/dist (not docs/.vitepress/dist).
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: docs/public/.vitepress/dist
+
+      - id: deployment
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0
