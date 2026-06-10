@@ -100,7 +100,9 @@ describe('Host.awaitForegroundShutdown', () => {
     const stateDir = `${tmpDir}/${RUN_ID}`
     await fs.mkdir(stateDir, { recursive: true })
 
-    type IntentLike = { type: 'quit' | 'enter' | 'follow-live' | 'dismiss-banner' }
+    type IntentLike = {
+      type: 'quit' | 'enter' | 'follow-live' | 'dismiss-banner' | 'retry' | 'retry-continue'
+    }
     let captured: ((intent: IntentLike) => void) | undefined
     const onStepsIntent = (intent: IntentLike): void => {
       captured?.(intent)
@@ -141,4 +143,55 @@ describe('Host.awaitForegroundShutdown', () => {
       await fs.rm(tmpDir, { recursive: true, force: true })
     }
   })
+
+  // U5/U6: a retry-action intent settles the foreground race with a tagged
+  // `{ type: 'action' }` reason instead of `'quit'`, so the CLI open loop runs
+  // the retry (and re-opens) rather than tearing down. `enableFailureActions`
+  // is set so the host wires the action channel.
+  for (const action of ['retry', 'retry-continue'] as const) {
+    it(`resolves under two-pane with a tagged ${action} action when that intent fires`, async () => {
+      const tmux = new FakeTmuxService()
+      tmux.setListPanesResult(['%0'])
+      tmux.nextPaneId(paneId('%1'))
+      const processService = new FakeProcessService()
+      const stderr = makeStderr()
+
+      const tmpDir = await fs.mkdtemp('/tmp/orch-shutdown-action-')
+      const stateDir = `${tmpDir}/${RUN_ID}`
+      await fs.mkdir(stateDir, { recursive: true })
+
+      try {
+        const host = await createTmuxHost({
+          tmux,
+          processService: processService as ProcessService,
+          clock: new FakeClock(0),
+          runId: RUN_ID,
+          workflowName: 'demo',
+          stderr: stderr.stream,
+          skipVersionCheck: true,
+          env: {},
+          cwd: tmpDir,
+          basePath: toPath(tmpDir),
+          enableFailureActions: true,
+        })
+
+        const shutdownPromise = host.awaitForegroundShutdown()
+
+        await fs.appendFile(
+          `${stateDir}/tui-intents.ndjson`,
+          `${JSON.stringify({ type: action })}\n`,
+        )
+
+        const reason = await Promise.race([
+          shutdownPromise,
+          new Promise<never>((_r, rej) => setTimeout(() => rej(new Error('timeout')), 2_000)),
+        ])
+        expect(reason).toEqual({ type: 'action', action })
+
+        await host.teardown()
+      } finally {
+        await fs.rm(tmpDir, { recursive: true, force: true })
+      }
+    })
+  }
 })

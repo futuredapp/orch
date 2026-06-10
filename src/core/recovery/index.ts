@@ -9,6 +9,16 @@ export {
   isTransientCategory,
 } from './classified-error.ts'
 export type {
+  ConfiguredInstructions,
+  InstructionKind,
+  InstructionResolver,
+} from './instructions.ts'
+export {
+  DEFAULT_RECOVERY_INSTRUCTION,
+  defaultInstructionResolver,
+  resolveInstruction,
+} from './instructions.ts'
+export type {
   AttemptOutcome,
   AttemptRunResult,
   RecoveryFailure,

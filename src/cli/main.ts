@@ -25,6 +25,7 @@ import { initCmd } from './commands/init.ts'
 import { logsCmd } from './commands/logs.ts'
 import { newCmd } from './commands/new.ts'
 import { resumeCmd } from './commands/resume.ts'
+import { retryCmd } from './commands/retry.ts'
 import { runCmd } from './commands/run.ts'
 import { runsCmd } from './commands/runs.ts'
 import { statusCmd } from './commands/status.ts'
@@ -126,6 +127,7 @@ Commands:
   run <name> [prompt]      Run a workflow (optional inline prompt)
                            Built-ins (no .orch/workflows/ needed): ${BUILTINS_LINE}
   resume [id] [prompt]     Resume a run; optional prompt overrides persisted args
+  retry <id> [prompt]      Retry a failed run: re-run the failed step and continue to completion
   runs                     List recent runs
   status <id>              Show status of a run
   logs <runId>             Stream the per-step transcript for a run
@@ -391,6 +393,7 @@ const COMMANDS: Record<
 > = {
   run: runCmd,
   resume: resumeCmd,
+  retry: retryCmd,
   runs: commandWithoutHost(runsCmd),
   status: commandWithoutHost(statusCmd),
   logs: commandWithoutHost(logsCmd),

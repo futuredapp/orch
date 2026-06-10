@@ -10,6 +10,7 @@ Run orch with `bunx orch <command> [options]` (or `orch ...` when installed).
 | `orch new <name>` | Create a new workflow file under `.orch/workflows/`. |
 | `orch run <name> [prompt]` | Run a workflow, with an optional inline prompt. |
 | `orch resume [id] [prompt]` | Resume a run; an optional prompt overrides the persisted args. |
+| `orch retry <id> [prompt]` | Retry a failed run: re-run the failed step and continue to completion. |
 | `orch runs` | List recent runs. |
 | `orch status <id>` | Show the status of a run. |
 | `orch logs <runId>` | Stream the per-step transcript for a run. |
@@ -35,7 +36,22 @@ orch resume --latest
 orch resume r-2026-05-27-143052-7k "new instructions"
 ```
 
-Re-executes the workflow function. Steps that already finished return their cached value; the first unfinished step runs. A resume on an already-completed run errors (exit code 3).
+Behavior depends on the run's status:
+
+- **`crashed` / `running`** — re-executes the workflow function. Steps that already finished return their cached value; the first unfinished step runs.
+- **`completed`** — opens the read-only end-of-run viewer (nothing re-runs); quit with `q` (exit 0).
+- **`failed`** — opens the interactive failure view: `r` retries the failed step, `c` retries-and-continues to the end, `q` quits, `⏎` inspects a past step. Merely opening and quitting mutates nothing.
+
+With no interactive terminal, an explicit `resume <finished-id>` refuses (names the run and its status, non-zero) rather than opening or silently re-running. Bare `orch resume` (no id) resumes the newest `crashed`/`running` run, and — only on a TTY — offers to open the newest finished run after a confirmation.
+
+### retry
+
+```bash
+orch retry r-2026-05-27-143052-7k
+orch retry r-2026-05-27-143052-7k "new instructions"
+```
+
+Shorthand for `resume` + immediate retry-and-continue: re-runs the failed step and drives the workflow through to completion in one command. Acts **only** on `failed` runs — a `completed`/`crashed`/`running` run is rejected with a status-named message and a non-zero exit (use `orch resume` for those). Unlike interactive `resume`, `retry` never prompts: it runs headlessly too, using the configured-default retry instruction, and its exit code reflects the outcome (completed → 0; failed again → non-zero).
 
 ### logs
 
@@ -71,13 +87,13 @@ The one-shot form exits when codegen finishes. `--watch` keeps a regen loop aliv
 | Flag | Applies to | Description |
 | --- | --- | --- |
 | `-h, --help` | all | Show help. |
-| `--prompt <text>` | run, resume, dry-run | Alias for the inline prompt positional. |
-| `--mode <m>` | run, resume | `plain` \| `single-pane` \| `two-pane` (`single-pane` deferred). |
+| `--prompt <text>` | run, resume, retry, dry-run | Alias for the inline prompt positional. |
+| `--mode <m>` | run, resume, retry | `plain` \| `single-pane` \| `two-pane` (`single-pane` deferred). |
 | `--format <f>` | run (plain mode) | `text` \| `json`. `json` emits one NDJSON envelope per event and suppresses the banner. Only valid with `--mode=plain`. |
 | `--no-attach` | two-pane | Skip auto-attach; print the attach hint and keep running. Use for CI and headless boxes. |
-| `--debug` | run, resume | Turn on heavy session logs (agent stdout/stderr, tmux pipe-pane, subprocess spawns). Defaults on with `ORCH_DEBUG=1`. |
-| `--interactive` | run, resume | `ask()` prompts render normally (default). |
-| `--noninteractive` | run, resume | `ask()` resolves declared defaults (CI, scheduled). Errors if a prompt has no default. Defaults on with `ORCH_NONINTERACTIVE=1`. |
+| `--debug` | run, resume, retry | Turn on heavy session logs (agent stdout/stderr, tmux pipe-pane, subprocess spawns). Defaults on with `ORCH_DEBUG=1`. |
+| `--interactive` | run, resume, retry | `ask()` prompts render normally (default). |
+| `--noninteractive` | run, resume, retry | `ask()` resolves declared defaults (CI, scheduled). Errors if a prompt has no default. Defaults on with `ORCH_NONINTERACTIVE=1`. |
 | `--latest` | logs | Resolve `<runId>` to the most recent run. |
 | `--step <name>` | logs | Print only the named step's transcript (exact match). |
 | `-f, --follow` | logs | Tail the named step until terminal status or SIGINT (requires `--step`). |
@@ -112,7 +128,7 @@ Pair `--mode=two-pane --no-attach`: orch creates the tmux session and prints an 
 | `0` | OK | Workflow completed. |
 | `1` | STEP_FAILURE | A step failed (runner error, validator failure, schema mismatch). |
 | `2` | CONFIG_ERROR | Invalid config, unknown command, or bad flag. |
-| `3` | CANNOT_RESUME | Run not found, or not resumable (e.g. already completed). |
+| `3` | CANNOT_RESUME | Run not found, or not retryable (e.g. `orch retry` on a non-`failed` run). |
 | `130` | SIGINT | Interrupted with Ctrl-C. |
 | `143` | SIGTERM | Process terminated. |
 

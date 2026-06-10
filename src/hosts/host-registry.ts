@@ -65,6 +65,13 @@ export interface HostFactoryInputs {
    * tests that exercise the "no runner wired" refusal path omit it.
    */
   readonly resumeRegistry?: import('../core/resume-registry.ts').ResumeRegistry
+  /**
+   * U6: enable the interactive failure-view `[r]`/`[c]` actions in the
+   * two-pane steps view. Set only by the CLI re-entry `failed` open
+   * (`open-failed`); a live `run`/`resume` leaves it off. Ignored by the
+   * plain host.
+   */
+  readonly enableFailureActions?: boolean
 }
 
 export type HostFactory = (inputs: HostFactoryInputs) => Promise<Host>
@@ -144,6 +151,9 @@ export function registerBuiltinHosts(registry: HostRegistry, deps: RegisterBuilt
       ...(args.fs !== undefined ? { fs: args.fs } : {}),
       ...(args.stateStore !== undefined ? { stateStore: args.stateStore } : {}),
       ...(args.resumeRegistry !== undefined ? { resumeRegistry: args.resumeRegistry } : {}),
+      ...(args.enableFailureActions !== undefined
+        ? { enableFailureActions: args.enableFailureActions }
+        : {}),
     }),
   )
 }

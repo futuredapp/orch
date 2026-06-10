@@ -398,6 +398,12 @@ export interface TmuxHostOptions {
    */
   readonly resumeRegistry?: import('../../core/resume-registry.ts').ResumeRegistry
   /**
+   * U6: enable the interactive failure-view `[r]`/`[c]` actions in the
+   * steps-view child. Set only by the CLI re-entry `failed` open; a live run
+   * leaves it off so the actions never surface there. Default `false`.
+   */
+  readonly enableFailureActions?: boolean
+  /**
    * Renderer used by the right-pane-controller to format autonomous-agent
    * transcripts on Enter-to-inspect. The CLI defaults this to Claude's
    * `toClaudeTranscriptLines` (Phase A pragma — same posture as
@@ -653,6 +659,12 @@ export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
     const composedIntent = (intent: StepsIntent): void => {
       baseIntent?.(intent)
       if (intent.type === 'quit') shutdownDeferred.resolve('quit')
+      // U6: a retry action settles the foreground race with a tagged action so
+      // the CLI open loop runs the retry (and re-opens) instead of tearing down.
+      else if (intent.type === 'retry')
+        shutdownDeferred.resolve({ type: 'action', action: 'retry' })
+      else if (intent.type === 'retry-continue')
+        shutdownDeferred.resolve({ type: 'action', action: 'retry-continue' })
     }
 
     stepsHandle = await startStepsView({
@@ -669,6 +681,7 @@ export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
       env: envForChild,
       stderr: opts.stderr,
       ...(opts.logger !== undefined ? { logger: opts.logger } : {}),
+      ...(opts.enableFailureActions === true ? { enableFailureActions: true } : {}),
       onIntent: composedIntent,
     })
   }

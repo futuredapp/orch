@@ -2,6 +2,7 @@ import { defineConfig } from './src/config/index.ts'
 
 export const config = defineConfig({
   workflows: {
+    feature: 'workflows/feature/index.ts',
     'new-feature': 'workflows/new-feature/index.ts',
     'tic-tac-toe': 'workflows/tic-tac-toe/index.ts',
     'execute-plan': 'workflows/execute-plan/index.ts',

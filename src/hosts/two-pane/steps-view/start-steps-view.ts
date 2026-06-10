@@ -36,6 +36,9 @@ export const StepsIntentSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('follow-live') }),
   z.object({ type: z.literal('quit') }),
   z.object({ type: z.literal('dismiss-banner') }),
+  // U5/U6: interactive failure-view retry actions.
+  z.object({ type: z.literal('retry') }),
+  z.object({ type: z.literal('retry-continue') }),
 ])
 
 export type StepsIntent = z.infer<typeof StepsIntentSchema>
@@ -64,6 +67,12 @@ export interface StartStepsViewOptions {
   readonly stderr: NodeJS.WritableStream
   readonly logger?: SessionLogger
   readonly onIntent?: (intent: StepsIntent) => void
+  /**
+   * U6: enable the interactive failure-view `[r]`/`[c]` actions in the child.
+   * Set only by the CLI re-entry `failed` open; a live run leaves it off.
+   * Default `false`.
+   */
+  readonly enableFailureActions?: boolean
   /** Override the bun exec path. Default `process.execPath`. */
   readonly bunExecPath?: string
   /** Override the runner script path. Default
@@ -110,6 +119,7 @@ export async function startStepsView(opts: StartStepsViewOptions): Promise<Start
     intentsPath: String(intentsPath),
     keysPath: String(keysPath),
     basePath: String(opts.basePath),
+    enableFailureActions: opts.enableFailureActions === true,
   }
   const optsB64 = Buffer.from(JSON.stringify(optsForChild), 'utf8').toString('base64')
   const runnerScript = opts.runnerScript ?? defaultRunnerScript()
@@ -147,7 +157,20 @@ export async function startStepsView(opts: StartStepsViewOptions): Promise<Start
       // `stopped` here means the subsequent runInteractive resolution is
       // treated as expected, so the canonical "TUI unavailable" failure
       // message does not fire on a planned quit.
-      if (parsed.data.type === 'quit') stopped = true
+      //
+      // U6: the `[r]`/`[c]` retry actions also unmount the child (see
+      // `steps-view-runner.tsx` `onIntent` — `quit`, `retry`, and
+      // `retry-continue` all resolve the child's exit). The parent must
+      // treat those exits as planned too, otherwise every retry action logs
+      // a false `tui-crashed` lifecycle entry and flashes the "TUI
+      // unavailable" pane message at the moment the CLI acts on the choice.
+      if (
+        parsed.data.type === 'quit' ||
+        parsed.data.type === 'retry' ||
+        parsed.data.type === 'retry-continue'
+      ) {
+        stopped = true
+      }
       opts.onIntent?.(parsed.data)
     },
   })

@@ -1,0 +1,24 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "tmux -L \"$ORCH_SOCKET\" wait-for -S \"$ORCH_STOP_CHANNEL\""
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "tmux -L \"$ORCH_SOCKET\" wait-for -S \"$ORCH_STOP_CHANNEL\""
+          }
+        ]
+      }
+    ]
+  }
+}

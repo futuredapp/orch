@@ -312,6 +312,65 @@ describe('startStepsView', () => {
 
     await handle.stop()
   })
+
+  // Both retry actions unmount the child in production: the child writes the
+  // intent, THEN exits. The parent must observe the intent first (setting
+  // `stopped`) so the subsequent exit is treated as planned. We reproduce that
+  // ordering with a deferred interactive result — resolving the child exit only
+  // after the intent has had time to be tailed and dispatched.
+  for (const intentType of ['retry', 'retry-continue'] as const) {
+    it(`treats a \`${intentType}\` intent as a planned exit — no tui-crashed entry and no "TUI unavailable" pane write`, async () => {
+      const h = makeHarness()
+      const resolveExit = h.host.deferInteractiveResult()
+      const { stateDir, intentsPath } = await makeStateDir()
+
+      const logger = createNullSessionLogger({ runId: RID })
+      const lifecycleAppends: Array<{ readonly category: string; readonly record: unknown }> = []
+      const wrappedLogger: typeof logger = {
+        ...logger,
+        append: async (category, record): Promise<void> => {
+          lifecycleAppends.push({ category, record })
+        },
+      }
+
+      const handle = await startStepsView({
+        host: h.host,
+        tmux: h.tmux,
+        socket: socketName('orch-test'),
+        leftPaneId: paneId('%0'),
+        paneQueue: createPaneQueue(),
+        stateDir: toPath(stateDir),
+        basePath: toPath(tmpDir),
+        runId: RID,
+        workflowName: 'demo',
+        cwd: toPath(tmpDir),
+        env: {},
+        stderr: h.stderr,
+        logger: wrappedLogger,
+      })
+
+      // Intent observed first…
+      await fs.appendFile(intentsPath, `${JSON.stringify({ type: intentType })}\n`)
+      await wait(500)
+      // …then the child exits (planned, not a crash).
+      resolveExit({ exitCode: 0, durationMs: 3 })
+      await wait(50)
+
+      const crashedLogs = lifecycleAppends.filter(
+        (e) =>
+          e.category === 'lifecycle' &&
+          typeof e.record === 'object' &&
+          e.record !== null &&
+          (e.record as { type?: unknown }).type === 'tui-crashed',
+      )
+      expect(crashedLogs).toHaveLength(0)
+
+      const sendKeys = h.tmux.recordedCalls.filter((c) => c.method === 'sendKeys')
+      expect(sendKeys).toHaveLength(0)
+
+      await handle.stop()
+    })
+  }
 })
 
 describe('StepsIntentSchema', () => {
@@ -327,5 +386,10 @@ describe('StepsIntentSchema', () => {
     expect(() => StepsIntentSchema.parse({ type: 'quit' })).not.toThrow()
     expect(() => StepsIntentSchema.parse({ type: 'follow-live' })).not.toThrow()
     expect(() => StepsIntentSchema.parse({ type: 'enter', stepName: 'plan' })).not.toThrow()
+  })
+
+  it('parses the U5/U6 retry actions', () => {
+    expect(() => StepsIntentSchema.parse({ type: 'retry' })).not.toThrow()
+    expect(() => StepsIntentSchema.parse({ type: 'retry-continue' })).not.toThrow()
   })
 })

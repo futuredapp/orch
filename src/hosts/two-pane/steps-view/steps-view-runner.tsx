@@ -49,6 +49,9 @@ const OptsSchema = z.object({
   keysPath: z.string().min(1).optional(),
   /** Absolute path to `<basePath>/`. The state store roots here. */
   basePath: z.string().min(1),
+  /** U6: enable the interactive failure-view `[r]`/`[c]` actions. Optional for
+   *  backwards compatibility; defaults off. */
+  enableFailureActions: z.boolean().optional(),
 })
 
 type ParsedOpts = z.infer<typeof OptsSchema>
@@ -127,7 +130,12 @@ export async function runStepsViewRunner(opts: ParsedOpts): Promise<void> {
     void writeIntent(intent).catch((err) => {
       process.stderr.write(`[steps-view] intent write failed: ${String(err)}\n`)
     })
-    if (intent.type === 'quit' && !resolved) {
+    // `quit` and the U6 retry actions all unmount the child: the parent
+    // observes the pane exit, then either tears down (`quit`) or runs the
+    // retry and re-opens a fresh viewer (`retry`/`retry-continue`).
+    const exits =
+      intent.type === 'quit' || intent.type === 'retry' || intent.type === 'retry-continue'
+    if (exits && !resolved) {
       resolved = true
       resolveExit?.()
     }
@@ -146,7 +154,12 @@ export async function runStepsViewRunner(opts: ParsedOpts): Promise<void> {
         model.off('change', handler)
       }
     }, [])
-    return React.createElement(StepsView, { state: current, onIntent, onKey: writeKey })
+    return React.createElement(StepsView, {
+      state: current,
+      onIntent,
+      onKey: writeKey,
+      actionsEnabled: opts.enableFailureActions === true,
+    })
   }
 
   // Alternate-screen buffer prevents stale frame fragments on tmux pane

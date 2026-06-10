@@ -77,7 +77,10 @@ type _TypedFnArgs = Expect<Equal<Parameters<typeof _typedFn>[1], ShipArgs>>
 // ---------------------------------------------------------------------------
 
 type _PublicStringKeys = Expect<
-  Equal<Extract<keyof WorkflowExecutor, string>, 'name' | 'execute' | 'resume'>
+  Equal<
+    Extract<keyof WorkflowExecutor, string>,
+    'name' | 'execute' | 'resume' | 'retryStep' | 'populateResumeRegistry'
+  >
 >
 
 // ---------------------------------------------------------------------------

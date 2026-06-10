@@ -104,12 +104,29 @@ export interface CommandLine {
 }
 
 /**
+ * A user action taken from the interactive failure view (plan U5/U6). Distinct
+ * from a quit/detach because the CLI must *act* (run a retry) rather than tear
+ * down: `'retry'` re-runs the failed step once and re-parks at the failure
+ * view; `'retry-continue'` re-runs the failed step and drives the workflow to
+ * completion. Only emitted when the steps-view daemon has failure actions
+ * enabled (the CLI re-entry `failed` open) — never from a live run's failure
+ * frame (that is the sibling feature, out of scope here).
+ */
+export type ForegroundAction = 'retry' | 'retry-continue'
+
+/**
  * Discriminator returned by `Host.awaitForegroundShutdown()`. `'quit'` means
  * the user asked orch to stop (q / Ctrl-C / future cancel surfaces);
  * `'attach-exited'` means the foreground attach client went away without an
- * explicit quit intent (user detached, session died, plain mode no-op).
+ * explicit quit intent (user detached, session died, plain mode no-op). The
+ * `{ type: 'action' }` variant carries a user retry action from the
+ * interactive failure view (U5/U6) — the CLI open loop reacts to it instead of
+ * tearing down.
  */
-export type ForegroundShutdownReason = 'quit' | 'attach-exited'
+export type ForegroundShutdownReason =
+  | 'quit'
+  | 'attach-exited'
+  | { readonly type: 'action'; readonly action: ForegroundAction }
 
 export interface Host {
   readonly mode: RunMode

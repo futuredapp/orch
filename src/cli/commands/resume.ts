@@ -1,33 +1,11 @@
-import {
-  createResumeRegistry,
-  ParallelError,
-  ResumeError,
-  RunNotFoundError,
-  SchemaValidationError,
-  StepError,
-  ViewResolutionError,
-  type WorkflowArgs,
-} from '../../core/index.ts'
-import type { WorkflowDeps } from '../../core/workflow.ts'
-import {
-  createCmuxHost,
-  createCompositeHost,
-  HostCreationError,
-  HostUnavailableError,
-} from '../../hosts/index.ts'
-import {
-  buildRunMeta,
-  instrumentProcessService,
-  orchVersion,
-  type SessionLogger,
-} from '../../observability/index.ts'
+import type { WorkflowArgs } from '../../core/index.ts'
 import type { RunId } from '../../state/index.ts'
-import { createTranscriptSidecar, StateCorruptionError } from '../../state/index.ts'
+import { StateCorruptionError } from '../../state/index.ts'
 import type { CliDeps } from '../deps.ts'
 import { type CliOpts, EXIT, type HostFactory } from '../main.ts'
-import { executeWithAttach } from './execute-with-attach.ts'
-import { isLoadError, loadWorkflow } from './load-workflow.ts'
-import { relativeRunDir } from './relative-run-dir.ts'
+import { openFailed } from './open-failed.ts'
+import { openFinished } from './open-finished.ts'
+import { runResumeExecution } from './resume-execution.ts'
 
 const SCAN_CAP = 50
 
@@ -36,7 +14,17 @@ async function findResumableRun(deps: CliDeps): Promise<RunId | undefined> {
   const recent = runs.slice(-SCAN_CAP).reverse()
 
   for (const rid of recent) {
-    const state = await deps.stateStore.loadRun(rid)
+    // A corrupt recent run must not abort the whole scan: skip it (it couldn't
+    // be resumed anyway) so a single bad run can't defeat the bare-resume
+    // finished-run fallback below — its sibling `findNewestFinishedRunId`
+    // already skips corruption, and the asymmetry would silently swallow D5.
+    let state: Awaited<ReturnType<typeof deps.stateStore.loadRun>>
+    try {
+      state = await deps.stateStore.loadRun(rid)
+    } catch (err) {
+      if (err instanceof StateCorruptionError) continue
+      throw err
+    }
     if (state && (state.status === 'crashed' || state.status === 'running')) {
       return rid
     }
@@ -56,92 +44,45 @@ async function findByPrefix(deps: CliDeps, prefix: string): Promise<RunId | unde
   return matches[0]
 }
 
-async function resolveEffectiveArgs(
-  deps: CliDeps,
-  targetId: RunId,
-  persisted: WorkflowArgs | undefined,
-  cliArgs: WorkflowArgs,
-): Promise<WorkflowArgs> {
-  if (cliArgs.prompt === undefined) return persisted ?? {}
-  await deps.stateStore.setArgs(targetId, cliArgs)
-  return cliArgs
-}
+/**
+ * Newest finished (`completed`/`failed`) run, scanning recent runs newest-first.
+ * Powers the status-aware bare-resume fallback (U7/D5): when no resumable run
+ * exists, this is the run we offer to open. Corrupt runs are skipped (they
+ * couldn't be opened anyway) so the offer lands on the newest *openable*
+ * finished run.
+ */
+async function findNewestFinishedRunId(deps: CliDeps): Promise<RunId | undefined> {
+  const runs = await deps.registry.listRuns()
+  const recent = runs.slice(-SCAN_CAP).reverse()
 
-function mapResumeError(err: unknown): { code: number; reason: string } | undefined {
-  if (err instanceof RunNotFoundError || err instanceof ResumeError) {
-    return { code: EXIT.CANNOT_RESUME, reason: err.message }
-  }
-  if (err instanceof ViewResolutionError || err instanceof StateCorruptionError) {
-    return { code: EXIT.CONFIG_ERROR, reason: err.message }
-  }
-  if (
-    err instanceof StepError ||
-    err instanceof SchemaValidationError ||
-    err instanceof ParallelError
-  ) {
-    return { code: EXIT.STEP_FAILURE, reason: err.message }
-  }
-  if (err instanceof HostUnavailableError) {
-    return { code: EXIT.STEP_FAILURE, reason: err.message }
+  for (const rid of recent) {
+    let state: Awaited<ReturnType<typeof deps.stateStore.loadRun>>
+    try {
+      state = await deps.stateStore.loadRun(rid)
+    } catch (err) {
+      if (err instanceof StateCorruptionError) continue
+      throw err
+    }
+    if (state && (state.status === 'completed' || state.status === 'failed')) {
+      return rid
+    }
   }
   return undefined
 }
 
-async function writeResumePreamble(
-  logger: SessionLogger,
-  ctx: {
-    readonly runId: string
-    readonly workflowName: string
-    readonly mode: string
-    readonly debug: boolean
-    readonly argv: readonly string[]
-    readonly env: Readonly<Record<string, string | undefined>>
-    readonly startedAtIso: string
-    readonly resumedAtIso: string
-    readonly emitEnvValues: boolean
-  },
-): Promise<void> {
-  const version = await orchVersion()
-  const meta = buildRunMeta({
-    runId: ctx.runId,
-    workflowName: ctx.workflowName,
-    argv: ctx.argv,
-    env: ctx.env,
-    mode: ctx.mode,
-    debug: ctx.debug,
-    orchVersion: version,
-    os: process.platform,
-    startedAtIso: ctx.startedAtIso,
-    resumedAtIso: ctx.resumedAtIso,
-    emitEnvValues: ctx.emitEnvValues,
-  })
-  await logger.writeFile('run.meta.json', `${JSON.stringify(meta, null, 2)}\n`)
-  await logger.append('lifecycle', {
-    type: 'run:resumed',
-    resumedAt: ctx.resumedAtIso,
-  })
-}
-
-interface ResolvedResumeTarget {
+export interface ResolvedResumeTarget {
   readonly targetId: RunId
   readonly state: NonNullable<Awaited<ReturnType<CliDeps['stateStore']['loadRun']>>>
   readonly workflowName: string
 }
 
-async function resolveResumeTarget(
+/** Load + validate a resolved run id into a `ResolvedResumeTarget`, or a
+ *  non-zero exit code with the matching stderr message. Shared by the explicit
+ *  path, the bare resumable path, and the bare finished-run fallback. */
+async function loadResumeTarget(
   deps: CliDeps,
-  idArg: string,
+  targetId: RunId,
 ): Promise<ResolvedResumeTarget | number> {
-  const targetId = idArg ? await findByPrefix(deps, idArg) : await findResumableRun(deps)
-  if (targetId === undefined) {
-    process.stderr.write(
-      idArg
-        ? `No run found matching "${idArg}"\n`
-        : 'No resumable run found (no crashed or running runs)\n',
-    )
-    return EXIT.CANNOT_RESUME
-  }
-
   let state: Awaited<ReturnType<typeof deps.stateStore.loadRun>>
   try {
     state = await deps.stateStore.loadRun(targetId)
@@ -166,6 +107,21 @@ async function resolveResumeTarget(
   return { targetId, state, workflowName: state.workflowName }
 }
 
+/** Resolve an explicit run-id argument (prefix match) into a validated
+ *  `ResolvedResumeTarget`, or a non-zero exit code on ambiguous/not-found.
+ *  Shared with `orch retry` (U8) so both verbs use one prefix/not-found path. */
+export async function resolveExplicitTarget(
+  deps: CliDeps,
+  idArg: string,
+): Promise<ResolvedResumeTarget | number> {
+  const targetId = await findByPrefix(deps, idArg)
+  if (targetId === undefined) {
+    process.stderr.write(`No run found matching "${idArg}"\n`)
+    return EXIT.CANNOT_RESUME
+  }
+  return loadResumeTarget(deps, targetId)
+}
+
 export async function resumeCmd(
   deps: CliDeps,
   idArg: string,
@@ -173,117 +129,120 @@ export async function resumeCmd(
   opts: CliOpts,
   hostFactory: HostFactory,
 ): Promise<number> {
-  const resolved = await resolveResumeTarget(deps, idArg)
+  // Target resolution diverges by invocation shape:
+  //   - explicit id → prefix resolution (ambiguous/not-found unchanged).
+  //   - bare `orch resume` → prefer a resumable (`crashed`/`running`) run; when
+  //     none exists, offer the newest finished run behind a status-aware
+  //     confirmation (U7/D5). A resumable run is never displaced by a finished
+  //     one (AT-9).
+  let resolved: ResolvedResumeTarget | number
+  if (idArg) {
+    resolved = await resolveExplicitTarget(deps, idArg)
+  } else {
+    const resumableId = await findResumableRun(deps)
+    if (resumableId === undefined) {
+      return bareFinishedFallback(deps, cliArgs, opts, hostFactory)
+    }
+    resolved = await loadResumeTarget(deps, resumableId)
+  }
   if (typeof resolved === 'number') return resolved
   const { targetId, state, workflowName } = resolved
 
-  process.stderr.write(`Resuming run ${targetId}...\n`)
-
-  const effectiveArgs = await resolveEffectiveArgs(deps, targetId, state.args, cliArgs)
-
-  const loaded = await loadWorkflow(deps.cwd, workflowName)
-  if (isLoadError(loaded)) return loaded.code
-
-  const logger = deps.sessionLoggerFor(targetId)
-  const resumedAtIso = new Date(deps.clock.now()).toISOString()
-  const startedAtIso = new Date(state.startedAt ?? deps.clock.now()).toISOString()
-
-  try {
-    await writeResumePreamble(logger, {
-      runId: targetId,
-      workflowName,
-      mode: opts.mode ?? 'plain',
-      debug: deps.debug,
-      argv: process.argv,
-      env: process.env,
-      startedAtIso,
-      resumedAtIso,
-      emitEnvValues: process.env.ORCH_LOG_ENV_VALUES === '1',
-    })
-
-    const instrumentedProcess = instrumentProcessService(deps.processService, {
-      logger,
-      clock: deps.clock,
-    })
-
-    // On resume, the workflow callback re-invokes `run(step)` for every step;
-    // `runStepOnce` re-registers each interactive runner in the registry,
-    // including cache hits. The host therefore sees the runner the moment
-    // the executor reaches that step.
-    const resumeRegistry = createResumeRegistry()
-
-    let host: Awaited<ReturnType<HostFactory>>
-    try {
-      host = await hostFactory({
-        runId: targetId,
+  // A finished run is a dead end for `executor.resume()` on `completed` (it
+  // would throw `ResumeError`) and a *silent re-run* on `failed` (the guard
+  // only fires on `completed`). Branch both into deliberate re-entry:
+  //
+  //   - `completed` → the read-only end-of-run viewer (D1/D2, Phase 1).
+  //   - `failed`    → the interactive failure view (D2/D3, Phase 2/U6) — park,
+  //                   never silently re-run.
+  //
+  // Both are TUIs: with no interactive two-pane terminal (no TTY / tmux
+  // unavailable) we refuse rather than open/hang/mutate (D8 / AT-20). The
+  // resolved run mode is the load-bearing signal — a piped/CI invocation
+  // resolves to `plain`, never `two-pane`. `crashed`/`running` resume for real,
+  // unchanged.
+  if (state.status === 'completed' || state.status === 'failed') {
+    if (opts.mode !== 'two-pane') {
+      // Non-zero, but deliberately NOT `CANNOT_RESUME`: a finished run must
+      // never surface the "cannot resume" code (AT-6). This is an
+      // environment-capability refusal, mapped to `CONFIG_ERROR`. The `failed`
+      // half is the key v2 fix — no TTY no longer silently re-runs the step.
+      process.stderr.write(
+        `Cannot open run ${targetId}: it is ${state.status} and the interactive view ` +
+          `requires two-pane mode (got mode=${opts.mode}; e.g. --mode=plain / no TTY / tmux unavailable).\n`,
+      )
+      return EXIT.CONFIG_ERROR
+    }
+    if (state.status === 'completed') {
+      return openFinished({
+        deps,
+        targetId,
         workflowName,
-        stdout: process.stdout,
-        stderr: process.stderr,
-        clock: deps.clock,
-        logger,
-        processService: instrumentedProcess,
-        fs: deps.fsService,
-        stateStore: deps.stateStore,
-        resumeRegistry,
+        status: state.status,
+        opts,
+        hostFactory,
       })
-    } catch (err) {
-      if (err instanceof HostCreationError) {
-        process.stderr.write(`${err.message}\n`)
-        return EXIT.CONFIG_ERROR
-      }
-      throw err
     }
-
-    const cmuxHost = await createCmuxHost({
-      processService: instrumentedProcess,
-      clock: deps.clock,
-      workflowName,
-      cmuxConfig: loaded.config.cmux,
-      env: process.env,
-      cwd: deps.cwd,
-      logger,
-    })
-    const compositeHost = createCompositeHost(host, cmuxHost)
-
-    const transcriptSidecar = createTranscriptSidecar({
-      fs: deps.fsService,
-      runId: targetId,
-      basePath: deps.statePath,
-    })
-
-    const wfDeps: WorkflowDeps = {
-      stateStore: deps.stateStore,
-      processService: instrumentedProcess,
-      clock: deps.clock,
-      runId: targetId,
-      cwd: deps.cwd,
-      fsService: deps.fsService,
-      gitService: deps.gitService,
-      workflowName,
-      args: effectiveArgs,
-      host: compositeHost,
-      transcriptSidecar,
-      logger,
-      promptService: deps.promptServiceFor(host.mode),
-      interactivity: opts.interactivity,
-      resumeRegistry,
-    }
-
-    return await executeWithAttach({
-      host: compositeHost,
-      workflow: loaded.executor.resume(wfDeps),
-      runId: targetId,
-      stderr: process.stderr,
-      mapError: mapResumeError,
-      summary: {
-        workflowName,
-        runDir: relativeRunDir(deps.cwd, deps.statePath, targetId),
-      },
-      logger,
-      skipAttach: opts.noAttach,
-      beforeTeardown: (exitCode) => cmuxHost.notifyRunEnd(exitCode),
-    })
-  } finally {
-    await logger.close()
+    return openFailed({ deps, targetId, state, workflowName, cliArgs, opts, hostFactory })
   }
+
+  process.stderr.write(`Resuming run ${targetId}...\n`)
+  return runResumeExecution({
+    deps,
+    targetId,
+    state,
+    workflowName,
+    cliArgs,
+    opts,
+    hostFactory,
+  })
+}
+
+/**
+ * Status-aware bare-resume fallback (U7 / D5). Reached only when bare `orch
+ * resume` found no resumable (`crashed`/`running`) run. It offers the newest
+ * finished run behind a confirmation whose copy distinguishes the open kind —
+ * read-only (completed) vs the interactive failure view (failed) — because
+ * opening a failed run lands in a mutating-capable view. The confirmation is
+ * *only* offered on an interactive two-pane terminal: with no TTY (or no
+ * finished run at all) the command keeps today's "no resumable run found",
+ * never auto-opening and never prompting (AT-13 / AT-21 / D8).
+ */
+async function bareFinishedFallback(
+  deps: CliDeps,
+  cliArgs: WorkflowArgs,
+  opts: CliOpts,
+  hostFactory: HostFactory,
+): Promise<number> {
+  const finishedId = opts.mode === 'two-pane' ? await findNewestFinishedRunId(deps) : undefined
+  if (finishedId === undefined) {
+    process.stderr.write('No resumable run found (no crashed or running runs)\n')
+    return EXIT.CANNOT_RESUME
+  }
+
+  const resolved = await loadResumeTarget(deps, finishedId)
+  if (typeof resolved === 'number') return resolved
+  const { targetId, state, workflowName } = resolved
+
+  // The open kind is the load-bearing distinction (AT-10): a completed run is
+  // observation-only; a failed run opens the interactive view where retry /
+  // continue can mutate.
+  const openKind =
+    state.status === 'completed'
+      ? 'read-only'
+      : 'the interactive failure view (retry/continue available)'
+  const proceed = await deps.confirmService.confirm(
+    `No resumable run found. Most recent run ${targetId} (${workflowName}) is ${state.status}. ` +
+      `Open it in ${openKind}?`,
+    false,
+  )
+  if (!proceed) {
+    process.stderr.write('Nothing to resume.\n')
+    return EXIT.OK
+  }
+
+  if (state.status === 'completed') {
+    return openFinished({ deps, targetId, workflowName, status: state.status, opts, hostFactory })
+  }
+  return openFailed({ deps, targetId, state, workflowName, cliArgs, opts, hostFactory })
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import { executeWithAttach } from '../../../src/cli/commands/execute-with-attach.ts'
 import { EXIT } from '../../../src/cli/main.ts'
-import type { Host } from '../../../src/hosts/index.ts'
+import type { ForegroundShutdownReason, Host } from '../../../src/hosts/index.ts'
 
 interface FakeHostState {
   readonly host: Host
@@ -258,6 +258,42 @@ describe('executeWithAttach (unit)', () => {
         '  data: .orch/state/r-2026-04-29-143052-7k/\n',
     )
     expect(host.teardownCalls).toBe(1)
+  })
+
+  it('read-only: a decided [r]/[c] action survives a teardown failure (callback fires before teardown)', async () => {
+    // Regression for L2: the read-only branch used to `await host.teardown()`
+    // BEFORE invoking `onReadOnlyShutdown`. If teardown threw (tmux socket gone
+    // mid-command) the callback never fired, openFailed's captured action stayed
+    // undefined, and a decided retry/continue was misread as `dismissed`.
+    const stderr = bufferStream()
+    let teardownCalls = 0
+    let received: ForegroundShutdownReason | undefined
+    const host = {
+      mode: 'two-pane' as const,
+      attachForeground: () => Promise.resolve(),
+      awaitForegroundShutdown: () => Promise.resolve({ type: 'action', action: 'retry' } as const),
+      teardown: async () => {
+        teardownCalls++
+        throw new Error('tmux socket gone mid-command')
+      },
+    } as unknown as Host
+
+    const code = await executeWithAttach({
+      host,
+      workflow: Promise.resolve(),
+      runId: 'r-2026-04-29-143052-7k',
+      stderr: stderr.stream,
+      mapError: () => undefined,
+      summary: { workflowName: 'demo', runDir: '.orch/state/r-2026-04-29-143052-7k' },
+      readOnly: true,
+      onReadOnlyShutdown: (reason) => {
+        received = reason
+      },
+    })
+
+    expect(received).toEqual({ type: 'action', action: 'retry' })
+    expect(teardownCalls).toBe(1)
+    expect(code).toBe(EXIT.OK)
   })
 
   it('crash summary uses String(reason) when a non-Error is thrown', async () => {

@@ -291,7 +291,15 @@ function finalizeView(args: FinalizeArgs): StepsViewState {
   if (runStatus === 'crashed') {
     return { status: 'crashed', run: header, steps, summary, view, ...bannerSlot }
   }
-  if (summary.stepsFailed > 0) {
+  // A persisted `failed` run stays failed regardless of the step-row count.
+  // After a successful `[r]` retry (KTD-8), the executor leaves
+  // `run.status === 'failed'`, persists the previously-failed step as a
+  // successful entry, and leaves later steps unrun — so there are zero failed
+  // step rows. Projecting that parked state as `completed` would drop the
+  // `[c]` continue affordance the failed view gates on (AT-R1 / AT-R10a). The
+  // `stepsFailed > 0` arm still flips a live-failed step on an otherwise
+  // completed run to failed.
+  if (runStatus === 'failed' || summary.stepsFailed > 0) {
     return { status: 'failed', run: header, steps, summary, view, ...bannerSlot }
   }
   return { status: 'completed', run: header, steps, summary, view, ...bannerSlot }

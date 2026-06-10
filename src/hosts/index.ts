@@ -11,6 +11,7 @@ export { createCmuxHost } from './cmux/index.ts'
 export { createCompositeHost } from './composite/index.ts'
 export type {
   CommandLine,
+  ForegroundAction,
   ForegroundShutdownReason,
   Host,
   HostReachability,
@@ -31,6 +32,7 @@ export {
   HostResolutionError,
   registerBuiltinHosts,
 } from './host-registry.ts'
+export { createNullHost } from './null-host.ts'
 export type { PlainFormat, PlainHostOptions } from './plain/plain-host.ts'
 export { createPlainHost } from './plain/plain-host.ts'
 export type { RenderOptions } from './plain/render-line.ts'

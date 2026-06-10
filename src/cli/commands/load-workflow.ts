@@ -9,10 +9,15 @@ import type { Path } from '../../services/types.ts'
 import { isBuiltinName, resolveBuiltin } from '../../workflows/index.ts'
 import { EXIT } from '../main.ts'
 
-interface LoadResult {
+export interface LoadResult {
   readonly executor: WorkflowExecutor
   readonly config: OrchestratorConfig
 }
+
+/** Alias for the successful load shape — used by callers that pre-load a
+ *  workflow and pass it into the resume/retry execution seam (tests inject a
+ *  `FakeRunner`-backed executor here). */
+export type LoadedWorkflow = LoadResult
 
 interface LoadError {
   readonly code: number
@@ -28,7 +33,24 @@ function extractDefault(mod: unknown): unknown {
     : undefined
 }
 
-export async function loadWorkflow(cwd: Path, name: string): Promise<LoadResult | LoadError> {
+export interface LoadWorkflowOptions {
+  /**
+   * Suppress the user-facing stderr error messages. Set by best-effort callers
+   * (the cold-open registry rehydration) that silently degrade when the
+   * workflow can't be loaded — a normal read-only open must not print an
+   * alarming "Cannot load config" line.
+   */
+  readonly quiet?: boolean
+}
+
+export async function loadWorkflow(
+  cwd: Path,
+  name: string,
+  opts: LoadWorkflowOptions = {},
+): Promise<LoadResult | LoadError> {
+  const reportError = (message: string): void => {
+    if (!opts.quiet) process.stderr.write(message)
+  }
   let config: OrchestratorConfig
   let configDir: Path
   try {
@@ -37,7 +59,7 @@ export async function loadWorkflow(cwd: Path, name: string): Promise<LoadResult 
     configDir = loaded.configDir
   } catch (err) {
     if (err instanceof ConfigLoadError) {
-      process.stderr.write(`${err.message}\n`)
+      reportError(`${err.message}\n`)
       return { code: EXIT.CONFIG_ERROR }
     }
     throw err
@@ -54,7 +76,7 @@ export async function loadWorkflow(cwd: Path, name: string): Promise<LoadResult 
       ? resolveBuiltin(name)
       : resolveWorkflow(config, name, configDir)
   } catch (err) {
-    process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`)
+    reportError(`${err instanceof Error ? err.message : String(err)}\n`)
     return { code: EXIT.CONFIG_ERROR }
   }
 
@@ -62,7 +84,7 @@ export async function loadWorkflow(cwd: Path, name: string): Promise<LoadResult 
   try {
     mod = await import(workflowPath)
   } catch (err) {
-    process.stderr.write(
+    reportError(
       `Cannot load workflow at ${workflowPath}: ${err instanceof Error ? err.message : String(err)}\n`,
     )
     return { code: EXIT.CONFIG_ERROR }
@@ -70,7 +92,7 @@ export async function loadWorkflow(cwd: Path, name: string): Promise<LoadResult 
 
   const defaultExport = extractDefault(mod)
   if (!isExecutorShape(defaultExport)) {
-    process.stderr.write(
+    reportError(
       `Workflow at ${workflowPath} must export a default WorkflowExecutor (use workflow())\n`,
     )
     return { code: EXIT.CONFIG_ERROR }

@@ -46,19 +46,32 @@ export function EndOfRunSummary({
 
 export interface EndOfRunFooterProps {
   readonly status: 'completed' | 'failed' | 'crashed'
+  /**
+   * U6: when `true` (the interactive `failed` re-entry view only), the footer
+   * adds the `[r]` retry and `[c]` retry-and-continue affordances that a
+   * read-only / completed view intentionally lacks (AT-3). Inert unless
+   * `status === 'failed'`.
+   */
+  readonly showFailureActions?: boolean
 }
 
 /**
  * Footer rendered below the steps list when the run is no longer live. The
  * keymap order leads with `q to quit · ⏎ to inspect` because the user's
  * primary remaining actions are quit-the-TUI and inspect-a-past-step. `f` is
- * still bound but de-emphasized.
+ * still bound but de-emphasized. In the interactive `failed` view the footer
+ * also exposes `[r]`/`[c]` (`showFailureActions`).
  */
-export function EndOfRunFooter({ status }: EndOfRunFooterProps): React.ReactElement {
+export function EndOfRunFooter({
+  status,
+  showFailureActions = false,
+}: EndOfRunFooterProps): React.ReactElement {
   const label = statusLabel(status)
+  const actions =
+    showFailureActions && status === 'failed' ? ' · r to retry · c to retry & continue' : ''
   return (
     <Box marginTop={1}>
-      <Text dimColor>{`run ${label} · q to quit · ⏎ to inspect`}</Text>
+      <Text dimColor>{`run ${label} · q to quit · ⏎ to inspect${actions}`}</Text>
     </Box>
   )
 }

@@ -61,7 +61,9 @@ import {
 } from './execution-context.ts'
 import {
   type AttemptOutcome,
+  defaultInstructionResolver,
   formatRecoveryFailure,
+  type InstructionResolver,
   type RecoveryLogEntry,
   type RecoveryStrategy,
   resolveRecoveryStrategy,
@@ -335,6 +337,15 @@ export interface WorkflowDeps {
    * `resolveRecoveryStrategy`. Consumed by the recovery loop (U7).
    */
   readonly recovery?: RecoveryStrategy
+  /**
+   * Resolves the short retry/continue instruction handed to a re-run of a
+   * failed step (D7 / KTD-4). The autonomous recovery path leaves this absent
+   * and so resolves the built-in default (`'continue'`); the manual-retry path
+   * (`orch resume <failed>` `[r]`/`[c]`, `orch retry`) injects a resolver that
+   * can return distinct strings per `kind`. Defaults to
+   * `defaultInstructionResolver`.
+   */
+  readonly instructionResolver?: InstructionResolver
   /** CLI-supplied arguments. When omitted, the workflow callback sees `{}`. */
   readonly args?: WorkflowArgs
   /**
@@ -434,11 +445,48 @@ export interface WorkflowExecutor<Args extends WorkflowArgs = WorkflowArgs> {
    *  Throws ResumeError if the run is already completed.
    *  Single-process only — no cross-process locking. */
   resume(deps: WorkflowDeps): Promise<void>
+  /**
+   * Single-step retry (U5, KTD-8): re-run exactly the failed step of a
+   * `failed` run, then re-park — never advancing the run status and never
+   * running any later step. Replays already-succeeded steps from cache like
+   * `resume`, executes the first not-yet-succeeded step (the failed one),
+   * then unwinds. On success the step's attempt-state is persisted as a
+   * success (`saveStep`) while the run status stays `failed`; on failure-again
+   * the partial/recovery state is persisted and the result reports
+   * `'failed-again'`. Emits NO `run:ended` and writes NO run status (the
+   * actioned side-effects matrix). Throws `RunNotFoundError` if the run does
+   * not exist and `ResumeError` if its status is not `failed`.
+   */
+  retryStep(deps: WorkflowDeps): Promise<RetryStepResult>
+  /**
+   * Rehydrate `deps.resumeRegistry` for a run that finished in a PRIOR process
+   * and is now being RE-opened read-only (`orch resume <completed-id>` / the
+   * failed park view). Replays the workflow body so every interactive step's
+   * runner registers (the registry is interactive-only), then stops the moment
+   * it reaches a step that never succeeded — so it executes NO step, invokes NO
+   * runner, writes NO run status, and emits NO `run:ended`. The cold-open path
+   * has no executor to populate the registry as the live run does; without this
+   * the right-pane controller has no runner to resolve on `⏎` and refuses with
+   * "resume not ready yet". Safe on any status: a `completed` run replays every
+   * step from cache; a `failed` run registers up to and including the failed
+   * step, then aborts before running it.
+   */
+  populateResumeRegistry(deps: WorkflowDeps): Promise<void>
   /** Module-private body handle. Read only by `runWorkflow` via direct symbol
    *  import. Not enumerable and not part of the public `src/core/index.ts`
    *  barrel. */
   readonly [bodyHandle]: WorkflowFn<Args>
 }
+
+/**
+ * Outcome of {@link WorkflowExecutor.retryStep}. `'retried-ok'` — the failed
+ * step re-ran and succeeded; the run is parked, status still `failed`, ready
+ * for a later continue. `'failed-again'` — the step failed again; `error`
+ * carries the step-level failure for the caller to surface.
+ */
+export type RetryStepResult =
+  | { readonly outcome: 'retried-ok' }
+  | { readonly outcome: 'failed-again'; readonly error: Error }
 
 // ---------------------------------------------------------------------------
 // assemblePrompt — builds the final prompt from defaults and overrides
@@ -1328,9 +1376,6 @@ interface AgentRunResult {
   readonly recoveredSessionId?: string
 }
 
-/** The single "continue" nudge a forked attempt sends (R7 — at most one). */
-const RECOVERY_NUDGE = 'continue'
-
 // Run one runner invocation (initial or forked) under the per-attempt event
 // observers, and emit one `spawns` span entry. `sinceResume` gates the progress
 // predicate so a forked nudge's own pre-work events never count as progress (R9).
@@ -1480,6 +1525,11 @@ async function buildRecoveryCommand(
   signal: AbortSignal,
 ): Promise<RunnerCommand> {
   const { config, cwd, deps } = args.attemptDeps
+  // The single nudge a forked attempt sends (R7 — at most one). Resolved
+  // through the instruction seam (D7/KTD-4): the autonomous path leaves
+  // `instructionResolver` absent and so sends the built-in default
+  // (`'continue'`); a manual retry can inject a configured instruction.
+  const nudge = (deps.instructionResolver ?? defaultInstructionResolver)('continue')
   const forkFn = config.agent.forkResumeCommand
   if (typeof forkFn === 'function') {
     const forkCtx: ForkResumeContext = {
@@ -1491,13 +1541,13 @@ async function buildRecoveryCommand(
       env: {},
       extraArgs: [],
     }
-    return forkFn(forkCtx, args.checkpointSessionId, RECOVERY_NUDGE)
+    return forkFn(forkCtx, args.checkpointSessionId, nudge)
   }
   // Resume-in-place fallback (R4/R7): no clean parent to fork from; the loop's
   // one-attempt-per-verdict cadence is what preserves the no-stacking discipline.
   const resumeFn = config.agent.resumeCommand
   if (typeof resumeFn === 'function') {
-    return resumeFn({ ...args.runnerCtx, prompt: RECOVERY_NUDGE }, args.checkpointSessionId)
+    return resumeFn({ ...args.runnerCtx, prompt: nudge }, args.checkpointSessionId)
   }
   throw new Error(`recovery: runner "${config.agent.name}" has no fork or resume primitive`)
 }
@@ -1768,6 +1818,7 @@ async function runStepOnce(
   keyOwnersThisExecution: Map<string, StepKeyOwner>,
   s: AnyStep,
   overrides: RunOverrides | undefined,
+  execControl?: ExecControl,
 ): Promise<unknown> {
   // U4: fold the active sub-path into the cache key. The `as:` override in
   // `deriveStepKey` bypasses sub-folding (documented authoring opt-out).
@@ -1776,6 +1827,18 @@ async function runStepOnce(
   const subStore = executionContext.getStore()
   const subCallId = subStore?.subCallId
   const insideParallel = isInsideParallel()
+
+  // Single-step retry park (U5/KTD-8): once the failed step has actually
+  // re-run (`realStepRan`), every later TOP-LEVEL step is short-circuited
+  // before it can execute — `[r]` retries exactly one step then re-parks.
+  // Suppressed inside a parallel block so a failed parallel block re-runs at
+  // the whole-block granularity `resume` uses today (KTD-7): branches run with
+  // `insideParallel === true`, and the park only fires on the next top-level
+  // step after the block resolves.
+  if (execControl?.singleStep === true && execControl.realStepRan.current && !insideParallel) {
+    throw new SingleStepParked()
+  }
+
   const attemptedOwner: StepKeyOwner = {
     subPath,
     ...(subCallId !== undefined ? { subCallId } : {}),
@@ -1849,6 +1912,17 @@ async function runStepOnce(
       return cached.value
     }
   }
+
+  // Registry-population replay stops here: the runner was already registered
+  // above (before the cache check), so reaching real execution means this step
+  // never succeeded. Abort before running anything — `populateResumeRegistry`
+  // must invoke no runner and write no state.
+  if (execControl?.replayOnly === true) throw new ReplayOnlyAborted()
+
+  // Real execution (cache missed, or a recovery-give-up / stale-ask entry fell
+  // through). In single-step retry mode this is the failed step itself; mark
+  // that a real step ran so the NEXT top-level step parks (above).
+  if (execControl !== undefined) execControl.realStepRan.current = true
 
   const stepSpan = deps.logger?.forStep(key)
   const { config } = s
@@ -1961,7 +2035,60 @@ async function runStepOnce(
 // executeWorkflowFn — shared execution body for execute() and resume()
 // ---------------------------------------------------------------------------
 
-async function executeWorkflowFn(fn: WorkflowFn, deps: WorkflowDeps): Promise<void> {
+/**
+ * Single-step retry control threaded through `runStepOnce`. `realStepRan`
+ * flips the first time a step actually executes (not a cache replay); once
+ * set, `runStepOnce` parks before any further top-level step.
+ */
+interface ExecControl {
+  readonly singleStep: boolean
+  /** Registry-population replay (`populateResumeRegistry`). Registers each
+   *  interactive runner via `runStepOnce`, returns cache hits, and aborts
+   *  before the first real execution so no step ever runs. */
+  readonly replayOnly: boolean
+  readonly realStepRan: { current: boolean }
+}
+
+/**
+ * Control-flow signal (NOT a user-facing error): thrown by `runStepOnce` in
+ * single-step retry mode after the failed step has re-run and persisted, to
+ * unwind the workflow body without running any later step. Caught only by
+ * `executeWorkflowFn`'s single-step terminal handler; never escapes core.
+ */
+class SingleStepParked extends Error {
+  constructor() {
+    super('single-step retry parked')
+    this.name = 'SingleStepParked'
+  }
+}
+
+/**
+ * Control-flow signal (NOT a user-facing error): thrown by `runStepOnce` in
+ * registry-population replay mode the moment it reaches a step that is not a
+ * successful cache hit. Unwinds the body without running anything. Caught only
+ * by `executeWorkflowFn`'s replay-only terminal handler; never escapes core.
+ */
+class ReplayOnlyAborted extends Error {
+  constructor() {
+    super('registry-population replay aborted at first uncached step')
+    this.name = 'ReplayOnlyAborted'
+  }
+}
+
+interface ExecMode {
+  /** Run exactly the failed step then re-park (U5/KTD-8). Never writes the
+   *  run status and never emits `run:ended`. */
+  readonly singleStep?: boolean
+  /** Registry-population replay (`populateResumeRegistry`): register interactive
+   *  runners from cache, execute nothing, write nothing. */
+  readonly replayOnly?: boolean
+}
+
+async function executeWorkflowFn(
+  fn: WorkflowFn,
+  deps: WorkflowDeps,
+  execMode?: ExecMode,
+): Promise<void> {
   // One capture lock per workflow execution. Two concurrent Codex captures in
   // the same workflow (parallel interactive steps in the same execution)
   // serialize their capture windows through this lock; different executions
@@ -1972,6 +2099,13 @@ async function executeWorkflowFn(fn: WorkflowFn, deps: WorkflowDeps): Promise<vo
   // fresh sub-call-id for the same key collides instead of replaying the
   // first invocation's value.
   const keyOwnersThisExecution = new Map<string, StepKeyOwner>()
+
+  const singleStep = execMode?.singleStep === true
+  const replayOnly = execMode?.replayOnly === true
+  const execControl: ExecControl | undefined =
+    singleStep || replayOnly
+      ? { singleStep, replayOnly, realStepRan: { current: false } }
+      : undefined
 
   const run: RunFn = <T, V extends PromptVarsBound>(
     s: Step<T, V>,
@@ -1985,6 +2119,7 @@ async function executeWorkflowFn(fn: WorkflowFn, deps: WorkflowDeps): Promise<vo
       // runtime and the cache-key fold uses `overrides.vars` directly.
       s as AnyStep,
       overrides as RunOverrides | undefined,
+      execControl,
     ) as Promise<T>
 
   const startedAt = deps.clock.now()
@@ -2013,6 +2148,15 @@ async function executeWorkflowFn(fn: WorkflowFn, deps: WorkflowDeps): Promise<vo
       },
       () => fn(run, deps.args ?? {}),
     )
+    // Single-step retry: the body ran to its end without a later step to park
+    // before (the failed step was the last step). The step's success is already
+    // persisted; leave the run status `failed` and emit no `run:ended` — `[r]`
+    // never advances the run to `completed` (KTD-8 / actioned side-effects).
+    if (singleStep) return
+    // Registry-population replay: a fully-cached (completed) run replays to its
+    // end without ever reaching real execution. Return before any status write
+    // or `run:ended` — the cold open must stay a pure observation.
+    if (replayOnly) return
     await deps.stateStore.setStatus(deps.runId, 'completed', deps.clock.now())
     const completedDurationMs = deps.clock.now() - startedAt
     void deps.logger
@@ -2024,6 +2168,27 @@ async function executeWorkflowFn(fn: WorkflowFn, deps: WorkflowDeps): Promise<vo
       .catch(() => {})
     emitLifecycle({ type: 'run:ended', status: 'completed', durationMs: completedDurationMs })
   } catch (err) {
+    // Registry-population replay terminal handling — the abort signal means we
+    // reached the first not-yet-succeeded step (e.g. the failed step of a
+    // `failed` run) and stopped before running it. Every interactive runner up
+    // to that point is registered. Never writes status, never emits `run:ended`.
+    if (replayOnly) {
+      if (err instanceof ReplayOnlyAborted) return
+      // A replay-only pass touches no runner and writes no state, so any other
+      // throw is a workflow-author body bug surfacing during replay — re-throw.
+      throw err
+    }
+    // Single-step retry terminal handling — never writes run status, never
+    // emits `run:ended` (the run stays `failed` until a real continue).
+    if (singleStep) {
+      // The park signal means the failed step re-ran and succeeded, then we
+      // short-circuited the rest of the body. A clean parked retry.
+      if (err instanceof SingleStepParked) return
+      // Otherwise the retried step failed again (or the body crashed). The
+      // step's partial/recovery state is already persisted by `runStepOnce`;
+      // re-throw so `retryStep` can classify step-level failure vs crash.
+      throw err
+    }
     // Step-level failures mean the step ran to completion and produced an
     // unacceptable result — runner exited non-zero (StepError), a validator
     // rejected its output (ValidationError), structured output didn't match
@@ -2109,6 +2274,43 @@ export function workflow<Args extends WorkflowArgs = WorkflowArgs>(
       if (state.status === 'completed') throw new ResumeError(deps.runId, state.status)
       await deps.stateStore.setStatus(deps.runId, 'running')
       await executeWorkflowFn((run) => fn(run, argsFromDeps<Args>(deps)), deps)
+    },
+    async retryStep(deps: WorkflowDeps): Promise<RetryStepResult> {
+      // [r] applies only to a `failed` run. Unlike resume(), it does NOT
+      // `setStatus('running')` — the run status stays `failed` throughout
+      // (KTD-8). `executeWorkflowFn`'s single-step mode replays succeeded steps
+      // from cache, runs the failed step once, then parks without writing the
+      // run status or emitting `run:ended`.
+      const state = await deps.stateStore.loadRun(deps.runId)
+      if (state === undefined) throw new RunNotFoundError(deps.runId)
+      if (state.status !== 'failed') throw new ResumeError(deps.runId, state.status)
+      try {
+        await executeWorkflowFn((run) => fn(run, argsFromDeps<Args>(deps)), deps, {
+          singleStep: true,
+        })
+        return { outcome: 'retried-ok' }
+      } catch (err) {
+        // Step-level failure → the step failed again (re-park at the failure
+        // view). Anything else is a genuine crash; re-throw it.
+        if (
+          err instanceof StepError ||
+          err instanceof ValidationError ||
+          err instanceof SchemaValidationError ||
+          err instanceof ParallelError
+        ) {
+          return { outcome: 'failed-again', error: err }
+        }
+        throw err
+      }
+    },
+    async populateResumeRegistry(deps: WorkflowDeps): Promise<void> {
+      // No status precondition and no `setStatus`: this is a pure replay that
+      // registers interactive runners from the cache and stops at the first
+      // not-yet-succeeded step (`ReplayOnlyAborted`, swallowed inside
+      // `executeWorkflowFn`). Safe on `completed`, `failed`, or `crashed`.
+      await executeWorkflowFn((run) => fn(run, argsFromDeps<Args>(deps)), deps, {
+        replayOnly: true,
+      })
     },
   }
 }

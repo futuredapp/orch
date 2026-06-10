@@ -75,6 +75,25 @@ export interface ExecuteWithAttachOpts {
    * handler sites call this fire-and-forget (no await).
    */
   readonly beforeTeardown?: (exitCode: number) => Promise<void>
+  /**
+   * Read-only viewer mode (used by `open-finished` for re-opening a finished
+   * run). There is no workflow to race: keep the TUI mounted until the user
+   * dismisses it (q intent or detach), then tear down and exit `0`. `workflow`
+   * is ignored, no end-of-run summary is written, and `beforeTeardown` is not
+   * called — a pure open mutates nothing. Ctrl-C / SIGTERM still route through
+   * the signal handlers (teardown → 130/143). Defaults to `false`.
+   */
+  readonly readOnly?: boolean
+  /**
+   * Read-only viewer extension for the interactive `failed` open loop (plan
+   * U6). When `readOnly` is set and the foreground settles, the settled reason
+   * is handed to this callback *after* teardown. The interactive failure view
+   * reacts to a `{ type: 'action' }` reason (run a `[r]`/`[c]` retry, then
+   * reopen) vs a quit/detach (exit). Only consulted when `readOnly` is true;
+   * `open-finished`'s pure read-only open omits it (a `quit`/`detach` simply
+   * exits `0`).
+   */
+  readonly onReadOnlyShutdown?: (reason: ForegroundShutdownReason) => void
 }
 
 async function handleAttachExitedTwoPane(
@@ -158,6 +177,29 @@ export async function executeWithAttach(opts: ExecuteWithAttachOpts): Promise<nu
     .catch(() => ({ tag: FOREGROUND_SETTLED, reason: 'attach-exited' }) as const)
 
   try {
+    // Read-only viewer: nothing executes, so there is no workflow to race.
+    // Stay mounted until the user dismisses the TUI (q intent or detach); a
+    // clean dismissal exits 0. No `beforeTeardown` (a pure open fires no
+    // run-end side effects) and no end-of-run summary.
+    if (opts.readOnly === true) {
+      // Default reason for plain mode / `--no-attach`: there is no foreground
+      // to settle, so we treat it as a benign detach (no action taken).
+      let reason: ForegroundShutdownReason = 'attach-exited'
+      if (opts.host.mode === 'two-pane' && opts.skipAttach !== true) {
+        reason = (await foregroundShutdown).reason
+      }
+      // The outcome is decided the moment the foreground settles. Hand the
+      // settled reason to the callback BEFORE teardown, and never let a
+      // teardown failure (tmux socket gone mid-command — a documented mode)
+      // discard an already-decided `[r]`/`[c]` action: if teardown ran first
+      // and threw, the captured action would be lost and the open loop would
+      // misread a decided action as `dismissed`, exiting non-zero on a step
+      // the user actually chose to retry/continue.
+      opts.onReadOnlyShutdown?.(reason)
+      await opts.host.teardown().catch(() => {})
+      return EXIT.OK
+    }
+
     const winner = await Promise.race([trackedWorkflow, foregroundShutdown])
 
     if (

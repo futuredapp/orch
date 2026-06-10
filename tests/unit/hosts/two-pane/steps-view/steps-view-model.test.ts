@@ -150,6 +150,28 @@ describe('projectStepsView', () => {
     }
   })
 
+  it('keeps a persisted failed run failed when a retry left every step ok and later steps unrun', () => {
+    // The parked-after-`[r]` shape (KTD-8): the executor leaves the run status
+    // `failed`, persists the previously-failed step as a successful entry, and
+    // leaves later steps absent — so there are zero failed step rows.
+    const run = makeRunState({
+      status: 'failed',
+      startedAt: 1000,
+      endedAt: 4000,
+      steps: {
+        plan: makeStepEntry({ name: 'plan', startedAt: 1000, endedAt: 2000 }),
+        work: makeStepEntry({ name: 'work', startedAt: 2000, endedAt: 4000 }),
+      },
+    })
+
+    const state = projectStepsView({ run, overlay: new Map(), ...HEADER })
+
+    expect(state.status).toBe('failed')
+    if (state.status === 'failed') {
+      expect(state.summary.stepsFailed).toBe(0)
+    }
+  })
+
   it('reports a crashed run with non-optional summary', () => {
     const run = makeRunState({ status: 'crashed', startedAt: 0, endedAt: 50, steps: {} })
 

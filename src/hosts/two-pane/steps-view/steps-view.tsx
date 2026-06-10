@@ -126,6 +126,14 @@ export interface StepsViewProps {
    * Default no-op.
    */
   readonly onKey?: (event: StepsViewKeyEvent) => void
+  /**
+   * U6: enable the interactive failure-view actions (`[r]` retry, `[c]`
+   * retry-and-continue). Only the CLI re-entry `failed` open sets this; a
+   * live run's failure frame leaves it `false` so the actions never surface
+   * there (that is the sibling feature, out of scope). Inert unless the run's
+   * `status === 'failed'`.
+   */
+  readonly actionsEnabled?: boolean
 }
 
 export type StepsViewIntent =
@@ -133,6 +141,11 @@ export type StepsViewIntent =
   | { readonly type: 'follow-live' }
   | { readonly type: 'quit' }
   | { readonly type: 'dismiss-banner' }
+  // U5/U6: retry actions, emitted only from the interactive failure view (when
+  // `actionsEnabled` is set on a `failed` run). `[r]` re-runs the failed step
+  // once and re-parks; `[c]` re-runs it and continues to completion.
+  | { readonly type: 'retry' }
+  | { readonly type: 'retry-continue' }
 
 export interface StepsViewKeyEvent {
   readonly ts: number
@@ -165,7 +178,10 @@ export function StepsView({
   now = Date.now,
   scheduleDismiss = defaultScheduleDismiss,
   onKey,
+  actionsEnabled = false,
 }: StepsViewProps): React.ReactElement {
+  // Failure actions are live only in the interactive `failed` re-entry view.
+  const failureActions = actionsEnabled && state.status === 'failed'
   const columns = useAdaptiveColumns()
   const { stdout } = useStdout()
   const { committedName, selectedName, moveUp, moveDown, snapToLive, isUserDriven } =
@@ -277,6 +293,17 @@ export function StepsView({
       onIntent({ type: 'quit' })
       return
     }
+    // U6 failure-view actions. Gated on `failureActions` so `r`/`c` stay inert
+    // outside the interactive `failed` re-entry view (a live run that just
+    // failed, or any completed view, ignores them).
+    if (failureActions && (input === 'r' || input === 'R')) {
+      onIntent({ type: 'retry' })
+      return
+    }
+    if (failureActions && (input === 'c' || input === 'C')) {
+      onIntent({ type: 'retry-continue' })
+      return
+    }
     if (input === 'q') {
       onIntent({ type: 'quit' })
       return
@@ -343,7 +370,9 @@ export function StepsView({
           )}
         </Box>
       )}
-      {isTerminal ? <EndOfRunFooter status={state.status} /> : null}
+      {isTerminal ? (
+        <EndOfRunFooter status={state.status} showFailureActions={failureActions} />
+      ) : null}
       {!helpOpen && !isTerminal ? (
         <ViewModeFooter view={state.view} scrollOffset={scroll.scrollOffset} />
       ) : null}

@@ -66,6 +66,13 @@ export interface FakeHost extends Host {
   readonly attachments: readonly PaneRole[]
   readonly interactiveSpawns: readonly RecordedInteractiveSpawn[]
   setInteractiveResult(result: InteractiveResult): void
+  /**
+   * Make the next `runInteractive` stay pending until the returned resolver is
+   * called. Lets a test reproduce the production ordering where the child
+   * exits *after* an intent has been observed (e.g. `[r]`/`[c]` retry), rather
+   * than the immediate-resolution path that simulates an unexpected crash.
+   */
+  deferInteractiveResult(): (result: InteractiveResult) => void
   /** Override the value `probeReachability()` returns. Defaults to `{ reachable: true }`. */
   setReachability(value: HostReachability): void
 }
@@ -77,6 +84,7 @@ export function createFakeHost(opts: FakeHostOptions = {}): FakeHost {
   const interactiveSpawns: RecordedInteractiveSpawn[] = []
   const mode: RunMode = opts.mode ?? 'plain'
   let nextInteractive: InteractiveResult = { exitCode: 0, durationMs: 0 }
+  let pendingInteractive: Promise<InteractiveResult> | undefined
   let reachability: HostReachability = { reachable: true }
 
   const host: FakeHost = {
@@ -87,6 +95,13 @@ export function createFakeHost(opts: FakeHostOptions = {}): FakeHost {
     interactiveSpawns,
     setInteractiveResult(result: InteractiveResult): void {
       nextInteractive = result
+    },
+    deferInteractiveResult(): (result: InteractiveResult) => void {
+      let resolveFn: (result: InteractiveResult) => void = () => {}
+      pendingInteractive = new Promise<InteractiveResult>((resolve) => {
+        resolveFn = resolve
+      })
+      return resolveFn
     },
     setReachability(value: HostReachability): void {
       reachability = value
@@ -121,6 +136,11 @@ export function createFakeHost(opts: FakeHostOptions = {}): FakeHost {
         ...(spawn.autoStop !== undefined ? { autoStop: spawn.autoStop } : {}),
         ...(spawn.onCleanup !== undefined ? { onCleanup: spawn.onCleanup } : {}),
       })
+      if (pendingInteractive !== undefined) {
+        const deferred = pendingInteractive
+        pendingInteractive = undefined
+        return deferred
+      }
       return nextInteractive
     },
     async attachForeground(): Promise<void> {
