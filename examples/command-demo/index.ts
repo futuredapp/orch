@@ -13,7 +13,7 @@
  *   bunx orch run command-demo --mode=two-pane   # output streams in the right pane
  */
 
-import { command, tail, workflow } from '../../src/core/index.ts'
+import { command, tail, workflow } from 'orch'
 
 export default workflow('command-demo', async (run) => {
   const VERSION = command('bun-version', {

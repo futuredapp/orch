@@ -35,11 +35,7 @@
 
 import { mkdir } from 'node:fs/promises'
 import * as nodePath from 'node:path'
-import { z } from 'zod'
-import { ask, command, schema, step, workflow } from '../../src/core/index.ts'
-import { claude, codex } from '../../src/runners/index.ts'
-import type { Runner } from '../../src/runners/index.ts'
-import { BunFsService, BunProcessService } from '../../src/services/index.ts'
+import { BunFsService, BunProcessService, ask, claude, codex, command, schema, step, workflow, z, type Runner } from 'orch'
 
 process.env.IS_SANDBOX = '1'
 

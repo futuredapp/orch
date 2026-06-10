@@ -10,8 +10,7 @@
  * boundary rows).
  */
 
-import { parallel, runWorkflow, step, workflow } from '../../src/core/index.ts'
-import { claude } from '../../src/runners/index.ts'
+import { claude, parallel, runWorkflow, step, workflow } from 'orch'
 
 // Two distinct subworkflows. Each is a single-step body, distinguished only
 // by name — that's enough to honour the single-invocation contract.

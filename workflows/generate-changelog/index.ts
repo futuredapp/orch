@@ -15,17 +15,16 @@
  * will accept `--dangerously-skip-permissions`. Run this only in a repo checkout
  * you trust, as the maintainer, at release time.
  *
- * This is a MAINTAINER-ONLY, run-from-source workflow: like new-feature/do-work
- * it imports orch via relative `../../src/...` paths, so it is not bundled into
- * (or runnable from) the brew binary — and does not need to be.
+ * This is a MAINTAINER-ONLY workflow by intent (dangerous autonomous session,
+ * run at release time). It imports the public API via the bare `'orch'`
+ * specifier, so it loads under both a dev checkout and the compiled brew binary.
  *
  * Usage:
  *   bunx orch run generate-changelog
  *   bunx orch run generate-changelog "v0.1.0..HEAD as v0.2.0"
  */
 
-import { step, workflow } from '../../src/core/index.ts'
-import { claude } from '../../src/runners/index.ts'
+import { claude, step, workflow } from 'orch'
 
 export default workflow('generate-changelog', async (run, args) => {
   // Set inside the body (not at module import) so importing this workflow in a

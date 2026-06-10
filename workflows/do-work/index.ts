@@ -21,10 +21,7 @@
  */
 
 import * as nodePath from 'node:path'
-import { z } from 'zod'
-import { command, schema, step, tail, workflow } from '../../src/core/index.ts'
-import { claude } from '../../src/runners/index.ts'
-import type { Runner } from '../../src/runners/index.ts'
+import { claude, command, schema, step, tail, workflow, z, type Runner } from 'orch'
 
 process.env.IS_SANDBOX = '1'
 

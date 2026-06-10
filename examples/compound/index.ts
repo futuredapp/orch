@@ -33,10 +33,7 @@
  */
 
 import * as nodePath from 'node:path'
-import { z } from 'zod'
-import { schema, step, workflow } from '../../src/core/index.ts'
-import { claude } from '../../src/runners/index.ts'
-import type { Runner } from '../../src/runners/index.ts'
+import { claude, schema, step, workflow, z, type Runner } from 'orch'
 
 // Signal sandboxed execution to Claude. `IS_SANDBOX` is in the Claude runner's
 // env allowlist, so setting it on `process.env` here propagates to every

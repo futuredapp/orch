@@ -25,9 +25,7 @@
 
 import { mkdir } from 'node:fs/promises'
 import * as nodePath from 'node:path'
-import { z } from 'zod'
-import { loadPrompt, schema, step, workflow } from '../../src/core/index.ts'
-import { claude } from '../../src/runners/index.ts'
+import { claude, loadPrompt, schema, step, workflow, z } from 'orch'
 
 const HAIKU_MODEL = 'claude-haiku-4-5-20251001'
 

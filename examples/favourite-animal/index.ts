@@ -19,8 +19,7 @@
  * Requirements: `claude` must be on PATH.
  */
 
-import { step, workflow } from '../../src/core/index.ts'
-import { claude } from '../../src/runners/index.ts'
+import { claude, step, workflow } from 'orch'
 
 const ASK_ANIMAL = step.define('ask-animal', {
   agent: claude({

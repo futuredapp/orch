@@ -15,10 +15,7 @@
  */
 
 import * as nodePath from 'node:path'
-import { step, workflow } from '../../src/core/index.ts'
-import { claude } from '../../src/runners/index.ts'
-import { BunFsService, path } from '../../src/services/index.ts'
-import { check, fileProduced } from '../../src/validators/index.ts'
+import { BunFsService, check, claude, fileProduced, path, step, workflow } from 'orch'
 
 const bunFs = new BunFsService()
 

@@ -11,8 +11,7 @@
  * distinct so both can run from the same parent without tripping R20.
  */
 
-import { step, workflow, type WorkflowArgs } from '../../src/core/index.ts'
-import { claude } from '../../src/runners/index.ts'
+import { claude, step, workflow, type WorkflowArgs } from 'orch'
 
 export interface SimpleFeatureArgs extends WorkflowArgs {
   readonly prompt: string
