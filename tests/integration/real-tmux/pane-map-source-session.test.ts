@@ -18,7 +18,7 @@ import { afterEach, describe, expect, it } from 'bun:test'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { allocateSocketName } from '@orch/test/real-tmux/index.ts'
+import { allocateSocketName, canRunRealTmux } from '@orch/test/real-tmux/index.ts'
 import {
   createSourceSession,
   SOURCE_HOLDER_ARGV,
@@ -29,7 +29,7 @@ import { BunProcessService } from '../../../src/services/process/index.ts'
 import { RealTmuxService, type SocketName, socketName } from '../../../src/services/tmux/index.ts'
 import { path as toPath } from '../../../src/services/types.ts'
 
-const canRun = Bun.which('tmux') !== null
+const canRun = canRunRealTmux()
 
 const killServer = async (socket: SocketName): Promise<void> => {
   const proc = Bun.spawn(['tmux', '-L', socket, 'kill-server'], {

@@ -147,6 +147,14 @@ export interface RealTmuxFixture {
  * `tmux` is on PATH and the current shell is not nested inside another tmux
  * session. Tests use `describe.skipIf(!canRunRealTmux())` so they auto-skip
  * in environments where the harness would throw.
+ *
+ * `ORCH_DISABLE_REAL_TMUX=1` forces a skip even when tmux is present. PR CI
+ * sets it to honor the AE3 design rule — no real-tmux levels run on pull
+ * requests (the heavy two-pane host / rendering tests are slow and brittle on
+ * headless runners). Release CI and local runs leave it unset, so they still
+ * exercise the full real-tmux suite. The flag is read from the passed `env`,
+ * so callers that hand in an explicit env (e.g. unit assertions about this
+ * predicate) are unaffected by the ambient process flag.
  */
 export function canRunRealTmux(
   env: Readonly<Record<string, string | undefined>> = process.env,
@@ -154,6 +162,7 @@ export function canRunRealTmux(
   if (Bun.which('tmux') === null) return false
   const tmuxEnv = env.TMUX
   if (typeof tmuxEnv === 'string' && tmuxEnv.length > 0) return false
+  if (env.ORCH_DISABLE_REAL_TMUX === '1') return false
   return true
 }
 
