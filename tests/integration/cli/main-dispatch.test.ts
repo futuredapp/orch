@@ -77,3 +77,28 @@ describe('config-free dispatch — regressions for non-init commands', () => {
     expect(stderr).toContain('Unknown command:')
   }, 10_000)
 })
+
+// Regression for the Homebrew/compiled-binary crash: the steps-view child is
+// launched by re-invoking the binary as `orch __steps-view --opts <b64>`. The
+// dispatcher MUST route that to the runner — not treat it as an unknown command
+// (which printed usage + exit 2, killing the left pane). We exercise it without
+// `--opts` so the runner fails fast (exit 1) instead of mounting a live Ink TUI.
+describe('internal subcommand dispatch — __steps-view re-entry', () => {
+  it('routes __steps-view to the steps-view runner instead of "Unknown command"', async () => {
+    const { exitCode, stderr } = await runCli(['__steps-view'])
+
+    expect(stderr).not.toContain('Unknown command:')
+    expect(exitCode).not.toBe(EXIT_CONFIG_ERROR)
+    // The runner's own missing-args failure — proof we reached it.
+    expect(stderr).toContain('--opts')
+  }, 10_000)
+
+  it('routes __ask to the ask runner instead of "Unknown command"', async () => {
+    const { exitCode, stderr } = await runCli(['__ask'])
+
+    expect(stderr).not.toContain('Unknown command:')
+    expect(exitCode).not.toBe(EXIT_CONFIG_ERROR)
+    // The ink-runner's own missing-args failure — proof we reached it.
+    expect(stderr).toContain('--spec')
+  }, 10_000)
+})

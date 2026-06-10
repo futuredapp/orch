@@ -19,17 +19,17 @@ import type { PromptResult, PromptSpec } from './prompt-service.ts'
 //               via temp-file + rename so a partial write can never be
 //               read as a complete result.
 //
-// TODO(distribution): v1 ships as checkout-only — InkPromptService spawns
-// `bun <abs path to this file>`. Before publishing orch as a binary, give
-// this script a `bin` entry in package.json so it resolves under
-// `npm install -g`. Tracked in phase 18b's DoD.
+// Distribution: in a dev checkout InkPromptService spawns `bun <abs path to
+// this file>` and this module self-executes (see the `isDirect` guard at the
+// bottom). In a compiled binary it is bundled into `bin.ts` and reached via
+// the `__ask` CLI subcommand instead — it must NOT self-execute there.
 
 interface ParsedArgs {
   readonly spec: PromptSpec
   readonly resultPath: string
 }
 
-function parseArgs(argv: readonly string[]): ParsedArgs {
+export function parseAskRunnerArgs(argv: readonly string[]): ParsedArgs {
   let specRaw: string | undefined
   let resultPath: string | undefined
   for (let i = 0; i < argv.length; i++) {
@@ -55,8 +55,8 @@ async function writeResultAtomically(path: string, result: PromptResult): Promis
   await rename(tmp, path)
 }
 
-async function main(): Promise<void> {
-  const { spec, resultPath } = parseArgs(process.argv.slice(2))
+export async function runAskRunner(args: ParsedArgs): Promise<void> {
+  const { spec, resultPath } = args
 
   let writePromise: Promise<void> = Promise.resolve()
 
@@ -85,7 +85,22 @@ async function main(): Promise<void> {
   await writePromise
 }
 
-main().catch((err) => {
-  process.stderr.write(`[ink-runner] ${err instanceof Error ? err.message : String(err)}\n`)
-  process.exit(1)
-})
+// Dev checkout only: `InkPromptService` spawns `bun <abs>/ink-runner.ts`, so
+// this file is the process entrypoint and self-executes. In a compiled binary
+// it is bundled into `bin.ts` and re-entry is routed explicitly by `main.ts`
+// (the `__ask` internal subcommand) — an embedded module's `import.meta.url`
+// lives under Bun's virtual FS (`/$bunfs/...`), so it must NOT self-execute
+// there (that would hijack the startup of every orch command).
+const isDirect = (): boolean => {
+  if (import.meta.url.includes('/$bunfs/')) return false
+  const meta = import.meta as unknown as { readonly main?: boolean }
+  if (meta.main === true) return true
+  return process.argv[1]?.endsWith('ink-runner.ts') ?? false
+}
+
+if (isDirect()) {
+  runAskRunner(parseAskRunnerArgs(process.argv.slice(2))).catch((err) => {
+    process.stderr.write(`[ink-runner] ${err instanceof Error ? err.message : String(err)}\n`)
+    process.exit(1)
+  })
+}

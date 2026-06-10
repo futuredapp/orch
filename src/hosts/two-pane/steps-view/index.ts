@@ -12,7 +12,7 @@ export type {
   StartStepsViewOptions,
   StepsIntent,
 } from './start-steps-view.ts'
-export { StepsIntentSchema, startStepsView } from './start-steps-view.ts'
+export { STEPS_VIEW_SUBCOMMAND, StepsIntentSchema, startStepsView } from './start-steps-view.ts'
 export type { StepsViewIntent, StepsViewKeyEvent, StepsViewProps } from './steps-view.tsx'
 export { HelpOverlay, ParallelGroup, StepsView } from './steps-view.tsx'
 export type { StepsSelection } from './steps-view-hooks.ts'
@@ -42,6 +42,9 @@ export {
   serializeTuiOverlayLine,
   subworkflowOverlayKey,
 } from './steps-view-model.ts'
+// Runner re-entry surface — the CLI dispatcher routes `__steps-view` here when
+// the compiled binary re-invokes itself to launch the left pane.
+export { parseRunnerArgs, runStepsViewRunner } from './steps-view-runner.tsx'
 export type { TailNdjsonHandle, TailNdjsonOptions } from './tail-ndjson.ts'
 export { tailNdjson } from './tail-ndjson.ts'
 export type { TailStateJsonHandle, TailStateJsonOptions } from './tail-state-json.ts'

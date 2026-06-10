@@ -24,13 +24,51 @@ occur:
 
 ---
 
-## Part 1 — One-time setup (B1 → B13)
+## Part 1 — One-time setup (B0 → B13)
 
-Do these in order. Do not reorder: protections and the secret/PAT must exist
-before the repo is public, and the public flip must precede the brew validation
-and the first tag.
+Do these in order. Do not reorder: the remote must exist before anything is
+pushed, protections and the secret/PAT must exist before the repo is public, and
+the public flip must precede the brew validation and the first tag.
 
-### B1 — Name-availability check (do this first)
+### B0 — Create the `orch` repo and push `main`
+
+**Access:** GitHub repo-admin + git push. **Source:** baseline assumption of this
+guide — every step from B4 on operates on `origin` and a remote `main`.
+
+Right now the project is a **local-only** git repository. Everything downstream
+assumes a GitHub repo at **`futuredapp/orch`** with `origin` pointing at it and
+the `main` branch already pushed (the formula URLs, CI workflows, README, and
+docs `base` are all hard-coded to this slug — see the placeholder note above).
+
+Create the repo **private**. The public flip is deliberately deferred to **B11**,
+*after* the blocking full-history secret scan (**B10**). Creating it public now
+would skip that irreversible gate — do not do it.
+
+Run from your local `orch` checkout:
+
+```bash
+# 1. Create the PRIVATE repo and wire it as 'origin' (no push yet).
+gh repo create futuredapp/orch --private --source=. --remote=origin
+#    Already have an 'origin' from an earlier attempt? Repoint it instead:
+#    git remote set-url origin https://github.com/futuredapp/orch.git
+
+# 2. Push the release branch. Branch protection (B5) and the public flip (B11)
+#    both operate on 'main', so it must exist on the remote first.
+git checkout main
+git push -u origin main
+```
+
+Leave `develop` for **B4** — it pushes `develop` and flips the default branch.
+Your checkout already has a local `develop`, so at B4 skip the
+`git checkout -b develop` and run only its `git push -u origin develop` +
+`gh repo edit` lines. The repo stays **private** through B10; do not change its
+visibility until B11.
+
+**Verify:** `gh repo view futuredapp/orch --json visibility,defaultBranchRef`
+shows `"private"` with `main`; `git remote -v` shows `origin` →
+`github.com/futuredapp/orch`.
+
+### B1 — Name-availability check (do this before creating the tap)
 
 **Access:** local `brew`, `npm`, web. **Source:** R3b.
 
@@ -185,8 +223,29 @@ gh api -X POST repos/futuredapp/orch/pages -f build_type=workflow
 Web equivalent: **Settings → Pages → Build and deployment → Source: GitHub
 Actions.**
 
-**Verify:** Settings → Pages shows source "GitHub Actions". The site goes live
-after the first push to `main` (B13).
+Then **pin the `github-pages` environment to deploy from `main`.** Enabling Pages
+auto-creates the `github-pages` environment with a deployment-branch policy
+seeded from the **default branch (`develop`)** — but `docs.yml` deploys on push
+to **`main`**, so a push to `main` is rejected with *"Branch main is not allowed
+to deploy to github-pages"* until the policy allows it. Add `main` and drop the
+stale `develop` entry:
+
+```bash
+# Allow main; then list, find the develop policy id, and delete it.
+gh api -X POST repos/futuredapp/orch/environments/github-pages/deployment-branch-policies \
+  -f name=main -f type=branch
+gh api repos/futuredapp/orch/environments/github-pages/deployment-branch-policies   # note the develop id
+gh api -X DELETE repos/futuredapp/orch/environments/github-pages/deployment-branch-policies/<develop-id>
+```
+
+Web equivalent: **Settings → Environments → github-pages → Deployment branches →
+add `main`, remove `develop`.**
+
+**Verify:** Settings → Pages shows source "GitHub Actions"; the
+`github-pages` environment's deployment-branch policy lists **`main`** (and not
+`develop`) —
+`gh api repos/futuredapp/orch/environments/github-pages/deployment-branch-policies`.
+The site goes live after the first push to `main` (B13).
 
 ### B10 — Full-history secret scan **(BLOCKING GATE)**
 
@@ -229,6 +288,11 @@ This resolves the chicken-and-egg (the automated bump needs both the tap repo
 bytes before the first real tag.
 
 ```bash
+# 0. Point ORCH at your local orch checkout. Every path below derives from it,
+#    so you never have to hand-edit a placeholder. (The literal "/path/to/orch"
+#    is NOT a real path — set this once instead.)
+ORCH=/path/to/your/orch/checkout   # e.g. ~/projects/orch
+
 # 1. Build all three binaries locally.
 bun run build:binary --target bun-darwin-arm64 --outfile dist/orch-darwin-arm64
 bun run build:binary --target bun-darwin-x64   --outfile dist/orch-darwin-x64
@@ -241,19 +305,31 @@ gh release create v0.0.1-test --prerelease --title v0.0.1-test \
   dist/orch-darwin-arm64 dist/orch-darwin-x64 dist/orch-linux-x64 dist/SHA256SUMS
 
 # 3. Hand-bump a LOCAL copy of the formula against that pre-release.
+#    Keep the bump on ONE line — a stray newline before a backslash ends the
+#    command early and the shell reads "--formula …" as its own command.
+#    The bump writes a relative path (Formula/orch.rb), so it must run from
+#    inside the tap clone — the `cd "$_"` lands you there.
 git clone https://github.com/futuredapp/homebrew-orch "$(mktemp -d)/tap" && cd "$_"
-bun /path/to/orch/scripts/bump-formula.ts \
-  --version 0.0.1-test --dist /path/to/orch/dist --formula Formula/orch.rb
+bun "$ORCH/scripts/bump-formula.ts" --version 0.0.1-test --dist "$ORCH/dist" --formula Formula/orch.rb
+
+#    Confirm the bump took: version is 0.0.1-test and the sha256s are non-zero.
+grep -E 'version|sha256' Formula/orch.rb
 
 # 4. Validate the formula installs the binary from the released bytes.
-brew install --formula ./Formula/orch.rb
+#    Current Homebrew REFUSES to install a formula from a loose file path
+#    ("Homebrew requires formulae to be in a tap"), so stage the bumped formula
+#    in a throwaway local tap and install it by qualified name.
+brew tap-new futuredapp/orch --no-git
+cp Formula/orch.rb "$(brew --repository futuredapp/orch)/Formula/orch.rb"
+brew install futuredapp/orch/orch
 orch --help
-brew audit --new --formula ./Formula/orch.rb
+brew audit --new --formula futuredapp/orch/orch
 ```
 
 Do **not** push this test bump to the tap's `main` — leave it at the placeholder
 skeleton. The real `v0.1.0` release (B13) re-bumps it automatically. Clean up
-when done: `brew uninstall orch` and (optionally) `gh release delete v0.0.1-test`.
+when done: `brew uninstall orch`, `brew untap futuredapp/orch`, and (optionally)
+`gh release delete v0.0.1-test`.
 
 **Verify (AE1):** on macOS arm64 with no Bun, `brew install --formula …` yields a
 working `orch`; `brew audit` is clean. Repeat the install on a Linux x64 box to
@@ -290,6 +366,7 @@ git push origin v0.1.0
 
 ```bash
 brew tap futuredapp/orch
+brew trust futuredapp/orch   # Homebrew 5.1+ refuses untrusted third-party taps
 brew install orch
 orch --help
 ```

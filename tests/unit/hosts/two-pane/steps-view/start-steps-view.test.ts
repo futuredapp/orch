@@ -16,6 +16,7 @@ import { Writable } from 'node:stream'
 import { createFakeHost } from '@orch/test/fake-host.ts'
 import { createPaneQueue } from '../../../../../src/hosts/two-pane/pane-queue.ts'
 import {
+  STEPS_VIEW_SUBCOMMAND,
   StepsIntentSchema,
   startStepsView,
 } from '../../../../../src/hosts/two-pane/steps-view/index.ts'
@@ -99,6 +100,45 @@ describe('startStepsView', () => {
     const spawn = h.host.interactiveSpawns[0]
     expect(spawn?.pane).toBe('left')
     expect(spawn?.argv[0]).toContain(process.execPath)
+    // Dev checkout: bun runs the runner file directly, so argv[1] stays the
+    // script path — NOT the compiled-binary subcommand.
+    expect(spawn?.argv[1]).toMatch(/steps-view-runner\.tsx$/)
+    expect(spawn?.argv[1]).not.toBe(STEPS_VIEW_SUBCOMMAND)
+    expect(spawn?.argv).toContain('--opts')
+
+    await handle.stop()
+  })
+
+  it('launches the child via the internal subcommand (not the embedded script path) when orch runs from a compiled binary', async () => {
+    const h = makeHarness()
+    h.host.setInteractiveResult({ exitCode: 0, durationMs: 0 })
+    const { stateDir } = await makeStateDir()
+
+    // The two strings that differ inside a `bun build --compile` binary,
+    // captured verbatim from the Homebrew repro: execPath is the orch binary
+    // (not a generic `bun`), and the runner resolves under Bun's embedded FS.
+    const handle = await startStepsView({
+      host: h.host,
+      tmux: h.tmux,
+      socket: socketName('orch-test'),
+      leftPaneId: paneId('%0'),
+      paneQueue: createPaneQueue(),
+      stateDir: toPath(stateDir),
+      basePath: toPath(tmpDir),
+      runId: RID,
+      workflowName: 'demo',
+      cwd: toPath(tmpDir),
+      env: {},
+      stderr: h.stderr,
+      bunExecPath: '/opt/homebrew/bin/orch',
+      runnerScript: toPath('/$bunfs/root/steps-view-runner.tsx'),
+    })
+
+    const spawn = h.host.interactiveSpawns[0]
+    // argv[1] is what the re-invoked binary treats as positionals[0]; it MUST
+    // be a command the CLI dispatcher recognizes, never the embedded path.
+    expect(spawn?.argv[1]).toBe(STEPS_VIEW_SUBCOMMAND)
+    expect(spawn?.argv).not.toContain('/$bunfs/root/steps-view-runner.tsx')
     expect(spawn?.argv).toContain('--opts')
 
     await handle.stop()

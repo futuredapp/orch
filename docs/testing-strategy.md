@@ -180,11 +180,49 @@ Selection is **by path only**: the filesystem is the manifest. Cost levels are n
 | Touched process lifecycle | `bun run test:two-pane:lifecycle` | lifecycle (serial, `--max-concurrency=1`) |
 | Pre-commit / the gate (local) | `bun run check` | everything **except** real-agent; includes `check:migration` (overlap-report + import-parity) |
 | Pre-merge (PR CI) | `bun run check` with `ORCH_DISABLE_REAL_TMUX=1` | same, **minus the entire real-tmux surface** (see below) |
-| Release | `bun run check:release` | **everything** (`preflight:release` checks `which claude codex` first) |
+| Touched binary launch / re-entry | `bun run test:binary-smoke` | builds `dist/orch`, asserts boot + internal-subcommand dispatch headlessly (see "Binary smoke" below) |
+| Release | `bun run check:release` | **everything** — includes `test:binary-smoke` (`preflight:release` checks `which claude codex` first) |
 
 **PR CI deliberately runs no real tmux (AE3).** `.github/workflows/pr.yml` exports `ORCH_DISABLE_REAL_TMUX=1`, which `canRunRealTmux()` honors — so the `screen` / `full-host` / `lifecycle` drivers **and** the `tests/integration/real-tmux/` level all skip on pull requests. The fast surface (`model`, `tmux-argv`, `unit`) and the low-level tmux *ops* tests that use their own `Bun.which('tmux')` predicate (service-level `RealTmuxService`, `windows`, fixture lifecycle) still run on PR CI. Full real-tmux coverage lives on **release CI and local `bun run check`** (flag unset). Rationale and history: [`docs/issues/2026-06-10-pr-ci-real-tmux-and-env-gaps.md`](issues/2026-06-10-pr-ci-real-tmux-and-env-gaps.md).
 
 Concurrency is **encoded as flags**, not a comment: `--max-concurrency=2` bounds the tmux pane levels; `--max-concurrency=1` makes `lifecycle` serial. `real-agent` is unreachable except by naming `test:two-pane:full:real` (gated on `tmux` + the CLI + `RUN_REAL_TMUX_E2E=1`).
+
+## Binary smoke — testing the compiled artifact
+
+Every category above runs under the `bun` interpreter. That means an entire
+class of bugs is **structurally invisible** to them: anything that only differs
+in a `bun build --compile` standalone binary, where `process.execPath` is the
+`orch` binary itself (not a generic interpreter) and embedded modules resolve
+under Bun's virtual FS (`/$bunfs/...`). The Homebrew left-pane crash
+(`Unknown command: /$bunfs/root/steps-view-runner.tsx` → dead pane) passed the
+entire green suite for exactly this reason — see
+[`docs/solutions/compiled-binary-tui-launch-contract.md`](solutions/compiled-binary-tui-launch-contract.md).
+
+`tests/binary-smoke/` closes that gap. It is **not** a `scenario()` and **not**
+a two-pane category — it is a plain `bun test` that builds the real artifact and
+asserts, headlessly (no tmux, no agent), only the things that can break in the
+binary:
+
+1. The runner modules do **not** self-execute at import and hijack startup
+   (`--help` prints usage, not a runner's missing-args error).
+2. The internal re-entry subcommands route to their runners instead of falling
+   through to "Unknown command" (`__steps-view`, `__ask`).
+
+It lives in its own directory so the path-based selection never pulls it into
+the fast loop (the build adds seconds), and is gated via `bun run
+test:binary-smoke` inside `check:release` — **never** on `bun run check`. To
+faithfully exercise the same launch contract at unit speed, inject the binary's
+two strings (`bunExecPath`, an `/$bunfs/...` `runnerScript`) through the
+launchers' existing override seams and assert `argv[1]` is a command the
+dispatcher recognizes (the round-trip) — not a literal argv snapshot.
+
+For manual exercise, `scripts/orch-binary.ts` (`bun run orch:binary`) builds the
+binary and execs it with whatever argv you pass (stdio inherited, so a real
+terminal gives it a TTY and two-pane attaches like an installed user's); with no
+args it just builds and prints the path. The smoke proves the *launch contract*,
+not that the pane visually renders — that last mile needs a TTY and lives in the
+real-tmux harness / the `orch-qa-engineer` skill. Methodology and rationale:
+[`docs/solutions/binary-smoke-testing.md`](solutions/binary-smoke-testing.md).
 
 ## Migration tooling (`tests/_migration/`)
 
