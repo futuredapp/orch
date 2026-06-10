@@ -80,11 +80,15 @@ jobs:
       - name: Audit action pins
         run: bun run check:actions
 
-      # The gate: lint + typecheck + unit + mocked + real-tmux integration tests.
-      # RUN_REAL_* is deliberately never set (AE3) — no real Claude/Codex runs on
-      # PRs. The real-tmux level DOES run (gated on tmux presence, not RUN_REAL_*),
-      # which is why the modern-tmux step above is required.
+      # The gate: lint + typecheck + unit + mocked-integration tests. Per AE3 no
+      # real tmux / Claude / Codex runs on PRs: ORCH_DISABLE_REAL_TMUX skips the
+      # heavy two-pane host + rendering levels (slow and brittle headless), and
+      # RUN_REAL_* stays unset. The service-level RealTmuxService tests (own
+      # tmux-on-PATH predicate) and the real-git levels still run — which is why
+      # the modern-tmux + git-identity steps above are required.
       - name: Run checks
+        env:
+          ORCH_DISABLE_REAL_TMUX: '1'
         run: bun run check
 
       - name: Build docs (dead-link gate)
