@@ -1,14 +1,18 @@
 # PR gate (R11, R11a, AE3): every pull request must pass the full check suite,
-# the docs build, conventional-commit linting, and the action-pin audit.
+# the docs build, and conventional-commit linting.
+#
+# The check suite itself lives in the reusable check.yml (shared with release.yml
+# so the two can never drift). This workflow adds the two PR-only gates on top:
+# the docs dead-link build and commit-message linting.
 #
 # SECURITY — this workflow runs untrusted fork-PR code. It MUST NOT reference any
-# `secrets.*`. On a public repo the `pull_request` event hands fork PRs a
-# read-only GITHUB_TOKEN with no secret access, which is exactly what we want.
-# Do NOT "fix" a perceived missing secret by switching to `pull_request_target`:
-# that runs with the base repo's secrets in scope while checking out
-# attacker-controlled code, a well-known supply-chain attack vector. If a check
-# ever genuinely needs a secret, isolate it in a separate `pull_request_target`
-# job that does NOT check out fork code.
+# `secrets.*`, and it passes none to the reusable check workflow. On a public repo
+# the `pull_request` event hands fork PRs a read-only GITHUB_TOKEN with no secret
+# access, which is exactly what we want. Do NOT "fix" a perceived missing secret
+# by switching to `pull_request_target`: that runs with the base repo's secrets in
+# scope while checking out attacker-controlled code, a well-known supply-chain
+# attack vector. If a check ever genuinely needs a secret, isolate it in a
+# separate `pull_request_target` job that does NOT check out fork code.
 name: PR
 
 on:
@@ -24,7 +28,26 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The full check suite — identical to the gate release.yml runs on a tag.
   check:
+    uses: ./.github/workflows/check.yml
+
+  docs:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build docs (dead-link gate)
+        run: bun run docs:build
+
+  commitlint:
     runs-on: ubuntu-24.04
     steps:
       # fetch-depth: 0 so commitlint can see the full PR commit range.
@@ -38,61 +61,6 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
-
-      # The real-git integration level (worktree-real, commit-real) drives orch's
-      # own commit step, which relies on ambient git identity — exactly like a
-      # developer's machine. CI runners have none, so configure one (mirrors
-      # release.yml). Without this, `commit()` fails with "Author identity unknown".
-      - name: Configure git identity
-        run: |
-          git config --global user.name "orch CI"
-          git config --global user.email "orch-ci@users.noreply.github.com"
-
-      # ubuntu-24.04 ships tmux 3.4, which has an upstream regression: splitting a
-      # window in a DETACHED session (no attached client) fails with "size missing"
-      # (tmux/tmux#3060), fixed in 3.5. The real-tmux integration level splits
-      # detached sessions directly, so it cannot pass on 3.4. Build a modern tmux
-      # from a checksum-pinned release tarball; /usr/local/bin then shadows apt's
-      # 3.4. No GitHub Action involved, so R11a (action pinning) does not apply —
-      # the tarball is pinned by sha256 instead.
-      - name: Install tmux 3.6b
-        env:
-          TMUX_VERSION: 3.6b
-          TMUX_SHA256: 390759d25fdba016887ec982b808927e637070fd7d03a8021f8ef3102b9ae3c7
-        run: |
-          set -euxo pipefail
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential bison pkg-config libevent-dev libncurses-dev
-          curl -fsSL -o /tmp/tmux.tar.gz \
-            "https://github.com/tmux/tmux/releases/download/${TMUX_VERSION}/tmux-${TMUX_VERSION}.tar.gz"
-          echo "${TMUX_SHA256}  /tmp/tmux.tar.gz" | sha256sum -c -
-          tar -xzf /tmp/tmux.tar.gz -C /tmp
-          cd "/tmp/tmux-${TMUX_VERSION}"
-          ./configure
-          make -j"$(nproc)"
-          sudo make install
-          hash -r
-          tmux -V
-
-      # Every third-party/first-party action must be SHA-pinned (R11a). A mutable
-      # @v4 / @main ref fails here before anything else runs.
-      - name: Audit action pins
-        run: bun run check:actions
-
-      # The gate: lint + typecheck + unit + mocked-integration tests. Per AE3 no
-      # real tmux / Claude / Codex runs on PRs: ORCH_DISABLE_REAL_TMUX skips the
-      # heavy two-pane host + rendering levels (slow and brittle headless), and
-      # RUN_REAL_* stays unset. The service-level RealTmuxService tests (own
-      # tmux-on-PATH predicate) and the real-git levels still run — which is why
-      # the modern-tmux + git-identity steps above are required.
-      - name: Run checks
-        env:
-          ORCH_DISABLE_REAL_TMUX: '1'
-        run: bun run check
-
-      - name: Build docs (dead-link gate)
-        run: bun run docs:build
 
       - name: Lint commit messages
         run: >-

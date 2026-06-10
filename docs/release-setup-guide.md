@@ -145,14 +145,18 @@ gh repo edit futuredapp/orch --default-branch develop
 
 **Access:** GitHub repo-admin. **Source:** U13 step 3 / R3.
 
-Require the PR gate's `check` job (the job name in `.github/workflows/pr.yml`),
-allow no direct pushes, and block force-push/deletion.
+Require the PR gate's three jobs, allow no direct pushes, and block
+force-push/deletion. The check suite runs through the reusable
+`.github/workflows/check.yml` (shared with `release.yml`), so its status context
+is the nested name **`check / check`** — `<caller-job-id> / <reusable-job-name>`
+— not bare `check`. The docs dead-link build and commit-message lint are now
+their own jobs (`docs`, `commitlint`).
 
 ```bash
 gh api -X PUT repos/futuredapp/orch/branches/main/protection \
   --input - <<'JSON'
 {
-  "required_status_checks": { "strict": true, "contexts": ["check"] },
+  "required_status_checks": { "strict": true, "contexts": ["check / check", "docs", "commitlint"] },
   "enforce_admins": true,
   "required_pull_request_reviews": { "required_approving_review_count": 1 },
   "restrictions": null,
@@ -163,7 +167,7 @@ JSON
 ```
 
 **Verify:** a direct `git push origin main` is rejected; a PR cannot merge until
-`check` is green.
+`check / check`, `docs`, and `commitlint` are green.
 
 ### B6 — Tag protection for `v*`
 
@@ -223,29 +227,32 @@ gh api -X POST repos/futuredapp/orch/pages -f build_type=workflow
 Web equivalent: **Settings → Pages → Build and deployment → Source: GitHub
 Actions.**
 
-Then **pin the `github-pages` environment to deploy from `main`.** Enabling Pages
+Then **pin the `github-pages` environment to deploy from the `v*` tag.** Docs
+deploy is no longer a standalone `docs.yml` on push to `main` — it is the
+`deploy-docs` job in `release.yml`, which runs on a `v*` tag and so originates
+from a **tag ref** (`refs/tags/v0.1.0`), not a branch. Enabling Pages
 auto-creates the `github-pages` environment with a deployment-branch policy
-seeded from the **default branch (`develop`)** — but `docs.yml` deploys on push
-to **`main`**, so a push to `main` is rejected with *"Branch main is not allowed
-to deploy to github-pages"* until the policy allows it. Add `main` and drop the
-stale `develop` entry:
+seeded from the **default branch (`develop`)**; a tag-triggered deploy is
+rejected with *"Tag v0.1.0 is not allowed to deploy to github-pages"* until the
+policy allows the tag pattern. Add the `v*` tag and drop the stale `develop`
+entry:
 
 ```bash
-# Allow main; then list, find the develop policy id, and delete it.
+# Allow the v* tag; then list, find the develop policy id, and delete it.
 gh api -X POST repos/futuredapp/orch/environments/github-pages/deployment-branch-policies \
-  -f name=main -f type=branch
+  -f name='v*' -f type=tag
 gh api repos/futuredapp/orch/environments/github-pages/deployment-branch-policies   # note the develop id
 gh api -X DELETE repos/futuredapp/orch/environments/github-pages/deployment-branch-policies/<develop-id>
 ```
 
-Web equivalent: **Settings → Environments → github-pages → Deployment branches →
-add `main`, remove `develop`.**
+Web equivalent: **Settings → Environments → github-pages → Deployment branches
+and tags → add the `v*` tag, remove `develop`.**
 
 **Verify:** Settings → Pages shows source "GitHub Actions"; the
-`github-pages` environment's deployment-branch policy lists **`main`** (and not
+`github-pages` environment's deployment policy lists the **`v*` tag** (and not
 `develop`) —
 `gh api repos/futuredapp/orch/environments/github-pages/deployment-branch-policies`.
-The site goes live after the first push to `main` (B13).
+The site goes live after the first release tag (B13), not on a `main` push.
 
 ### B10 — Full-history secret scan **(BLOCKING GATE)**
 
@@ -339,7 +346,9 @@ exercise the `on_linux` block if available.
 
 **Access:** git push + tag. **Source:** U13 step 8 / R18.
 
-Sequence the docs deploy and the release pipeline — don't fire them on one push.
+The tag drives everything: `release.yml` builds, publishes the Release, bumps the
+tap, **and deploys the docs** (its `deploy-docs` job, gated on `publish`). There
+is no separate docs deploy to sequence — docs go live as part of the release.
 
 ```bash
 # 1. Finalise the CHANGELOG: set the real date and prose for 0.1.0, then confirm
@@ -347,14 +356,11 @@ Sequence the docs deploy and the release pipeline — don't fire them on one pus
 $EDITOR CHANGELOG.md
 bun scripts/changelog-section.ts --version 0.1.0      # must print "... ok"
 
-# 2. Merge develop → main via PR (branch protection requires the green check).
+# 2. Merge develop → main via PR (branch protection requires the green checks).
 gh pr create --base main --head develop --title "release: v0.1.0" --fill
-#   ...merge once the check is green...
+#   ...merge once the checks are green...
 
-# 3. Confirm docs.yml deployed and Pages is live BEFORE tagging.
-#    Open https://futuredapp.github.io/orch/ — assets must load under /orch/.
-
-# 4. Now push the tag — release.yml runs on its own.
+# 3. Push the tag — release.yml builds, publishes, bumps the tap, and deploys docs.
 git checkout main && git pull
 git tag v0.1.0
 git push origin v0.1.0
@@ -362,7 +368,9 @@ git push origin v0.1.0
 
 **Verify (AE2):** the `Release v0.1.0` page shows `orch-darwin-arm64`,
 `orch-darwin-x64`, `orch-linux-x64`, and `SHA256SUMS`; `homebrew-orch` has a new
-`orch v0.1.0` commit with the three real `sha256`s. End-to-end:
+`orch v0.1.0` commit with the three real `sha256`s; and the docs site is live —
+open https://futuredapp.github.io/orch/, assets must load under /orch/.
+End-to-end:
 
 ```bash
 brew tap futuredapp/orch
@@ -393,8 +401,8 @@ The steady-state procedure once Part 1 is done.
    bun scripts/changelog-section.ts --version 0.2.0   # must print "... ok"
    ```
 
-3. **Merge `develop` → `main`** via PR; confirm `docs.yml` deploys (Pages stays
-   live).
+3. **Merge `develop` → `main`** via PR (no docs deploy fires on this push — docs
+   deploy on the tag below).
 
 4. **Tag and push:**
 
@@ -404,8 +412,9 @@ The steady-state procedure once Part 1 is done.
    ```
 
 5. **Watch `release.yml`** (Actions tab). On success: three binaries +
-   `SHA256SUMS` on the Release, and a fresh bump commit in `homebrew-orch`.
-   `brew upgrade orch` now serves the new version.
+   `SHA256SUMS` on the Release, a fresh bump commit in `homebrew-orch`, and the
+   docs site redeployed with the released version. `brew upgrade orch` now serves
+   the new version.
 
 ### Partial-failure recovery
 
