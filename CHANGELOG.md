@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.1.2] - 2026-06-10
+
+A release-pipeline fix plus automatic docs deployment. The `v0.1.1` tag build
+failed in the `check` job even though the matching develop→main PR was green:
+the release workflow's `check` job was a hand-copied near-duplicate of the PR
+gate that had silently drifted — it never built modern tmux, configured a git
+identity, or set `ORCH_DISABLE_REAL_TMUX`, so the real-tmux and real-git
+integration levels that pass on PRs failed on the tag (`tmux split-window …
+size missing` on the ubuntu-24.04 stock tmux 3.4 regression, and an "Author
+identity unknown" commit failure). The PR and release gates are now a single
+reusable workflow that cannot diverge again.
+
+### Features
+
+- Deploy the VitePress docs site automatically after a release publishes. The
+  standalone docs workflow is folded into a `deploy-docs` job gated on the
+  release `publish` step, so the live site is only ever updated for a version
+  that actually shipped — never on a bare push to `main`.
+
+### Fixes
+
+- Unify the PR and release check gates into one reusable
+  `.github/workflows/check.yml` (`workflow_call`) that both `pr.yml` and
+  `release.yml` invoke. The release gate now inherits the modern-tmux build,
+  git-identity configuration, and `ORCH_DISABLE_REAL_TMUX` accommodations the PR
+  gate already had, fixing the tag-only `check` failure.
+
+### Chores
+
+- Split the docs dead-link build and commit-message lint into their own `docs`
+  and `commitlint` PR jobs. Branch protection now requires the `check / check`,
+  `docs`, and `commitlint` contexts (see the release setup guide, B5).
+
+[0.1.2]: https://github.com/futuredapp/orch/releases/tag/v0.1.2
+
 ## [0.1.1] - 2026-06-10
 
 The first release that makes the Homebrew binary's two-pane TUI actually work.
