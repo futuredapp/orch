@@ -6,7 +6,7 @@ import {
 } from '../../config/index.ts'
 import { bodyHandle, type WorkflowExecutor } from '../../core/workflow.ts'
 import type { Path } from '../../services/types.ts'
-import { isBuiltinName, resolveBuiltin } from '../../workflows/index.ts'
+import { importBuiltin, isBuiltinName, resolveBuiltin } from '../../workflows/index.ts'
 import { EXIT } from '../main.ts'
 
 export interface LoadResult {
@@ -80,9 +80,13 @@ export async function loadWorkflow(
     return { code: EXIT.CONFIG_ERROR }
   }
 
+  // Built-ins import through a static thunk (BUILTIN_IMPORTS) so the modules
+  // are embedded in the compiled binary; user workflows import by resolved
+  // path. `workflowPath` (from resolveBuiltin) is still used for the failure
+  // message so both branches report a consistent location.
   let mod: unknown
   try {
-    mod = await import(workflowPath)
+    mod = isBuiltinName(name) ? await importBuiltin(name) : await import(workflowPath)
   } catch (err) {
     reportError(
       `Cannot load workflow at ${workflowPath}: ${err instanceof Error ? err.message : String(err)}\n`,

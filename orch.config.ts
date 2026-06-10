@@ -7,5 +7,6 @@ export const config = defineConfig({
     'tic-tac-toe': 'workflows/tic-tac-toe/index.ts',
     'execute-plan': 'workflows/execute-plan/index.ts',
     'do-work': 'workflows/do-work/index.ts',
+    'generate-changelog': 'workflows/generate-changelog/index.ts',
   },
 })

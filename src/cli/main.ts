@@ -428,7 +428,7 @@ function commandWithoutHost(
   return (deps, positional, args, opts) => fn(deps, positional, args, opts)
 }
 
-async function main(): Promise<never> {
+export async function main(): Promise<never> {
   const argv = Bun.argv.slice(2)
 
   let parsed: ReturnType<typeof parseArgv>

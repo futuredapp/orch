@@ -2,7 +2,13 @@ import { describe, expect, it } from 'bun:test'
 import * as nodePath from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { type Path, path } from '../../../src/services/index.ts'
-import { BUILTIN_NAMES, isBuiltinName, resolveBuiltin } from '../../../src/workflows/index.ts'
+import {
+  BUILTIN_NAMES,
+  importBuiltin,
+  isBuiltinName,
+  resolveBuiltin,
+} from '../../../src/workflows/index.ts'
+import { BUILTIN_IMPORTS, BUILTIN_MODULE_PATHS } from '../../../src/workflows/registry.ts'
 
 // The source dir is derived from THIS test file's location (repo-relative),
 // independent of process.cwd(). Comparing the resolver's output against it
@@ -68,5 +74,31 @@ describe('resolveBuiltin', () => {
   it('rejects an inherited Object.prototype key with the unknown-built-in error, not a TypeError', () => {
     expect(() => resolveBuiltin('orch::constructor')).toThrow(/Unknown built-in workflow/)
     expect(() => resolveBuiltin('orch::__proto__')).toThrow(/Unknown built-in workflow/)
+  })
+})
+
+describe('BUILTIN_IMPORTS (the compiled-binary embed map)', () => {
+  it('is key-aligned with BUILTIN_MODULE_PATHS so neither map drifts', () => {
+    expect(Object.keys(BUILTIN_IMPORTS).sort()).toEqual(Object.keys(BUILTIN_MODULE_PATHS).sort())
+  })
+})
+
+describe('importBuiltin', () => {
+  it('imports the packaged work-cc module via its static thunk', async () => {
+    const mod = (await importBuiltin('orch::work-cc')) as { default?: { name?: string } }
+
+    expect(mod.default?.name).toBe('work-cc')
+  })
+
+  it('imports a bare name identically to its orch:: form', async () => {
+    const bare = (await importBuiltin('work-codex')) as { default?: { name?: string } }
+
+    expect(bare.default?.name).toBe('work-codex')
+  })
+
+  it('throws the unknown-built-in error for an unknown name', async () => {
+    await expect(importBuiltin('orch::nope')).rejects.toThrow(
+      /Unknown built-in workflow "orch::nope"/,
+    )
   })
 })

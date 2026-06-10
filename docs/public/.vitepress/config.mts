@@ -12,6 +12,11 @@ export default defineConfig({
   description:
     'Code-first orchestrator for chaining coding-agent CLIs (Claude Code, Codex) into deterministic, resumable workflows.',
   lang: 'en-US',
+  // Served from the project Pages subpath https://futuredapp.github.io/orch/.
+  // The leading + trailing slash matches the repo name; without it every asset
+  // 404s on the project Pages URL. Revert to '/' only if the site ever moves to
+  // a custom domain or the org root.
+  base: '/orch/',
   cleanUrls: true,
   // Fail the build on broken internal links — the main correctness gate.
   ignoreDeadLinks: false,

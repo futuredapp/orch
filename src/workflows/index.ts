@@ -5,4 +5,4 @@
 // this module.
 
 export { BUILTIN_NAMES } from './registry.ts'
-export { BUILTIN_PREFIX, isBuiltinName, resolveBuiltin } from './resolve-builtin.ts'
+export { BUILTIN_PREFIX, importBuiltin, isBuiltinName, resolveBuiltin } from './resolve-builtin.ts'

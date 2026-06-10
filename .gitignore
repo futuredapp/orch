@@ -2,8 +2,9 @@
 node_modules/
 
 # bun
+# bun.lock is committed on purpose: CI installs with `--frozen-lockfile`
+# (R-6), so the lockfile must be tracked to make dependency drift fail loud.
 bun.lockb
-bun.lock
 
 # build output
 dist/

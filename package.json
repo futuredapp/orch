@@ -1,9 +1,9 @@
 {
   "name": "orch",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Code-first orchestrator for chaining coding-agent CLIs (Claude Code, Codex)",
   "type": "module",
-  "private": true,
+  "license": "MIT",
   "bin": {
     "orch": "./src/cli/main.ts"
   },
@@ -12,6 +12,8 @@
   },
   "scripts": {
     "check": "bun run lint && bun run typecheck && bun run test && bun run test:two-pane:lifecycle && bun run check:migration",
+    "build:binary": "bun scripts/build-binary.ts",
+    "check:actions": "bun scripts/check-action-pins.ts",
     "check:migration": "bun run overlap-report && bun run import-parity && bun test tests/_migration/__tests__",
     "overlap-report": "bun tests/_migration/overlap-report.ts",
     "import-parity": "bun tests/_migration/import-parity.ts",
@@ -58,6 +60,8 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.10",
+    "@commitlint/cli": "^21.0.2",
+    "@commitlint/config-conventional": "^21.0.2",
     "@types/bun": "latest",
     "@types/react": "^19.2.0",
     "ink-testing-library": "^4.0.0",
