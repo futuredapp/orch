@@ -39,13 +39,51 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      # The real-git integration level (worktree-real, commit-real) drives orch's
+      # own commit step, which relies on ambient git identity — exactly like a
+      # developer's machine. CI runners have none, so configure one (mirrors
+      # release.yml). Without this, `commit()` fails with "Author identity unknown".
+      - name: Configure git identity
+        run: |
+          git config --global user.name "orch CI"
+          git config --global user.email "orch-ci@users.noreply.github.com"
+
+      # ubuntu-24.04 ships tmux 3.4, which has an upstream regression: splitting a
+      # window in a DETACHED session (no attached client) fails with "size missing"
+      # (tmux/tmux#3060), fixed in 3.5. The real-tmux integration level splits
+      # detached sessions directly, so it cannot pass on 3.4. Build a modern tmux
+      # from a checksum-pinned release tarball; /usr/local/bin then shadows apt's
+      # 3.4. No GitHub Action involved, so R11a (action pinning) does not apply —
+      # the tarball is pinned by sha256 instead.
+      - name: Install tmux 3.6b
+        env:
+          TMUX_VERSION: 3.6b
+          TMUX_SHA256: 390759d25fdba016887ec982b808927e637070fd7d03a8021f8ef3102b9ae3c7
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential bison pkg-config libevent-dev libncurses-dev
+          curl -fsSL -o /tmp/tmux.tar.gz \
+            "https://github.com/tmux/tmux/releases/download/${TMUX_VERSION}/tmux-${TMUX_VERSION}.tar.gz"
+          echo "${TMUX_SHA256}  /tmp/tmux.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/tmux.tar.gz -C /tmp
+          cd "/tmp/tmux-${TMUX_VERSION}"
+          ./configure
+          make -j"$(nproc)"
+          sudo make install
+          hash -r
+          tmux -V
+
       # Every third-party/first-party action must be SHA-pinned (R11a). A mutable
       # @v4 / @main ref fails here before anything else runs.
       - name: Audit action pins
         run: bun run check:actions
 
-      # The gate: lint + typecheck + unit + mocked-integration tests. RUN_REAL_*
-      # is deliberately never set (AE3) — no real Claude/Codex/tmux runs on PRs.
+      # The gate: lint + typecheck + unit + mocked + real-tmux integration tests.
+      # RUN_REAL_* is deliberately never set (AE3) — no real Claude/Codex runs on
+      # PRs. The real-tmux level DOES run (gated on tmux presence, not RUN_REAL_*),
+      # which is why the modern-tmux step above is required.
       - name: Run checks
         run: bun run check
 
