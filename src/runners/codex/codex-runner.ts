@@ -9,8 +9,13 @@ import { homedir } from 'node:os'
 import { z } from 'zod'
 import type { ClassifiedError } from '../../core/recovery/index.ts'
 import type { FsService } from '../../services/fs/fs-service.ts'
-import { BunFsService, BunProcessService, mergeEnv } from '../../services/index.ts'
-import type { ProcessService } from '../../services/process/process-service.ts'
+import {
+  BunFsService,
+  BunProcessService,
+  mergeEnv,
+  ProcessSpawnError,
+} from '../../services/index.ts'
+import type { ProcessService, SpawnHandle } from '../../services/process/process-service.ts'
 import { type Path, path } from '../../services/types.ts'
 import type {
   AutoStopPreparation,
@@ -196,16 +201,24 @@ function versionSatisfies(
 }
 
 async function checkCodexVersion(ps: ProcessService): Promise<void> {
-  const which = Bun.which('codex')
-  if (!which) {
-    throw new CodexVersionError('not found', MIN_CODEX_VERSION)
+  // The existence check goes through ProcessService, not a direct `Bun.which`:
+  // a real PATH probe bypasses the seam unit tests mock, so it would pass on a
+  // machine with codex installed and fail on one without (e.g. CI). A missing
+  // binary surfaces as a synchronous ProcessSpawnError from the spawn, which we
+  // translate to the same `not found` CodexVersionError the probe used to throw.
+  let handle: SpawnHandle
+  try {
+    handle = ps.spawn({
+      argv: ['codex', '--version'],
+      env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '' },
+      cwd: path('/tmp'),
+    })
+  } catch (err) {
+    if (err instanceof ProcessSpawnError) {
+      throw new CodexVersionError('not found', MIN_CODEX_VERSION)
+    }
+    throw err
   }
-
-  const handle = ps.spawn({
-    argv: ['codex', '--version'],
-    env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '' },
-    cwd: path('/tmp'),
-  })
 
   let firstLine = ''
   for await (const line of handle.stdout) {

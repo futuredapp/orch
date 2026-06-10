@@ -110,6 +110,10 @@ describe('canRunRealTmux', () => {
   it('mirrors Bun.which(tmux) presence when TMUX is unset', () => {
     expect(canRunRealTmux({ PATH: process.env.PATH })).toBe(tmuxAvailable)
   })
+
+  it('returns false when ORCH_DISABLE_REAL_TMUX is set, even with tmux on PATH and no nesting', () => {
+    expect(canRunRealTmux({ PATH: process.env.PATH, ORCH_DISABLE_REAL_TMUX: '1' })).toBe(false)
+  })
 })
 
 describe('createRealTmuxFixture lifecycle', () => {

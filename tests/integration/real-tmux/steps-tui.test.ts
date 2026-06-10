@@ -3,7 +3,8 @@
 // pane, gives it ~600ms to read the seeded `state.json` and render, then
 // captures the pane and asserts the workflow name + step name appear.
 //
-// Gated on `Bun.which('tmux')` — auto-skips on hosts without tmux installed.
+// Gated on `canRunRealTmux()` — auto-skips on hosts without tmux installed and
+// when ORCH_DISABLE_REAL_TMUX=1 (PR CI; see canRunRealTmux for the AE3 rule).
 
 import { afterEach, describe, expect, it } from 'bun:test'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
@@ -12,6 +13,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   allocateSocketName,
+  canRunRealTmux,
   REAL_TMUX_ASSERT_TIMEOUT_MS,
   REAL_TMUX_TEST_TIMEOUT_MS,
 } from '@orch/test/real-tmux/index.ts'
@@ -26,7 +28,7 @@ import {
 } from '../../../src/services/tmux/index.ts'
 import { path as toPath } from '../../../src/services/types.ts'
 
-const canRun = Bun.which('tmux') !== null
+const canRun = canRunRealTmux()
 
 const killServer = async (socket: SocketName): Promise<void> => {
   const proc = Bun.spawn(['tmux', '-L', socket, 'kill-server'], {
