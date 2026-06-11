@@ -15,7 +15,7 @@ operator's (or dispatching harness's) concern, not the executor's.
 | Plan | Title | Priority | Effort | Depends on | Status |
 |------|-------|----------|--------|------------|--------|
 | 001 | Reconcile `implementation-phases.md` with shipped code | P1 | S | — | DONE |
-| 002 | Unit-test the embedded-binary launch contract | P1 | S | — | TODO |
+| 002 | Unit-test the embedded-binary launch contract | P1 | S | — | DONE |
 | 003 | Replace fixed-sleep-then-assert test patterns with polling | P1 | S–M | — | TODO |
 | 004 | Repo hygiene sweep (junk files, barrel bypass, rule-exception comments, preflight tmux check) | P2 | S | — | TODO |
 | 005 | Test coverage: transcript sidecar + load-workflow/dry-run CLI seam | P2 | M | — | TODO |
