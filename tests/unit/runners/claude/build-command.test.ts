@@ -41,7 +41,7 @@ describe('claude() factory', () => {
 })
 
 describe('buildCommand', () => {
-  it('produces correct argv with defaults (bare, stream-json, verbose) and persists the session', async () => {
+  it('produces correct argv with defaults (stream-json, verbose) and persists the session', async () => {
     const runner = claude()
     const cmd = await runner.buildCommand(ctxFor('hello world'))
 
@@ -49,7 +49,6 @@ describe('buildCommand', () => {
     // is gone, and --session-id rides only when the executor supplies one.
     expect(cmd.argv).toEqual([
       'claude',
-      '--bare',
       '-p',
       'hello world',
       '--output-format',
@@ -86,13 +85,21 @@ describe('buildCommand', () => {
     expect(cmd.argv).toContain('3')
   })
 
-  it('omits --bare when bare is false', async () => {
-    const runner = claude({ bare: false })
+  it('omits --bare by default', async () => {
+    const runner = claude()
     const cmd = await runner.buildCommand(ctxFor('test'))
 
     expect(cmd.argv).not.toContain('--bare')
     expect(cmd.argv[0]).toBe('claude')
     expect(cmd.argv[1]).toBe('-p')
+  })
+
+  it('includes --bare only when bare is explicitly true', async () => {
+    const runner = claude({ bare: true })
+    const cmd = await runner.buildCommand(ctxFor('test'))
+
+    expect(cmd.argv[0]).toBe('claude')
+    expect(cmd.argv[1]).toBe('--bare')
   })
 
   it('appends flags before extraArgs, extraArgs last', async () => {
@@ -210,7 +217,7 @@ describe('buildCommand interactive mode', () => {
     const runner = claude()
     const cmd = await runner.buildCommand(ctxFor('hello'))
 
-    expect(cmd.argv).toContain('--bare')
+    expect(cmd.argv).not.toContain('--bare')
     expect(cmd.argv).toContain('-p')
     expect(cmd.argv).toContain('--output-format')
   })
