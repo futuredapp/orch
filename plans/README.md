@@ -19,7 +19,7 @@ operator's (or dispatching harness's) concern, not the executor's.
 | 003 | Replace fixed-sleep-then-assert test patterns with polling | P1 | S–M | — | DONE |
 | 004 | Repo hygiene sweep (junk files, barrel bypass, rule-exception comments, preflight tmux check) | P2 | S | — | DONE |
 | 005 | Test coverage: transcript sidecar + load-workflow/dry-run CLI seam | P2 | M | — | DONE |
-| 006 | Spike: Zod v4 migration feasibility (temporary reverted edits, findings report) | P3 | M | — | TODO |
+| 006 | Spike: Zod v4 migration feasibility (temporary reverted edits, findings report) | P3 | M | — | DONE — verdict **GO-WITH-CONDITIONS** (see `006-zod-v4-spike-findings.md`); migration → plan 007 |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale).
