@@ -91,13 +91,18 @@ describe.skipIf(!tmuxAvailable)(
         const drag = async (widths: readonly number[]): Promise<void> => {
           for (const w of widths) {
             await resizeLeftPaneWidth(fixture, leftPaneId, w)
+            // Pacing between SIGWINCH deliveries, not an assertion
+            // synchronization: a slow machine just coalesces resizes, so this
+            // is intentionally a plain fixed sleep and not a poll.
             await sleep(120)
           }
         }
 
-        // Initial render: give the Ink child time to mount + draw its first
-        // frame.
-        await sleep(400)
+        // Initial render: wait for the Ink child's first frame (the
+        // breadcrumb) instead of sleeping a fixed duration.
+        await harness.left.waitFor((pane) => pane.includes('orch · tic-tac-toe · '), {
+          timeoutMs: REAL_TMUX_ASSERT_TIMEOUT_MS,
+        })
 
         // Set up FakeRunner scripts for a multi-step workflow. Each step's
         // start/complete cycle writes a lifecycle event, which the steps-view
