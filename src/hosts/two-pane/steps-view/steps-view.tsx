@@ -7,7 +7,7 @@
 //   - `steps-view-keymap.ts`  — PURE key → action resolution (the whole keymap)
 //   - `step-row.tsx`          — `<StepRow>` / `<SubBoundaryRow>` / `<ParallelGroup>`
 //   - `steps-view-banner.tsx` — `<BannerBox>` + the info-banner TTL constant
-//   - `steps-view-header.ts`  — header text + chrome height estimation
+//   - `steps-view-header.tsx` — `<LiveHeader>` + chrome height estimation
 //   - `steps-view-footer.tsx` — `<ViewModeFooter>`
 //   - `help-overlay.tsx`      — `<HelpOverlay>`
 //   - `steps-view-hooks.ts`   — selection / scroll / adaptive-columns hooks
@@ -27,7 +27,7 @@ import type { StepsViewState } from './step-types.ts'
 import { BannerBox, bannerText, DEFAULT_INFO_TTL_MS } from './steps-view-banner.tsx'
 import { ViewModeFooter } from './steps-view-footer.tsx'
 import { isSelectableRow, rowKey } from './steps-view-format.ts'
-import { estimateHeaderRows, renderHeader } from './steps-view-header.ts'
+import { estimateHeaderRows, LiveHeader } from './steps-view-header.tsx'
 import { useAdaptiveColumns, useStepsScroll, useStepsSelection } from './steps-view-hooks.ts'
 import {
   classifyKey,
@@ -35,7 +35,12 @@ import {
   type StepsKeyAction,
   type StepsKeyTag,
 } from './steps-view-keymap.ts'
-import { computeVisibleCount, estimateWrappedRows, visibleSlice } from './steps-view-layout.ts'
+import {
+  computeVisibleCount,
+  estimateWrappedRows,
+  scrollbarTrack,
+  visibleSlice,
+} from './steps-view-layout.ts'
 
 export { HelpOverlay } from './help-overlay.tsx'
 export type { ParallelGroupProps } from './step-row.tsx'
@@ -236,7 +241,7 @@ export function StepsView({
       {isTerminal ? (
         <EndOfRunSummary run={state.run} summary={state.summary} status={state.status} />
       ) : (
-        <Text>{renderHeader(state)}</Text>
+        <LiveHeader state={state} now={now()} />
       )}
       {banner !== undefined ? <BannerBox banner={banner} /> : null}
       {state.steps.length === 0 ? (
@@ -246,7 +251,7 @@ export function StepsView({
         // so the side edges must be explicitly disabled to avoid doubling
         // against the tmux pane border (R1).
         <Box
-          flexDirection="column"
+          flexDirection="row"
           borderStyle="single"
           borderTop
           borderBottom
@@ -254,28 +259,49 @@ export function StepsView({
           borderRight={false}
           borderColor="gray"
         >
-          {visibleSlice(state.steps, scroll.scrollOffset, visibleCount).map((step) =>
-            step.kind === 'subworkflow-enter' || step.kind === 'subworkflow-exit' ? (
-              <SubBoundaryRow key={rowKey(step)} row={step} paneCols={paneCols} />
-            ) : (
-              <StepRow
-                key={rowKey(step)}
-                step={step}
-                columns={columns}
-                now={now()}
-                selected={step.name === committedName}
-                preview={isUserDriven && step.name === selectedName && step.name !== committedName}
-                paneCols={paneCols}
-              />
-            ),
-          )}
+          <Box flexDirection="column" flexGrow={1}>
+            {visibleSlice(state.steps, scroll.scrollOffset, visibleCount).map((step) =>
+              step.kind === 'subworkflow-enter' || step.kind === 'subworkflow-exit' ? (
+                <SubBoundaryRow key={rowKey(step)} row={step} paneCols={paneCols} />
+              ) : (
+                <StepRow
+                  key={rowKey(step)}
+                  step={step}
+                  columns={columns}
+                  now={now()}
+                  selected={step.name === committedName}
+                  preview={
+                    isUserDriven && step.name === selectedName && step.name !== committedName
+                  }
+                  paneCols={paneCols}
+                />
+              ),
+            )}
+          </Box>
+          {state.steps.length > visibleCount ? (
+            <Box flexDirection="column" width={1} flexShrink={0}>
+              {scrollbarTrack(state.steps.length, scroll.scrollOffset, visibleCount).map(
+                (char, i) => (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: the track is positional by definition
+                  <Text key={i} color={char === '█' ? 'cyan' : undefined} dimColor={char !== '█'}>
+                    {char}
+                  </Text>
+                ),
+              )}
+            </Box>
+          ) : null}
         </Box>
       )}
       {isTerminal ? (
         <EndOfRunFooter status={state.status} showFailureActions={failureActions} />
       ) : null}
       {!helpOpen && !isTerminal ? (
-        <ViewModeFooter view={state.view} scrollOffset={scroll.scrollOffset} />
+        <ViewModeFooter
+          view={state.view}
+          scrollOffset={scroll.scrollOffset}
+          totalSteps={state.steps.length}
+          visibleCount={visibleCount}
+        />
       ) : null}
       {helpOpen ? <HelpOverlay /> : null}
     </Box>

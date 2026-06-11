@@ -1,46 +1,66 @@
 // ---------------------------------------------------------------------------
-// <ViewModeFooter> — the single-line live footer below the steps grid.
+// <ViewModeFooter> — the single-line, two-zone live footer below the grid.
 // ---------------------------------------------------------------------------
 //
-// When `view.mode === 'live'` the footer reads `▶ live · …`; when `'replay'`
-// it reads `⏸ viewing <stepName> · f live · …`. When scrolled, the scroll
-// indicator leads so it survives single-line truncation at narrow widths.
+// Left zone: the view state — `▶ live`, `⏸ viewing <step>`, and (when
+// scrolled) the window range `↑ scrolled 12–28 of 41 · End live`. Right zone:
+// the top contextual key hints. Both truncate so the footer is always exactly
+// one row — a wrapping footer changes height as its text grows, which tips
+// the frame across Ink's fullscreen boundary and triggers a full-clear
+// flicker (see steps-view-layout.ts).
 
 import { Box, Text } from 'ink'
 import type React from 'react'
 import type { ViewMode } from './step-types.ts'
 import { STEP_NAME_MAX, truncate } from './steps-view-format.ts'
+import { visibleWindowRange } from './steps-view-layout.ts'
+
+export interface ViewModeFooterProps {
+  readonly view: ViewMode
+  readonly scrollOffset: number
+  /** Total step-row count — drives the scrolled `12–28 of 41` indicator. */
+  readonly totalSteps: number
+  readonly visibleCount: number
+}
 
 export function ViewModeFooter({
   view,
   scrollOffset,
-}: {
-  readonly view: ViewMode
-  readonly scrollOffset: number
-}): React.ReactElement {
+  totalSteps,
+  visibleCount,
+}: ViewModeFooterProps): React.ReactElement {
   return (
-    <Box marginTop={1}>
-      {/* Single line: a wrapping footer changes height as its text grows,
-          which tips the frame across Ink's fullscreen boundary and triggers a
-          full-clear flicker (see steps-view-layout.ts). `truncate-end` keeps
-          the line at one row regardless of width. */}
+    <Box marginTop={1} justifyContent="space-between" gap={2}>
       <Text dimColor wrap="truncate-end">
-        {renderViewModeFooter(view, scrollOffset)}
+        {renderFooterState(view, scrollOffset, totalSteps, visibleCount)}
+      </Text>
+      <Text dimColor wrap="truncate-end">
+        {renderFooterHints(view)}
       </Text>
     </Box>
   )
 }
 
-export function renderViewModeFooter(view: ViewMode, scrollOffset: number): string {
-  // `f` is hidden in live mode — it's a no-op when already on the most-recent
-  // live source. Re-introduced when the parallel-switcher UX ships and `f`
-  // carries cycle-between-branches semantics.
-  const base =
-    view.mode === 'live'
-      ? '▶ live · ⏎ view step · q quit · ? help'
-      : `⏸ viewing ${truncate(view.stepName, STEP_NAME_MAX)} · f live · ⏎ view another · q quit · ? help`
-  // Lead with the scroll indicator when scrolled so it survives single-line
-  // truncation at narrow widths — losing "End live" would strand the user
-  // away from the live tail with no visible way back.
-  return scrollOffset > 0 ? `↑ scrolled · End live · ${base}` : base
+/** Left zone — view state. Leads with the scroll indicator when scrolled so
+ *  "End live" survives truncation at narrow widths (losing it would strand
+ *  the user away from the live tail with no visible way back). */
+export function renderFooterState(
+  view: ViewMode,
+  scrollOffset: number,
+  totalSteps: number,
+  visibleCount: number,
+): string {
+  const mode =
+    view.mode === 'live' ? '▶ live' : `⏸ viewing ${truncate(view.stepName, STEP_NAME_MAX)}`
+  if (scrollOffset <= 0) return mode
+  const { start, end } = visibleWindowRange(totalSteps, scrollOffset, visibleCount)
+  return `↑ scrolled ${start}–${end} of ${totalSteps} · End live · ${mode}`
+}
+
+/** Right zone — key hints. `f` is hidden in live mode: it's a no-op when
+ *  already on the most-recent live source. */
+export function renderFooterHints(view: ViewMode): string {
+  return view.mode === 'live'
+    ? '⏎ view step · q quit · ? help'
+    : 'f live · ⏎ view another · q quit · ? help'
 }

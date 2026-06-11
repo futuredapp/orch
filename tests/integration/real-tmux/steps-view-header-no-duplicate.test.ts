@@ -141,7 +141,10 @@ describe.skipIf(!tmuxAvailable)(
         // budget, while the regression (permanent stacking, 8+ copies) never
         // settles and this assertion times out with the offending frame.
         await harness.left.waitFor(
-          (pane) => countOccurrences(pane, 'orch · tic-tac-toe · ') === 1,
+          // The header title line is `<workflowName>  ▶ LIVE  <runId>`; the
+          // workflow name appears nowhere else in the pane, so its count is
+          // the breadcrumb count.
+          (pane) => countOccurrences(pane, 'tic-tac-toe') === 1,
           {
             timeoutMs: REAL_TMUX_ASSERT_TIMEOUT_MS,
           },

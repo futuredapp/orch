@@ -27,6 +27,7 @@ export interface PlaygroundWorld {
   readonly finished: boolean
   readonly seq: number
   readonly initialCount: number
+  readonly runStartedAt: number
 }
 
 export function initialWorld(count: number): PlaygroundWorld {
@@ -38,7 +39,15 @@ export function initialWorld(count: number): PlaygroundWorld {
     }
     return { name, status: 'running', startedAt: now - 3_000 }
   })
-  return { steps, banner: undefined, view: { mode: 'live' }, finished: false, seq: 0, initialCount: count }
+  return {
+    steps,
+    banner: undefined,
+    view: { mode: 'live' },
+    finished: false,
+    seq: 0,
+    initialCount: count,
+    runStartedAt: now - count * 8_000,
+  }
 }
 
 export function mutateWorld(world: PlaygroundWorld, digit: string): PlaygroundWorld {
@@ -112,7 +121,7 @@ export function worldToState(world: PlaygroundWorld): StepsViewState {
     ...(s.endedAt !== undefined ? { endedAt: s.endedAt } : {}),
   }))
   const base = {
-    run: { runId: 'r-playground', workflowName: 'playground', startedAt: 0 },
+    run: { runId: 'r-playground', workflowName: 'playground', startedAt: world.runStartedAt },
     steps,
     view: world.view,
     ...(world.banner !== undefined ? { banner: world.banner } : {}),

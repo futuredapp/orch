@@ -77,3 +77,40 @@ export function visibleSlice(
   const start = Math.max(0, end - visibleCount)
   return steps.slice(start, end)
 }
+
+/**
+ * 1-based row range of the rendered window — `{ start: 12, end: 28 }` reads
+ * as "rows 12–28 of <total>" in the footer's scroll indicator.
+ */
+export function visibleWindowRange(
+  total: number,
+  scrollOffset: number,
+  visibleCount: number,
+): { readonly start: number; readonly end: number } {
+  if (total <= visibleCount) return { start: 1, end: total }
+  const end = total - scrollOffset
+  return { start: Math.max(1, end - visibleCount + 1), end }
+}
+
+/**
+ * The scrollbar track for a window of `visibleCount` rows over `total` steps:
+ * one char per rendered row, `█` across the thumb and `░` elsewhere. The
+ * thumb position mirrors the window's offset from the top of the buffer
+ * (offset 0 at the live tail ⇔ thumb at the bottom).
+ */
+export function scrollbarTrack(
+  total: number,
+  scrollOffset: number,
+  visibleCount: number,
+): readonly string[] {
+  const rows = Math.min(total, visibleCount)
+  if (total <= visibleCount) return Array.from({ length: rows }, () => '█')
+  const maxTop = total - visibleCount
+  const topIndex = maxTop - scrollOffset
+  const thumbSize = Math.max(1, Math.round((visibleCount / total) * visibleCount))
+  const travel = visibleCount - thumbSize
+  const thumbTop = Math.round((topIndex / maxTop) * travel)
+  return Array.from({ length: rows }, (_, i) =>
+    i >= thumbTop && i < thumbTop + thumbSize ? '█' : '░',
+  )
+}

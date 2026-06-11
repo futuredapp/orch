@@ -56,8 +56,12 @@ export const StepRow = memo(
     const showElapsed = columns.elapsed && elapsed.length > 0
     const accent = selected ? 'cyan' : undefined
     const emphasised = selected || preview
+    // Full-row background highlight for the committed row. `gray` (bright
+    // black) keeps the semantic glyph foreground colors legible on top; the
+    // `▌` cursor remains the primary signal for NO_COLOR terminals.
+    const rowBackground = selected ? 'gray' : undefined
     return (
-      <Text>
+      <Text backgroundColor={rowBackground}>
         <Text bold={preview} color={accent}>
           {cursor}
         </Text>
