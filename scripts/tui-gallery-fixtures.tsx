@@ -115,6 +115,7 @@ function askSpec(fields: readonly string[], buttons: readonly string[]): PromptS
     question: 'Which approach should we take?',
     fields: fields.map((name) => ({ name, placeholder: `${name}…` })),
     buttons: [...buttons],
+    title: 'choose-approach',
   }
 }
 

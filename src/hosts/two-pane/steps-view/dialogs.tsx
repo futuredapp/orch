@@ -11,7 +11,7 @@
 
 import { Box, Text, useInput } from 'ink'
 import type React from 'react'
-import { useFocusList } from '../../../ui/index.ts'
+import { FocusButtonRow, useFocusList } from '../../../ui/index.ts'
 import { HelpOverlay } from './help-overlay.tsx'
 
 export type StepsDialog =
@@ -84,7 +84,7 @@ function ConfirmQuitDialog({
     <DialogFrame title="Quit orch viewer?">
       <Text>The run keeps going in the background.</Text>
       <Text dimColor>Reattach later with: orch open</Text>
-      <ButtonRow labels={labels} focusIndex={focus.index} />
+      <FocusButtonRow labels={labels} focusIndex={focus.index} />
       <Text dimColor>←/→ choose · ⏎ confirm · Esc stay</Text>
     </DialogFrame>
   )
@@ -132,7 +132,7 @@ function FailureActionsDialog({
     <DialogFrame title="Step failed — choose an action">
       <Text>retry runs the failed step once and re-parks.</Text>
       <Text>retry &amp; continue re-runs it and continues to completion.</Text>
-      <ButtonRow labels={labels} focusIndex={focus.index} />
+      <FocusButtonRow labels={labels} focusIndex={focus.index} />
       <Text dimColor>←/→ choose · ⏎ run · r/c shortcuts · Esc close</Text>
     </DialogFrame>
   )
@@ -174,27 +174,6 @@ function DialogFrame({
     >
       <Text bold>{title}</Text>
       {children}
-    </Box>
-  )
-}
-
-function ButtonRow({
-  labels,
-  focusIndex,
-}: {
-  readonly labels: readonly string[]
-  readonly focusIndex: number
-}): React.ReactElement {
-  return (
-    <Box gap={2}>
-      {labels.map((label, i) => (
-        // The `❯` marker keeps the focused button identifiable in plain bytes
-        // (NO_COLOR terminals, stripped test frames); inverse video is the
-        // primary affordance. Constant 2-char prefix so the row never jiggles.
-        <Text key={label} inverse={i === focusIndex} color={i === focusIndex ? 'cyan' : undefined}>
-          {`${i === focusIndex ? '❯' : ' '} ${label} `}
-        </Text>
-      ))}
     </Box>
   )
 }

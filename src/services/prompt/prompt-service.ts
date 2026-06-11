@@ -21,6 +21,13 @@ export interface PromptSpec {
   readonly question: string
   readonly fields: ReadonlyArray<PromptField>
   readonly buttons: ReadonlyArray<string>
+  /**
+   * Frame title shown above the question (e.g. the ask step's name, so the
+   * user knows WHAT they are answering/cancelling). Optional: the executor's
+   * `toPromptSpec` does not set it; `InkPromptService` fills it from
+   * `ctx.stepName` before spawning the child.
+   */
+  readonly title?: string
 }
 
 export interface PromptCtx {

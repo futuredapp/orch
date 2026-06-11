@@ -2,5 +2,7 @@
 // Cross-module consumers (steps-view dialogs, the ask form) MUST import from
 // here, not from internal files.
 
+export type { FocusButtonRowProps } from './button-row.tsx'
+export { FocusButtonRow } from './button-row.tsx'
 export type { FocusList, FocusStep, UseFocusListOptions } from './focus-list.ts'
 export { stepFocus, useFocusList } from './focus-list.ts'
