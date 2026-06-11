@@ -65,6 +65,16 @@ export class LeftPane {
     failed: 'red',
   } as const
 
+  // 2026-06-11 fix — the committed row's full-width selection band. The
+  // independent spec of the band's background colour name and how much
+  // trailing pad (at minimum) must be painted INSIDE it for the band to count
+  // as "spans the row" rather than "hugs the text". Mirrored from production
+  // (`backgroundColor="gray"` + pad-to-rowWidth) on purpose, never imported.
+  private static readonly BAND = {
+    background: 'gray',
+    minTrailingPad: 10,
+  } as const
+
   constructor(private readonly driver: PaneDriver) {}
 
   // --- semantic chrome assertions (no literal reaches the scenario) ---------
@@ -187,6 +197,19 @@ export class LeftPane {
     return this.driver.assertColored(step, LeftPane.COLOR[glyph])
   }
 
+  /**
+   * The committed `step` row paints its selection band across the FULL row —
+   * the step name plus a run of trailing pad spaces all inside the band's
+   * background (2026-06-11 fix: the band must not hug the text).
+   */
+  assertSelectionBandFillsRow(step: string): Promise<void> {
+    return this.driver.assertRowBandFills(
+      step,
+      LeftPane.BAND.background,
+      LeftPane.BAND.minTrailingPad,
+    )
+  }
+
   // --- P3 polish: live header, scrollbar, scrolled range --------------------
 
   /** The live header carries the `▶ LIVE` status pill. */
@@ -220,6 +243,11 @@ export class LeftPane {
   /** The scrolled footer keeps the `End live` way back to the tail. */
   assertEndLiveHintVisible(): Promise<void> {
     return this.driver.assertContains(LeftPane.TEXT.endLiveHint)
+  }
+
+  /** The viewport is pinned to the live tail — no `↑ scrolled` footer state. */
+  assertNotScrolled(): Promise<void> {
+    return this.driver.assertAbsent(LeftPane.TEXT.scrolledPrefix)
   }
 
   // --- U5b: view-mode footer hints ------------------------------------------

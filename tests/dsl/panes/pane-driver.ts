@@ -74,6 +74,14 @@ export interface PaneDriver {
    * independent spec from the Pane Object, never a `src/` import.
    */
   assertColored(lineNeedle: string, colorName: string): Promise<void>
+  /**
+   * Assert the line containing `lineNeedle` paints BOTH the needle and at
+   * least `minTrailingPad` trailing pad spaces inside the `bgColorName`
+   * background — the committed row's full-width selection band (2026-06-11
+   * fix: the band must span to the row edge, not hug the text). Reads RAW
+   * SGR bytes, never the stripped frame.
+   */
+  assertRowBandFills(lineNeedle: string, bgColorName: string, minTrailingPad: number): Promise<void>
 
   // --- U5b: banner / end-of-run absence -------------------------------------
 

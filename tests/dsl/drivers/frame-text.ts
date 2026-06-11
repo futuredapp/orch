@@ -163,3 +163,69 @@ export function lineHasColor(line: string, colorName: string): boolean {
 export function frameHasColoredText(frame: string, needle: string, colorName: string): boolean {
   return frame.split('\n').some((line) => line.includes(needle) && lineHasColor(line, colorName))
 }
+
+// --- Background-band matching (full-width selection band, 2026-06-11) --------
+//
+// The committed row paints a background band from the cursor to the row edge
+// (the trailing pad spaces carry the bg). `BG_SGR_PARAM` is the independent
+// spec of how the Pane Object's band colour NAME renders as an SGR background
+// parameter — Ink emits the bright variant for `backgroundColor="gray"`, and
+// `tmux capture-pane -e` reproduces it verbatim.
+const BG_SGR_PARAM: Record<string, string> = {
+  gray: '100',
+}
+
+// SGR params that change the background away from a target: a different basic
+// bg (40-47), a different bright bg (100-107), the extended-bg introducer (48),
+// the bg reset (49), and the full resets ('' / '0').
+function clearsBackground(param: string, target: string): boolean {
+  if (param === target) return false
+  if (param === '' || param === '0' || param === '48' || param === '49') return true
+  const code = Number(param)
+  return (code >= 40 && code <= 47) || (code >= 100 && code <= 107)
+}
+
+/**
+ * Replay `line`'s SGR runs and return only the characters painted while the
+ * `bgColorName` background is active. Foreground/bold/dim params do not end
+ * the band; any bg change or reset does.
+ */
+export function textPaintedWithBg(line: string, bgColorName: string): string {
+  const target = BG_SGR_PARAM[bgColorName]
+  if (target === undefined) return ''
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: SGR sequences begin with the ESC (\x1b) control character — matching them requires it.
+  const sgr = /\x1b\[([0-9;]*)m/g
+  let painted = ''
+  let on = false
+  let last = 0
+  for (let m = sgr.exec(line); m !== null; m = sgr.exec(line)) {
+    if (on) painted += line.slice(last, m.index)
+    last = m.index + m[0].length
+    for (const param of (m[1] ?? '').split(';')) {
+      if (param === target) on = true
+      else if (clearsBackground(param, target)) on = false
+    }
+  }
+  if (on) painted += line.slice(last)
+  return painted
+}
+
+/**
+ * Whether the raw line containing `needle` paints BOTH the needle and at least
+ * `minTrailingPad` trailing pad spaces inside the `bgColorName` band — i.e.
+ * the selection band spans past the text to the row edge instead of hugging it.
+ */
+export function frameHasFullWidthBand(
+  frame: string,
+  needle: string,
+  bgColorName: string,
+  minTrailingPad: number,
+): boolean {
+  return frame.split('\n').some((line) => {
+    if (!line.includes(needle)) return false
+    const painted = textPaintedWithBg(line, bgColorName)
+    if (!painted.includes(needle)) return false
+    const trailing = painted.length - painted.trimEnd().length
+    return trailing >= minTrailingPad
+  })
+}

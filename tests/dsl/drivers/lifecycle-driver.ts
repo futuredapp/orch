@@ -146,6 +146,7 @@ function deferredPaneDriver(): PaneDriver {
     openHelp: () => defer('openHelp'),
     closeHelp: () => defer('closeHelp'),
     assertColored: () => defer('assertColored'),
+    assertRowBandFills: () => defer('assertRowBandFills'),
     assertAbsent: () => defer('assertAbsent'),
     assertNoCaretEcho: () => defer('assertNoCaretEcho'),
   }

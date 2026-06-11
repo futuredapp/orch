@@ -11,6 +11,7 @@ class CapturingPaneDriver implements PaneDriver {
   readonly containsCalls: string[] = []
   readonly absentCalls: string[] = []
   readonly coloredCalls: { needle: string; colorName: string }[] = []
+  readonly bandCalls: { needle: string; bgColorName: string; minTrailingPad: number }[] = []
   readonly openHelpCalls: string[] = []
   readonly closeHelpCalls: string[] = []
   readonly stepVisibleCalls: string[] = []
@@ -66,6 +67,10 @@ class CapturingPaneDriver implements PaneDriver {
     this.coloredCalls.push({ needle, colorName })
     return Promise.resolve()
   }
+  assertRowBandFills(needle: string, bgColorName: string, minTrailingPad: number): Promise<void> {
+    this.bandCalls.push({ needle, bgColorName, minTrailingPad })
+    return Promise.resolve()
+  }
   assertAbsent(text: string): Promise<void> {
     this.absentCalls.push(text)
     return Promise.resolve()
@@ -86,6 +91,22 @@ describe('LeftPane chrome literals are co-located and independent of src/', () =
     // change the bytes, not this constant, so the screen driver would go red —
     // and corrupting THIS constant fails this meta-test instead of passing.
     expect(driver.bottomTextCalls).toEqual([{ literal: 'q quit', count: 1 }])
+  })
+})
+
+describe('LeftPane selection-band spec is co-located and independent of src/', () => {
+  it('asserts the gray band with at least ten trailing pad spaces for the committed row', async () => {
+    const driver = new CapturingPaneDriver()
+    const leftPane = new LeftPane(driver)
+
+    await leftPane.assertSelectionBandFillsRow('step-40')
+
+    // A production change of the band colour (gray → blue) or the removal of
+    // the pad-to-rowWidth would change the bytes, not this constant, so the
+    // screen driver goes red — and corrupting THIS spec fails this meta-test.
+    expect(driver.bandCalls).toEqual([
+      { needle: 'step-40', bgColorName: 'gray', minTrailingPad: 10 },
+    ])
   })
 })
 
