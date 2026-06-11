@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'bun:test'
+import type { StepRow } from '../../../../../src/hosts/two-pane/steps-view/step-types.ts'
 import {
+  followTop,
+  offscreenCursorEntry,
   scrollbarTrack,
   visibleWindowRange,
 } from '../../../../../src/hosts/two-pane/steps-view/steps-view-layout.ts'
@@ -49,5 +52,49 @@ describe('scrollbarTrack', () => {
 
   it('fills the track entirely when every step fits in the viewport', () => {
     expect(scrollbarTrack(5, 0, 10)).toEqual(['█', '█', '█', '█', '█'])
+  })
+})
+
+describe('followTop', () => {
+  it('leaves the window alone while the cursor is inside it', () => {
+    expect(followTop(10, 13, 8)).toBe(10)
+  })
+
+  it('shifts the window up so a cursor above it lands on the top row', () => {
+    expect(followTop(10, 9, 8)).toBe(9)
+  })
+
+  it('shifts the window down so a cursor below it lands on the bottom row', () => {
+    expect(followTop(10, 18, 8)).toBe(11)
+  })
+
+  it('treats the row just past the bottom edge as outside the window', () => {
+    expect(followTop(0, 8, 8)).toBe(1)
+  })
+})
+
+describe('offscreenCursorEntry', () => {
+  const steps: readonly StepRow[] = Array.from({ length: 20 }, (_, i) => ({
+    kind: 'agent',
+    mode: 'autonomous',
+    status: i === 19 ? 'running' : 'completed',
+    name: `step-${i + 1}`,
+    startedAt: i,
+  }))
+
+  it('returns undefined while the cursor is inside the rendered window', () => {
+    expect(offscreenCursorEntry(steps, 0, 8, 15)).toBeUndefined()
+  })
+
+  it('enters at the bottom rendered row when the cursor sits below the window', () => {
+    expect(offscreenCursorEntry(steps, 12, 8, 19)).toBe('step-8')
+  })
+
+  it('enters at the top rendered row when the cursor sits above the window', () => {
+    expect(offscreenCursorEntry(steps, 0, 8, 2)).toBe('step-13')
+  })
+
+  it('returns undefined when there is no cursor yet', () => {
+    expect(offscreenCursorEntry(steps, 12, 8, -1)).toBeUndefined()
   })
 })

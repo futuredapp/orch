@@ -19,6 +19,7 @@
 
 import { stripAnsi } from '../../../observability/index.ts'
 import type { StepRow } from './step-types.ts'
+import { isSelectableRow } from './steps-view-format.ts'
 
 /**
  * Rows a line of text occupies once wrapped to `columns`. An estimate: it uses
@@ -90,6 +91,40 @@ export function visibleWindowRange(
   if (total <= visibleCount) return { start: 1, end: total }
   const end = total - scrollOffset
   return { start: Math.max(1, end - visibleCount + 1), end }
+}
+
+/**
+ * Where ↑/↓ should act when the preview cursor sits OUTSIDE the scrolled
+ * window (the user scrolled away with k/j/PgUp): the cursor enters the window
+ * at the edge it left from — below → bottom rendered row, above → top — so
+ * the keystroke never yanks the viewport back to the offscreen cursor.
+ * Returns `undefined` when the cursor is inside the window (normal move
+ * applies) or when no selectable row is rendered.
+ */
+export function offscreenCursorEntry(
+  steps: readonly StepRow[],
+  scrollOffset: number,
+  visibleCount: number,
+  cursorIndex: number,
+): string | undefined {
+  if (cursorIndex < 0) return undefined
+  const { start, end } = visibleWindowRange(steps.length, scrollOffset, visibleCount)
+  const row = cursorIndex + 1
+  if (row >= start && row <= end) return undefined
+  const selectable = visibleSlice(steps, scrollOffset, visibleCount).filter(isSelectableRow)
+  const entry = row > end ? selectable[selectable.length - 1] : selectable[0]
+  return entry?.name
+}
+
+/**
+ * Top index that keeps `index` inside a `visibleCount`-row window currently
+ * anchored at `top`. No-op when already visible; otherwise the window shifts
+ * the minimum distance (cursor lands on the window edge it crossed).
+ */
+export function followTop(top: number, index: number, visibleCount: number): number {
+  if (index < top) return index
+  if (index >= top + visibleCount) return index - visibleCount + 1
+  return top
 }
 
 /**

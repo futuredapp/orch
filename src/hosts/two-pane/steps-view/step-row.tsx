@@ -33,6 +33,12 @@ export interface StepRowProps {
   readonly preview: boolean
   /** Current pane column count — drives U9's depth-overflow collapse rule. */
   readonly paneCols: number
+  /**
+   * Columns actually available to the row (pane minus the scrollbar column).
+   * The selected row pads its highlight to this width so the gray band spans
+   * the full row instead of hugging the text.
+   */
+  readonly rowWidth: number
 }
 
 export const StepRow = memo(
@@ -43,6 +49,7 @@ export const StepRow = memo(
     selected,
     preview,
     paneCols,
+    rowWidth,
   }: StepRowProps): React.ReactElement {
     // `▌` marks the committed row (= right pane); `›` is the preview cursor the
     // user is browsing with `↑/↓` before committing with `Enter`. They never
@@ -58,10 +65,17 @@ export const StepRow = memo(
     const emphasised = selected || preview
     // Full-row background highlight for the committed row. `gray` (bright
     // black) keeps the semantic glyph foreground colors legible on top; the
-    // `▌` cursor remains the primary signal for NO_COLOR terminals.
+    // `▌` cursor remains the primary signal for NO_COLOR terminals. The row
+    // is padded with trailing spaces to `rowWidth` so the band spans the full
+    // row; `truncate-end` guards the frame budget if the width math is ever
+    // off by a column (a wrapped row would overflow the measured frame and
+    // trigger Ink's full-clear flicker).
     const rowBackground = selected ? 'gray' : undefined
+    const contentWidth =
+      2 + gutter.length + name.length + 3 + (showElapsed ? 2 + elapsed.length : 0)
+    const pad = selected ? Math.max(0, rowWidth - contentWidth) : 0
     return (
-      <Text backgroundColor={rowBackground}>
+      <Text backgroundColor={rowBackground} wrap="truncate-end">
         <Text bold={preview} color={accent}>
           {cursor}
         </Text>
@@ -75,6 +89,7 @@ export const StepRow = memo(
           {view.char}
         </Text>
         {showElapsed ? <Text>{`  ${elapsed}`}</Text> : null}
+        {pad > 0 ? <Text>{' '.repeat(pad)}</Text> : null}
       </Text>
     )
   },
@@ -83,6 +98,7 @@ export const StepRow = memo(
     if (prev.preview !== next.preview) return false
     if (prev.columns.elapsed !== next.columns.elapsed) return false
     if (prev.paneCols !== next.paneCols) return false
+    if (prev.rowWidth !== next.rowWidth) return false
     if (prev.step.name !== next.step.name) return false
     if (prev.step.status !== next.step.status) return false
     if (prev.step.kind !== next.step.kind) return false

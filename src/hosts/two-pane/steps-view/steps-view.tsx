@@ -38,6 +38,7 @@ import {
 import {
   computeVisibleCount,
   estimateWrappedRows,
+  offscreenCursorEntry,
   scrollbarTrack,
   visibleSlice,
 } from './steps-view-layout.ts'
@@ -127,8 +128,6 @@ export function StepsView({
   const failureActions = actionsEnabled && state.status === 'failed'
   const columns = useAdaptiveColumns()
   const { stdout } = useStdout()
-  const { committedName, selectedName, moveUp, moveDown, snapToLive, isUserDriven } =
-    useStepsSelection(state.steps, state.view)
   const [dialog, setDialog] = useState<StepsDialog | undefined>(undefined)
   const dialogOpen = dialog !== undefined
 
@@ -146,9 +145,28 @@ export function StepsView({
     footerRows: 1,
   })
 
+  const showScrollbar = state.steps.length > visibleCount
+
   const scroll = useStepsScroll(state.steps.length, visibleCount, () => {
     onIntent({ type: 'follow-live' })
   })
+  // `ensureVisible` makes the viewport FOLLOW the ↑/↓ preview cursor — without
+  // it the cursor walks out of the scrolled window and "disappears" while the
+  // scrollbar (which tracks the window, not the cursor) stays put.
+  const { committedName, selectedName, moveUp, moveDown, moveInto, snapToLive, isUserDriven } =
+    useStepsSelection(state.steps, state.view, scroll.ensureVisible)
+
+  const moveSelection = (dir: 'up' | 'down'): void => {
+    const cursorIndex =
+      selectedName === undefined ? -1 : state.steps.findIndex((s) => s.name === selectedName)
+    const entry = offscreenCursorEntry(state.steps, scroll.scrollOffset, visibleCount, cursorIndex)
+    if (entry !== undefined) {
+      moveInto(entry)
+      return
+    }
+    if (dir === 'up') moveUp()
+    else moveDown()
+  }
 
   const runAction = (action: StepsKeyAction): void => {
     switch (action.type) {
@@ -162,8 +180,7 @@ export function StepsView({
         runScroll(scroll, action.to)
         return
       case 'move-selection':
-        if (action.dir === 'up') moveUp()
-        else moveDown()
+        moveSelection(action.dir)
         return
       case 'commit-selection': {
         if (selectedName === undefined) return
@@ -180,7 +197,10 @@ export function StepsView({
       }
       case 'follow-live':
         snapToLive()
-        onIntent({ type: 'follow-live' })
+        // Re-pin the window to the live tail too — `f` from a scrolled view
+        // must bring the highlight back on screen. `jumpBottom` emits the
+        // `follow-live` intent via the hook's callback (exactly once).
+        scroll.jumpBottom()
         return
       case 'retry':
         onIntent({ type: 'retry' })
@@ -295,11 +315,12 @@ export function StepsView({
                     isUserDriven && step.name === selectedName && step.name !== committedName
                   }
                   paneCols={paneCols}
+                  rowWidth={paneCols - (showScrollbar ? 1 : 0)}
                 />
               ),
             )}
           </Box>
-          {state.steps.length > visibleCount ? (
+          {showScrollbar ? (
             <Box flexDirection="column" width={1} flexShrink={0}>
               {scrollbarTrack(state.steps.length, scroll.scrollOffset, visibleCount).map(
                 (char, i) => (
