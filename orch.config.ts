@@ -9,5 +9,6 @@ export const config = defineConfig({
     'do-work': 'workflows/do-work/index.ts',
     'generate-changelog': 'workflows/generate-changelog/index.ts',
     session: 'workflows/session/index.ts',
+    'master-worker': 'workflows/master-worker/index.ts',
   },
 })
