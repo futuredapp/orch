@@ -121,6 +121,9 @@ async function parallelHeterogeneous<T extends readonly Promise<unknown>[]>(
 ): Promise<AwaitedTuple<T>> {
   const blockId = emitParallelStart()
   try {
+    // Empty input → empty tuple. TS can't prove `[]` satisfies the
+    // heterogeneous AwaitedTuple<T> for an arbitrary T, so this is the one
+    // sanctioned escape hatch in this file.
     if (promises.length === 0) return [] as unknown as AwaitedTuple<T>
 
     const results = await Promise.allSettled(promises)

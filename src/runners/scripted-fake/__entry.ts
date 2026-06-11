@@ -312,8 +312,11 @@ async function dispatchPuppetCommand(
       await writeFileNode(command.path, command.content, 'utf-8')
       return { kind: 'continue' }
     case 'run-shell': {
-      // Use Bun.spawn for portability; await exit. Output is intentionally
-      // discarded — `emit` is the side-channel for test-visible content.
+      // Deliberate CLAUDE.md rule-1 exception: this file IS a spawned child
+      // process (the scripted-fake puppet's own entry point), not part of
+      // orch's in-process tree — there is no ProcessService wired here to
+      // route through. Output is intentionally discarded; `emit` is the
+      // side-channel for test-visible content.
       const proc = Bun.spawn(['sh', '-c', command.command], {
         stdout: 'pipe',
         stderr: 'pipe',
