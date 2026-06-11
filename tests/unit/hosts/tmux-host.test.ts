@@ -526,7 +526,12 @@ describe('TmuxHost.runInteractive', () => {
       throw new Error('expected per-source createSession for interactive review')
     }
     expect(ptyCreate.opts.command).toEqual(['claude', '--resume', 'abc'])
-    expect(ptyCreate.opts.env).toEqual(spawnEnv)
+    // The caller's env passes through verbatim, plus the P6 pane-focus
+    // hand-back coordinates every right-pane interactive spawn receives
+    // (the ask form's Tab edge-out reads them; other CLIs ignore them).
+    expect(ptyCreate.opts.env).toMatchObject(spawnEnv ?? {})
+    expect(ptyCreate.opts.env?.ORCH_LEFT_PANE_ID).toBe('%0')
+    expect(ptyCreate.opts.env?.ORCH_TMUX_SOCKET).toBeDefined()
     expect(ptyCreate.opts.cwd).toBe(path('/tmp'))
 
     // The interactive PTY pane no longer arrives via `splitPane`. We allow

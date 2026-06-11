@@ -60,6 +60,22 @@ describe('initOrchSession writes the strict-sandbox tmux config', () => {
     expect(written).toContain('set -g destroy-unattached off')
   })
 
+  it('writes the pane-border focus styling so the focused pane is visible (P6)', async () => {
+    const fs = new FakeFsService()
+    const tmux = new FakeTmuxService()
+
+    await initOrchSession(tmux, fs, baseOpts)
+
+    const createCall = tmux.recordedCalls.find((c) => c.method === 'createSession')
+    if (createCall?.method !== 'createSession') throw new Error('expected createSession call')
+    const configPath = createCall.opts.configPath
+    if (configPath === undefined) throw new Error('configPath should be defined')
+
+    const written = await fs.readFile(configPath)
+    expect(written).toContain('set -g pane-border-style fg=brightblack')
+    expect(written).toContain('set -g pane-active-border-style fg=cyan')
+  })
+
   it('passes the config path to createSession via the configPath option', async () => {
     const fs = new FakeFsService()
     const tmux = new FakeTmuxService()

@@ -17,6 +17,7 @@ export function HelpOverlay(): React.ReactElement {
       <Text>Home (or g) jump to top · End (or G) jump to live tail</Text>
       <Text>⏎ view selected step</Text>
       <Text>f follow live (or rollup) — returns to the most recent live source</Text>
+      <Text>Tab focus the agent pane · Alt+←/→ switch panes from anywhere</Text>
       <Text>Esc close this help · dismiss error banner</Text>
       <Text>? toggle this help</Text>
       <Text>q quit — asks to confirm while live (run continues either way)</Text>

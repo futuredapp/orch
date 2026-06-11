@@ -101,6 +101,9 @@ export type StepsViewIntent =
   // once and re-parks; `[c]` re-runs it and continues to completion.
   | { readonly type: 'retry' }
   | { readonly type: 'retry-continue' }
+  // P6: Tab hands keyboard focus to the right (agent) pane; the parent runs
+  // `tmux select-pane` against the current visible pane.
+  | { readonly type: 'focus-pane'; readonly pane: 'right' }
 
 export interface StepsViewKeyEvent {
   readonly ts: number
@@ -184,6 +187,9 @@ export function StepsView({
         return
       case 'retry-continue':
         onIntent({ type: 'retry-continue' })
+        return
+      case 'focus-pane':
+        onIntent({ type: 'focus-pane', pane: action.pane })
         return
       case 'quit':
         // Ctrl-C inside the Ink pane: orch's stdin is `pipe`, so the kernel

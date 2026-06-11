@@ -351,6 +351,72 @@ describe('AskApp', () => {
     ui.unmount()
   })
 
+  it('Tab past the last button hands focus to the steps pane when onFocusPane is wired', async () => {
+    const r = makeResolver()
+    let focusOuts = 0
+    const ui = render(
+      <AskApp
+        spec={SPEC_NO_FIELDS_TWO_BUTTONS}
+        onResolve={r.onResolve}
+        onFocusPane={() => {
+          focusOuts++
+        }}
+      />,
+    )
+    await tick()
+    await waitForFrame(ui, (f) => f.includes('❯ ok'))
+
+    await pressKey(ui, TAB)
+    await waitForFrame(ui, (f) => f.includes('❯ cancel'))
+    await pressKey(ui, TAB)
+
+    expect(focusOuts).toBe(1)
+    expect(r.take()).toBeUndefined()
+
+    ui.unmount()
+  })
+
+  it('Shift-Tab on the first element hands focus to the steps pane when onFocusPane is wired', async () => {
+    const r = makeResolver()
+    let focusOuts = 0
+    const ui = render(
+      <AskApp
+        spec={SPEC_TWO_FIELDS_TWO_BUTTONS}
+        onResolve={r.onResolve}
+        onFocusPane={() => {
+          focusOuts++
+        }}
+      />,
+    )
+    await tick()
+    await waitForFrame(ui, (f) => f.includes('▌ notes:'))
+
+    await pressKey(ui, SHIFT_TAB)
+
+    expect(focusOuts).toBe(1)
+    expect(r.take()).toBeUndefined()
+
+    ui.unmount()
+  })
+
+  it('Tab past the last button wraps to the first field when onFocusPane is absent', async () => {
+    const r = makeResolver()
+    const ui = render(<AskApp spec={SPEC_TWO_FIELDS_TWO_BUTTONS} onResolve={r.onResolve} />)
+    await tick()
+    await waitForFrame(ui, (f) => f.includes('▌ notes:'))
+
+    await pressKey(ui, TAB)
+    await pressKey(ui, TAB)
+    await pressKey(ui, TAB)
+    await waitForFrame(ui, (f) => f.includes('❯ retry'))
+    await pressKey(ui, TAB)
+    await waitForFrame(ui, (f) => f.includes('▌ notes:'))
+
+    expect(r.take()).toBeUndefined()
+
+    ui.unmount()
+  })
+
   it('resolves only once even if the user mashes Enter after submit', async () => {
     const r = makeResolver()
     let calls = 0

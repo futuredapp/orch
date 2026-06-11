@@ -101,7 +101,14 @@ describe('Host.awaitForegroundShutdown', () => {
     await fs.mkdir(stateDir, { recursive: true })
 
     type IntentLike = {
-      type: 'quit' | 'enter' | 'follow-live' | 'dismiss-banner' | 'retry' | 'retry-continue'
+      type:
+        | 'quit'
+        | 'enter'
+        | 'follow-live'
+        | 'dismiss-banner'
+        | 'retry'
+        | 'retry-continue'
+        | 'focus-pane'
     }
     let captured: ((intent: IntentLike) => void) | undefined
     const onStepsIntent = (intent: IntentLike): void => {

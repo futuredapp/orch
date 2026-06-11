@@ -320,6 +320,12 @@ const APPLIANCE_CONFIG_LINES = [
   // owns the per-run tmux server, so a global option is scoped to this
   // run only. See the per-source-tmux-sessions plan.
   'set -g destroy-unattached off',
+  // Pane-focus affordance (P6): with keyboard focus switching (Tab from the
+  // steps view, M-Left/M-Right anywhere) the user needs to SEE which pane
+  // owns the keyboard. Cyan active border matches the steps-view accent;
+  // the inactive border stays the dim default-ish gray.
+  'set -g pane-border-style fg=brightblack',
+  'set -g pane-active-border-style fg=cyan',
 ] as const
 
 const writeAppliancConfig = async (fs: FsService): Promise<Path> => {

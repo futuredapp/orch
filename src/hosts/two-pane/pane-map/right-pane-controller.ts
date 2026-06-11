@@ -1085,6 +1085,17 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
     }
     if (intent.type === 'dismiss-banner') {
       void dismissBanner()
+      return
+    }
+    if (intent.type === 'focus-pane') {
+      // Focus whatever pane currently occupies the visible right slot. The
+      // id changes with every swap, so read it at dispatch time. Best-effort:
+      // a focus miss (e.g. mid-swap) is harmless — the user presses Tab again.
+      void opts.tmux
+        .selectPane({ socket: opts.socket, target: visiblePaneId })
+        .catch((err: unknown) => {
+          logLifecycle({ type: 'focus-pane-error', error: String(err) })
+        })
     }
   }
 

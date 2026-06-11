@@ -58,9 +58,10 @@ export function renderFooterState(
 }
 
 /** Right zone — key hints. `f` is hidden in live mode: it's a no-op when
- *  already on the most-recent live source. */
+ *  already on the most-recent live source. `⇥ pane` trails so it is the
+ *  first hint truncation drops at narrow widths. */
 export function renderFooterHints(view: ViewMode): string {
   return view.mode === 'live'
-    ? '⏎ view step · q quit · ? help'
-    : 'f live · ⏎ view another · q quit · ? help'
+    ? '⏎ view step · q quit · ? help · ⇥ pane'
+    : 'f live · ⏎ view another · q quit · ? help · ⇥ pane'
 }

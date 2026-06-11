@@ -25,6 +25,7 @@ export interface KeyInfo {
   readonly return?: boolean
   readonly escape?: boolean
   readonly ctrl?: boolean
+  readonly tab?: boolean
   readonly pageUp?: boolean
   readonly pageDown?: boolean
   readonly home?: boolean
@@ -34,6 +35,7 @@ export interface KeyInfo {
 export type StepsKeyTag =
   | 'up'
   | 'down'
+  | 'tab'
   | 'return'
   | 'f'
   | 'q'
@@ -74,6 +76,7 @@ export type StepsKeyAction =
   | { readonly type: 'retry' }
   | { readonly type: 'retry-continue' }
   | { readonly type: 'quit' }
+  | { readonly type: 'focus-pane'; readonly pane: 'right' }
   | { readonly type: 'none' }
 
 const NONE: StepsKeyAction = { type: 'none' }
@@ -91,6 +94,10 @@ export function resolveStepsKeyAction(
   if (key.escape === true) {
     return ctx.hasErrorBanner ? { type: 'dismiss-banner' } : NONE
   }
+  // Tab hands keyboard focus to the agent (right) pane — the steps view is
+  // orch-owned, so Tab is free here. The way back from a real agent CLI is
+  // the global M-Left binding (agents need Tab for their own completions).
+  if (key.tab === true) return { type: 'focus-pane', pane: 'right' }
   const scroll = resolveScroll(input, key)
   if (scroll !== undefined) return scroll
   if (key.upArrow === true) return { type: 'move-selection', dir: 'up' }
@@ -141,6 +148,7 @@ export function classifyKey(input: string, key: KeyInfo): StepsKeyTag {
   if (key.end === true || input === 'G') return 'end'
   if (key.upArrow === true) return 'up'
   if (key.downArrow === true) return 'down'
+  if (key.tab === true) return 'tab'
   if (key.return === true) return 'return'
   if (key.escape === true) return 'esc'
   if (key.ctrl === true && (input === 'c' || input === 'C')) return 'ctrl-c'

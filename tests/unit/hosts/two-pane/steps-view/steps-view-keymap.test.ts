@@ -120,6 +120,19 @@ describe('resolveStepsKeyAction', () => {
     })
   })
 
+  it('maps Tab to a focus-pane hand-off to the right pane', () => {
+    expect(resolveStepsKeyAction('', { tab: true }, baseCtx)).toEqual({
+      type: 'focus-pane',
+      pane: 'right',
+    })
+  })
+
+  it('swallows Tab while a dialog is open', () => {
+    expect(resolveStepsKeyAction('', { tab: true }, { ...baseCtx, dialogOpen: true })).toEqual({
+      type: 'none',
+    })
+  })
+
   it('opens the help dialog on ?', () => {
     expect(resolveStepsKeyAction('?', {}, baseCtx)).toEqual({
       type: 'open-dialog',

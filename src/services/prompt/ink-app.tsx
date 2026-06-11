@@ -29,9 +29,16 @@ import type { PromptField, PromptResult, PromptSpec } from './prompt-service.ts'
 export interface AskAppProps {
   readonly spec: PromptSpec
   readonly onResolve: (r: PromptResult) => void
+  /**
+   * P6 edge-out: invoked when `Tab` steps past the last button (or
+   * `Shift-Tab` before the first element) — the runner wires it to
+   * `tmux select-pane` so focus hands back to the steps pane. When absent
+   * (unit tests, no tmux context) Tab keeps its wrapping flat cycle.
+   */
+  readonly onFocusPane?: () => void
 }
 
-export function AskApp({ spec, onResolve }: AskAppProps): React.ReactElement {
+export function AskApp({ spec, onResolve, onFocusPane }: AskAppProps): React.ReactElement {
   const fieldCount = spec.fields.length
   // Row index of the button row — one past the last field (0 when no fields).
   const buttonRow = fieldCount
@@ -61,8 +68,15 @@ export function AskApp({ spec, onResolve }: AskAppProps): React.ReactElement {
 
   // Flat Tab order over both axes: stepping forward off the last button (or
   // backward off the first) crosses to the row axis, whose wrap closes the
-  // cycle through the fields.
+  // cycle through the fields — unless `onFocusPane` is wired, in which case
+  // stepping past either end hands focus to the steps pane instead.
+  const atLastElement = onButtonRow && buttons.index === spec.buttons.length - 1
+  const atFirstElement = fieldCount > 0 ? rows.index === 0 : buttons.index === 0
   const flatNext = (): void => {
+    if (atLastElement && onFocusPane !== undefined) {
+      onFocusPane()
+      return
+    }
     if (onButtonRow && buttons.index < spec.buttons.length - 1) {
       buttons.next()
     } else {
@@ -71,6 +85,10 @@ export function AskApp({ spec, onResolve }: AskAppProps): React.ReactElement {
     }
   }
   const flatPrev = (): void => {
+    if (atFirstElement && onFocusPane !== undefined) {
+      onFocusPane()
+      return
+    }
     if (onButtonRow && buttons.index > 0) {
       buttons.prev()
     } else {

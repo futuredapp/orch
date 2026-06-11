@@ -1118,10 +1118,17 @@ function buildHost(deps: BuildHostDeps): Host {
     const autoStopChannel = spawn.autoStop
       ? `auto-stop-${spawn.stepName.replace(/[^a-zA-Z0-9-]/g, '_')}`
       : undefined
-    const spawnEnv =
-      autoStopChannel !== undefined
-        ? { ...spawn.env, ORCH_SOCKET: deps.socket, ORCH_STOP_CHANNEL: autoStopChannel }
-        : spawn.env
+    // ORCH_TMUX_SOCKET + ORCH_LEFT_PANE_ID: pane-focus hand-back for
+    // orch-owned interactive UIs (the ask form's Tab-past-end edge-out,
+    // see ink-runner.ts). Harmless extra env for non-orch CLIs.
+    const spawnEnv = {
+      ...spawn.env,
+      ORCH_TMUX_SOCKET: deps.socket as string,
+      ORCH_LEFT_PANE_ID: deps.leftPaneId as string,
+      ...(autoStopChannel !== undefined
+        ? { ORCH_SOCKET: deps.socket as string, ORCH_STOP_CHANNEL: autoStopChannel }
+        : {}),
+    }
     try {
       appendLifecycleSoon({
         type: 'interactive-register-start',
