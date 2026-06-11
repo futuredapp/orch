@@ -18,6 +18,7 @@
 // viewport means Ink never takes the clear branch during normal operation.
 
 import { stripAnsi } from '../../../observability/index.ts'
+import type { StepRow } from './step-types.ts'
 
 /**
  * Rows a line of text occupies once wrapped to `columns`. An estimate: it uses
@@ -60,4 +61,19 @@ export function computeVisibleCount(rows: number, chrome: ChromeRows): number {
     chrome.footerRows +
     SAFETY_MARGIN
   return Math.max(1, rows - reserved)
+}
+
+/**
+ * The window of `steps` the body renders: the last `visibleCount` rows,
+ * shifted up by `scrollOffset` rows from the bottom of the buffer.
+ */
+export function visibleSlice(
+  steps: readonly StepRow[],
+  scrollOffset: number,
+  visibleCount: number,
+): readonly StepRow[] {
+  if (steps.length <= visibleCount) return steps
+  const end = steps.length - scrollOffset
+  const start = Math.max(0, end - visibleCount)
+  return steps.slice(start, end)
 }
