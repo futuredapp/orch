@@ -73,7 +73,9 @@ export function EndOfRunFooter({
 }: EndOfRunFooterProps): React.ReactElement {
   const label = statusLabel(status)
   const actions =
-    showFailureActions && status === 'failed' ? ' · r to retry · c to retry & continue' : ''
+    showFailureActions && status === 'failed'
+      ? ' · r to retry · c to retry & continue · a actions'
+      : ''
   return (
     <Box marginTop={1}>
       <Text dimColor>{`run ${label} · q to quit · ⏎ to inspect${actions}`}</Text>

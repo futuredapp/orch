@@ -253,6 +253,24 @@ export const FIXTURES: readonly GalleryFixture[] = [
       ),
   },
   {
+    name: 'confirm-quit-dialog',
+    title: 'Confirm-quit dialog over a live run (q)',
+    element: () => steps(liveState(pipeline(['plan', 'implement', 'review'], 1))),
+    keys: ['q'],
+    settled: (frame) => frame.includes('Quit orch viewer?'),
+  },
+  {
+    name: 'failure-actions-dialog',
+    title: 'Failure-actions dialog on the interactive failed view (a)',
+    element: () => {
+      const rows = pipeline(['plan', 'implement', 'review'], 2)
+      const failedRows = rows.map((r, i) => (i === 2 ? { ...r, status: 'failed' as const } : r))
+      return steps(terminalState(failedRows, 'failed'), true)
+    },
+    keys: ['a'],
+    settled: (frame) => frame.includes('choose an action'),
+  },
+  {
     name: 'ask-two-fields',
     title: 'Ask form: two fields + three buttons',
     element: () => ask(askSpec(['reason', 'notes'], ['approve', 'reject', 'defer'])),

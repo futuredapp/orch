@@ -49,15 +49,20 @@ export type StepsKeyTag =
   | 'other'
 
 export interface StepsKeymapContext {
-  readonly helpOpen: boolean
+  /** A dialog owns the keyboard — the keymap swallows everything. */
+  readonly dialogOpen: boolean
   readonly hasErrorBanner: boolean
-  /** U6: interactive failed re-entry view — enables the `r`/`c` actions. */
+  /** U6: interactive failed re-entry view — enables the `r`/`c`/`a` actions. */
   readonly failureActions: boolean
+  /** Live run — `q` asks to confirm; terminal states quit immediately. */
+  readonly isLive: boolean
 }
 
 export type StepsKeyAction =
-  | { readonly type: 'close-help' }
-  | { readonly type: 'open-help' }
+  | {
+      readonly type: 'open-dialog'
+      readonly dialog: 'help' | 'confirm-quit' | 'failure-actions'
+    }
   | { readonly type: 'dismiss-banner' }
   | {
       readonly type: 'scroll'
@@ -78,8 +83,9 @@ export function resolveStepsKeyAction(
   key: KeyInfo,
   ctx: StepsKeymapContext,
 ): StepsKeyAction {
-  if (ctx.helpOpen) {
-    if (key.escape === true || input === '?') return { type: 'close-help' }
+  if (ctx.dialogOpen) {
+    // The open dialog's own `useInput` handles every key (navigation,
+    // activation, close) — the steps keymap stays entirely out of the way.
     return NONE
   }
   if (key.escape === true) {
@@ -94,8 +100,13 @@ export function resolveStepsKeyAction(
   if (key.ctrl === true && (input === 'c' || input === 'C')) return { type: 'quit' }
   if (ctx.failureActions && (input === 'r' || input === 'R')) return { type: 'retry' }
   if (ctx.failureActions && (input === 'c' || input === 'C')) return { type: 'retry-continue' }
-  if (input === 'q') return { type: 'quit' }
-  if (input === '?') return { type: 'open-help' }
+  if (ctx.failureActions && (input === 'a' || input === 'A')) {
+    return { type: 'open-dialog', dialog: 'failure-actions' }
+  }
+  if (input === 'q') {
+    return ctx.isLive ? { type: 'open-dialog', dialog: 'confirm-quit' } : { type: 'quit' }
+  }
+  if (input === '?') return { type: 'open-dialog', dialog: 'help' }
   return NONE
 }
 

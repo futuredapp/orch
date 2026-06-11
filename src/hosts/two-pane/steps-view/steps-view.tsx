@@ -20,8 +20,8 @@
 import { Box, Text, useInput, useStdout } from 'ink'
 import type React from 'react'
 import { useEffect, useState } from 'react'
+import { type DialogAction, DialogHost, type StepsDialog } from './dialogs.tsx'
 import { EndOfRunFooter, EndOfRunSummary } from './end-of-run-summary.tsx'
-import { HelpOverlay } from './help-overlay.tsx'
 import { StepRow, SubBoundaryRow } from './step-row.tsx'
 import type { StepsViewState } from './step-types.ts'
 import { BannerBox, bannerText, DEFAULT_INFO_TTL_MS } from './steps-view-banner.tsx'
@@ -126,7 +126,8 @@ export function StepsView({
   const { stdout } = useStdout()
   const { committedName, selectedName, moveUp, moveDown, snapToLive, isUserDriven } =
     useStepsSelection(state.steps, state.view)
-  const [helpOpen, setHelpOpen] = useState(false)
+  const [dialog, setDialog] = useState<StepsDialog | undefined>(undefined)
+  const dialogOpen = dialog !== undefined
 
   // Visible-row budget for the steps body. The frame must stay below the
   // pane viewport or Ink full-clears (a visible blank-then-repaint) on every
@@ -148,11 +149,8 @@ export function StepsView({
 
   const runAction = (action: StepsKeyAction): void => {
     switch (action.type) {
-      case 'close-help':
-        setHelpOpen(false)
-        return
-      case 'open-help':
-        setHelpOpen(true)
+      case 'open-dialog':
+        setDialog({ kind: action.dialog })
         return
       case 'dismiss-banner':
         onIntent({ type: 'dismiss-banner' })
@@ -208,16 +206,25 @@ export function StepsView({
       input: tag === 'other' ? input : '',
       selectedName,
       isUserDriven,
-      helpOpen,
+      helpOpen: dialogOpen,
     })
     runAction(
       resolveStepsKeyAction(input, key, {
-        helpOpen,
+        dialogOpen,
         hasErrorBanner: state.banner !== undefined && state.banner.kind === 'error',
         failureActions,
+        isLive: state.status === 'live',
       }),
     )
   })
+
+  // A dialog button resolved — close the dialog, then emit the matching
+  // intent (quit / retry / retry-continue go through the same channel the
+  // direct key chords use).
+  const onDialogAction = (action: DialogAction): void => {
+    setDialog(undefined)
+    onIntent({ type: action })
+  }
 
   // Info-banner auto-dismiss. The controller emits a new banner OBJECT for
   // every snapshot (different seq → different reference), so depending on
@@ -244,7 +251,15 @@ export function StepsView({
         <LiveHeader state={state} now={now()} />
       )}
       {banner !== undefined ? <BannerBox banner={banner} /> : null}
-      {state.steps.length === 0 ? (
+      {dialog !== undefined ? (
+        // Content replacement, not an overlay: the dialog renders INSTEAD of
+        // the grid + footer so the frame never grows past the measured budget.
+        <DialogHost
+          dialog={dialog}
+          onClose={() => setDialog(undefined)}
+          onAction={onDialogAction}
+        />
+      ) : state.steps.length === 0 ? (
         <Text dimColor>(no steps yet)</Text>
       ) : (
         // Ink 7 defaults all four edges to `true` when `borderStyle` is set,
@@ -292,10 +307,10 @@ export function StepsView({
           ) : null}
         </Box>
       )}
-      {isTerminal ? (
+      {isTerminal && !dialogOpen ? (
         <EndOfRunFooter status={state.status} showFailureActions={failureActions} />
       ) : null}
-      {!helpOpen && !isTerminal ? (
+      {!dialogOpen && !isTerminal ? (
         <ViewModeFooter
           view={state.view}
           scrollOffset={scroll.scrollOffset}
@@ -303,7 +318,6 @@ export function StepsView({
           visibleCount={visibleCount}
         />
       ) : null}
-      {helpOpen ? <HelpOverlay /> : null}
     </Box>
   )
 }

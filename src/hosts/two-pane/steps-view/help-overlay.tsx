@@ -19,7 +19,8 @@ export function HelpOverlay(): React.ReactElement {
       <Text>f follow live (or rollup) — returns to the most recent live source</Text>
       <Text>Esc close this help · dismiss error banner</Text>
       <Text>? toggle this help</Text>
-      <Text>q quit (run continues)</Text>
+      <Text>q quit — asks to confirm while live (run continues either way)</Text>
+      <Text>a failure actions (failed run) · r retry · c retry &amp; continue</Text>
       <Text> </Text>
       <Text dimColor>
         Footer indicator: ▶ live · ⏸ viewing &lt;step&gt; · ↑ scrolled · End live
