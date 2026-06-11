@@ -37,6 +37,8 @@
     "test:two-pane": "bun run test:two-pane:fast && bun run test:two-pane:tmux",
     "test:two-pane:lifecycle": "bun test --max-concurrency=4 tests/dsl/drivers/__tests__/lifecycle-driver.test.ts tests/lifecycle",
     "test:two-pane:all": "bun run test:two-pane && bun run test:two-pane:lifecycle && bun run test:two-pane:full:real",
+    "tui:gallery": "bun scripts/tui-gallery.tsx",
+    "tui:playground": "bun scripts/tui-playground.tsx",
     "test:unit": "bun test tests/unit",
     "test:int": "bun test --max-concurrency=4 tests/integration/cli tests/integration/codegen tests/integration/core tests/integration/examples tests/integration/hosts tests/integration/observability tests/integration/runners tests/integration/services tests/integration/state tests/integration/validators tests/integration/workflows",
     "test:int:real-tmux": "bun test --max-concurrency=2 tests/integration/real-tmux",

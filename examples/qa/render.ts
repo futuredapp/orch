@@ -66,9 +66,14 @@ export async function rendererAvailable(
   return exitCode === 0
 }
 
-/** Render one ANSI file to a PNG via `freeze`. Throws on a non-zero exit. */
+/**
+ * Render one ANSI file to a PNG via `freeze`. Throws on a non-zero exit.
+ * `language: 'ansi'` forces ANSI mode for frames freeze cannot auto-detect
+ * (a tmux capture starts with SGR bytes and detects fine; an Ink debug frame
+ * can start with plain text and trips "Language Unknown").
+ */
 export async function renderPng(
-  args: { readonly ansiPath: string; readonly pngPath: string },
+  args: { readonly ansiPath: string; readonly pngPath: string; readonly language?: string },
   processService: ProcessService = new BunProcessService(),
 ): Promise<void> {
   const { exitCode, output } = await run(processService, [
@@ -76,6 +81,7 @@ export async function renderPng(
     args.ansiPath,
     '--output',
     args.pngPath,
+    ...(args.language !== undefined ? ['--language', args.language] : []),
   ])
   if (exitCode !== 0) throw new Error(`freeze failed (exit ${exitCode}): ${output}`)
 }
