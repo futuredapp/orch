@@ -86,9 +86,17 @@ async function waitForChecksToRegister(prNumber: number): Promise<void> {
   }
 }
 
-/** Merge with a merge commit (NOT squash — keeps main == develop content). */
+/**
+ * Merge with a merge commit (NOT squash — keeps main == develop content).
+ *
+ * `--admin` exercises the release author's pull-request-review bypass on `main`:
+ * the branch requires one approving review, which a solo release flow can't
+ * satisfy, so we merge with administrator privileges. This only bypasses the
+ * review — the required status checks are already green (the caller waits on
+ * them before reaching here), so a red PR can never be force-merged this way.
+ */
 export async function mergePr(prNumber: number): Promise<void> {
-  await stream(['gh', 'pr', 'merge', String(prNumber), '--merge'])
+  await stream(['gh', 'pr', 'merge', String(prNumber), '--merge', '--admin'])
 }
 
 /** Best-effort: stream the most recent release-workflow run to completion. */
