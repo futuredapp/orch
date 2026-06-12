@@ -571,20 +571,24 @@ describe.skipIf(!canRun)('initOrchSession strict-sandbox lockdown on real tmux',
     return tmux
   }
 
-  it('list-keys -T root contains exactly the six allowlist bindings after init', async () => {
+  it('list-keys -T root contains exactly the seven allowlist bindings after init', async () => {
     const socket = newSocket('strict-root-keys')
     await initStrict(socket)
 
     const { stdout, exitCode } = await runShell(['tmux', '-L', socket, 'list-keys', '-T', 'root'])
     expect(exitCode).toBe(0)
     const lines = stdout.split('\n').filter((l) => l.trim().length > 0)
-    expect(lines).toHaveLength(6)
+    expect(lines).toHaveLength(7)
     expect(stdout).toContain('MouseDrag1Border')
     expect(stdout).toContain('MouseDown1Pane')
     expect(stdout).toContain('M-Left')
     expect(stdout).toContain('M-Right')
     expect(stdout).toContain('WheelUpPane')
     expect(stdout).toContain('WheelDownPane')
+    // V3 steps-pane copy: the smart-drag binding enters copy-mode on a plain
+    // pane and forwards to a mouse-capturing agent.
+    expect(stdout).toContain('MouseDrag1Pane')
+    expect(stdout).toContain('copy-mode -M')
     // Smart-wheel rule preserves the nested if-shell shape on round-trip.
     expect(stdout).toContain('mouse_any_flag')
     expect(stdout).toContain('alternate_on')
@@ -634,6 +638,10 @@ describe.skipIf(!canRun)('initOrchSession strict-sandbox lockdown on real tmux',
       expect(stdout).toContain('scroll-down')
       expect(stdout).toContain('history-top')
       expect(stdout).toContain('history-bottom')
+      // V3 drag-end yank — must live in the copy-mode tables (the drag
+      // entered copy-mode via `copy-mode -M`), not root.
+      expect(stdout).toContain('MouseDragEnd1Pane')
+      expect(stdout).toContain('copy-selection-and-cancel')
     }
   })
 
@@ -651,6 +659,31 @@ describe.skipIf(!canRun)('initOrchSession strict-sandbox lockdown on real tmux',
     ])
     expect(exitCode).toBe(0)
     expect(stdout).toMatch(/prefix\s+None/)
+  })
+
+  it('show-options -g set-clipboard / allow-passthrough / mode-style reflect the V3 copy config after init', async () => {
+    const socket = newSocket('strict-copy-options')
+    await initStrict(socket)
+
+    const clipboard = await runShell(['tmux', '-L', socket, 'show-options', '-g', 'set-clipboard'])
+    expect(clipboard.exitCode).toBe(0)
+    expect(clipboard.stdout).toMatch(/set-clipboard\s+on/)
+
+    const passthrough = await runShell([
+      'tmux',
+      '-L',
+      socket,
+      'show-options',
+      '-g',
+      'allow-passthrough',
+    ])
+    expect(passthrough.exitCode).toBe(0)
+    expect(passthrough.stdout).toMatch(/allow-passthrough\s+on/)
+
+    const modeStyle = await runShell(['tmux', '-L', socket, 'show-options', '-g', 'mode-style'])
+    expect(modeStyle.exitCode).toBe(0)
+    expect(modeStyle.stdout).toContain('bg=#214283')
+    expect(modeStyle.stdout).toContain('fg=#ffffff')
   })
 
   it('display-message #{history_limit} is >= 50000 on the initial pane after init', async () => {
@@ -741,5 +774,7 @@ describe.skipIf(!canRun)('initOrchSession strict-sandbox lockdown on real tmux',
     // the smart-wheel binding and the Ink keymap).
     expect(stdout).toContain('scroll')
     expect(stdout).toContain('wheel')
+    // …and advertises drag-to-copy so the V3 selection path is discoverable.
+    expect(stdout).toContain('drag to copy')
   })
 })

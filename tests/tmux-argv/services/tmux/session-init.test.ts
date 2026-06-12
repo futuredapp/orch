@@ -29,7 +29,7 @@ const baseOpts = {
 }
 
 describe('initOrchSession writes the strict-sandbox tmux config', () => {
-  it('writes a config file containing history-limit >= 50000, mouse on, remain-on-exit on, prefix None, exit-empty off, and destroy-unattached off', async () => {
+  it('writes a config file containing history-limit >= 50000, mouse on, set-clipboard on, allow-passthrough on, mode-style, remain-on-exit on, prefix None, exit-empty off, and destroy-unattached off', async () => {
     const fs = new FakeFsService()
     const tmux = new FakeTmuxService()
 
@@ -47,6 +47,10 @@ describe('initOrchSession writes the strict-sandbox tmux config', () => {
     const historyValue = Number(historyMatch?.[1])
     expect(historyValue).toBeGreaterThanOrEqual(50000)
     expect(written).toContain('set -g mouse on')
+    // V3 copy path — OSC 52 host clipboard + passthrough + native-blue selection.
+    expect(written).toContain('set -g set-clipboard on')
+    expect(written).toContain('set -g allow-passthrough on')
+    expect(written).toContain("set -g mode-style 'bg=#214283,fg=#ffffff'")
     expect(written).toContain('set -g remain-on-exit on')
     expect(written).toContain('set -g prefix None')
     expect(written).toContain('set -s exit-empty off')
@@ -105,14 +109,14 @@ describe('initOrchSession installs the root allowlist followed by the copy-mode 
     expect(first.opts.command).toEqual(['resize-pane', '-M'])
   })
 
-  it('installs the six root-table bindings first, in MouseDrag, MouseDown, M-Left, M-Right, WheelUpPane, WheelDownPane order', async () => {
+  it('installs the seven root-table bindings first, in MouseDrag1Border, MouseDown, M-Left, M-Right, WheelUpPane, WheelDownPane, MouseDrag1Pane order', async () => {
     const fs = new FakeFsService()
     const tmux = new FakeTmuxService()
 
     await initOrchSession(tmux, fs, baseOpts)
 
     const binds = tmux.recordedCalls.filter((c) => c.method === 'bindKey')
-    const rootBinds = binds.slice(0, 6)
+    const rootBinds = binds.slice(0, 7)
     const keys = rootBinds.map((c) => (c.method === 'bindKey' ? c.opts.key : ''))
     expect(keys).toEqual([
       'MouseDrag1Border',
@@ -121,10 +125,19 @@ describe('initOrchSession installs the root allowlist followed by the copy-mode 
       'M-Right',
       'WheelUpPane',
       'WheelDownPane',
+      'MouseDrag1Pane',
     ])
 
     const tables = rootBinds.map((c) => (c.method === 'bindKey' ? c.opts.table : ''))
-    expect(tables).toEqual(['root', 'root', 'root-no-prefix', 'root-no-prefix', 'root', 'root'])
+    expect(tables).toEqual([
+      'root',
+      'root',
+      'root-no-prefix',
+      'root-no-prefix',
+      'root',
+      'root',
+      'root',
+    ])
   })
 
   it('WheelUpPane uses the smart-wheel rule that falls back to copy-mode -e on a normal text pane', async () => {
@@ -164,6 +177,25 @@ describe('initOrchSession installs the root allowlist followed by the copy-mode 
     expect(command[4]).not.toContain('copy-mode')
   })
 
+  it('MouseDrag1Pane uses the smart-drag rule: forward to a mouse-capturing agent, else enter copy-mode -M (V3 steps-pane copy)', async () => {
+    const fs = new FakeFsService()
+    const tmux = new FakeTmuxService()
+
+    await initOrchSession(tmux, fs, baseOpts)
+
+    const binds = tmux.recordedCalls.filter((c) => c.method === 'bindKey')
+    const dragBind = binds.find((c) => c.method === 'bindKey' && c.opts.key === 'MouseDrag1Pane')
+    if (dragBind?.method !== 'bindKey') throw new Error('expected MouseDrag1Pane bindKey call')
+    const command = dragBind.opts.command
+    expect(command[0]).toBe('if-shell')
+    expect(command[1]).toBe('-F')
+    expect(command[2]).toBe('#{?mouse_any_flag,1,0}')
+    // Agent owns the mouse → forward the drag; plain pane → begin a copy-mode
+    // mouse selection. The drag-END yank lives in the copy-mode tables.
+    expect(command[3]).toBe('send-keys -M')
+    expect(command[4]).toBe('copy-mode -M')
+  })
+
   it('after the root bindings, installs the copy-mode allowlist under both copy-mode and copy-mode-vi tables', async () => {
     const fs = new FakeFsService()
     const tmux = new FakeTmuxService()
@@ -171,7 +203,7 @@ describe('initOrchSession installs the root allowlist followed by the copy-mode 
     await initOrchSession(tmux, fs, baseOpts)
 
     const binds = tmux.recordedCalls.filter((c) => c.method === 'bindKey')
-    const copyModeBinds = binds.slice(6)
+    const copyModeBinds = binds.slice(7)
     const tables = new Set(copyModeBinds.map((c) => (c.method === 'bindKey' ? c.opts.table : '')))
     expect(tables).toEqual(new Set(['copy-mode', 'copy-mode-vi']))
 
@@ -229,6 +261,28 @@ describe('initOrchSession installs the root allowlist followed by the copy-mode 
         }
         expect(match.opts.command).toEqual(command)
       }
+    }
+  })
+
+  it('the copy-mode allowlist binds MouseDragEnd1Pane to copy-selection-and-cancel under both tables (V3 drag-end yank)', async () => {
+    const fs = new FakeFsService()
+    const tmux = new FakeTmuxService()
+
+    await initOrchSession(tmux, fs, baseOpts)
+
+    const binds = tmux.recordedCalls.filter((c) => c.method === 'bindKey')
+    // The drag-END event must route through the copy-mode tables, not root —
+    // MouseDrag1Pane has already entered copy-mode via `copy-mode -M`, so
+    // binding the end in root silently loses the yank (Phase 0 finding #1).
+    for (const table of ['copy-mode', 'copy-mode-vi'] as const) {
+      const match = binds.find(
+        (c) =>
+          c.method === 'bindKey' && c.opts.table === table && c.opts.key === 'MouseDragEnd1Pane',
+      )
+      if (match?.method !== 'bindKey') {
+        throw new Error(`expected ${table}/MouseDragEnd1Pane bindKey call`)
+      }
+      expect(match.opts.command).toEqual(['send-keys', '-X', 'copy-selection-and-cancel'])
     }
   })
 })

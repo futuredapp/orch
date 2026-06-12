@@ -92,7 +92,7 @@ describe.skipIf(!tmuxAvailable)(
       expect(downLine).not.toContain('copy-mode')
     })
 
-    it('copy-mode and copy-mode-vi tables contain ONLY the audited allowlist after init — exit (q/Escape/C-c) and scroll (j/k/Up/Down/PageUp/PageDown/g/G/wheel) — so the user can never get trapped', async () => {
+    it('copy-mode and copy-mode-vi tables contain ONLY the audited allowlist after init — exit (q/Escape/C-c), scroll (j/k/Up/Down/PageUp/PageDown/g/G/wheel), and the V3 drag-end yank — so the user can never get trapped', async () => {
       const fixture = await createRealTmuxFixture({ env: {} })
       fixturesToDispose.push(fixture)
       const harness = await mountTmuxHost(fixture, { disableStepsView: true })
@@ -116,6 +116,10 @@ describe.skipIf(!tmuxAvailable)(
         'G',
         'WheelUpPane',
         'WheelDownPane',
+        // V3 steps-pane copy: the drag-end yank routes through the copy-mode
+        // table because MouseDrag1Pane already entered copy-mode via
+        // `copy-mode -M`. It is part of the audited allowlist, not a leak.
+        'MouseDragEnd1Pane',
       ])
 
       for (const table of ['copy-mode', 'copy-mode-vi'] as const) {
