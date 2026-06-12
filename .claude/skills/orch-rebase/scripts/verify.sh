@@ -21,7 +21,7 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=_lib.sh
 source "$here/_lib.sh"
 
-main_wt="$(main_worktree)" || die "could not locate main worktree"
+main_wt="$(base_worktree)" || die "could not locate base ($BASE) worktree"
 
 log=""
 if [ "${1:-}" != "--" ] && [ -n "${1:-}" ]; then log="$1"; shift; fi
