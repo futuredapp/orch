@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.2.3] - 2026-06-12
+
+A redesigned two-pane TUI plus two behaviour changes from feedback. The steps
+pane gets a visual overhaul and full keyboard navigation, text is now
+selectable for copy/paste, and bare mode is no longer the default.
+
+### Features
+
+- Redesign the steps-view left pane: live header with a `▶ LIVE` pill,
+  progress line, full-row selection highlight, an overflow scrollbar, and a
+  two-zone footer.
+- Add keyboard navigation across the two-pane TUI — Tab switches pane focus
+  (cyan active border), and the `ask()` form is fully keyboard-driven.
+- Make pane text selectable so output can be copied and pasted.
+
+### Changes
+
+- Bare mode is no longer the default; opt in explicitly when you want it.
+
+### Chores
+
+- Internal refactor and test cleanup: split the steps-view components, extract
+  a pure keymap, and replace fixed-sleep test patterns with poll-until-condition.
+
+[1.2.3]: https://github.com/futuredapp/orch/releases/tag/v1.2.3
+
 ## [0.1.2] - 2026-06-10
 
 A release-pipeline fix plus automatic docs deployment. The `v0.1.1` tag build

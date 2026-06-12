@@ -1,6 +1,6 @@
 {
   "name": "orch",
-  "version": "0.1.2",
+  "version": "1.2.3",
   "description": "Code-first orchestrator for chaining coding-agent CLIs (Claude Code, Codex)",
   "type": "module",
   "license": "MIT",
