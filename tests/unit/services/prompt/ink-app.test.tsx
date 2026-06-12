@@ -6,6 +6,10 @@ import type { PromptResult, PromptSpec } from '../../../../src/services/prompt/p
 // ink-testing-library raw key codes — Ink interprets these as keypress events.
 const TAB = '\t'
 const SHIFT_TAB = '[Z'
+const ARROW_UP = '\u001B[A'
+const ARROW_DOWN = '\u001B[B'
+const ARROW_RIGHT = '\u001B[C'
+const ARROW_LEFT = '\u001B[D'
 const ENTER = '\r'
 const ESC = ''
 const CTRL_C = ''
@@ -131,7 +135,7 @@ describe('AskApp', () => {
     // Wait for `useFocus({autoFocus:true})` to claim — the focus indicator
     // `›` next to `notes:` is the durable proof that the TextInput's
     // `focus` prop is true and will route subsequent keystrokes.
-    await waitForFrame(ui, (f) => f.includes('› notes:'))
+    await waitForFrame(ui, (f) => f.includes('▌ notes:'))
 
     await pressKey(ui, 'hi')
     await pressKey(ui, ESC)
@@ -151,7 +155,7 @@ describe('AskApp', () => {
     // Wait for `useFocus({autoFocus:true})` to claim — the focus indicator
     // `›` next to `notes:` is the durable proof that the TextInput's
     // `focus` prop is true and will route subsequent keystrokes.
-    await waitForFrame(ui, (f) => f.includes('› notes:'))
+    await waitForFrame(ui, (f) => f.includes('▌ notes:'))
 
     await pressKey(ui, CTRL_C)
 
@@ -170,7 +174,7 @@ describe('AskApp', () => {
     // Wait for `useFocus({autoFocus:true})` to claim — the focus indicator
     // `›` next to `notes:` is the durable proof that the TextInput's
     // `focus` prop is true and will route subsequent keystrokes.
-    await waitForFrame(ui, (f) => f.includes('› notes:'))
+    await waitForFrame(ui, (f) => f.includes('▌ notes:'))
 
     // First field auto-focuses; type into it. Per-char presses give the
     // TextInput's `onChange` enough time to commit each character before
@@ -251,6 +255,164 @@ describe('AskApp', () => {
       button: 'ok',
       fields: {},
     })
+
+    ui.unmount()
+  })
+
+  it('ArrowDown steps field 0 → field 1 → buttons and wraps back to field 0', async () => {
+    const r = makeResolver()
+    const ui = render(<AskApp spec={SPEC_TWO_FIELDS_TWO_BUTTONS} onResolve={r.onResolve} />)
+    await tick()
+    await waitForFrame(ui, (f) => f.includes('▌ notes:'))
+
+    await pressKey(ui, ARROW_DOWN)
+    await waitForFrame(ui, (f) => f.includes('▌ reason:'))
+    await pressKey(ui, ARROW_DOWN)
+    await waitForFrame(ui, (f) => f.includes('❯ continue'))
+    await pressKey(ui, ARROW_DOWN)
+    await waitForFrame(ui, (f) => f.includes('▌ notes:'))
+
+    expect(r.take()).toBeUndefined()
+
+    ui.unmount()
+  })
+
+  it('ArrowUp from the first field wraps to the button row', async () => {
+    const r = makeResolver()
+    const ui = render(<AskApp spec={SPEC_TWO_FIELDS_TWO_BUTTONS} onResolve={r.onResolve} />)
+    await tick()
+    await waitForFrame(ui, (f) => f.includes('▌ notes:'))
+
+    await pressKey(ui, ARROW_UP)
+    await waitForFrame(ui, (f) => f.includes('❯ continue'))
+    await pressKey(ui, ENTER)
+
+    expect(r.take()).toEqual({
+      cancelled: false,
+      button: 'continue',
+      fields: { notes: '', reason: '' },
+    })
+
+    ui.unmount()
+  })
+
+  it('ArrowRight moves along the button row and wraps from the last button to the first', async () => {
+    const r = makeResolver()
+    const ui = render(<AskApp spec={SPEC_NO_FIELDS_TWO_BUTTONS} onResolve={r.onResolve} />)
+    await tick()
+    await waitForFrame(ui, (f) => f.includes('❯ ok'))
+
+    await pressKey(ui, ARROW_RIGHT)
+    await waitForFrame(ui, (f) => f.includes('❯ cancel'))
+    await pressKey(ui, ARROW_RIGHT)
+    await waitForFrame(ui, (f) => f.includes('❯ ok'))
+    await pressKey(ui, ARROW_LEFT)
+    await waitForFrame(ui, (f) => f.includes('❯ cancel'))
+    await pressKey(ui, ENTER)
+
+    expect(r.take()).toEqual({ cancelled: false, button: 'cancel', fields: {} })
+
+    ui.unmount()
+  })
+
+  it('Enter in a field advances to the next element instead of submitting', async () => {
+    const r = makeResolver()
+    const ui = render(<AskApp spec={SPEC_TWO_FIELDS_TWO_BUTTONS} onResolve={r.onResolve} />)
+    await tick()
+    await waitForFrame(ui, (f) => f.includes('▌ notes:'))
+
+    for (const c of 'hi') await pressKey(ui, c)
+    await pressKey(ui, ENTER)
+    await waitForFrame(ui, (f) => f.includes('▌ reason:'))
+    await pressKey(ui, ENTER)
+    await waitForFrame(ui, (f) => f.includes('❯ continue'))
+    await pressKey(ui, ENTER)
+
+    expect(r.take()).toEqual({
+      cancelled: false,
+      button: 'continue',
+      fields: { notes: 'hi', reason: '' },
+    })
+
+    ui.unmount()
+  })
+
+  it('renders the frame title and the field counter on the focused field', async () => {
+    const r = makeResolver()
+    const spec: PromptSpec = { ...SPEC_TWO_FIELDS_TWO_BUTTONS, title: 'choose-approach' }
+    const ui = render(<AskApp spec={spec} onResolve={r.onResolve} />)
+    await tick()
+    await waitForFrame(ui, (f) => f.includes('▌ notes:'))
+
+    const frame = ui.lastFrame() ?? ''
+    expect(frame).toContain('ask · choose-approach')
+    expect(frame).toContain('1/2 fields')
+
+    ui.unmount()
+  })
+
+  it('Tab past the last button hands focus to the steps pane when onFocusPane is wired', async () => {
+    const r = makeResolver()
+    let focusOuts = 0
+    const ui = render(
+      <AskApp
+        spec={SPEC_NO_FIELDS_TWO_BUTTONS}
+        onResolve={r.onResolve}
+        onFocusPane={() => {
+          focusOuts++
+        }}
+      />,
+    )
+    await tick()
+    await waitForFrame(ui, (f) => f.includes('❯ ok'))
+
+    await pressKey(ui, TAB)
+    await waitForFrame(ui, (f) => f.includes('❯ cancel'))
+    await pressKey(ui, TAB)
+
+    expect(focusOuts).toBe(1)
+    expect(r.take()).toBeUndefined()
+
+    ui.unmount()
+  })
+
+  it('Shift-Tab on the first element hands focus to the steps pane when onFocusPane is wired', async () => {
+    const r = makeResolver()
+    let focusOuts = 0
+    const ui = render(
+      <AskApp
+        spec={SPEC_TWO_FIELDS_TWO_BUTTONS}
+        onResolve={r.onResolve}
+        onFocusPane={() => {
+          focusOuts++
+        }}
+      />,
+    )
+    await tick()
+    await waitForFrame(ui, (f) => f.includes('▌ notes:'))
+
+    await pressKey(ui, SHIFT_TAB)
+
+    expect(focusOuts).toBe(1)
+    expect(r.take()).toBeUndefined()
+
+    ui.unmount()
+  })
+
+  it('Tab past the last button wraps to the first field when onFocusPane is absent', async () => {
+    const r = makeResolver()
+    const ui = render(<AskApp spec={SPEC_TWO_FIELDS_TWO_BUTTONS} onResolve={r.onResolve} />)
+    await tick()
+    await waitForFrame(ui, (f) => f.includes('▌ notes:'))
+
+    await pressKey(ui, TAB)
+    await pressKey(ui, TAB)
+    await pressKey(ui, TAB)
+    await waitForFrame(ui, (f) => f.includes('❯ retry'))
+    await pressKey(ui, TAB)
+    await waitForFrame(ui, (f) => f.includes('▌ notes:'))
+
+    expect(r.take()).toBeUndefined()
 
     ui.unmount()
   })

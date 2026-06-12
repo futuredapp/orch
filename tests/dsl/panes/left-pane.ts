@@ -34,6 +34,15 @@ export class LeftPane {
     // U5b — terminal-state footer (below the steps grid once the run ends).
     terminalFooterPrefix: 'run',
     terminalFooterActions: ' · q to quit · ⏎ to inspect',
+    // P3 polish — live-header chrome (status pill + progress line).
+    livePill: '▶ LIVE',
+    progressSuffix: 'steps ·',
+    // P3 polish — scrollbar glyphs + scrolled window-range wording.
+    scrollThumb: '█',
+    scrollTrack: '░',
+    scrolledPrefix: '↑ scrolled',
+    scrolledOf: ' of ',
+    endLiveHint: 'End live',
   } as const
 
   // U6 — help-overlay chrome. The INDEPENDENT spec of the overlay's title and a
@@ -54,6 +63,16 @@ export class LeftPane {
     running: 'yellow',
     done: 'green',
     failed: 'red',
+  } as const
+
+  // 2026-06-11 fix — the committed row's full-width selection band. The
+  // independent spec of the band's background colour name and how much
+  // trailing pad (at minimum) must be painted INSIDE it for the band to count
+  // as "spans the row" rather than "hugs the text". Mirrored from production
+  // (`backgroundColor="gray"` + pad-to-rowWidth) on purpose, never imported.
+  private static readonly BAND = {
+    background: 'gray',
+    minTrailingPad: 10,
   } as const
 
   constructor(private readonly driver: PaneDriver) {}
@@ -176,6 +195,59 @@ export class LeftPane {
   /** The `step` row renders its status glyph in the co-located expected colour (D-P4). */
   assertGlyphColor(step: string, glyph: GlyphName): Promise<void> {
     return this.driver.assertColored(step, LeftPane.COLOR[glyph])
+  }
+
+  /**
+   * The committed `step` row paints its selection band across the FULL row —
+   * the step name plus a run of trailing pad spaces all inside the band's
+   * background (2026-06-11 fix: the band must not hug the text).
+   */
+  assertSelectionBandFillsRow(step: string): Promise<void> {
+    return this.driver.assertRowBandFills(
+      step,
+      LeftPane.BAND.background,
+      LeftPane.BAND.minTrailingPad,
+    )
+  }
+
+  // --- P3 polish: live header, scrollbar, scrolled range --------------------
+
+  /** The live header carries the `▶ LIVE` status pill. */
+  assertLivePillVisible(): Promise<void> {
+    return this.driver.assertContains(LeftPane.TEXT.livePill)
+  }
+
+  /** The live header's progress line reads `<done>/<total> steps · <elapsed>`. */
+  assertProgressSummary(done: number, total: number): Promise<void> {
+    return this.driver.assertContains(`${done}/${total} ${LeftPane.TEXT.progressSuffix}`)
+  }
+
+  /** The steps grid renders a scrollbar (thumb + track) when it overflows. */
+  async assertScrollbarVisible(): Promise<void> {
+    await this.driver.assertContains(LeftPane.TEXT.scrollThumb)
+    await this.driver.assertContains(LeftPane.TEXT.scrollTrack)
+  }
+
+  /** No scrollbar when every step fits in the viewport. */
+  assertScrollbarHidden(): Promise<void> {
+    return this.driver.assertAbsent(LeftPane.TEXT.scrollTrack)
+  }
+
+  /** The scrolled footer shows the window range, e.g. `↑ scrolled 12–28 of 41`. */
+  assertScrolledRange(start: number, end: number, total: number): Promise<void> {
+    return this.driver.assertContains(
+      `${LeftPane.TEXT.scrolledPrefix} ${start}–${end}${LeftPane.TEXT.scrolledOf}${total}`,
+    )
+  }
+
+  /** The scrolled footer keeps the `End live` way back to the tail. */
+  assertEndLiveHintVisible(): Promise<void> {
+    return this.driver.assertContains(LeftPane.TEXT.endLiveHint)
+  }
+
+  /** The viewport is pinned to the live tail — no `↑ scrolled` footer state. */
+  assertNotScrolled(): Promise<void> {
+    return this.driver.assertAbsent(LeftPane.TEXT.scrolledPrefix)
   }
 
   // --- U5b: view-mode footer hints ------------------------------------------

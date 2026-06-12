@@ -67,7 +67,10 @@ export class InkPromptService implements PromptService {
 
     const dir = await this.#fs.tempDir('orch-ask-')
     const resultPath = toPath(join(dir as string, 'result.json'))
-    const specB64 = Buffer.from(JSON.stringify(spec), 'utf8').toString('base64')
+    // Title the frame with the step name so the user knows what they are
+    // answering (the executor's spec doesn't carry it — only ctx does).
+    const titledSpec: PromptSpec = { ...spec, title: spec.title ?? (ctx.stepName as string) }
+    const specB64 = Buffer.from(JSON.stringify(titledSpec), 'utf8').toString('base64')
     // Dev checkout: `[bun, ink-runner.ts, ...]`. Compiled binary: `[orch,
     // __ask, ...]` — the runner is embedded and must be reached via the CLI.
     const argv = embeddedChildArgv({

@@ -545,13 +545,14 @@ Resolution precedence: `--mode=<x>` > `orch.config.ts` `defaultMode` > `CI=true 
 #### Appliance mode (two-pane only)
 
 When you run `orch run <workflow> --mode=two-pane`, orch owns the terminal until the
-run completes. The session is locked down to six interactions:
+run completes. The session is locked down to seven interactions:
 
 | Action                       | How                                          |
 |------------------------------|----------------------------------------------|
 | Resize the divider           | Drag the pane border with the mouse          |
 | Switch focus                 | Click a pane, or press `M-Left` / `M-Right`  |
-| Select text                  | Hold your terminal's modifier-drag (often Shift; Option on macOS Terminal) |
+| Copy from the left (steps) pane | Just drag-select with the mouse — the selection copies to your clipboard on release (no modifier needed) |
+| Copy from an agent pane      | The agent owns the mouse, so use your terminal's native bypass — Shift-drag (Option on macOS Terminal.app) — or the agent's own `/copy` |
 | Scroll the right pane        | Mouse wheel — routes to the agent when the agent is asserting mouse capture, otherwise enters tmux copy-mode (one-shot; exits when you reach the live tail) |
 | Scroll the left pane         | `j` / `k`, `PgUp` / `PgDn`, `Home` / `End` (see "The Steps TUI" below) |
 | Watch live progress remotely | `orch logs --latest --follow --step <name>` in another tab |
@@ -574,6 +575,27 @@ The tmux status bar shows the in-pane scroll hint at all times; the startup
 banner also prints `orch logs --latest --follow` as the power-user fallback.
 Real history is durable under `.orch/state/<runId>/logs/` regardless of which
 scroll path you use (see [logging.md](logging.md)).
+
+###### Copying text from the panes
+
+Because two-pane mode wraps the agents in tmux with `mouse on`, tmux captures
+mouse drags before your terminal sees them. orch restores copy per-pane:
+
+- **Left (steps) pane** — plain text, so a normal mouse drag-select works.
+  orch routes the drag into tmux copy-mode and yanks the selection to your
+  host clipboard on release. No modifier, and the selection stays inside the
+  pane (it never bleeds across the divider).
+- **Agent panes (Claude Code / Codex)** — these run full-screen
+  mouse-reporting TUIs, so the agent owns the mouse and a plain drag is
+  forwarded to the agent, not copied. To copy: hold your terminal's bypass
+  modifier and drag (**Shift** on iTerm2/Kitty/WezTerm/Alacritty/Ghostty/GNOME
+  Terminal/Windows Terminal; **Option** on macOS Terminal.app), or use the
+  agent's own copy command (e.g. Claude's `/copy`).
+
+orch writes the clipboard via OSC 52 (`set-clipboard on` + `allow-passthrough
+on`), so both paths work over SSH on terminals that support it. A terminal
+with neither a Shift/Option bypass nor OSC 52 can't copy from the agent panes —
+a rare known limitation, not a regression.
 
 ##### Claude Code in two-pane
 

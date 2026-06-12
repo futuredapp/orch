@@ -21,7 +21,8 @@ fake rendered with the **Ink list+input TUI** (`interactiveUi: 'ink'`):
 Every step takes input from TWO channels routed through ONE engine, so a human
 and a script are interchangeable drivers:
 
-1. **manual typing** into the pane (input + Enter to send; `exit`/`q` to end), and
+1. **manual typing** into the pane (input + Enter to send; `exit`/`q` to end;
+   `fail` to end in the **failed** state), and
 2. an **external script / QA agent** appending NDJSON commands to the step's
    on-disk control file (see `drive.ts`).
 
@@ -41,14 +42,31 @@ Then drive it one of two ways:
 - **By script** — in a second terminal:
 
   ```bash
-  bun examples/predictable-tui/drive.ts            # newest run
+  bun examples/predictable-tui/drive.ts            # newest run (happy path)
   bun examples/predictable-tui/drive.ts <runDir>   # a specific .orch/state/<runId>
+  bun examples/predictable-tui/drive.ts --fail     # SIMULATE a failed run
   ```
 
 `drive.ts` is the seed for an automation skill: it discovers the run, waits for
 each step's `.ready` marker, and sends `type_and_send` / `finish` commands,
 gating every send on the command's `.ack` — no timers. It reuses the runner's
 own `resolveControlPaths`, so the control-file path can never drift.
+
+## Simulating a failure
+
+Pass `--fail` to `drive.ts` (or type `fail` into a pane) to end a step in the
+**failed** state instead of completing it. The driver sends a `fail` command on
+the `execute` step; the runner exits non-zero, the two-pane host recovers the
+exit code (tmux keeps the dead pane's status readable via `remain-on-exit`), and
+the run lands `failed`:
+
+```bash
+bun examples/predictable-tui/drive.ts --fail
+cat .orch/state/<runId>/state.json | jq .status   # "failed"
+```
+
+For a purely **headless** version of the same failed-state demo (no tmux), see
+[`examples/simulated-failure`](../simulated-failure/README.md).
 
 ## The control channel
 
@@ -57,8 +75,12 @@ step's `as:` key. The command vocabulary the driver appends:
 
 ```jsonc
 { "cmd": "type_and_send", "text": "a line to render" }
-{ "cmd": "finish" }                  // clean exit (interactive ignores any code)
+{ "cmd": "finish" }                                 // end the step (code 0 = clean)
+{ "cmd": "fail", "message": "simulated failure" }   // end the step in the FAILED state
 ```
+
+A non-zero `finish` code now also fails the step — the host recovers the dead
+pane's exit status, so the interactive pane is no longer clean-exit-only.
 
 Edit the `SCRIPT` array in `drive.ts` to script a different dialogue.
 

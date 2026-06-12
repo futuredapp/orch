@@ -10,6 +10,7 @@ import { useStdout } from 'ink'
 import { useEffect, useRef, useState } from 'react'
 import { type ColumnSet, pickColumns } from './adaptive-columns.ts'
 import type { StepRow, ViewMode } from './step-types.ts'
+import { followTop } from './steps-view-layout.ts'
 
 const SIGWINCH_DEBOUNCE_MS = 75
 
@@ -55,6 +56,12 @@ export interface StepsSelection {
   readonly isUserDriven: boolean
   moveUp(): void
   moveDown(): void
+  /**
+   * Seed the preview cursor directly onto `name` (user-driven). Used when the
+   * cursor is outside the scrolled window: the next ↑/↓ enters the window at
+   * its edge instead of yanking the viewport back to the offscreen cursor.
+   */
+  moveInto(name: string): void
   snapToLive(): void
 }
 
@@ -72,6 +79,12 @@ interface PreviewCursor {
 export function useStepsSelection(
   steps: readonly StepRow[],
   view: ViewMode = LIVE_VIEW,
+  /**
+   * Fired with the cursor's new index after every user-driven move so the
+   * caller can keep the scrolled window following the cursor (the reported
+   * "↑ walks the indicator out of the viewport" bug).
+   */
+  onCursorMove?: (index: number) => void,
 ): StepsSelection {
   // Single source of truth for the highlight: the right pane's `view`. In
   // replay it is the pinned step; in live it is the running step (or the last
@@ -92,6 +105,8 @@ export function useStepsSelection(
   cursorRef.current = cursor
   const stepsRef = useRef(steps)
   stepsRef.current = steps
+  const committedRef = useRef(committedName)
+  committedRef.current = committedName
 
   useEffect(() => {
     if (isUserDriven && selectedName !== undefined) {
@@ -117,18 +132,27 @@ export function useStepsSelection(
   const move = (delta: number): void => {
     const currentSteps = stepsRef.current
     if (currentSteps.length === 0) return
-    const currentSelectedName = cursorRef.current.selectedName
+    // Anchor an uninitialised cursor at the COMMITTED row — the value the
+    // tracking effect would have set had it flushed before this keystroke.
+    // Without this, a press in the pre-effect window fell through to the
+    // seed-to-first-row branch, and (with scroll-follow) yanked the viewport
+    // to the top of a long list.
+    const anchorName = cursorRef.current.selectedName ?? committedRef.current
     const currentIdx =
-      currentSelectedName === undefined
-        ? -1
-        : currentSteps.findIndex((s) => s.name === currentSelectedName)
+      anchorName === undefined ? -1 : currentSteps.findIndex((s) => s.name === anchorName)
     // Scan past boundary rows in the requested direction (R24); if no
     // selectable row exists, stay put (no-op delta).
     const nextIdx = nextSelectableIndex(currentSteps, currentIdx, delta)
     if (nextIdx === currentIdx) return
     const target = currentSteps[nextIdx]
     if (target === undefined) return
-    setCursor({ selectedName: target.name, isUserDriven: true })
+    const next = { selectedName: target.name, isUserDriven: true }
+    // Optimistic ref update: key-repeat can deliver several arrows in ONE
+    // tick, before any re-render refreshes `cursorRef` — without this, N
+    // same-tick moves all read the same stale cursor and collapse into one.
+    cursorRef.current = next
+    setCursor(next)
+    onCursorMove?.(nextIdx)
   }
 
   return {
@@ -137,6 +161,14 @@ export function useStepsSelection(
     isUserDriven,
     moveUp: () => move(-1),
     moveDown: () => move(1),
+    moveInto: (name: string) => {
+      const idx = stepsRef.current.findIndex((s) => s.name === name)
+      if (idx === -1) return
+      const next = { selectedName: name, isUserDriven: true }
+      cursorRef.current = next
+      setCursor(next)
+      onCursorMove?.(idx)
+    },
     snapToLive: () => {
       setCursor({ selectedName: committedName, isUserDriven: false })
     },
@@ -226,6 +258,8 @@ export interface StepsScroll {
   pageDown(): void
   jumpTop(): void
   jumpBottom(): void
+  /** Shift the window the minimum distance so row `index` is rendered. */
+  ensureVisible(index: number): void
 }
 
 export function useStepsScroll(
@@ -242,13 +276,20 @@ export function useStepsScroll(
   const scrollOffset = maxTop - effectiveTop
   const page = Math.max(1, visibleCount)
 
+  // Optimistic mirror of `topIndex`: key-repeat delivers several scroll keys
+  // in ONE tick, before any re-render refreshes state — reading `effectiveTop`
+  // from state would collapse N same-tick moves into one. Refreshed from
+  // state on every render, written optimistically on every move.
+  const topRef = useRef<number | null>(topIndex)
+  topRef.current = topIndex
+  const currentTop = (): number =>
+    topRef.current === null ? maxTop : clamp(topRef.current, 0, maxTop)
+
   const setTop = (next: number): void => {
     const clamped = clamp(next, 0, maxTop)
-    if (clamped >= maxTop) {
-      setTopIndex(null)
-    } else {
-      setTopIndex(clamped)
-    }
+    const value = clamped >= maxTop ? null : clamped
+    topRef.current = value
+    setTopIndex(value)
   }
 
   return {
@@ -256,14 +297,20 @@ export function useStepsScroll(
     atLiveTail: scrollOffset === 0,
     // Visually, scrollUp moves the window toward step 0 — that's a smaller
     // `topIndex`, which projects to a larger `scrollOffset`.
-    scrollUp: () => setTop(effectiveTop - 1),
-    scrollDown: () => setTop(effectiveTop + 1),
-    pageUp: () => setTop(effectiveTop - page),
-    pageDown: () => setTop(effectiveTop + page),
+    scrollUp: () => setTop(currentTop() - 1),
+    scrollDown: () => setTop(currentTop() + 1),
+    pageUp: () => setTop(currentTop() - page),
+    pageDown: () => setTop(currentTop() + page),
     jumpTop: () => setTop(0),
     jumpBottom: () => {
+      topRef.current = null
       setTopIndex(null)
       onFollowLive?.()
+    },
+    ensureVisible: (index: number) => {
+      const top = currentTop()
+      const next = followTop(top, index, visibleCount)
+      if (next !== top) setTop(next)
     },
   }
 }

@@ -88,6 +88,8 @@ export type ClaudeResultErrorT = z.infer<typeof ClaudeResultError>
 export interface ClaudeOptions {
   readonly model?: string
   readonly maxTurns?: number
+  /** Pass `--bare` (API-key-only auth via ANTHROPIC_API_KEY, never the
+   *  keychain). Opt-in: defaults to `false` so subscription auth works. */
   readonly bare?: boolean
   readonly flags?: readonly string[]
 }
@@ -375,7 +377,7 @@ export function claude(
   opts: ClaudeOptions = {},
   deps: { readonly fs?: FsService } = {},
 ): Readonly<Runner> {
-  const { model, maxTurns, bare = true, flags } = opts
+  const { model, maxTurns, bare = false, flags } = opts
   // `fs` is only needed by `prepareAutoStop` (auto-stop opt-in). Defaulted so
   // the public `claude({...})` call form stays intact; tests inject a fake.
   const fs = deps.fs ?? new BunFsService()

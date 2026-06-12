@@ -39,6 +39,8 @@ export const StepsIntentSchema = z.discriminatedUnion('type', [
   // U5/U6: interactive failure-view retry actions.
   z.object({ type: z.literal('retry') }),
   z.object({ type: z.literal('retry-continue') }),
+  // P6: hand keyboard focus to the right (agent) pane.
+  z.object({ type: z.literal('focus-pane'), pane: z.literal('right') }),
 ])
 
 export type StepsIntent = z.infer<typeof StepsIntentSchema>

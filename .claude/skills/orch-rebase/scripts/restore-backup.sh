@@ -37,10 +37,10 @@ restore_one() {
   fi
 }
 
-# main first so feature branches land on a known-good base
-restore_one main
+# base first so feature branches land on a known-good base
+restore_one "$BASE"
 for branch in "$@"; do
-  [ "$branch" = "main" ] && continue
+  [ "$branch" = "$BASE" ] && continue
   restore_one "$branch"
 done
 

@@ -8,14 +8,17 @@
  * semantics, and the channel-agnostic parsing all live here, and the one
  * mode-specific piece is injected as an `OutputSink`.
  *
- * Vocabulary (R2 — exactly two ops for this version):
+ * Vocabulary (R2):
  *   - `type_and_send(text)` — append one line of output.
  *   - `finish(code?)`       — end the step with an optional exit/result code.
+ *   - `fail(message, code)` — end the step with a SIMULATED failure: emit a
+ *     terminal/error and exit non-zero so the step lands `failed` in both modes.
  *
  * Both channels converge on the same `EngineOp` (R3/R4/R5):
  *   - control NDJSON `{ cmd: 'type_and_send', text }` / `{ cmd: 'finish', code? }`
+ *     / `{ cmd: 'fail', message, exitCode? }`
  *   - manual line: a bare line is `type_and_send(line)`; literal `q`/`exit` is
- *     `finish`.
+ *     `finish`; literal `fail` is `fail`.
  *
  * Pure: no I/O of its own. The caller supplies the `OutputSink`; `runEngineOp`
  * only routes. This keeps the engine identical across modes and trivially
@@ -28,9 +31,15 @@ import { type PuppetCommand, PuppetCommandSchema } from './types.ts'
 // EngineOp — the normalized two-op vocabulary both channels map onto.
 // ---------------------------------------------------------------------------
 
+/** Default exit code for a simulated failure when the source carries none. */
+export const DEFAULT_FAIL_CODE = 1
+/** Default message for a manually-triggered (`fail` keyword) failure. */
+export const DEFAULT_FAIL_MESSAGE = 'simulated failure'
+
 export type EngineOp =
   | { readonly op: 'type_and_send'; readonly text: string }
   | { readonly op: 'finish'; readonly code: number }
+  | { readonly op: 'fail'; readonly code: number; readonly message: string }
 
 /** Whether the loop continues or terminates, plus the exit code on finish. */
 export interface EngineResult {
@@ -52,6 +61,13 @@ export interface OutputSink {
    * the process exit so the host's `pane-died` advances the workflow.
    */
   finish(code: number): void
+  /**
+   * Perform the mode-specific SIMULATED-failure terminal action. Headless
+   * writes a terminal/error event; interactive records the error to the render
+   * log and exits non-zero so the host's recovered exit code marks the step
+   * `failed`. `code` is always non-zero.
+   */
+  fail(message: string, code: number): void
 }
 
 // ---------------------------------------------------------------------------
@@ -69,6 +85,9 @@ export function runEngineOp(op: EngineOp, sink: OutputSink): EngineResult {
     case 'finish':
       sink.finish(op.code)
       return { kind: 'terminate', exitCode: op.code }
+    case 'fail':
+      sink.fail(op.message, op.code)
+      return { kind: 'terminate', exitCode: op.code }
   }
 }
 
@@ -77,21 +96,25 @@ export function runEngineOp(op: EngineOp, sink: OutputSink): EngineResult {
 // ---------------------------------------------------------------------------
 
 const QUIT_WORDS = new Set(['q', 'exit'])
+const FAIL_WORDS = new Set(['fail'])
 
 /**
  * Parse one manual input line into an `EngineOp`, or `null` when the line
  * produces no op (empty / whitespace-only — see the R3 empty-line decision in
  * `runEngineOp`).
  *
- * The quit-word check and emptiness test run against the trimmed line, so
- * `q ` (trailing space) is `finish` and a whitespace-only line is ignored. A
- * non-quit line keeps its exact text (interior/leading spaces preserved) so
- * what the user typed is what renders.
+ * The reserved-word checks and emptiness test run against the trimmed line, so
+ * `q ` (trailing space) is `finish`, `fail ` is `fail`, and a whitespace-only
+ * line is ignored. A non-reserved line keeps its exact text (interior/leading
+ * spaces preserved) so what the user typed is what renders.
  */
 export function parseManualLine(raw: string): EngineOp | null {
   const trimmed = raw.trim()
   if (trimmed.length === 0) return null
   if (QUIT_WORDS.has(trimmed)) return { op: 'finish', code: 0 }
+  if (FAIL_WORDS.has(trimmed)) {
+    return { op: 'fail', code: DEFAULT_FAIL_CODE, message: DEFAULT_FAIL_MESSAGE }
+  }
   return { op: 'type_and_send', text: raw }
 }
 
@@ -128,8 +151,13 @@ export function parseControlLine(line: string): ControlParseResult {
 /**
  * Map a control command to a normalized `EngineOp` for the cross-mode
  * vocabulary, or `null` for the legacy headless-only commands
- * (`emit` / `write-file` / `run-shell` / `complete` / `fail` / `wait`) the
- * entry keeps dispatching directly for backward compatibility.
+ * (`emit` / `write-file` / `run-shell` / `complete` / `wait`) the entry keeps
+ * dispatching directly for backward compatibility.
+ *
+ * `fail` is cross-mode: routing it through the engine gives both modes one
+ * `fail` op (headless emits the same terminal/error it always did; interactive
+ * gains the ability to land `failed`), so it is mapped here rather than left to
+ * the headless-only switch.
  */
 export function controlToEngineOp(command: PuppetCommand): EngineOp | null {
   switch (command.cmd) {
@@ -137,6 +165,8 @@ export function controlToEngineOp(command: PuppetCommand): EngineOp | null {
       return { op: 'type_and_send', text: command.text }
     case 'finish':
       return { op: 'finish', code: command.code ?? 0 }
+    case 'fail':
+      return { op: 'fail', code: command.exitCode ?? DEFAULT_FAIL_CODE, message: command.message }
     default:
       return null
   }

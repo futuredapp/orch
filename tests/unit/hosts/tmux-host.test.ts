@@ -417,6 +417,29 @@ describe('TmuxHost.runInteractive', () => {
     await host.teardown()
   })
 
+  it('recovers a non-zero exit code from the dead pane status so a simulated failure lands failed', async () => {
+    const tmux = new FakeTmuxService()
+    tmux.setListPanesResult(['%0'])
+    tmux.nextPaneId(paneId('%42'))
+    // The only `displayMessage` in the interactive path is the post-death
+    // `#{pane_dead},#{pane_dead_status}` probe: model a dead pane that exited 1
+    // (what the predictable fake's `fail` op produces). The host must surface it.
+    tmux.setDisplayResult('1,1')
+
+    const { host } = await buildHostWithController(tmux)
+
+    const result = await host.runInteractive({
+      argv: ['bun', 'interactive-entry.ts'],
+      env: {},
+      cwd: path('/tmp'),
+      stepName: stepName('execute'),
+    })
+
+    expect(result.exitCode).toBe(1)
+
+    await host.teardown()
+  })
+
   it('logs left-pane wait failures so fake clean TUI exits are diagnosable', async () => {
     const tmux = new WaitForSessionLostTmuxService()
     tmux.setListPanesResult(['%0'])
@@ -503,7 +526,12 @@ describe('TmuxHost.runInteractive', () => {
       throw new Error('expected per-source createSession for interactive review')
     }
     expect(ptyCreate.opts.command).toEqual(['claude', '--resume', 'abc'])
-    expect(ptyCreate.opts.env).toEqual(spawnEnv)
+    // The caller's env passes through verbatim, plus the P6 pane-focus
+    // hand-back coordinates every right-pane interactive spawn receives
+    // (the ask form's Tab edge-out reads them; other CLIs ignore them).
+    expect(ptyCreate.opts.env).toMatchObject(spawnEnv ?? {})
+    expect(ptyCreate.opts.env?.ORCH_LEFT_PANE_ID).toBe('%0')
+    expect(ptyCreate.opts.env?.ORCH_TMUX_SOCKET).toBeDefined()
     expect(ptyCreate.opts.cwd).toBe(path('/tmp'))
 
     // The interactive PTY pane no longer arrives via `splitPane`. We allow

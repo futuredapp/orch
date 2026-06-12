@@ -33,6 +33,10 @@ The three design drivers, in priority order:
 
 Legend: ☐ not started · ◐ in progress · ✓ landed
 
+> Statuses reconciled against the codebase on 2026-06-11 (commit 832a56d).
+> Several phases had shipped without their glyph being flipped; landed dates
+> marked "(reconciled …)" are last-commit dates from git history, not PR dates.
+
 ### Phase 0 — Infrastructure & rules ✓
 
 **Goal:** a green empty project with every guard-rail in place.
@@ -304,7 +308,7 @@ Legend: ☐ not started · ◐ in progress · ✓ landed
 
 ---
 
-### Phase 12 — CLI ☐
+### Phase 12 — CLI ✓
 
 **Goal:** users can invoke the orchestrator from the terminal.
 
@@ -317,6 +321,8 @@ Legend: ☐ not started · ◐ in progress · ✓ landed
 - **Unit** — argv → command dispatch; help output; error messages.
 - **E2E** — `bun x orch run tests/fixtures/workflows/hello.ts` against `FakeRunner` in a fresh temp cwd. Golden `state.json`.
 - **E2E (gated)** — same against real Claude.
+
+**Landed:** 2026-04-13 (reconciled 2026-06-11; date from git history)
 
 ---
 
@@ -425,11 +431,11 @@ v1 ships four phases, each a PR-sized chunk:
 
 | Phase | Scope | Status |
 |---|---|---|
-| **A** — run-mode scaffolding + `plain` host | `RunMode` discriminant, autodetect, mode banner, stdout renderer; deletes `--tmux` / `--observe` flags outright | ☐ not started |
-| **B** — view abstraction | `StepView`, `ViewKind`, `silent: true`; agent-default + step-override resolution; still stdout only | ☐ not started |
+| **A** — run-mode scaffolding + `plain` host | `RunMode` discriminant, autodetect, mode banner, stdout renderer; deletes `--tmux` / `--observe` flags outright | ✓ landed |
+| **B** — view abstraction | `StepView`, `ViewKind`, `silent: true`; agent-default + step-override resolution; still stdout only | ✓ landed |
 | **C** — `single-pane` alt-screen host | **Deferred to v2.** `RunMode` union keeps the slot; explicit `--mode=single-pane` exits 2 with a deferral message. Revisit with a TUI library (opentui / Ink / blessed) rather than hand-rolling alt-screen machinery. | ⊘ deferred |
-| **D** — `two-pane` mode (tmux host) | Ports `TmuxService` + `status-{pane,loop}` into a `TmuxHost`; deletes `src/cli/tmux-wiring.ts` and `workflow.ts:244-250` refusal; readable `TranscriptView` replaces the raw JSON pane dump; interactive via `respawn-pane -k`; per-pane serial send queue | ☐ not started |
-| **E** — plugin seam + `orch.config.ts` + `orch logs` + cleanup | `ViewRegistry` + `HostRegistry` with side-effect-free built-in registration; config discovery upward from cwd; `orch logs <runId>` with path-traversal guard; schema v4 → v5 (prerelease rewrite, legacy parsers deleted); tail demos folded or deleted | ☐ not started |
+| **D** — `two-pane` mode (tmux host) | Ports `TmuxService` + `status-{pane,loop}` into a `TmuxHost`; deletes `src/cli/tmux-wiring.ts` and `workflow.ts:244-250` refusal; readable `TranscriptView` replaces the raw JSON pane dump; interactive via `respawn-pane -k`; per-pane serial send queue | ✓ landed |
+| **E** — plugin seam + `orch.config.ts` + `orch logs` + cleanup | `ViewRegistry` + `HostRegistry` with side-effect-free built-in registration; config discovery upward from cwd; `orch logs <runId>` with path-traversal guard; schema v4 → v5 (prerelease rewrite, legacy parsers deleted); tail demos folded or deleted | ✓ landed |
 
 **Blockers flagged in the reframe plan (all verified against the landed baseline):** schema collision with existing v4 (bump to v5), `orch logs` path-traversal guard via existing `runId()` smart constructor, no import-time registry side effects, per-pane serial chain for `sendKeys` / `respawn-pane -k`.
 
@@ -469,7 +475,7 @@ v1 ships four phases, each a PR-sized chunk:
 
 ---
 
-### Phase 16 — Full compound e2e + runner author docs ☐
+### Phase 16 — Full compound e2e + runner author docs ◐
 
 **Goal:** the brainstorm's core example (`brainstorm → plan → parallel research → work → parallel review → commit`) runs.
 
@@ -481,9 +487,11 @@ v1 ships four phases, each a PR-sized chunk:
 
 **Definition of Done:** mocked e2e passes on every `bun test`; real e2e passes on a dev machine with both CLIs installed; an external Aider wrapper under `tests/fixtures/runners/aider.ts` runs a 1-step workflow.
 
+> **Partial (reconciled 2026-06-11):** only `src/runners/index.ts` exports `defineRunner`. Still missing: `tests/e2e/brainstorm-plan-work-review.e2e.test.ts`, `tests/e2e/brainstorm-plan-work-review.mocked.test.ts`, `docs/runner-author.md`.
+
 ---
 
-### Phase 17 — `createWorktree()` step primitive ☐
+### Phase 17 — `createWorktree()` step primitive ✓
 
 **Goal:** worktrees as first-class workflow entries. `createWorktree(branch, opts)` returns `Step<WorktreeResult>` that composes with `run()`, `parallel()`, memoization, and resume — same execution shape as `commit()`.
 
@@ -506,6 +514,8 @@ v1 ships four phases, each a PR-sized chunk:
 **Detailed plan:** [`docs/sessions/orch-git-helpers/plan.md`](../sessions/orch-git-helpers/plan.md)
 
 **Brainstorm:** [`docs/sessions/orch-git-helpers/brainstorm.md`](../sessions/orch-git-helpers/brainstorm.md)
+
+**Landed:** 2026-05-01 (reconciled 2026-06-11; date from git history)
 
 ---
 

@@ -1,6 +1,8 @@
 import { rename, writeFile } from 'node:fs/promises'
 import { render } from 'ink'
 import React from 'react'
+import { BunProcessService } from '../process/index.ts'
+import { paneId, RealTmuxService, socketName } from '../tmux/index.ts'
 import { AskApp } from './ink-app.tsx'
 import type { PromptResult, PromptSpec } from './prompt-service.ts'
 
@@ -75,14 +77,40 @@ export async function runAskRunner(args: ParsedArgs): Promise<void> {
   // `alternate_on` flag is 0. Without alt-screen the prompt UI would slip
   // under the scrollback view on the first wheel-up — see incident
   // r-2026-05-22-212450-07. Matches the steps-view child's render options.
-  const instance = render(React.createElement(AskApp, { spec, onResolve }), {
-    exitOnCtrlC: false,
-    patchConsole: false,
-    alternateScreen: true,
-  })
+  const onFocusPane = focusPaneFromEnv()
+  const instance = render(
+    React.createElement(AskApp, {
+      spec,
+      onResolve,
+      ...(onFocusPane !== undefined ? { onFocusPane } : {}),
+    }),
+    {
+      exitOnCtrlC: false,
+      patchConsole: false,
+      alternateScreen: true,
+    },
+  )
 
   await instance.waitUntilExit()
   await writePromise
+}
+
+// P6 edge-out: when the two-pane host spawned us it injected the tmux socket
+// + the steps pane's id (see tmux-host's right-pane interactive spawn). Tab
+// past the ask form's last element then hands keyboard focus back to the
+// steps pane. Absent env (plain terminals, tests) → undefined → Tab wraps.
+function focusPaneFromEnv(): (() => void) | undefined {
+  const socket = process.env.ORCH_TMUX_SOCKET
+  const target = process.env.ORCH_LEFT_PANE_ID
+  if (socket === undefined || socket === '' || target === undefined || target === '') {
+    return undefined
+  }
+  const tmux = new RealTmuxService({ processService: new BunProcessService() })
+  return () => {
+    void tmux.selectPane({ socket: socketName(socket), target: paneId(target) }).catch((err) => {
+      process.stderr.write(`[ink-runner] focus-pane failed: ${String(err)}\n`)
+    })
+  }
 }
 
 // Dev checkout only: `InkPromptService` spawns `bun <abs>/ink-runner.ts`, so

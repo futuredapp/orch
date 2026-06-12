@@ -22,7 +22,9 @@
  * in real-tmux.
  *
  * Inputs (env, threaded by the executor at spawn — U1): `ORCH_STEP_KEY`,
- * `ORCH_RUN_STATE_DIR`, `ORCH_PARENT_PID`. `finish` is clean-exit only.
+ * `ORCH_RUN_STATE_DIR`, `ORCH_PARENT_PID`. The resolved exit code rides out on
+ * `main`'s return value (tmux `remain-on-exit` preserves it for the host), so a
+ * `fail` / non-zero `finish` lands the step `failed`.
  */
 
 import { render } from 'ink'
@@ -64,14 +66,14 @@ async function main(): Promise<number> {
   // Idle-waiting (R13): the channels are wired and the view is mounted.
   await writeReadyMarker(paths.readyPath)
 
-  await finished.promise
+  const code = await finished.promise
   // Final control drain before stopping (cross-channel contract — see the raw
   // entry): ack a command appended just before a concurrent `finish`.
   await reader.drainOnce()
   engine.stop()
   await engine.drained()
   instance.unmount()
-  return 0
+  return code
 }
 
 for (const sig of ['SIGHUP', 'SIGTERM'] as const) {

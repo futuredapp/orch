@@ -20,30 +20,30 @@ source "$here/_lib.sh"
 branch="$1"
 branch_exists "$branch" || { echo "RESULT: REFUSED (no such branch: $branch)"; exit 2; }
 
-main_wt="$(main_worktree)" || die "could not locate main worktree"
+main_wt="$(base_worktree)" || die "could not locate base ($BASE) worktree"
 
 if worktree_has_tracked_changes "$main_wt"; then
-  echo "RESULT: REFUSED (main worktree has uncommitted tracked changes: $main_wt)"
+  echo "RESULT: REFUSED ($BASE worktree has uncommitted tracked changes: $main_wt)"
   git -C "$main_wt" status --short --untracked-files=no
   exit 2
 fi
 
-# main must be the branch checked out in the main worktree.
+# BASE must be the branch checked out in the base worktree.
 cur="$(git -C "$main_wt" rev-parse --abbrev-ref HEAD)"
-[ "$cur" = "main" ] || { echo "RESULT: REFUSED (main worktree is on '$cur', not main)"; exit 2; }
+[ "$cur" = "$BASE" ] || { echo "RESULT: REFUSED (base worktree is on '$cur', not $BASE)"; exit 2; }
 
-# Sanity: the branch should be ahead of main and contain it (true ff candidate).
-if ! git -C "$main_wt" merge-base --is-ancestor main "$branch"; then
-  echo "RESULT: REFUSED ($branch does not contain current main — rebase it first)"
+# Sanity: the branch should be ahead of BASE and contain it (true ff candidate).
+if ! git -C "$main_wt" merge-base --is-ancestor "$BASE" "$branch"; then
+  echo "RESULT: REFUSED ($branch does not contain current $BASE — rebase it first)"
   exit 2
 fi
 
-before="$(git -C "$main_wt" rev-parse main)"
+before="$(git -C "$main_wt" rev-parse "$BASE")"
 if git -C "$main_wt" merge --ff-only "$branch"; then
-  after="$(git -C "$main_wt" rev-parse main)"
-  echo "RESULT: MERGED (main $before -> $after via $branch)"
+  after="$(git -C "$main_wt" rev-parse "$BASE")"
+  echo "RESULT: MERGED ($BASE $before -> $after via $branch)"
   exit 0
 fi
 
-echo "RESULT: REFUSED (fast-forward of main to $branch failed)"
+echo "RESULT: REFUSED (fast-forward of $BASE to $branch failed)"
 exit 1

@@ -12,6 +12,13 @@
 
 set -euo pipefail
 
+# Base branch every feature branch is rebased onto and merged into. Defaults to
+# `main` (the original, hardcoded behaviour). Override with ORCH_BASE=<branch>
+# to integrate onto a different base (e.g. develop, or an integration branch
+# checked out in its own worktree). When the base is itself checked out in a
+# worktree, the merge happens in THAT worktree, not the primary repo.
+BASE="${ORCH_BASE:-main}"
+
 die() { echo "error: $*" >&2; exit 1; }
 warn() { echo "warning: $*" >&2; }
 
@@ -59,9 +66,17 @@ worktree_has_tracked_changes() {
   [ -n "$(git -C "$1" status --porcelain --untracked-files=no)" ]
 }
 
-# Commits on $1 that are not on main (three-dot range from the merge base).
-ahead_count() { git rev-list --count "main..$1"; }
-behind_count() { git rev-list --count "$1..main"; }
+# Path of the worktree where the merge into BASE must happen. If BASE is checked
+# out in a worktree (the develop/integration-branch case), that worktree wins;
+# otherwise fall back to the primary repo (the classic `main` case where main is
+# not separately checked out).
+base_worktree() {
+  worktree_for_branch "$BASE" 2>/dev/null || main_worktree
+}
+
+# Commits on $1 that are not on BASE (three-dot range from the merge base).
+ahead_count() { git rev-list --count "$BASE..$1"; }
+behind_count() { git rev-list --count "$1..$BASE"; }
 
 # Sanitize a branch name for use inside a tag path component is unnecessary —
 # tags accept slashes — but we expose the backup tag name in one place so every

@@ -33,6 +33,7 @@ import {
   computeArrowDirection,
   ESCAPE,
   frameHasColoredText,
+  frameHasFullWidthBand,
   glyphChar,
   highlightedStepName,
   occurrences,
@@ -211,6 +212,12 @@ function createModelApp(): ModelApp {
     async assertColored(lineNeedle, colorName): Promise<void> {
       // Colour lives in the RAW frame (Ink SGR escapes), so do not strip here.
       await waitForFrame(requireUi(), (f) => frameHasColoredText(f, lineNeedle, colorName))
+    },
+    async assertRowBandFills(lineNeedle, bgColorName, minTrailingPad): Promise<void> {
+      // The band lives in the RAW frame (Ink SGR escapes), so do not strip here.
+      await waitForFrame(requireUi(), (f) =>
+        frameHasFullWidthBand(f, lineNeedle, bgColorName, minTrailingPad),
+      )
     },
     async assertAbsent(text): Promise<void> {
       await waitForFrame(requireUi(), (f) => !f.includes(text), strip)

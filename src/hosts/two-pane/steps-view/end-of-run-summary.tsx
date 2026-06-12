@@ -31,11 +31,16 @@ export function EndOfRunSummary({
   const duration = formatElapsed(summary.durationMs)
   return (
     <Box flexDirection="column">
-      <Text>
-        {`orch · ${run.workflowName} · ${run.runId} · `}
-        <Text color={statusColor(status)}>{label}</Text>
+      <Text wrap="truncate-end">
+        <Text bold>{run.workflowName}</Text>
+        <Text> </Text>
+        {/* Glyph + colored label; the glyph is the primary signal so NO_COLOR
+            terminals still read the outcome. */}
+        <Text color={statusColor(status)}>{`${status === 'completed' ? '✓' : '✗'} ${label}`}</Text>
+        <Text> </Text>
+        <Text dimColor>{run.runId}</Text>
       </Text>
-      <Text dimColor>
+      <Text dimColor wrap="truncate-end">
         {`steps ${summary.stepsCompleted}/${summary.stepsTotal} completed`}
         {summary.stepsFailed > 0 ? ` · ${summary.stepsFailed} failed` : ''}
         {` · duration ${duration}`}
@@ -68,7 +73,9 @@ export function EndOfRunFooter({
 }: EndOfRunFooterProps): React.ReactElement {
   const label = statusLabel(status)
   const actions =
-    showFailureActions && status === 'failed' ? ' · r to retry · c to retry & continue' : ''
+    showFailureActions && status === 'failed'
+      ? ' · r to retry · c to retry & continue · a actions'
+      : ''
   return (
     <Box marginTop={1}>
       <Text dimColor>{`run ${label} · q to quit · ⏎ to inspect${actions}`}</Text>

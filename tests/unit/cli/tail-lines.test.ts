@@ -19,12 +19,19 @@ afterEach(async () => {
   if (tmpDir) await fs.rm(tmpDir, { recursive: true, force: true })
 })
 
-const collect = (signal: AbortSignal, file: string): Promise<string[]> => {
-  const out: string[] = []
-  return (async () => {
+const collectInto = (signal: AbortSignal, file: string, out: string[]): Promise<string[]> =>
+  (async () => {
     for await (const line of tailLines(path(file), signal)) out.push(line)
     return out
   })()
+
+/** Poll `cond` every 10 ms until true; throw after `timeoutMs`. */
+const waitUntil = async (cond: () => boolean, timeoutMs = 5000): Promise<void> => {
+  const deadline = Date.now() + timeoutMs
+  while (!cond()) {
+    if (Date.now() > deadline) throw new Error('waitUntil: condition not met in time')
+    await new Promise((r) => setTimeout(r, 10))
+  }
 }
 
 describe('tailLines', () => {
@@ -32,16 +39,17 @@ describe('tailLines', () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-tail-newline-')
     const file = join(tmpDir, 'events.ndjson')
     await fs.writeFile(file, '')
-
+    const out: string[] = []
     const ctrl = new AbortController()
-    const collector = collect(ctrl.signal, file)
+    const collector = collectInto(ctrl.signal, file, out)
 
-    // Append three complete lines spread across two ticks so we exercise
-    // the offset-advance + chunk-split loop.
+    // Append complete lines, polling for each batch to be observed before
+    // the next write, so we exercise the offset-advance + chunk-split loop
+    // and only abort once all three lines have actually been read.
     await fs.appendFile(file, 'one\ntwo\n')
-    await new Promise((r) => setTimeout(r, 250))
+    await waitUntil(() => out.length >= 2)
     await fs.appendFile(file, 'three\n')
-    await new Promise((r) => setTimeout(r, 250))
+    await waitUntil(() => out.length >= 3)
     ctrl.abort()
 
     const lines = await collector
@@ -52,16 +60,20 @@ describe('tailLines', () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-tail-partial-')
     const file = join(tmpDir, 'events.ndjson')
     await fs.writeFile(file, '')
-
+    const out: string[] = []
     const ctrl = new AbortController()
-    const collector = collect(ctrl.signal, file)
+    const collector = collectInto(ctrl.signal, file, out)
 
-    // Write a partial fragment, wait for the loop to read it, then append
-    // the rest. The completed line should be yielded exactly once.
+    // Write a partial fragment, then the rest. The completed line should be
+    // yielded exactly once once the newline arrives.
     await fs.appendFile(file, 'half-')
+    // Best-effort pacing only: nudges the generator into reading the fragment
+    // on its own tick so the split-read (partial-then-complete) path is the
+    // likely one. The test passes either way — `waitUntil` below is the
+    // correctness synchronization, not this sleep.
     await new Promise((r) => setTimeout(r, 250))
     await fs.appendFile(file, 'and-half\n')
-    await new Promise((r) => setTimeout(r, 250))
+    await waitUntil(() => out.includes('half-and-half'))
     ctrl.abort()
 
     const lines = await collector
@@ -71,17 +83,21 @@ describe('tailLines', () => {
   it('flushes a non-empty pending partial when abort fires before the trailing newline', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-tail-flush-')
     const file = join(tmpDir, 'events.ndjson')
-    await fs.writeFile(file, 'final fragment')
-
+    // Seed a terminated line plus an unterminated fragment. The sentinel line
+    // gives the read loop an observable signal: once it is yielded, the loop
+    // has consumed the file through the trailing fragment, so aborting now
+    // exercises the pending-partial flush deterministically.
+    await fs.writeFile(file, 'sentinel\nfinal fragment')
+    const out: string[] = []
     const ctrl = new AbortController()
-    const collector = collect(ctrl.signal, file)
+    const collector = collectInto(ctrl.signal, file, out)
 
-    // Give the loop one tick to drain the file, then abort. The pending
-    // partial line should appear in the yielded output.
-    await new Promise((r) => setTimeout(r, 250))
+    // Wait until the read loop has consumed the file through the fragment,
+    // then abort. The pending partial line should appear in the output.
+    await waitUntil(() => out.includes('sentinel'))
     ctrl.abort()
 
     const lines = await collector
-    expect(lines).toEqual(['final fragment'])
+    expect(lines).toEqual(['sentinel', 'final fragment'])
   })
 })

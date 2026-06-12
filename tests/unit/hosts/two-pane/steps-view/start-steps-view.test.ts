@@ -432,4 +432,9 @@ describe('StepsIntentSchema', () => {
     expect(() => StepsIntentSchema.parse({ type: 'retry' })).not.toThrow()
     expect(() => StepsIntentSchema.parse({ type: 'retry-continue' })).not.toThrow()
   })
+
+  it('parses the P6 focus-pane intent and rejects an unknown pane', () => {
+    expect(() => StepsIntentSchema.parse({ type: 'focus-pane', pane: 'right' })).not.toThrow()
+    expect(() => StepsIntentSchema.parse({ type: 'focus-pane', pane: 'left' })).toThrow()
+  })
 })

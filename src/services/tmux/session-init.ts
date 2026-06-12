@@ -26,7 +26,7 @@ export interface InitSessionOptions {
 // Strict appliance-mode allowlist (PR A — tmux strict sandbox)
 // ---------------------------------------------------------------------------
 //
-// Six root-table interactions survive the lockdown, plus a small audited
+// Seven root-table interactions survive the lockdown, plus a small audited
 // copy-mode allowlist so users can escape and scroll once they land there:
 //
 //   1. Drag pane border to resize         — MouseDrag1Border → resize-pane -M
@@ -35,10 +35,19 @@ export interface InitSessionOptions {
 //   4. Keyboard pane switch (right)       — M-Right          → select-pane -R
 //   5. Wheel up (smart, enters scrollback)— WheelUpPane      → if-shell -F …
 //   6. Wheel down (smart, NEVER enters)   — WheelDownPane    → if-shell -F …
+//   7. Drag to select+copy (plain panes)  — MouseDrag1Pane   → if-shell -F …
 //
-// Native terminal text selection survives by NOT touching it — users hold
-// Shift (or Option on macOS Terminal) to bypass tmux mouse capture and use
-// the host terminal's own selection.
+// Text selection / copy (V3 — see the not-copyable-text plan):
+//   - Plain panes (the steps pane): MouseDrag1Pane enters tmux copy-mode and
+//     `copy-selection-and-cancel` (bound in copy-mode below) yanks to the host
+//     clipboard via OSC 52 (`set-clipboard on`). Per-pane, terminal-agnostic,
+//     no modifier needed — this is exactly default-tmux behavior.
+//   - Agent panes: Claude/Codex run full-screen mouse-reporting TUIs, so
+//     `mouse_any_flag` is yes and their drags are forwarded to the agent by
+//     design. Copy from an agent pane is therefore Shift-drag (Option on
+//     macOS Terminal.app — the host terminal's native bypass) or the agent's
+//     own `/copy` (OSC 52, enabled by `set-clipboard on` + `allow-passthrough
+//     on`).
 //
 // Asymmetric wheel rule:
 //   WheelUpPane:
@@ -90,6 +99,23 @@ const SMART_WHEEL_DOWN_COMMAND: readonly string[] = [
   'if-shell -F "#{?alternate_on,1,0}" "send-keys -M"',
 ] as const
 
+// Plain drag-to-copy in a non-agent pane (the steps pane). Mirrors the
+// `SMART_WHEEL_*` `if-shell -F #{?mouse_any_flag,…}` guard:
+//   mouse_any_flag yes → send-keys -M (forward; the agent owns the mouse, so
+//                        its drag is reported to the agent, never copy-mode)
+//   else → copy-mode -M (enter copy-mode and begin a mouse selection)
+// The drag-END event is bound under the copy-mode tables (COPY_MODE_KEYS),
+// NOT here — once `copy-mode -M` runs the pane is in copy-mode, so the end
+// event routes through the copy-mode table. Binding the end in root silently
+// loses the yank (Phase 0 finding #1).
+const SMART_DRAG_COMMAND: readonly string[] = [
+  'if-shell',
+  '-F',
+  '#{?mouse_any_flag,1,0}',
+  'send-keys -M',
+  'copy-mode -M',
+] as const
+
 const ALLOWLIST: readonly Omit<BindKeyOptions, 'socket'>[] = [
   { table: 'root', key: 'MouseDrag1Border', command: ['resize-pane', '-M'] },
   { table: 'root', key: 'MouseDown1Pane', command: ['select-pane', '-t='] },
@@ -97,6 +123,7 @@ const ALLOWLIST: readonly Omit<BindKeyOptions, 'socket'>[] = [
   { table: 'root-no-prefix', key: 'M-Right', command: ['select-pane', '-R'] },
   { table: 'root', key: 'WheelUpPane', command: SMART_WHEEL_UP_COMMAND },
   { table: 'root', key: 'WheelDownPane', command: SMART_WHEEL_DOWN_COMMAND },
+  { table: 'root', key: 'MouseDrag1Pane', command: SMART_DRAG_COMMAND },
 ] as const
 
 // Minimal copy-mode keymap. Installed identically under both `copy-mode` and
@@ -131,6 +158,11 @@ const COPY_MODE_KEYS: readonly { readonly key: string; readonly command: readonl
   { key: 'G', command: ['send-keys', '-X', 'history-bottom'] },
   { key: 'WheelUpPane', command: ['send-keys', '-X', '-N', '3', 'scroll-up'] },
   { key: 'WheelDownPane', command: ['send-keys', '-X', '-N', '3', 'scroll-down'] },
+  // Drag-end yank for the V3 copy path. The MouseDrag1Pane root binding enters
+  // copy-mode with `copy-mode -M`, so the release event lands HERE (in the
+  // active mode's table), not in root — copying the selection to the host
+  // clipboard (via `set-clipboard on`) and leaving copy-mode.
+  { key: 'MouseDragEnd1Pane', command: ['send-keys', '-X', 'copy-selection-and-cancel'] },
 ] as const
 
 const COPY_MODE_TABLES: readonly Extract<KeyTable, 'copy-mode' | 'copy-mode-vi'>[] = [
@@ -152,15 +184,17 @@ const TABLES_TO_WIPE: readonly KeyTable[] = ['root', 'prefix', 'copy-mode', 'cop
 // Copy persisted in the tmux status bar at all times — survives
 // `unbind-key -a` because status-right is an option, not a key binding.
 // Points users at in-pane scroll first (the new primary path via the
-// smart-wheel binding and the Ink keymap); `orch logs --latest --follow`
-// remains the power-user fallback surfaced in the startup banner.
-const STATUS_RIGHT_HINT = 'scroll: wheel up · j/k PgUp/PgDn · q exits'
+// smart-wheel binding and the Ink keymap), then advertises drag-to-copy so
+// the V3 selection path is discoverable (the reporter "couldn't copy" only
+// because nothing surfaced it); `orch logs --latest --follow` remains the
+// power-user fallback surfaced in the startup banner.
+const STATUS_RIGHT_HINT = 'scroll: wheel up · j/k PgUp/PgDn · q exits · drag to copy'
 
 /**
  * Create a new detached tmux session locked down to the appliance-mode
  * allowlist (drag-to-resize, click-to-focus, M-Left/Right pane switch,
- * native text selection). The exact call sequence is contract — see plan
- * §"Required call ordering" — and is asserted by the fake-service test.
+ * drag-to-copy in plain panes). The exact call sequence is contract — see
+ * plan §"Required call ordering" — and is asserted by the fake-service test.
  *
  * Required call ordering:
  *   1. `fs.writeFile(configPath, …)`   — generated `-f` config
@@ -238,8 +272,24 @@ const APPLIANCE_CONFIG_LINES = [
   // allocation; a post-create `set -g history-limit` would not retroactively
   // resize the initial pane's grid.
   'set -g history-limit 50000',
-  // Drag-to-resize and click-to-focus rely on mouse mode.
+  // Drag-to-resize and click-to-focus rely on mouse mode. Mouse mode also
+  // makes the host terminal stop seeing raw drags, so plain text selection is
+  // restored by the MouseDrag1Pane copy-mode binding below (V3 — see the
+  // not-copyable-text plan), not by the host terminal.
   'set -g mouse on',
+  // Let tmux/agents write the *host* clipboard via OSC 52. Load-bearing for
+  // two copy paths: (a) the copy-mode drag yank below
+  // (`copy-selection-and-cancel`) reaches the real clipboard, and (b)
+  // Claude/Codex `/copy` lands on the host clipboard, including over SSH.
+  'set -g set-clipboard on',
+  // Required (tmux >= 3.3, our enforced floor — see detect-tmux.ts) so the
+  // agents' DCS-wrapped OSC 52 sequences pass through to the outer terminal
+  // instead of being swallowed by tmux.
+  'set -g allow-passthrough on',
+  // Native-looking blue copy-mode selection. tmux's default `mode-style` is an
+  // ugly yellow; this muted blue reads like a normal terminal selection
+  // (a Phase 0 finding from the not-copyable-text experiment).
+  "set -g mode-style 'bg=#214283,fg=#ffffff'",
   // Keep dead panes visible so `pane-died` fires on every exit (the hook
   // only runs for exits remain-on-exit keeps visible). The `respawn-pane
   // -k` cycle replaces the dead pane with a fresh `cat` immediately after,
@@ -247,7 +297,7 @@ const APPLIANCE_CONFIG_LINES = [
   'set -g remain-on-exit on',
   // No prefix means C-b (and any other prefix) is inert — the keystroke
   // passes through to the running shell/agent unmodified. Supported by
-  // tmux 2.4+; orch's floor is 3.2.
+  // tmux 2.4+; orch's floor is 3.3 (see detect-tmux.ts).
   'set -g prefix None',
   // Latest-attaching client drives the window grid. Without this, two clients
   // (e.g. parent's auto-attach + the steps-view replay window) negotiate to
@@ -270,6 +320,12 @@ const APPLIANCE_CONFIG_LINES = [
   // owns the per-run tmux server, so a global option is scoped to this
   // run only. See the per-source-tmux-sessions plan.
   'set -g destroy-unattached off',
+  // Pane-focus affordance (P6): with keyboard focus switching (Tab from the
+  // steps view, M-Left/M-Right anywhere) the user needs to SEE which pane
+  // owns the keyboard. Cyan active border matches the steps-view accent;
+  // the inactive border stays the dim default-ish gray.
+  'set -g pane-border-style fg=brightblack',
+  'set -g pane-active-border-style fg=cyan',
 ] as const
 
 const writeAppliancConfig = async (fs: FsService): Promise<Path> => {

@@ -1,11 +1,11 @@
 // Real-tmux behavioral test: the left-pane steps-view must show its
-// `orch · <workflow> · <runId>` breadcrumb exactly once even after many
-// state changes and pane resizes.
+// header title line `<workflow>  ▶ LIVE  <runId>` exactly once even after
+// many state changes and pane resizes.
 //
-// Bug observed in production: the breadcrumb stacks vertically — each
-// state change or resize leaves a stale `orch · <…> · <…>` line above
-// the live frame. Eight or more copies eventually pile up at the top of
-// the left pane (see screenshot in the bug report).
+// Bug observed in production: the header stacks vertically — each
+// state change or resize leaves a stale header line above the live frame.
+// Eight or more copies eventually pile up at the top of the left pane
+// (see screenshot in the bug report).
 //
 // Triage rule (docs/testing-strategy.md): "would this test still pass if
 // the visible pane were wrong / unformatted?" — no. We capture the
@@ -91,13 +91,19 @@ describe.skipIf(!tmuxAvailable)(
         const drag = async (widths: readonly number[]): Promise<void> => {
           for (const w of widths) {
             await resizeLeftPaneWidth(fixture, leftPaneId, w)
+            // Pacing between SIGWINCH deliveries, not an assertion
+            // synchronization: a slow machine just coalesces resizes, so this
+            // is intentionally a plain fixed sleep and not a poll.
             await sleep(120)
           }
         }
 
-        // Initial render: give the Ink child time to mount + draw its first
-        // frame.
-        await sleep(400)
+        // Initial render: wait for the Ink child's first frame (the header
+        // title line `<workflowName>  ▶ LIVE  <runId>`) instead of sleeping a
+        // fixed duration. The workflow name appears nowhere else in the pane.
+        await harness.left.waitFor((pane) => pane.includes('tic-tac-toe'), {
+          timeoutMs: REAL_TMUX_ASSERT_TIMEOUT_MS,
+        })
 
         // Set up FakeRunner scripts for a multi-step workflow. Each step's
         // start/complete cycle writes a lifecycle event, which the steps-view
@@ -136,7 +142,10 @@ describe.skipIf(!tmuxAvailable)(
         // budget, while the regression (permanent stacking, 8+ copies) never
         // settles and this assertion times out with the offending frame.
         await harness.left.waitFor(
-          (pane) => countOccurrences(pane, 'orch · tic-tac-toe · ') === 1,
+          // The header title line is `<workflowName>  ▶ LIVE  <runId>`; the
+          // workflow name appears nowhere else in the pane, so its count is
+          // the breadcrumb count.
+          (pane) => countOccurrences(pane, 'tic-tac-toe') === 1,
           {
             timeoutMs: REAL_TMUX_ASSERT_TIMEOUT_MS,
           },

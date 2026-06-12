@@ -17,8 +17,11 @@
  * Inputs (env, threaded by the executor at spawn — U1): `ORCH_STEP_KEY`,
  * `ORCH_RUN_STATE_DIR`, `ORCH_PARENT_PID`.
  *
- * `finish` is clean-exit only (plan §Key Technical Decisions): `pane-died`
- * carries no exit code, so a non-zero `finish(code)` is not propagated here.
+ * Exit-code propagation: tmux runs these panes with `remain-on-exit on`, so a
+ * dead pane lingers with its `#{pane_dead_status}` readable. The two-pane host
+ * recovers that status after the pane dies, so a non-zero exit DOES reach orch
+ * now. `finish(0)`/`q` exit 0; `finish(code)` and the `fail` op exit non-zero,
+ * landing the step `failed`.
  */
 
 import { appendFileSync } from 'node:fs'
@@ -44,8 +47,8 @@ import {
 // race-free on-disk oracle a driver polls instead of scraping the pane). `\r\n`
 // on stdout renders cleanly regardless of the pty's OPOST/ONLCR state; the log
 // keeps plain `\n`. The append is synchronous so the line is durable even if
-// `finish` exits on the next tick. `finish` is a no-op — the coordinator drives
-// the clean exit after the engine queue drains.
+// the process exits on the next tick. `finish` is a no-op — the coordinator
+// drives the exit (with the resolved code) after the engine queue drains.
 function interactiveSink(renderLogPath: string): OutputSink {
   return {
     typeLine(text: string): void {
@@ -53,9 +56,16 @@ function interactiveSink(renderLogPath: string): OutputSink {
       appendFileSync(renderLogPath, `${text}\n`)
     },
     finish(_code: number): void {
-      // Interactive finish is clean-exit-only: the host's `pane-died` carries no
-      // exit code, so `_code` is intentionally dropped. The clean exit itself is
-      // driven by the coordinator (see main) once the engine queue drains.
+      // No-op: the coordinator drives the exit once the engine queue drains, and
+      // `main` returns the resolved code. tmux `remain-on-exit` preserves it for
+      // the host to recover, so even `finish(2)` now reaches orch.
+    },
+    fail(message: string, _code: number): void {
+      // Render the simulated failure to the pane AND the durable render log. The
+      // non-zero `_code` reaches orch via `main`'s return value + the host's
+      // pane-status recovery; nothing extra is needed on the sink itself.
+      process.stdout.write(`${message}\r\n`)
+      appendFileSync(renderLogPath, `${message}\n`)
     },
   }
 }
@@ -117,7 +127,7 @@ async function main(): Promise<number> {
   // channels are wired. Write the marker (bounded-retry, logs on failure).
   await writeReadyMarker(paths.readyPath)
 
-  await finished.promise
+  const code = await finished.promise
   // Final control drain BEFORE stopping: a control command appended just before
   // a concurrent stdin `finish` may not have been polled yet. Read + enqueue its
   // ack now so a driver awaiting that ack never hangs (cross-channel contract).
@@ -127,9 +137,10 @@ async function main(): Promise<number> {
   // so every accepted command's ack is flushed before we exit.
   await engine.drained()
   restoreTerminal()
-  // Interactive `finish` is clean-exit only: tmux's `pane-died` carries no exit
-  // code, so the host returns 0 regardless. We exit 0 even for `finish(2)`.
-  return 0
+  // Exit with the resolved code so a `fail` / non-zero `finish` lands the step
+  // `failed`. tmux's `remain-on-exit on` preserves this status for the host's
+  // post-death pane-status recovery; a clean `finish(0)`/`q` exits 0.
+  return code
 }
 
 // SIGHUP/SIGTERM (U6): handle them so the primary reap path (tmux pane kill on

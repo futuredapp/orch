@@ -183,6 +183,9 @@ function headlessSink(): OutputSink {
         writeEvent({ kind: 'terminal', type: 'error', message: `finished with code ${code}` })
       }
     },
+    fail(message: string): void {
+      writeEvent({ kind: 'terminal', type: 'error', message })
+    },
   }
 }
 
@@ -296,9 +299,9 @@ async function dispatchPuppetCommand(
   command: PuppetCommand,
   sink: OutputSink,
 ): Promise<EngineResult> {
-  // Cross-mode vocabulary (`type_and_send` / `finish`) routes through the
-  // shared engine so the control channel and manual stdin (U4) converge on the
-  // same ops and the same sink. Legacy headless commands fall through.
+  // Cross-mode vocabulary (`type_and_send` / `finish` / `fail`) routes through
+  // the shared engine so the control channel and manual stdin (U4) converge on
+  // the same ops and the same sink. Legacy headless commands fall through.
   const engineOp = controlToEngineOp(command)
   if (engineOp !== null) return runEngineOp(engineOp, sink)
   switch (command.cmd) {
@@ -309,8 +312,11 @@ async function dispatchPuppetCommand(
       await writeFileNode(command.path, command.content, 'utf-8')
       return { kind: 'continue' }
     case 'run-shell': {
-      // Use Bun.spawn for portability; await exit. Output is intentionally
-      // discarded — `emit` is the side-channel for test-visible content.
+      // Deliberate CLAUDE.md rule-1 exception: this file IS a spawned child
+      // process (the scripted-fake puppet's own entry point), not part of
+      // orch's in-process tree — there is no ProcessService wired here to
+      // route through. Output is intentionally discarded; `emit` is the
+      // side-channel for test-visible content.
       const proc = Bun.spawn(['sh', '-c', command.command], {
         stdout: 'pipe',
         stderr: 'pipe',
@@ -327,17 +333,13 @@ async function dispatchPuppetCommand(
       writeEvent(terminal)
       return { kind: 'terminate', exitCode: 0 }
     }
-    case 'fail': {
-      writeEvent({ kind: 'terminal', type: 'error', message: command.message })
-      return { kind: 'terminate', exitCode: command.exitCode ?? 1 }
-    }
     case 'wait':
       await new Promise((res) => setTimeout(res, command.ms))
       return { kind: 'continue' }
     default:
-      // `type_and_send` / `finish` are handled by the engine above; any other
-      // cmd is unreachable given the schema. Satisfy the exhaustiveness check
-      // without a silent fall-through.
+      // `type_and_send` / `finish` / `fail` are handled by the engine above;
+      // any other cmd is unreachable given the schema. Satisfy the
+      // exhaustiveness check without a silent fall-through.
       return { kind: 'continue' }
   }
 }

@@ -23,6 +23,7 @@ import { CARET_ECHO_TOKENS, type PaneDriver } from '../panes/pane-driver.ts'
 import {
   computeArrowDirection,
   frameHasColoredText,
+  frameHasFullWidthBand,
   glyphChar,
   highlightedStepName,
   occurrences,
@@ -210,6 +211,13 @@ export function createRealTmuxPaneDriver(deps: RealTmuxPaneDriverDeps): PaneDriv
       // Colour lives in the RAW capture (tmux SGR escapes), so use captureRaw.
       await deps.handle.waitForRaw(
         (raw) => frameHasColoredText(raw, lineNeedle, colorName),
+        waitOpts,
+      )
+    },
+    async assertRowBandFills(lineNeedle, bgColorName, minTrailingPad): Promise<void> {
+      // The band lives in the RAW capture (tmux SGR escapes), so use captureRaw.
+      await deps.handle.waitForRaw(
+        (raw) => frameHasFullWidthBand(raw, lineNeedle, bgColorName, minTrailingPad),
         waitOpts,
       )
     },

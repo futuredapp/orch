@@ -75,7 +75,7 @@ describe('ClaudeRunner mocked integration', () => {
     const cmd = await runner.buildCommand(ctx)
 
     expect(cmd.argv[0]).toBe('claude')
-    expect(cmd.argv).toContain('--bare')
+    expect(cmd.argv).not.toContain('--bare')
     expect(cmd.argv).toContain('-p')
     expect(cmd.argv).toContain('test prompt')
     expect(cmd.argv).toContain('--output-format')

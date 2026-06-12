@@ -36,8 +36,7 @@
 
 import type { WorkflowArgs } from '../../core/index.ts'
 import { renderTranscriptLine } from '../../hosts/index.ts'
-import { toClaudeTranscriptLines } from '../../runners/claude/format-event.ts'
-import type { RunnerEvent } from '../../runners/index.ts'
+import { type RunnerEvent, toClaudeTranscriptLines } from '../../runners/index.ts'
 import type { Path } from '../../services/types.ts'
 import { path } from '../../services/types.ts'
 import { runId as parseRunId, type RunState, StateCorruptionError } from '../../state/index.ts'
