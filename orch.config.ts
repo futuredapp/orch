@@ -10,5 +10,6 @@ export const config = defineConfig({
     'generate-changelog': 'workflows/generate-changelog/index.ts',
     session: 'workflows/session/index.ts',
     'master-worker': 'workflows/master-worker/index.ts',
+    'scroll-test': 'workflows/scroll-test/index.ts',
   },
 })
