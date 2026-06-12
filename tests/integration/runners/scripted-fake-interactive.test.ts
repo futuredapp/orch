@@ -197,17 +197,39 @@ describe('interactive-entry.ts control channel (real subprocess)', () => {
     expect(exitCode).toBe(0)
   })
 
-  it('exits 0 even on finish(2) — interactive finish is clean-exit-only', async () => {
+  it('propagates a non-zero finish code so the host can mark the step failed', async () => {
     const entry = track(spawnInteractive(runStateDir, 'step'))
     await entry.waitForReady()
 
-    // A non-zero finish code is NOT propagated in interactive mode: the host's
-    // `pane-died` carries no exit code, so the entry exits cleanly regardless.
+    // The entry now exits with the resolved code: tmux `remain-on-exit` keeps the
+    // dead pane's `#{pane_dead_status}` readable, so the two-pane host recovers a
+    // non-zero exit instead of always treating it as clean.
     const seq = await entry.append({ cmd: 'finish', code: 2 })
     await entry.waitForAck(seq)
     const { exitCode } = await entry.wait()
 
-    expect(exitCode).toBe(0)
+    expect(exitCode).toBe(2)
+  })
+
+  it('exits non-zero on a control fail command (simulated failure)', async () => {
+    const entry = track(spawnInteractive(runStateDir, 'step'))
+    await entry.waitForReady()
+
+    const seq = await entry.append({ cmd: 'fail', message: 'simulated failure' })
+    await entry.waitForAck(seq)
+    const { exitCode } = await entry.wait()
+
+    expect(exitCode).toBe(1)
+  })
+
+  it('renders the failure message to the render log on a control fail', async () => {
+    const entry = track(spawnInteractive(runStateDir, 'step'))
+    await entry.waitForReady()
+
+    await entry.append({ cmd: 'fail', message: 'kaboom' })
+    const body = await entry.waitForRender('kaboom')
+
+    expect(body).toBe('kaboom\n')
   })
 })
 
@@ -240,6 +262,16 @@ describe('interactive-entry.ts manual stdin channel (real subprocess)', () => {
     const { exitCode } = await entry.wait()
 
     expect(exitCode).toBe(0)
+  })
+
+  it('exits non-zero on the manual fail keyword (simulated failure)', async () => {
+    const entry = track(spawnInteractive(runStateDir, 'step'))
+    await entry.waitForReady()
+
+    entry.writeStdin('fail\n')
+    const { exitCode } = await entry.wait()
+
+    expect(exitCode).toBe(1)
   })
 
   it('ignores an empty manual line, rendering nothing (R3 empty-line parity)', async () => {

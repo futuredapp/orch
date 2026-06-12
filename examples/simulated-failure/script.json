@@ -1,0 +1,9 @@
+{
+  "steps": {
+    "crash": {
+      "kind": "instant-fail",
+      "message": "simulated failure: upstream API returned 400",
+      "exitCode": 1
+    }
+  }
+}

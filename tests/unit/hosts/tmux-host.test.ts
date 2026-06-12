@@ -417,6 +417,29 @@ describe('TmuxHost.runInteractive', () => {
     await host.teardown()
   })
 
+  it('recovers a non-zero exit code from the dead pane status so a simulated failure lands failed', async () => {
+    const tmux = new FakeTmuxService()
+    tmux.setListPanesResult(['%0'])
+    tmux.nextPaneId(paneId('%42'))
+    // The only `displayMessage` in the interactive path is the post-death
+    // `#{pane_dead},#{pane_dead_status}` probe: model a dead pane that exited 1
+    // (what the predictable fake's `fail` op produces). The host must surface it.
+    tmux.setDisplayResult('1,1')
+
+    const { host } = await buildHostWithController(tmux)
+
+    const result = await host.runInteractive({
+      argv: ['bun', 'interactive-entry.ts'],
+      env: {},
+      cwd: path('/tmp'),
+      stepName: stepName('execute'),
+    })
+
+    expect(result.exitCode).toBe(1)
+
+    await host.teardown()
+  })
+
   it('logs left-pane wait failures so fake clean TUI exits are diagnosable', async () => {
     const tmux = new WaitForSessionLostTmuxService()
     tmux.setListPanesResult(['%0'])

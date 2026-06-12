@@ -14,8 +14,14 @@
  *
  *     bunx orch run predictable-tui --mode=two-pane
  *     # then, elsewhere:
- *     bun examples/predictable-tui/drive.ts            # newest run
+ *     bun examples/predictable-tui/drive.ts            # newest run (happy path)
  *     bun examples/predictable-tui/drive.ts <runDir>   # a specific run dir
+ *     bun examples/predictable-tui/drive.ts --fail     # SIMULATE a failure
+ *
+ * With `--fail`, the `execute` step is driven to send the `fail` command (the
+ * same thing typing `fail` into the pane does) instead of finishing cleanly —
+ * the runner exits non-zero, the host recovers the code, and the run lands in
+ * the `failed` state (visible in the steps view and `.orch/state/<id>/state.json`).
  *
  * Every send is gated on a durable on-disk signal (the step's `.ready` marker,
  * then each command's `.ack`) — never a timer — so the driver stays in lockstep
@@ -32,10 +38,19 @@ const POLL_MS = 25
 const TIMEOUT_MS = 15_000
 
 // The scripted dialogue: same step keys (`as:`) the workflow assigns, each with
-// the lines to "type" before finishing. Edit this to script a different run.
-const SCRIPT: ReadonlyArray<{ readonly key: string; readonly lines: readonly string[] }> = [
+// the lines to "type" before finishing. A step may instead carry `failWith` —
+// the simulated-failure message sent via the `fail` command (only when this
+// driver runs with `--fail`). Edit this to script a different run.
+interface ScriptedStep {
+  readonly key: string
+  readonly lines: readonly string[]
+  /** When set AND `--fail` is passed, send `fail` with this message after the lines. */
+  readonly failWith?: string
+}
+
+const SCRIPT: readonly ScriptedStep[] = [
   { key: 'plan', lines: ['draft: split the work into two passes'] },
-  { key: 'execute', lines: ['pass 1 done', 'pass 2 done'] },
+  { key: 'execute', lines: ['pass 1 done'], failWith: 'simulated failure: pass 2 crashed' },
   { key: 'report', lines: ['2 passes, 0 failures'] },
 ]
 
@@ -68,10 +83,13 @@ async function newestRunDir(): Promise<string> {
   return nodePath.join(STATE_BASE, newest)
 }
 
-/** Drive one step: wait for readiness, send each line, then finish. */
-async function driveStep(runStateDir: string, key: string, lines: readonly string[]): Promise<void> {
-  const paths = resolveControlPaths({ runStateDir, key })
-  await pollUntil(() => fileExists(paths.readyPath), `${key} .ready`)
+/**
+ * Drive one step: wait for readiness, send each line, then terminate. Returns
+ * `'failed'` when it sent a `fail` command (the run ends here), else `'ok'`.
+ */
+async function driveStep(runStateDir: string, step: ScriptedStep, failMode: boolean): Promise<'ok' | 'failed'> {
+  const paths = resolveControlPaths({ runStateDir, key: step.key })
+  await pollUntil(() => fileExists(paths.readyPath), `${step.key} .ready`)
   await mkdir(paths.controlDir, { recursive: true })
 
   let seq = 0
@@ -81,23 +99,39 @@ async function driveStep(runStateDir: string, key: string, lines: readonly strin
     await appendFile(paths.controlPath, `${JSON.stringify(cmd)}\n`, 'utf-8')
     await pollUntil(
       () => fileExists(nodePath.join(paths.ackDir, `${localSeq}.ack`)),
-      `${key} ack #${localSeq}`,
+      `${step.key} ack #${localSeq}`,
     )
   }
 
-  for (const text of lines) {
+  for (const text of step.lines) {
     await send({ cmd: 'type_and_send', text })
-    process.stderr.write(`drive: ${key} ← ${JSON.stringify(text)}\n`)
+    process.stderr.write(`drive: ${step.key} ← ${JSON.stringify(text)}\n`)
   }
+
+  if (failMode && step.failWith !== undefined) {
+    await send({ cmd: 'fail', message: step.failWith })
+    process.stderr.write(`drive: ${step.key} ✗ FAILED (${step.failWith})\n`)
+    return 'failed'
+  }
+
   await send({ cmd: 'finish' })
-  process.stderr.write(`drive: ${key} finished\n`)
+  process.stderr.write(`drive: ${step.key} finished\n`)
+  return 'ok'
 }
 
 async function main(): Promise<void> {
-  const runStateDir = process.argv[2] ?? (await newestRunDir())
-  process.stderr.write(`drive: targeting ${runStateDir}\n`)
-  for (const { key, lines } of SCRIPT) {
-    await driveStep(runStateDir, key, lines)
+  const positional = process.argv.slice(2).filter((a) => !a.startsWith('--'))
+  const failMode = process.argv.includes('--fail')
+  const runStateDir = positional[0] ?? (await newestRunDir())
+  process.stderr.write(`drive: targeting ${runStateDir}${failMode ? ' (--fail)' : ''}\n`)
+  for (const step of SCRIPT) {
+    const outcome = await driveStep(runStateDir, step, failMode)
+    if (outcome === 'failed') {
+      // The run ends on the failed step — later steps never become ready, so
+      // stop here instead of timing out waiting for their `.ready` marker.
+      process.stderr.write('drive: run ended in the failed state — stopping\n')
+      return
+    }
   }
   process.stderr.write('drive: all steps driven\n')
 }

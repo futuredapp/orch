@@ -42,8 +42,9 @@ export class MessageModel extends EventEmitter {
 
 // Ink sink: each rendered line is appended to the list AND to the durable render
 // log (parity with the raw entry's sink, so a driver's `waitForRender` oracle is
-// identical). `finish` is a no-op — the coordinator drives the clean exit once
-// the engine queue drains.
+// identical). `finish` is a no-op — the coordinator drives the exit (with the
+// resolved code) once the engine queue drains. `fail` renders the error line; the
+// non-zero code rides out on `main`'s return value + the host's status recovery.
 export function inkSink(model: MessageModel, renderLogPath: string): OutputSink {
   return {
     typeLine(text: string): void {
@@ -51,7 +52,11 @@ export function inkSink(model: MessageModel, renderLogPath: string): OutputSink 
       appendFileSync(renderLogPath, `${text}\n`)
     },
     finish(_code: number): void {
-      /* clean-exit-only; coordinator drives the unmount + exit */
+      /* coordinator drives the unmount + exit; `main` returns the resolved code */
+    },
+    fail(message: string, _code: number): void {
+      model.add(message)
+      appendFileSync(renderLogPath, `${message}\n`)
     },
   }
 }

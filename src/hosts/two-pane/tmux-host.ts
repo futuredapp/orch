@@ -194,6 +194,39 @@ async function probePaneExit(
 }
 
 /**
+ * Parse `#{pane_dead_status}` (a string exit code) into a number, defaulting to
+ * 0 when tmux gave us nothing parseable. A dead pane that exited non-zero is how
+ * a non-autoStop interactive step reports failure now that `remain-on-exit on`
+ * preserves the code (e.g. the predictable fake's `fail` op, or a human Ctrl-C).
+ */
+function parsePaneDeadStatus(status: string | undefined): number {
+  if (status === undefined || status.length === 0) return 0
+  const parsed = Number.parseInt(status, 10)
+  return Number.isInteger(parsed) ? parsed : 0
+}
+
+/**
+ * Recover the dead pane's exit code after the pane-exit wait resolved. The hook
+ * path (the common case) carries no status, so probe `#{pane_dead_status}` once
+ * here while `remain-on-exit` still keeps the dead pane readable — i.e. BEFORE
+ * `unregisterSource` reaps it. The liveness-poll path already read the status,
+ * so reuse it and skip the extra round-trip.
+ *
+ * Exported for unit testing against `FakeTmuxService`.
+ */
+export async function recoverInteractiveExitCode(
+  tmux: TmuxService,
+  socket: SocketName,
+  paneId: PaneId,
+  polledStatus: string | undefined,
+): Promise<number> {
+  if (polledStatus !== undefined) return parsePaneDeadStatus(polledStatus)
+  const probe = await probePaneExit(tmux, socket, paneId)
+  if (probe === 'alive' || probe === 'gone') return 0
+  return parsePaneDeadStatus(probe.status)
+}
+
+/**
  * Wait for the interactive pane to exit. Races the unbounded `pane-died` hook
  * channel against a slow liveness poll. The hook is the fast path; the poll is
  * a backstop for a lost/delayed hook signal under contention. The poll never
@@ -1157,6 +1190,11 @@ function buildHost(deps: BuildHostDeps): Host {
       sourceKey: sourceKeyString,
       paneId: hiddenPaneId,
     })
+    // Recovered from the dead pane's `#{pane_dead_status}` after the wait (see
+    // `recoverInteractiveExitCode`). Declared out here so it survives the
+    // `finally` that reaps the pane and is returned below. Stays 0 unless the
+    // non-autoStop path reads a non-zero status.
+    let recoveredExitCode = 0
     try {
       // Swap visible ↔ hidden so the interactive pane is what the user sees.
       appendLifecycleSoon({
@@ -1214,6 +1252,17 @@ function buildHost(deps: BuildHostDeps): Host {
             deadStatus: outcome.deadStatus ?? null,
           })
         }
+        // Recover the child's exit code from the dead pane BEFORE the `finally`
+        // reaps it, so a `fail` / non-zero exit lands the step `failed`. Only on
+        // the non-autoStop path: an autoStop-armed step (real Claude/Codex) is
+        // terminated by orch on turn completion, so its pane status is an
+        // orch-initiated signal, not a step verdict — that path keeps exit 0.
+        recoveredExitCode = await recoverInteractiveExitCode(
+          deps.tmux,
+          deps.socket,
+          hiddenPaneId,
+          outcome.deadStatus,
+        )
       } else {
         appendLifecycleSoon({
           type: 'interactive-auto-stop-armed',
@@ -1256,7 +1305,10 @@ function buildHost(deps: BuildHostDeps): Host {
         paneId: hiddenPaneId,
         channel: `pane-exit-${hiddenPaneId}`,
         durationMs: deps.clock.now() - startedAt,
-        exitCodeKnown: false,
+        // Known on the non-autoStop path (we probe `#{pane_dead_status}`); the
+        // autoStop path leaves it 0/unknown by design.
+        exitCodeKnown: autoStopChannel === undefined,
+        exitCode: recoveredExitCode,
         via: paneExitVia ?? null,
       })
     } catch (err) {
@@ -1347,10 +1399,12 @@ function buildHost(deps: BuildHostDeps): Host {
       }
     }
 
-    // tmux's `pane-died` hook doesn't give us the child's exit code through
-    // the wait-for channel. The interactive pane is best-effort; we treat a
-    // clean exit as exit 0. Phase D2 will wire structured failure capture.
-    return { exitCode: 0, durationMs: deps.clock.now() - startedAt }
+    // tmux's `pane-died` hook channel carries no exit code, but `remain-on-exit
+    // on` keeps the dead pane's `#{pane_dead_status}` readable, which we probed
+    // above (non-autoStop path) into `recoveredExitCode` before `finally` reaped
+    // the pane. A non-zero code here makes the executor throw `StepError` →
+    // `failed` run status. autoStop-armed steps keep exit 0 (see the recovery).
+    return { exitCode: recoveredExitCode, durationMs: deps.clock.now() - startedAt }
   }
 
   const rawAttachForeground = createAttachForeground({

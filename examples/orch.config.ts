@@ -23,6 +23,10 @@ export default defineConfig({
     'predictable-sub': 'predictable-sub/index.ts',
     // DEV-ONLY: minimal two-step linear fake for QA-agent live-follow testing.
     'predictable-two-step': 'predictable-two-step/index.ts',
+    // DEV-ONLY: headless run scripted to end in the FAILED state (instant-fail),
+    // for seeing a failed run end-to-end. Requires ORCH_LIFECYCLE_SCRIPT — see
+    // examples/simulated-failure/README.md. Deep-imports a non-public runner.
+    'simulated-failure': 'simulated-failure/index.ts',
     // Subworkflow examples (U10). `feature` dispatches to one of two subs,
     // `parent`/`branch-isolated` show cwd isolation, `ship-many` shows the
     // parallel-of-distinct-subs canonical shape.

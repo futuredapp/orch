@@ -1,8 +1,8 @@
 // U2 — the shared command engine. The engine is pure: it maps both channels
-// (control NDJSON + manual stdin) onto the same two-op vocabulary
-// (`type_and_send` / `finish`) and routes ops to a mode-injected sink. These
-// tests use a recording sink so the cross-mode / cross-channel guarantees are
-// asserted without any I/O.
+// (control NDJSON + manual stdin) onto the same vocabulary
+// (`type_and_send` / `finish` / `fail`) and routes ops to a mode-injected sink.
+// These tests use a recording sink so the cross-mode / cross-channel guarantees
+// are asserted without any I/O.
 
 import { describe, expect, it } from 'bun:test'
 import {
@@ -17,19 +17,25 @@ import {
 interface RecordingSink extends OutputSink {
   readonly lines: string[]
   readonly finishes: number[]
+  readonly fails: Array<{ readonly message: string; readonly code: number }>
 }
 
 function recordingSink(): RecordingSink {
   const lines: string[] = []
   const finishes: number[] = []
+  const fails: Array<{ readonly message: string; readonly code: number }> = []
   return {
     lines,
     finishes,
+    fails,
     typeLine: (text: string) => {
       lines.push(text)
     },
     finish: (code: number) => {
       finishes.push(code)
+    },
+    fail: (message: string, code: number) => {
+      fails.push({ message, code })
     },
   }
 }
@@ -70,6 +76,15 @@ describe('U2 — runEngineOp applies ops to the injected sink', () => {
     expect(sink.finishes).toEqual([2])
     expect(result).toEqual({ kind: 'terminate', exitCode: 2 })
   })
+
+  it('routes a fail op to sink.fail and terminates with the failure code', () => {
+    const sink = recordingSink()
+
+    const result = runEngineOp({ op: 'fail', code: 1, message: 'boom' }, sink)
+
+    expect(sink.fails).toEqual([{ message: 'boom', code: 1 }])
+    expect(result).toEqual({ kind: 'terminate', exitCode: 1 })
+  })
 })
 
 describe('U2 — parseManualLine maps stdin to the vocabulary (R5)', () => {
@@ -93,6 +108,19 @@ describe('U2 — parseManualLine maps stdin to the vocabulary (R5)', () => {
 
   it('keeps a line that merely starts with q as type_and_send', () => {
     expect(parseManualLine('q hello')).toEqual({ op: 'type_and_send', text: 'q hello' })
+  })
+
+  it('parses the reserved word fail to a fail op with the default code and message', () => {
+    expect(parseManualLine('fail')).toEqual({
+      op: 'fail',
+      code: 1,
+      message: 'simulated failure',
+    })
+  })
+
+  it('treats fail with trailing space as a fail op (trim-based) but not "fail now"', () => {
+    expect(parseManualLine('fail ')).toEqual({ op: 'fail', code: 1, message: 'simulated failure' })
+    expect(parseManualLine('fail now')).toEqual({ op: 'type_and_send', text: 'fail now' })
   })
 })
 
@@ -125,6 +153,27 @@ describe('U2 — control and manual channels produce identical engine ops (R3)',
     const op = control.kind === 'ok' ? controlToEngineOp(control.value) : null
 
     expect(op).toEqual({ op: 'finish', code: 3 })
+  })
+
+  it('control fail and a manual fail yield the same fail op (default code)', () => {
+    const control = parseControlLine(JSON.stringify({ cmd: 'fail', message: 'simulated failure' }))
+    const controlOp = control.kind === 'ok' ? controlToEngineOp(control.value) : null
+
+    const manualOp = parseManualLine('fail')
+
+    const expected: EngineOp = { op: 'fail', code: 1, message: 'simulated failure' }
+    expect(controlOp).toEqual(expected)
+    expect(manualOp).toEqual(expected)
+  })
+
+  it('propagates an explicit fail exitCode and message from the control channel', () => {
+    const control = parseControlLine(
+      JSON.stringify({ cmd: 'fail', message: 'kaboom', exitCode: 7 }),
+    )
+
+    const op = control.kind === 'ok' ? controlToEngineOp(control.value) : null
+
+    expect(op).toEqual({ op: 'fail', code: 7, message: 'kaboom' })
   })
 })
 
