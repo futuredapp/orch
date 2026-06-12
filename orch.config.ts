@@ -8,5 +8,6 @@ export const config = defineConfig({
     'execute-plan': 'workflows/execute-plan/index.ts',
     'do-work': 'workflows/do-work/index.ts',
     'generate-changelog': 'workflows/generate-changelog/index.ts',
+    session: 'workflows/session/index.ts',
   },
 })
