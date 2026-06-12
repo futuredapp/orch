@@ -54,13 +54,36 @@ export async function isPrMerged(prNumber: number): Promise<boolean> {
   return data.state === 'MERGED' || data.mergedAt !== null
 }
 
+const REGISTER_TIMEOUT_MS = 180_000
+const REGISTER_INTERVAL_MS = 5_000
+
 /**
  * Block until every required check on the PR has finished, streaming live
  * status to the terminal. Throws (non-zero `gh` exit) if any check fails, so
  * the caller never merges a red PR.
+ *
+ * `gh pr checks --watch` exits immediately with "no checks reported" when it is
+ * called before the check runs register (the race right after opening a PR), so
+ * we first poll until at least one check appears, then watch.
  */
 export async function watchChecks(prNumber: number): Promise<void> {
+  await waitForChecksToRegister(prNumber)
   await stream(['gh', 'pr', 'checks', String(prNumber), '--watch', '--fail-fast'])
+}
+
+async function waitForChecksToRegister(prNumber: number): Promise<void> {
+  const deadline = Date.now() + REGISTER_TIMEOUT_MS
+  while (true) {
+    const result = await tryRun(['gh', 'pr', 'checks', String(prNumber)])
+    if (!/no checks reported/i.test(`${result.stdout}\n${result.stderr}`)) return
+    if (Date.now() >= deadline) {
+      throw new Error(
+        `no checks registered on PR #${prNumber} after ${REGISTER_TIMEOUT_MS / 1000}s — ` +
+          'is a workflow configured to run on this PR?',
+      )
+    }
+    await Bun.sleep(REGISTER_INTERVAL_MS)
+  }
 }
 
 /** Merge with a merge commit (NOT squash — keeps main == develop content). */
