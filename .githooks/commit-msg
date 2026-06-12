@@ -1,0 +1,8 @@
+#!/usr/bin/env sh
+# Local commit-msg gate — runs the SAME commitlint rules CI enforces, but before
+# the commit is created, so a non-conventional message (e.g. an `agent:` typo)
+# never enters history. Wired via `core.hooksPath=.githooks`, set by the
+# package.json "prepare" script on `bun install`.
+#
+# Bypass for a single commit with `git commit --no-verify` when you must.
+exec bunx --bun commitlint --edit "$1"
