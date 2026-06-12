@@ -21,6 +21,7 @@
     "reconcile": "bun tests/_migration/reconcile.ts",
     "check:int-dirs": "bun scripts/check-integration-dirs.ts",
     "preflight:release": "bash scripts/preflight-release.sh",
+    "release": "bun scripts/git/release.ts",
     "check:release": "bun run preflight:release && bun run lint && bun run typecheck && bun run test:binary-smoke && bun run test:project && bun run test:e2e:real && bun run test:two-pane:lifecycle && bun run test:two-pane:full:real",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
