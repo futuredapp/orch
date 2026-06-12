@@ -46,9 +46,9 @@ if [ -d "$wt_gitdir/rebase-merge" ] || [ -d "$wt_gitdir/rebase-apply" ] || \
   exit 2
 fi
 
-echo "rebasing $branch onto main (in $wt) ..."
-if git -C "$wt" rebase main; then
-  echo "RESULT: CLEAN ($branch is now on top of main)"
+echo "rebasing $branch onto $BASE (in $wt) ..."
+if git -C "$wt" rebase "$BASE"; then
+  echo "RESULT: CLEAN ($branch is now on top of $BASE)"
   exit 0
 fi
 

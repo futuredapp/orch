@@ -19,7 +19,7 @@ source "$here/_lib.sh"
 slug="$1"; shift
 
 made=()
-for branch in "$@" main; do
+for branch in "$@" "$BASE"; do
   branch_exists "$branch" || die "branch does not exist: $branch"
   tag="$(backup_tag "$slug" "$branch")"
   if git show-ref --verify --quiet "refs/tags/$tag"; then

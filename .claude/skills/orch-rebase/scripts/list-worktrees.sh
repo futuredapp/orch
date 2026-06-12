@@ -24,17 +24,17 @@ while IFS= read -r line; do
     "worktree "*) path="${line#worktree }" ;;
     "branch "*) branch="${line#branch }"; branch="${branch#refs/heads/}" ;;
     "")
-      if [ -n "$branch" ] && [ "$branch" != "main" ]; then
+      if [ -n "$branch" ] && [ "$branch" != "$BASE" ]; then
         ahead="$(ahead_count "$branch" 2>/dev/null || echo '?')"
         behind="$(behind_count "$branch" 2>/dev/null || echo '?')"
-        files="$(git diff --name-only "main...$branch" 2>/dev/null | wc -l | tr -d ' ')"
+        files="$(git diff --name-only "$BASE...$branch" 2>/dev/null | wc -l | tr -d ' ')"
         dirty="clean"
         if worktree_is_dirty "$path"; then dirty="DIRTY"; dirty_list+=("$branch"); fi
         echo "branch:   $branch"
         echo "path:     $path"
-        echo "ahead:    $ahead commit(s) ahead of main"
-        echo "behind:   $behind commit(s) behind main"
-        echo "files:    $files changed vs main"
+        echo "ahead:    $ahead commit(s) ahead of $BASE"
+        echo "behind:   $behind commit(s) behind $BASE"
+        echo "files:    $files changed vs $BASE"
         echo "state:    $dirty"
         echo ""
       fi

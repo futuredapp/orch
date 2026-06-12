@@ -26,7 +26,7 @@ source "$here/_lib.sh"
 branches=("$@")
 for b in "${branches[@]}"; do branch_exists "$b" || die "branch does not exist: $b"; done
 
-changed_files() { git diff --name-only "main...$1"; }
+changed_files() { git diff --name-only "$BASE...$1"; }
 
 # Does an in-memory three-way merge of two refs conflict? Returns 0 = clean,
 # 1 = conflict. We only trust the exit code, not the stdout: merge-tree's
@@ -37,13 +37,13 @@ merge_tree_conflicts() {
   git merge-tree --write-tree "$1" "$2" >/dev/null 2>&1
 }
 
-echo "=== VS MAIN (rebase difficulty per branch) ==="
+echo "=== VS BASE ($BASE) (rebase difficulty per branch) ==="
 for b in "${branches[@]}"; do
   n_files="$(changed_files "$b" | wc -l | tr -d ' ')"
-  if merge_tree_conflicts main "$b"; then
-    echo "  $b: $n_files files changed — predicted CLEAN onto main"
+  if merge_tree_conflicts "$BASE" "$b"; then
+    echo "  $b: $n_files files changed — predicted CLEAN onto $BASE"
   else
-    echo "  $b: $n_files files changed — predicted CONFLICTS onto main (changed files):"
+    echo "  $b: $n_files files changed — predicted CONFLICTS onto $BASE (changed files):"
     changed_files "$b" | sed 's/^/      /'
   fi
 done

@@ -16,16 +16,16 @@ source "$here/_lib.sh"
 branch="$1"
 branch_exists "$branch" || die "branch does not exist: $branch"
 
-range="main...$branch"
+range="$BASE...$branch"
 
-echo "=== WORKTREE ANALYSIS: $branch ==="
-echo "ahead of main:  $(ahead_count "$branch") commit(s)"
-echo "behind main:    $(behind_count "$branch") commit(s)"
-echo "merge base:     $(git merge-base main "$branch")"
+echo "=== WORKTREE ANALYSIS: $branch (base: $BASE) ==="
+echo "ahead of $BASE:  $(ahead_count "$branch") commit(s)"
+echo "behind $BASE:    $(behind_count "$branch") commit(s)"
+echo "merge base:     $(git merge-base "$BASE" "$branch")"
 echo ""
 
 echo "--- commits (newest first) ---"
-git log --no-merges --format='  %h  %s' "main..$branch"
+git log --no-merges --format='  %h  %s' "$BASE..$branch"
 echo ""
 
 echo "--- changed files (status + churn) ---"
