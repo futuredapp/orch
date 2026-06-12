@@ -1,11 +1,11 @@
 // Real-tmux behavioral test: the left-pane steps-view must show its
-// `orch · <workflow> · <runId>` breadcrumb exactly once even after many
-// state changes and pane resizes.
+// header title line `<workflow>  ▶ LIVE  <runId>` exactly once even after
+// many state changes and pane resizes.
 //
-// Bug observed in production: the breadcrumb stacks vertically — each
-// state change or resize leaves a stale `orch · <…> · <…>` line above
-// the live frame. Eight or more copies eventually pile up at the top of
-// the left pane (see screenshot in the bug report).
+// Bug observed in production: the header stacks vertically — each
+// state change or resize leaves a stale header line above the live frame.
+// Eight or more copies eventually pile up at the top of the left pane
+// (see screenshot in the bug report).
 //
 // Triage rule (docs/testing-strategy.md): "would this test still pass if
 // the visible pane were wrong / unformatted?" — no. We capture the
@@ -98,9 +98,10 @@ describe.skipIf(!tmuxAvailable)(
           }
         }
 
-        // Initial render: wait for the Ink child's first frame (the
-        // breadcrumb) instead of sleeping a fixed duration.
-        await harness.left.waitFor((pane) => pane.includes('orch · tic-tac-toe · '), {
+        // Initial render: wait for the Ink child's first frame (the header
+        // title line `<workflowName>  ▶ LIVE  <runId>`) instead of sleeping a
+        // fixed duration. The workflow name appears nowhere else in the pane.
+        await harness.left.waitFor((pane) => pane.includes('tic-tac-toe'), {
           timeoutMs: REAL_TMUX_ASSERT_TIMEOUT_MS,
         })
 
