@@ -53,10 +53,15 @@ function emitStepLifecycle(
   // frame); the structured log needs a string — `JSON.stringify(new Error())`
   // is `{}` because `message`/`name` are non-enumerable, which would silently
   // drop the failure reason from `lifecycle.ndjson`.
+  //
+  // `prompt` is carried on `step:start` for the host's right-pane preamble only
+  // (it can be several hundred lines); strip it the same way so it never bloats
+  // the structured trace.
+  const { prompt: _prompt, ...recordRest } = rest as JsonObject & { prompt?: string }
   const record: JsonObject =
-    'error' in rest
-      ? { type, ...(rest as JsonObject), error: stringifyError(rest.error) }
-      : { type, ...(rest as JsonObject) }
+    'error' in recordRest
+      ? { type, ...(recordRest as JsonObject), error: stringifyError(recordRest.error) }
+      : { type, ...(recordRest as JsonObject) }
   void stepSpan.append('lifecycle', record).catch(() => {})
 }
 
@@ -100,6 +105,14 @@ export interface StepLifecycleContext {
   readonly trackParallel: boolean
   /** Populated for agent steps (autonomous + interactive); absent for ask/command. */
   readonly runnerName?: string
+  /**
+   * The assembled prompt for agent steps, carried onto `step:start` so the host
+   * can render it as the right-pane preamble. Set for BOTH autonomous and
+   * interactive agent steps — the choreographer's autonomous-only guard (not the
+   * absence of the field) is what keeps it out of interactive panes, so dropping
+   * that guard is a real regression (AT-4). Absent for `command`/`ask` steps.
+   */
+  readonly prompt?: string
 }
 
 // What a per-kind executor produces. The envelope adds nothing to it — it just
@@ -143,6 +156,7 @@ export async function withStepLifecycle<T>(
     stepName: key,
     mode,
     ...(ctx.runnerName !== undefined ? { runnerName: ctx.runnerName } : {}),
+    ...(ctx.prompt !== undefined ? { prompt: ctx.prompt } : {}),
     ...stepFrame,
   })
   if (inParallel) {

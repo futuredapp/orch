@@ -92,6 +92,8 @@ function createLiveFullHostApp(
       driverLabel: DRIVER_LABEL,
       // Navigation always drives the steps (left) pane; `sendKeys` targets it.
       sendKey: (input) => harness.sendKeys(input),
+      // Server-wide paste-buffer reader for the AT-6 clipboard assertion.
+      clipboard: { tmux: fixture.tmux, socket: fixture.socket },
     })
 
   const leftPane = new LeftPane(paneDeps(harness.left))
@@ -188,18 +190,25 @@ async function build(meta: ScenarioMeta<readonly DriverName[]>): Promise<FullHos
       fixture,
       harness,
       label: DRIVER_LABEL,
-      agentForStep: (_name, _index, spec) => {
+      agentForStep: (_name, index, spec) => {
         if (isLiveSpec(spec.agent)) {
           throw new Error(
             `${DRIVER_LABEL}: a live() / holdsOpen() agent requires meta.liveDriven:true; ` +
               'the static build cannot drive it.',
           )
         }
+        // A per-step prompt (show-initial-prompt scenarios) flows through the
+        // runner override so orch's assembled prompt — the right-pane preamble —
+        // is exactly the scenario's text; the fake itself ignores it and emits
+        // its scripted events.
+        const prompt = spec.prompts?.[index]
         return {
           agent: new FakeRunner(fps).script({
             events: emitsTexts(spec.agent).map(infoLine),
             structuredOutput: 'done',
           }),
+          ...(prompt !== undefined ? { prompt } : {}),
+          ...(spec.extraPrompt !== undefined ? { extraPrompt: spec.extraPrompt } : {}),
         }
       },
     })

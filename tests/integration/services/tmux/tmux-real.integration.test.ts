@@ -539,6 +539,48 @@ describe.skipIf(!canRun)('RealTmuxService against a real tmux server', () => {
     expect(paneA).toMatch(/^%\d+$/)
     expect(paneB).toMatch(/^%\d+$/)
   })
+
+  it('showPasteBuffers returns an empty string on a server with no paste buffers', async () => {
+    const tmux = new RealTmuxService({ processService: new BunProcessService() })
+    const socket = newSocket('buf-empty')
+
+    await tmux.createSession({ socket, session: 'main', width: 80, height: 24 })
+
+    expect(await tmux.showPasteBuffers({ socket })).toBe('')
+  })
+
+  it('showPasteBuffers returns the decoded payload a pane wrote via OSC 52 under set-clipboard on', async () => {
+    // The AT-6 falsifiability seam: with `set-clipboard on`, a bare OSC 52
+    // emitted into a pane populates a server paste buffer with the decoded
+    // body — exactly the state a passed-through prompt OSC 52 would leave, and
+    // exactly what `assertClipboardUnchanged` reads back to prove escaping.
+    const tmux = new RealTmuxService({ processService: new BunProcessService() })
+    const fs = new BunFsService()
+    const socket = newSocket('buf-osc')
+
+    const cfgDir = await fs.tempDir('orch-tmux-buf-')
+    const cfg = path(`${cfgDir}/buf.tmux.conf`)
+    await fs.writeFile(cfg, 'set -g set-clipboard on\nset -g history-limit 50000\n')
+    await tmux.createSession({
+      socket,
+      session: 'main',
+      width: 80,
+      height: 24,
+      configPath: cfg,
+      // Y2xpcGJvYXJkLXBheWxvYWQ= decodes to "clipboard-payload".
+      command: ['sh', '-c', "printf '\\033]52;c;Y2xpcGJvYXJkLXBheWxvYWQ=\\a'; sleep 5"],
+    })
+
+    // Poll: tmux parses the pane's startup output asynchronously.
+    let buffers = ''
+    for (let i = 0; i < 40 && !buffers.includes('clipboard-payload'); i++) {
+      buffers = await tmux.showPasteBuffers({ socket })
+      if (buffers.includes('clipboard-payload')) break
+      await Bun.sleep(50)
+    }
+
+    expect(buffers).toContain('clipboard-payload')
+  })
 })
 
 // ---------------------------------------------------------------------------

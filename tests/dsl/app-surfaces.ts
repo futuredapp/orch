@@ -63,6 +63,21 @@ export type ScreenSpec = LaunchSpec
 export interface FullHostSpec extends LaunchSpec {
   readonly agent?: AgentSpec
   /**
+   * Per-step assembled prompt, indexed by step (parallel to `steps`). Sets the
+   * runner override prompt for that step so orch's assembled prompt — the text
+   * rendered as the right-pane `prompt:` preamble for autonomous steps — is the
+   * value here. Omitted entries ⇔ no prompt (empty preamble body). Used by the
+   * show-initial-prompt scenarios (AT-1/3/5/6/8).
+   */
+  readonly prompts?: readonly string[]
+  /**
+   * An orch-injected fragment appended to the assembled prompt via the runner's
+   * `extraPrompt` override (applied to every step). Lets a scenario prove the
+   * displayed preamble is the POST-assembly prompt — task text plus injected
+   * context — not the bare template (AT-8).
+   */
+  readonly extraPrompt?: string
+  /**
    * Run the step(s) in interactive mode instead of the runner's default
    * autonomous mode (parent U9/W1). Applies to the whole run — the legacy
    * auto-stop case is single-step, so a run-level flag is sufficient and

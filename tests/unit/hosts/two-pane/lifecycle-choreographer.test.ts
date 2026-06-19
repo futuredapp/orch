@@ -20,6 +20,7 @@ import {
   type LifecycleChoreographer,
   ROLLUP_STEP_NAME,
 } from '../../../../src/hosts/two-pane/lifecycle-choreographer.ts'
+import type { PromptStore } from '../../../../src/hosts/two-pane/prompt-store.ts'
 import { createNullSessionLogger, type SessionLogger } from '../../../../src/observability/index.ts'
 import { FakeClock } from '../../../../src/services/clock/index.ts'
 import { path as toPath } from '../../../../src/services/types.ts'
@@ -27,6 +28,8 @@ import { type RunId, runId as toRunId } from '../../../../src/state/index.ts'
 
 const RUN_ID: RunId = toRunId('r-2026-05-26-000000-aa')
 const LOGS_DIR = '/runs/r-2026-05-26-000000-aa/logs'
+
+const ESC = '\x1b'
 
 function teePath(step: string): string {
   return `${LOGS_DIR}/agents/${step}/formatted_output.ansi`
@@ -42,6 +45,9 @@ interface BuildOpts {
   readonly logsDir?: string | null
   readonly torndown?: boolean
   readonly onSendError?: (err: unknown) => void
+  /** Override the prompt sink — e.g. a never-resolving store to prove the
+   *  FIFO does not head-of-line-block on the persistence write (Group C). */
+  readonly promptStore?: PromptStore
 }
 
 function buildChoreographer(
@@ -51,6 +57,7 @@ function buildChoreographer(
   return createLifecycleChoreographer({
     controller: opts.controllerless === true ? undefined : rec.controller,
     tee: rec.tee,
+    promptStore: opts.promptStore ?? rec.promptStore,
     logger: loggerWith(opts.logsDir === undefined ? LOGS_DIR : opts.logsDir),
     runId: RUN_ID,
     clock: new FakeClock(1000),
@@ -74,7 +81,86 @@ describe('LifecycleChoreographer — step:start', () => {
     const register = rec.calls.find((c) => c.method === 'registerSource')
     if (register?.method !== 'registerSource') throw new Error('expected a registerSource call')
     expect(register.key).toEqual({ type: 'live', stepName: stepName('plan') })
-    expect(register.spec).toEqual({ kind: 'file-tail', path: toPath(teePath('plan')) })
+    // From-start so a long prompt's head survives the bounded tail backfill (KTD8).
+    expect(register.spec).toEqual({
+      kind: 'file-tail',
+      path: toPath(teePath('plan')),
+      fromStart: true,
+    })
+  })
+
+  it('writes the prompt preamble (label + escaped prompt + separator) as the first tee bytes when a prompt is carried', async () => {
+    const rec = createRecordingCollaborators()
+    const choreographer = buildChoreographer(rec)
+
+    await choreographer.handle({
+      type: 'step:start',
+      stepName: stepName('plan'),
+      mode: 'autonomous',
+      prompt: `do the thing ${ESC}[2J now`,
+    })
+
+    const write = rec.calls.find((c) => c.on === 'tee' && c.method === 'write')
+    if (write?.on !== 'tee' || write.method !== 'write')
+      throw new Error('expected a tee.write call')
+    expect(write.payload.startsWith('prompt:\r\n')).toBe(true)
+    expect(write.payload).toContain('do the thing')
+    // The control sequence is escaped to a visible glyph, not passed through.
+    expect(write.payload).not.toContain(ESC)
+    expect(write.payload).toContain('␛')
+  })
+
+  it('Covers R8/U5. persists the RAW (unescaped) prompt to the always-on sink for an autonomous step', async () => {
+    const rec = createRecordingCollaborators()
+    const choreographer = buildChoreographer(rec)
+
+    await choreographer.handle({
+      type: 'step:start',
+      stepName: stepName('plan'),
+      mode: 'autonomous',
+      prompt: `do the thing ${ESC}[2J now`,
+    })
+
+    const persisted = rec.calls.find((c) => c.on === 'promptStore')
+    if (persisted?.on !== 'promptStore') throw new Error('expected a promptStore.write call')
+    expect(persisted.step).toBe('plan')
+    // RAW: the store keeps the verbatim prompt (escaping/marking happens at
+    // display time), so a future display change is never a storage migration.
+    expect(persisted.prompt).toBe(`do the thing ${ESC}[2J now`)
+    expect(persisted.prompt).toContain(ESC)
+  })
+
+  it('Covers R8/U5. persists the prompt to the always-on sink even when file logging is disabled', async () => {
+    const rec = createRecordingCollaborators()
+    const choreographer = buildChoreographer(rec, { logsDir: null })
+
+    await choreographer.handle({
+      type: 'step:start',
+      stepName: stepName('plan'),
+      mode: 'autonomous',
+      prompt: 'persist me regardless of the logger',
+    })
+
+    // The sink is independent of the file logger: it writes even on the
+    // logsDir === null path that only emits the no-transcript banner (R8).
+    const persisted = rec.calls.find((c) => c.on === 'promptStore')
+    if (persisted?.on !== 'promptStore') throw new Error('expected a promptStore.write call')
+    expect(persisted.prompt).toBe('persist me regardless of the logger')
+    expect(rec.calls.some((c) => c.on === 'controller' && c.method === 'emitBanner')).toBe(true)
+  })
+
+  it('Covers R8/U5. writes no prompt sink for an interactive step (autonomous-only)', async () => {
+    const rec = createRecordingCollaborators()
+    const choreographer = buildChoreographer(rec)
+
+    await choreographer.handle({
+      type: 'step:start',
+      stepName: stepName('chat'),
+      mode: 'interactive',
+      prompt: 'this prompt must NOT be persisted for an interactive step',
+    })
+
+    expect(rec.calls.some((c) => c.on === 'promptStore')).toBe(false)
   })
 
   it('emits a no-transcript banner and registers no source when no logs directory is configured', async () => {
@@ -94,14 +180,20 @@ describe('LifecycleChoreographer — step:start', () => {
     expect(banner.banner.text).toContain('no transcript captured')
   })
 
-  it('produces no side effects for a non-autonomous step', async () => {
+  it('Covers AT-4. injects no prompt preamble for an interactive step even when the prompt is carried', async () => {
     const rec = createRecordingCollaborators()
     const choreographer = buildChoreographer(rec)
 
+    // Interactive steps carry the assembled prompt on step:start (U2) just like
+    // autonomous ones — so the ONLY thing keeping the prompt out of the
+    // interactive pane is the choreographer's autonomous-only guard. Drop the
+    // guard and this goes red (a tee.open/write would appear), which is exactly
+    // the regression AT-4 pins.
     await choreographer.handle({
       type: 'step:start',
       stepName: stepName('chat'),
       mode: 'interactive',
+      prompt: 'this prompt must NOT leak into the interactive pane',
     })
 
     expect(rec.calls).toHaveLength(0)
@@ -159,8 +251,9 @@ describe('LifecycleChoreographer — step:failed', () => {
       'controller.emitBanner',
       'tee.close',
     ])
-    const write = rec.calls.find((c) => c.method === 'write')
-    if (write?.method !== 'write') throw new Error('expected a tee.write call')
+    const write = rec.calls.find((c) => c.on === 'tee' && c.method === 'write')
+    if (write?.on !== 'tee' || write.method !== 'write')
+      throw new Error('expected a tee.write call')
     expect(write.payload).toContain('plan')
     expect(write.payload).toContain('boom')
 
@@ -226,9 +319,10 @@ describe('LifecycleChoreographer — parallel block', () => {
       branchStatus: 'running',
     })
 
-    const writes = rec.calls.filter((c) => c.method === 'write')
+    const writes = rec.calls.filter((c) => c.on === 'tee' && c.method === 'write')
     const last = writes.at(-1)
-    if (last?.method !== 'write') throw new Error('expected a rollup tee.write call')
+    if (last?.on !== 'tee' || last.method !== 'write')
+      throw new Error('expected a rollup tee.write call')
     expect(last.step).toBe(ROLLUP_STEP_NAME)
     expect(last.payload).toContain('parallel branches:')
     expect(last.payload).toContain('● a')
@@ -267,9 +361,10 @@ describe('LifecycleChoreographer — parallel block', () => {
       branchStatus: 'running',
     })
 
-    const writes = rec.calls.filter((c) => c.method === 'write')
+    const writes = rec.calls.filter((c) => c.on === 'tee' && c.method === 'write')
     const last = writes.at(-1)
-    if (last?.method !== 'write') throw new Error('expected a rollup tee.write call')
+    if (last?.on !== 'tee' || last.method !== 'write')
+      throw new Error('expected a rollup tee.write call')
     expect(last.payload).toContain('● b')
     expect(last.payload).not.toContain('● a')
   })
@@ -299,6 +394,45 @@ describe('LifecycleChoreographer — FIFO serialization', () => {
       'tee.open',
       'tee.write',
       'controller.registerSource',
+    ])
+  })
+
+  it('does not head-of-line-block the FIFO on the prompt-store write (Group C)', async () => {
+    // A never-resolving store: the persistence write never flushes. If the
+    // choreographer `await`ed it, this one slow write would stall the whole
+    // FIFO — neither this step's own `registerSource` nor the next step's
+    // `step:start` would ever run. Fire-and-forget means both proceed.
+    const rec = createRecordingCollaborators()
+    const stalledStore: PromptStore = {
+      write: () => new Promise<void>(() => {}),
+    }
+    const choreographer = buildChoreographer(rec, { promptStore: stalledStore })
+
+    // Fire two autonomous step:starts without awaiting; the stalled store must
+    // not gate either step's registerSource.
+    void choreographer.handle({
+      type: 'step:start',
+      stepName: stepName('first'),
+      mode: 'autonomous',
+      prompt: 'first prompt',
+    })
+    void choreographer.handle({
+      type: 'step:start',
+      stepName: stepName('second'),
+      mode: 'autonomous',
+      prompt: 'second prompt',
+    })
+    // Flush microtasks (a macrotask hop). With the fix both events fully process;
+    // without it, the first event suspends forever on the store write and the
+    // second never starts — so this assertion would see zero registerSource calls.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    const registered = rec.calls
+      .filter((c) => c.on === 'controller' && c.method === 'registerSource')
+      .map((c) => (c.method === 'registerSource' ? c.key : undefined))
+    expect(registered).toEqual([
+      { type: 'live', stepName: stepName('first') },
+      { type: 'live', stepName: stepName('second') },
     ])
   })
 

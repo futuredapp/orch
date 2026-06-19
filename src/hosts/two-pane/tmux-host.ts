@@ -65,6 +65,7 @@ import {
 } from './pane-map/index.ts'
 import { createPaneQueue, type PaneQueue } from './pane-queue.ts'
 import { startPipePaneCapture } from './pipe-pane-capture.ts'
+import { createPromptStore, NULL_PROMPT_STORE, type PromptStore } from './prompt-store.ts'
 import { installStdioCapture, type StdioCapture } from './stdio-capture.ts'
 import { type StartStepsViewHandle, type StepsIntent, startStepsView } from './steps-view/index.ts'
 import { restoreTerminalModes } from './terminal-reset.ts'
@@ -669,6 +670,12 @@ export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
     stdout: opts.stdout ?? process.stdout,
     writeTerminalReset,
     tee: createPerStepTee(opts.logger),
+    // Always-on prompt sink (R8) rooted in the run's stateDir — independent of
+    // the file logger. NULL store when no basePath (pure fixtures, no replay).
+    promptStore:
+      opts.basePath !== undefined
+        ? createPromptStore(toPath(`${opts.basePath}/${opts.runId}`))
+        : NULL_PROMPT_STORE,
     ...(opts.logger !== undefined ? { logger: opts.logger } : {}),
     ...(pipePaneCapture !== undefined ? { pipePaneCapture } : {}),
     ...(stdioCapture !== undefined ? { stdioCapture } : {}),
@@ -879,6 +886,11 @@ interface BuildHostDeps {
    *  before pane-queue enqueue so the file mirrors per-step ordering even
    *  when two parallel branches interleave on the right pane. */
   readonly tee: PerStepTee
+  /** Always-on per-step prompt sink (R8). The choreographer writes the raw
+   *  assembled prompt here at autonomous `step:start`, independent of the
+   *  optional file logger, so replay can reconstruct the prompt even when
+   *  file logging is disabled. NULL store when no `stateDir` is available. */
+  readonly promptStore: PromptStore
   /**
    * Right-pane controller for the pane-map. When present, lifecycle hooks
    * register/unregister `file-tail` sources for autonomous + command live
@@ -960,6 +972,7 @@ function buildHost(deps: BuildHostDeps): Host {
   const choreographer = createLifecycleChoreographer({
     controller,
     tee: deps.tee,
+    promptStore: deps.promptStore,
     logger: deps.logger,
     runId: deps.runId,
     clock: deps.clock,

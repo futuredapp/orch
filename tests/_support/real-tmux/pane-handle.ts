@@ -29,6 +29,22 @@ export interface PaneHandle {
   /** Pane contents with escape sequences intact. */
   captureRaw(): Promise<string>
   /**
+   * ANSI-stripped contents of the VISIBLE VIEWPORT, copy-mode-aware. A bare
+   * `capture-pane -p` always reports the pane's live screen — even when the
+   * pane is in copy-mode scrolled up — so it cannot observe a top-pinned
+   * autonomous prompt (R9). When the pane is in copy-mode and scrolled off the
+   * tail, this reconstructs the viewport from `#{scroll_position}` /
+   * `#{pane_height}` so the returned text is what a watcher actually sees;
+   * otherwise it equals `capture()`.
+   */
+  captureVisible(): Promise<string>
+  /**
+   * Resolves when `predicate(captureVisible())` first returns true. Rejects
+   * with the last viewport frame on timeout. Use to assert on the copy-mode
+   * viewport (R9 / AT-9).
+   */
+  waitForVisible(predicate: (text: string) => boolean, opts?: WaitOptions): Promise<void>
+  /**
    * Resolves when `capture()` contains `needle`. Rejects with an error
    * containing the last captured frame if `timeoutMs` elapses first.
    */
@@ -87,6 +103,45 @@ export function createPaneHandle(deps: CreatePaneHandleDeps): PaneHandle {
     return stripAnsi(raw)
   }
 
+  // Copy-mode-aware viewport capture (R9 / AT-9). `capture-pane -p` reports the
+  // live screen even when the pane is scrolled up in copy-mode, so to observe a
+  // top-pinned pane we read the scroll position and reconstruct the visible
+  // window: when scrolled up by `pos` in a `height`-row pane, the viewport is
+  // history lines [-pos .. height-1-pos]. When the pane is NOT in copy-mode (or
+  // sits at the live tail, pos 0) this collapses to the plain visible capture.
+  const captureVisible = async (): Promise<string> => {
+    const target = await deps.resolvePaneId()
+    let pos = 0
+    let height = 0
+    try {
+      const state = await deps.tmux.displayMessage({
+        socket: deps.socket,
+        target,
+        format: '#{pane_in_mode}\t#{scroll_position}\t#{pane_height}',
+      })
+      const [mode, scroll, paneHeight] = state.split('\t')
+      if (mode === '1') {
+        pos = Number(scroll) || 0
+        height = Number(paneHeight) || 0
+      }
+    } catch {
+      // Pane gone / not addressable — fall through to the plain capture, which
+      // will surface its own error if the pane is truly invalid.
+    }
+    if (pos > 0 && height > 0) {
+      const raw = await deps.tmux.capturePane({
+        socket: deps.socket,
+        target,
+        joinWrapped: true,
+        startLine: -pos,
+        endLine: height - 1 - pos,
+      })
+      return stripAnsi(raw)
+    }
+    const raw = await deps.tmux.capturePane({ socket: deps.socket, target, joinWrapped: true })
+    return stripAnsi(raw)
+  }
+
   const waitForCapture = async (
     captureFrame: () => Promise<string>,
     predicate: (text: string) => boolean,
@@ -127,6 +182,13 @@ export function createPaneHandle(deps: CreatePaneHandleDeps): PaneHandle {
     await waitForCapture(captureRaw, predicate, opts, 'waitForRaw', 'raw frame')
   }
 
+  const waitForVisible = async (
+    predicate: (text: string) => boolean,
+    opts: WaitOptions = {},
+  ): Promise<void> => {
+    await waitForCapture(captureVisible, predicate, opts, 'waitForVisible', 'viewport frame')
+  }
+
   const waitForText = async (needle: string, opts?: WaitOptions): Promise<void> => {
     try {
       await waitFor((text) => text.includes(needle), opts)
@@ -146,8 +208,10 @@ export function createPaneHandle(deps: CreatePaneHandleDeps): PaneHandle {
     },
     capture,
     captureRaw,
+    captureVisible,
     waitForText,
     waitFor,
     waitForRaw,
+    waitForVisible,
   }
 }

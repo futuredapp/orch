@@ -34,7 +34,7 @@ orch run orch::work-cc "add a CSV exporter to the report module"
 
 A [run mode](/guide/3-core-concepts#run-modes) decides *where* the views appear. You rarely set it by hand — orch picks one:
 
-- **`two-pane`** when you have a TTY and tmux ≥ 3.2. A tmux session opens: the left pane lists every step with live status, the right pane shows the active step's transcript or interactive TUI.
+- **`two-pane`** when you have a TTY and tmux ≥ 3.2. A tmux session opens: the left pane lists every step with live status, the right pane shows the active step's transcript or interactive TUI. For an autonomous step the right pane opens with the exact prompt orch sent that agent — labelled `prompt:` and set off by a separator above the streamed output — so you can see what the agent was asked, both live and on replay. (Interactive steps echo their own prompt, so orch adds none.)
 - **`plain`** in CI, over a pipe, or anywhere without a TTY. Transcript lines stream to stdout.
 
 Force a mode with `--mode`:

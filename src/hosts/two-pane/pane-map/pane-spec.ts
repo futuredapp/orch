@@ -34,7 +34,19 @@ import type { Path } from '../../../services/types.ts'
  * directly, so stdin/stdout/resize/colors all flow natively.
  */
 export type PaneSpec =
-  | { readonly kind: 'file-tail'; readonly path: Path }
+  | {
+      readonly kind: 'file-tail'
+      readonly path: Path
+      /**
+       * Read the file from its first line (`tail -n +1 -F`) instead of the
+       * bounded `tail -n 5000 -F` backfill window. Set for prompt-bearing
+       * sources (autonomous live + replay) so a prompt+output stream longer
+       * than the backfill window keeps its head — the `prompt:` preamble — on
+       * screen (R2/AT-5 "no truncation", AT-9 "open at top of prompt"). Omitted
+       * ⇔ the default bounded tail (every other byte-stream source).
+       */
+      readonly fromStart?: boolean
+    }
   | {
       readonly kind: 'pty'
       readonly argv: readonly string[]

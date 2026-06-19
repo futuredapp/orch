@@ -1,7 +1,9 @@
 import type {
   AttachSessionOptions,
   BindKeyOptions,
+  CancelCopyModeOptions,
   CapturePaneOptions,
+  CopyModeTopOptions,
   CreateSessionOptions,
   CreateSessionResult,
   DisplayMessageOptions,
@@ -22,6 +24,7 @@ import type {
   SendKeysOptions,
   SetHookOptions,
   SetOptionOptions,
+  ShowPasteBuffersOptions,
   SignalChannelOptions,
   SocketName,
   SplitPaneOptions,
@@ -63,7 +66,10 @@ export type RecordedCall =
   | { readonly method: 'killServer'; readonly opts: KillServerOptions }
   | { readonly method: 'attachSession'; readonly opts: AttachSessionOptions }
   | { readonly method: 'selectPane'; readonly opts: SelectPaneOptions }
+  | { readonly method: 'enterCopyModeTop'; readonly opts: CopyModeTopOptions }
+  | { readonly method: 'cancelCopyMode'; readonly opts: CancelCopyModeOptions }
   | { readonly method: 'capturePane'; readonly opts: CapturePaneOptions }
+  | { readonly method: 'showPasteBuffers'; readonly opts: ShowPasteBuffersOptions }
   | { readonly method: 'pipePane'; readonly opts: PipePaneOptions }
   | { readonly method: 'listPanes'; readonly opts: ListPanesOptions }
   | { readonly method: 'respawnPane'; readonly opts: RespawnPaneOptions }
@@ -82,6 +88,7 @@ export class FakeTmuxService implements TmuxService {
   readonly #displayResults: string[] = []
   #waitForHolds = 0
   readonly #captureResults: string[] = []
+  readonly #pasteBufferResults: string[] = []
   readonly #listPanesResults: (readonly string[])[] = []
   readonly #newWindowResults: NewWindowResult[] = []
   readonly #sessionsBySocket: Map<SocketName, Set<string>> = new Map()
@@ -183,6 +190,12 @@ export class FakeTmuxService implements TmuxService {
   /** Script the next `capturePane` return value. Queue, consumed FIFO. */
   setCaptureResult(value: string): void {
     this.#captureResults.push(value)
+  }
+
+  /** Script the next `showPasteBuffers` return value. Queue, consumed FIFO.
+   *  Falls back to `''` (no buffers) when the queue is empty. */
+  setPasteBuffersResult(value: string): void {
+    this.#pasteBufferResults.push(value)
   }
 
   /** Script the next `listPanes` return value. Queue, consumed FIFO. */
@@ -395,10 +408,27 @@ export class FakeTmuxService implements TmuxService {
     this.#failIfSocketLost('select-pane')
   }
 
+  async enterCopyModeTop(opts: CopyModeTopOptions): Promise<void> {
+    this.#calls.push({ method: 'enterCopyModeTop', opts })
+    this.#failIfSocketLost('copy-mode')
+  }
+
+  async cancelCopyMode(opts: CancelCopyModeOptions): Promise<void> {
+    this.#calls.push({ method: 'cancelCopyMode', opts })
+    this.#failIfSocketLost('send-keys')
+  }
+
   async capturePane(opts: CapturePaneOptions): Promise<string> {
     this.#calls.push({ method: 'capturePane', opts })
     this.#failIfSocketLost('capture-pane')
     const scripted = this.#captureResults.shift()
+    return scripted ?? ''
+  }
+
+  async showPasteBuffers(opts: ShowPasteBuffersOptions): Promise<string> {
+    this.#calls.push({ method: 'showPasteBuffers', opts })
+    this.#failIfSocketLost('list-buffers')
+    const scripted = this.#pasteBufferResults.shift()
     return scripted ?? ''
   }
 

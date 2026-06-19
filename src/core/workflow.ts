@@ -191,6 +191,15 @@ export type StepLifecycleEvent =
       readonly runnerName?: string
       readonly subPath?: readonly string[]
       readonly insideParallel?: true
+      /**
+       * The assembled prompt orch sent the agent for this step (post-injection,
+       * verbatim). Carried so the two-pane host can render it at the top of the
+       * step's right pane (autonomous only — the choreographer's mode guard
+       * excludes interactive). Stripped from the structured `lifecycle.ndjson`
+       * record by `emitStepLifecycle` so a long prompt never bloats the trace.
+       * Absent for `command`/`ask` steps (they have no prompt).
+       */
+      readonly prompt?: string
     }
   | {
       readonly type: 'step:complete'
@@ -639,6 +648,37 @@ function validateSchemaOutput(config: AgentStepConfig, key: StepName, rawValue: 
 // parallel branch-update supplement) lives in `./step-lifecycle.ts`; every
 // per-kind executor below brackets its body with `withStepLifecycle`.
 
+// `assemblePrompt` is hoisted ahead of `withStepLifecycle` so the assembled
+// prompt can ride on `step:start` for the right-pane preamble — but a
+// `{{var}}`/template mismatch makes it throw, and that throw is a real,
+// user-reachable input error. Route it back through the lifecycle envelope so
+// `step:start` → `step:failed` still fire and the step keeps its per-step
+// attribution (steps-view / failure panes / cmux pills), exactly as it did when
+// the throw happened inside the produce body. No `prompt` is carried (there
+// isn't one), so the structured-record bloat guard (KTD2) is untouched and the
+// workflow-level catch still classifies the run `crashed`.
+function failedAssemblyLifecycle(
+  deps: WorkflowDeps,
+  key: StepName,
+  stepSpan: StepSpan | undefined,
+  mode: StepMode,
+  runnerName: string,
+  error: unknown,
+): Promise<{ value: never; entry: StepEntry }> {
+  return withStepLifecycle(
+    {
+      host: deps.host,
+      stepSpan,
+      clock: deps.clock,
+      key,
+      mode,
+      trackParallel: true,
+      runnerName,
+    },
+    () => Promise.reject(error),
+  )
+}
+
 function errorLogFields(err: unknown): JsonObject {
   const base: Record<string, unknown> = { error: String(err) }
   if (err instanceof Error) {
@@ -757,6 +797,27 @@ async function runInteractiveStep(
     })
   }
 
+  // Carried for AT-4 parity: interactive steps put the assembled prompt on
+  // `step:start` too, so only the choreographer's autonomous-only guard keeps it
+  // out of the interactive pane. Assembled once here and threaded into
+  // `produceInteractiveStep` so the carried prompt and the runner-received prompt
+  // are the same string by construction. Empty ⇒ carried as undefined. A
+  // template/var mismatch throws — route it through the lifecycle envelope so the
+  // step is still attributed (`step:start` → `step:failed`).
+  let prompt: string
+  try {
+    prompt = assemblePrompt(config.prompt, overrides, key)
+  } catch (assemblyError) {
+    return failedAssemblyLifecycle(
+      deps,
+      key,
+      stepSpan,
+      'interactive',
+      config.agent.name,
+      assemblyError,
+    )
+  }
+
   return withStepLifecycle(
     {
       host: deps.host,
@@ -766,9 +827,10 @@ async function runInteractiveStep(
       mode: 'interactive',
       trackParallel: true,
       runnerName: config.agent.name,
+      ...(prompt.length > 0 ? { prompt } : {}),
     },
     (timer) =>
-      produceInteractiveStep(deps, captureLock, config, key, overrides, stepSpan, autoStop, timer),
+      produceInteractiveStep(deps, captureLock, config, key, stepSpan, autoStop, timer, prompt),
   )
 }
 
@@ -789,13 +851,12 @@ async function produceInteractiveStep(
   captureLock: CaptureLock,
   config: AgentStepConfig,
   key: StepName,
-  overrides: RunOverrides | undefined,
   stepSpan: StepSpan | undefined,
   autoStop: boolean,
   timer: StepTimer,
+  prompt: string,
 ): Promise<{ value: InteractiveResult; entry: StepEntry }> {
   const orchSessionId = deps.generateSessionId?.() ?? randomUUID()
-  const prompt = assemblePrompt(config.prompt, overrides, key)
   const startedAtStep = deps.clock.now()
   const cwd = currentCwd(deps.cwd)
 
@@ -1132,6 +1193,28 @@ async function runAgentStep(
     ...(resolution.kind !== 'silent' ? { pane: resolution.pane } : {}),
   })
 
+  // Hoisted so the assembled prompt is available on `step:start` for the
+  // host's right-pane preamble, then threaded into `produceAgentStep` so the
+  // carried prompt and the runner-received prompt are the same string by
+  // construction (no second `substitute()` pass). An empty assembled prompt
+  // (only reachable from fixtures that set none) is carried as `undefined` so it
+  // neither pollutes the lifecycle event nor renders an empty preamble. A
+  // template/var mismatch throws — route it through the lifecycle envelope so the
+  // step is still attributed (`step:start` → `step:failed`).
+  let prompt: string
+  try {
+    prompt = assemblePrompt(config.prompt, overrides, key)
+  } catch (assemblyError) {
+    return failedAssemblyLifecycle(
+      deps,
+      key,
+      stepSpan,
+      'autonomous',
+      config.agent.name,
+      assemblyError,
+    )
+  }
+
   return withStepLifecycle(
     {
       host: deps.host,
@@ -1141,8 +1224,9 @@ async function runAgentStep(
       mode: 'autonomous',
       trackParallel: true,
       runnerName: config.agent.name,
+      ...(prompt.length > 0 ? { prompt } : {}),
     },
-    () => produceAgentStep(deps, captureLock, config, key, overrides, stepSpan, isSilent),
+    () => produceAgentStep(deps, captureLock, config, key, stepSpan, isSilent, prompt),
   )
 }
 
@@ -1207,9 +1291,9 @@ async function produceAgentStep(
   captureLock: CaptureLock,
   config: AgentStepConfig,
   key: StepName,
-  overrides: RunOverrides | undefined,
   stepSpan: StepSpan | undefined,
   isSilent: boolean,
+  prompt: string,
 ): Promise<{ value: unknown; entry: StepEntry }> {
   const cwd = currentCwd(deps.cwd)
   const normalized = normalizeValidators(config.validate, key)
@@ -1217,7 +1301,6 @@ async function produceAgentStep(
   const preRunSnapshot = headSha !== undefined ? { headSha } : undefined
 
   const startedAt = deps.clock.now()
-  const prompt = assemblePrompt(config.prompt, overrides, key)
   // Sidecar captures every RunnerEvent (silent steps included — `orch logs`
   // needs the trace even when the host renders nothing). Errors are logged
   // to stderr but do not abort the step; transcript loss is recoverable,
