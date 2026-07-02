@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'bun:test'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import {
   ConfigLoadError,
   defineConfig,
   findConfigPath,
+  loadConfig,
   type OrchestratorConfig,
   PROMPTS_DISCOVERY_DEFAULTS,
   resolvePromptsConfig,
@@ -154,6 +158,57 @@ describe('loadConfig', () => {
     expect(err.name).toBe('ConfigLoadError')
     expect(err.configPath).toBe(path('/foo/orch.config.ts'))
     expect(err.message).toBe('test')
+  })
+})
+
+describe('loadConfig strict-schema rejection', () => {
+  // Each case writes a real orch.config.ts into a fresh temp dir and loads it
+  // through the dynamic-import path so the ConfigSchema strictness is exercised
+  // exactly as an end user would hit it.
+
+  async function loadFromBody(body: string): Promise<OrchestratorConfig> {
+    const dir = await mkdtemp(join(tmpdir(), 'orch-strict-config-'))
+    try {
+      await writeFile(`${dir}/orch.config.ts`, `export const config = ${body}\n`)
+      const loaded = await loadConfig(path(dir))
+      return loaded.config
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  }
+
+  it('rejects an unknown top-level config key with the offending key in the message', async () => {
+    let thrown: unknown
+    try {
+      await loadFromBody(`{ workflows: {}, defalutMode: 'interactive' }`)
+    } catch (err) {
+      thrown = err
+    }
+
+    expect(thrown).toBeInstanceOf(ConfigLoadError)
+    expect((thrown as ConfigLoadError).message).toContain('defalutMode')
+  })
+
+  it('rejects an unknown nested cmux key with a ConfigLoadError', async () => {
+    let thrown: unknown
+    try {
+      await loadFromBody(`{ workflows: {}, cmux: { enabld: false } }`)
+    } catch (err) {
+      thrown = err
+    }
+
+    expect(thrown).toBeInstanceOf(ConfigLoadError)
+    expect((thrown as ConfigLoadError).message).toContain('enabld')
+  })
+
+  it('loads a valid config carrying exactly the known keys', async () => {
+    const config = await loadFromBody(
+      `{ workflows: { deploy: './deploy.ts' }, defaultMode: 'two-pane', cmux: { enabled: false } }`,
+    )
+
+    expect(config.workflows).toEqual({ deploy: './deploy.ts' })
+    expect(config.defaultMode).toBe('two-pane')
+    expect(config.cmux).toEqual({ enabled: false })
   })
 })
 
