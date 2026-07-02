@@ -1590,10 +1590,15 @@ async function runAgentWithRecovery(args: RecoveryArgs): Promise<AgentRunResult>
   // run status, never `saveStep`, so a naive throw would lose the failed run's
   // recovery log for exactly the runs most needing audit (R16).
   if (loop.recoveryLog.length > 0) await persistRecoveryFailure(args, loop.recoveryLog)
+  // The appended line is the ORIGINAL failure that triggered recovery, not the
+  // last attempt's error; label it so a give-up summary describing N later
+  // attempts is not misread as ending with the final attempt's reason.
+  const recoverySummary = formatRecoveryFailure(loop.failure, loop.recoveryLog)
+  const terminal = terminalErrorMessage(first.result)
   throw new StepError(
     key,
     first.result.exitCode,
-    formatRecoveryFailure(loop.failure, loop.recoveryLog),
+    `${recoverySummary}\noriginal failure: ${terminal}`,
   )
 }
 

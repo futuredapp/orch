@@ -77,6 +77,23 @@ describe('summarizeFailure', () => {
     ])
   })
 
+  it('drops every message line of a multi-line Error.message from the stackTrace', () => {
+    // Recovery failures compose a two-line message (summary + terminal error);
+    // the stack header then spans two lines and both must be skipped.
+    const err = new Error('recovery declined\noriginal failure: runner exited 1')
+    err.stack =
+      'Error: recovery declined\noriginal failure: runner exited 1\n    at runAgentStep (src/core/workflow.ts:1595)'
+
+    const summary = summarizeFailure({
+      stepName: STEP,
+      runId: RUN_ID,
+      error: err,
+      failedAt: 0,
+    })
+
+    expect(summary.stackTrace).toEqual(['    at runAgentStep (src/core/workflow.ts:1595)'])
+  })
+
   it('builds the Story 1.5 resume + logs hints from the runId', () => {
     const summary = summarizeFailure({
       stepName: STEP,
