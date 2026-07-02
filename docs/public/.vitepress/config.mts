@@ -43,6 +43,7 @@ export default defineConfig({
           { text: 'Writing a workflow', link: '/guide/4-writing-a-workflow' },
           { text: 'Running workflows', link: '/guide/5-running-workflows' },
           { text: 'Debugging', link: '/guide/6-debugging' },
+          { text: 'Troubleshooting', link: '/guide/troubleshooting' },
         ],
       },
       {
