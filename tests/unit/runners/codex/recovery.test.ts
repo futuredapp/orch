@@ -21,7 +21,7 @@ function turnFailed(message: string, extra: Record<string, unknown> = {}): Termi
 }
 
 function signal(finalEvent: TerminalEvent, exitCode = 1): ClassifyErrorSignal {
-  return { finalEvent, exitCode, infoEvents: [] }
+  return { finalEvent, exitCode, infoEvents: [], stderr: '' }
 }
 
 function info(type: string): RunnerEvent {
@@ -68,6 +68,42 @@ describe('codex().classifyError', () => {
   it('falls back to unknown/retryable for an unrecognized terminal message', () => {
     const runner = codex({})
 
+    const classified = runner.classifyError?.(
+      signal(turnFailed('something inscrutable')),
+      'autonomous',
+    )
+
+    expect(classified?.category).toBe('unknown')
+    expect(classified?.transient).toBe(true)
+  })
+
+  it('fails fast on a startup crash: no stdout events, fast non-zero exit, stderr only', () => {
+    const runner = codex({})
+    // The shape runRunner produces when the CLI dies before any stdout JSON:
+    // a synthesized "no terminal event" error, no info events, and the real
+    // reason captured on stderr.
+    const startupCrash: ClassifyErrorSignal = {
+      finalEvent: {
+        kind: 'terminal',
+        type: 'error',
+        message:
+          'runner "codex" produced no terminal event\nError loading rules:\n…default.rules:5: invalid decision: deny',
+      },
+      exitCode: 1,
+      infoEvents: [],
+      stderr: 'Error loading rules:\n…default.rules:5: invalid decision: deny',
+    }
+
+    const classified = runner.classifyError?.(startupCrash, 'autonomous')
+
+    expect(classified?.category).toBe('launch')
+    expect(classified?.transient).toBe(false)
+  })
+
+  it('does not flip a genuine transient turn.failed to launch just because nothing parsed', () => {
+    const runner = codex({})
+    // A real turn.failed reports on stdout (parsed terminal event, no stderr) —
+    // the launch heuristic must not fire here.
     const classified = runner.classifyError?.(
       signal(turnFailed('something inscrutable')),
       'autonomous',

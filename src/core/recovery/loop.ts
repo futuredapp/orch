@@ -55,6 +55,9 @@ export interface RecoveryLogEntry {
 export interface AttemptRunResult {
   readonly finalEvent: TerminalEvent
   readonly exitCode: number
+  /** Bounded stderr tail, forwarded into the classify signal. Optional here so
+   *  scripted test attempts need not set it; the executor always provides it. */
+  readonly stderr?: string
 }
 
 /**
@@ -215,6 +218,7 @@ function toSignal(outcome: AttemptOutcome): ClassifyErrorSignal {
     finalEvent: outcome.result.finalEvent,
     exitCode: outcome.result.exitCode,
     infoEvents: outcome.infoEvents,
+    stderr: outcome.result.stderr ?? '',
   }
 }
 

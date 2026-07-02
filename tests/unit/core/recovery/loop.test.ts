@@ -299,6 +299,63 @@ describe('runRecoveryLoop fail-fast', () => {
 })
 
 // ---------------------------------------------------------------------------
+// Launch failure — a startup crash fails fast with no backoff (issue 2026-06-23)
+// ---------------------------------------------------------------------------
+
+/** Wraps a FakeClock to count `sleep` calls — proves a fail-fast path never
+ *  enters the backoff. */
+class CountingClock {
+  sleeps = 0
+  readonly #inner = new FakeClock()
+  now(): number {
+    return this.#inner.now()
+  }
+  sleep(ms: number, signal?: AbortSignal): Promise<void> {
+    this.sleeps += 1
+    return this.#inner.sleep(ms, signal)
+  }
+}
+
+describe('runRecoveryLoop launch fail-fast', () => {
+  it('returns fail without forking or sleeping when the initial error is non-transient', async () => {
+    const clock = new CountingClock()
+    const { runAttempt, calls } = scripted([])
+    // A startup crash: stderr-bearing, no info events, non-zero exit.
+    const launchCrash: AttemptOutcome = {
+      result: {
+        finalEvent: { kind: 'terminal', type: 'error', message: 'produced no terminal event' },
+        exitCode: 1,
+        stderr: 'Error loading rules: invalid decision: deny',
+      },
+      sawProgress: false,
+      infoEvents: [],
+    }
+
+    const result = await runRecoveryLoop({
+      strategy: backoffResume(),
+      clock,
+      checkpointSessionId: 'checkpoint-0',
+      // Classify off the forwarded stderr — proves toSignal threads it through.
+      classify: (signal) =>
+        signal.stderr.includes('Error loading rules')
+          ? { category: 'launch', transient: false }
+          : { category: 'unknown', transient: true },
+      initial: launchCrash,
+      runAttempt,
+    })
+
+    expect(clock.sleeps).toBe(0)
+    expect(calls()).toBe(0)
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.failure.kind).toBe('fail')
+      if (result.failure.kind === 'fail') expect(result.failure.category).toBe('launch')
+      expect(result.recoveryLog).toHaveLength(0)
+    }
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Stall watchdog (R10 — never hold open indefinitely)
 // ---------------------------------------------------------------------------
 

@@ -31,7 +31,18 @@ export interface RunnerResult {
   readonly finalEvent: TerminalEvent
   readonly exitCode: number
   readonly durationMs: number
+  /**
+   * A bounded tail of the lines drained from the subprocess's stderr. Retained
+   * so a runner that dies at startup (before emitting any stdout JSON) surfaces
+   * *why* — the tail is folded into the synthesized no-terminal-event error and
+   * threaded into the classify signal. Capped at {@link STDERR_TAIL_MAX_CHARS}
+   * (most-recent-wins) so a runaway stderr cannot blow memory.
+   */
+  readonly stderr: string
 }
+
+/** Memory cap for the retained stderr tail (most-recent lines win). */
+const STDERR_TAIL_MAX_CHARS = 8 * 1024
 
 export async function runRunner(
   runner: Runner,
@@ -87,12 +98,15 @@ export async function runRunner(
     else deps.signal.addEventListener('abort', onAbort, { once: true })
   }
 
-  // Drain stderr concurrently to prevent pipe deadlock. Under `--debug` the
-  // raw-line hook also fires on every stderr line. Swallow drain errors
+  // Drain stderr concurrently to prevent pipe deadlock. Every line is also
+  // retained into a bounded tail (so a startup crash surfaces its reason) and,
+  // under `--debug`, forwarded to the raw-line hook. Swallow drain errors
   // (including the abort unwind) so they never surface as unhandled rejections.
-  const stderrDone = drainStream(handle.stderr, (line) => deps.onRawLine?.('stderr', line)).catch(
-    () => {},
-  )
+  const stderrTail = makeBoundedTail(STDERR_TAIL_MAX_CHARS)
+  const stderrDone = drainStream(handle.stderr, (line) => {
+    stderrTail.push(line)
+    deps.onRawLine?.('stderr', line)
+  }).catch(() => {})
 
   let finalEvent: TerminalEvent | null = null
   let exitCode: number
@@ -125,16 +139,49 @@ export async function runRunner(
   }
 
   const durationMs = deps.clock.now() - startedAt
+  const stderr = stderrTail.value()
 
   if (finalEvent === null) {
+    // A runner that dies before emitting any terminal event is structurally a
+    // launch/config crash. Fold the stderr tail into the message so the real
+    // reason ("Error loading rules: …") is legible everywhere downstream — the
+    // pane, the StepError, and the classifier.
+    const base = `runner "${runner.name}" produced no terminal event`
+    const tail = stderr.trim()
     finalEvent = {
       kind: 'terminal',
       type: 'error',
-      message: `runner "${runner.name}" produced no terminal event`,
+      message: tail.length > 0 ? `${base}\n${tail}` : base,
     }
   }
 
-  return { finalEvent, exitCode, durationMs }
+  return { finalEvent, exitCode, durationMs, stderr }
+}
+
+/**
+ * A most-recent-wins line buffer that never retains more than `maxChars` worth
+ * of text. Keeps at least the last line even when it alone exceeds the cap, so a
+ * single runaway line still surfaces its tail rather than vanishing.
+ */
+function makeBoundedTail(maxChars: number): {
+  push(line: string): void
+  value(): string
+} {
+  const lines: string[] = []
+  let chars = 0
+  return {
+    push(line: string): void {
+      lines.push(line)
+      chars += line.length + 1
+      while (chars > maxChars && lines.length > 1) {
+        const dropped = lines.shift()
+        if (dropped !== undefined) chars -= dropped.length + 1
+      }
+    },
+    value(): string {
+      return lines.join('\n')
+    },
+  }
 }
 
 async function drainStream(

@@ -282,6 +282,14 @@ export interface ClassifyErrorSignal {
   readonly finalEvent: TerminalEvent
   readonly exitCode: number
   readonly infoEvents: readonly InfoEvent[]
+  /**
+   * A bounded tail of the subprocess's stderr ({@link RunnerResult.stderr}).
+   * Carries the reason a runner that died before emitting any stdout protocol
+   * event failed — the classifier uses it to fail fast on a launch/config crash
+   * instead of misreading the empty stdout as a retryable hiccup. Empty when the
+   * process wrote nothing to stderr.
+   */
+  readonly stderr: string
 }
 
 /**

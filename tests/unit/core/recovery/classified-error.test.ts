@@ -3,6 +3,7 @@ import {
   categoryForStatus,
   FAIL_FAST_CATEGORIES,
   isFailFast,
+  isLaunchFailureSignal,
   isTransientCategory,
 } from '../../../../src/core/recovery/index.ts'
 
@@ -41,11 +42,12 @@ describe('categoryForStatus', () => {
 })
 
 describe('isFailFast', () => {
-  it('treats auth, billing, invalid_request, model_not_found, rate_limit, and usage_limit as fail-fast', () => {
+  it('treats auth, billing, invalid_request, model_not_found, launch, rate_limit, and usage_limit as fail-fast', () => {
     expect(isFailFast('auth')).toBe(true)
     expect(isFailFast('billing')).toBe(true)
     expect(isFailFast('invalid_request')).toBe(true)
     expect(isFailFast('model_not_found')).toBe(true)
+    expect(isFailFast('launch')).toBe(true)
     expect(isFailFast('rate_limit')).toBe(true)
     expect(isFailFast('usage_limit')).toBe(true)
   })
@@ -71,7 +73,29 @@ describe('isTransientCategory', () => {
 })
 
 describe('FAIL_FAST_CATEGORIES', () => {
-  it('exposes exactly the six fail-fast categories', () => {
-    expect(FAIL_FAST_CATEGORIES.size).toBe(6)
+  it('exposes exactly the seven fail-fast categories', () => {
+    expect(FAIL_FAST_CATEGORIES.size).toBe(7)
+  })
+})
+
+describe('isLaunchFailureSignal', () => {
+  it('is true for a non-zero exit with no info events and a non-empty stderr tail', () => {
+    expect(
+      isLaunchFailureSignal({ exitCode: 1, infoEvents: [], stderr: 'Error loading rules' }),
+    ).toBe(true)
+  })
+
+  it('is false when stderr is empty (an unreadable failure stays unknown/retryable)', () => {
+    expect(isLaunchFailureSignal({ exitCode: 1, infoEvents: [], stderr: '   ' })).toBe(false)
+  })
+
+  it('is false when the process emitted stdout info events (it did real work first)', () => {
+    expect(isLaunchFailureSignal({ exitCode: 1, infoEvents: [{}], stderr: 'late noise' })).toBe(
+      false,
+    )
+  })
+
+  it('is false on a clean (zero) exit even with stderr noise', () => {
+    expect(isLaunchFailureSignal({ exitCode: 0, infoEvents: [], stderr: 'a warning' })).toBe(false)
   })
 })

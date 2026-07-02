@@ -202,6 +202,35 @@ describe('runRunner recovery seams (U7)', () => {
   })
 })
 
+describe('runRunner stderr retention on a startup crash', () => {
+  it('retains the stderr tail and folds it into the synthesized no-terminal-event error', async () => {
+    const fps = new FakeProcessService()
+    // A runner that dies at startup: no stdout JSON, output on stderr only, exit 1.
+    fps.when([':crash:']).respondWith({
+      stdout: [],
+      stderr: [
+        'Error loading rules:',
+        '…/.codex/rules/default.rules:5: error: invalid decision: deny',
+      ],
+      exitCode: 1,
+    })
+    const runner = dummyRunner((line) => JSON.parse(line) as RunnerEvent)
+
+    const result = await runRunner(runner, ctxFor('x'), {
+      processService: fps,
+      clock: new FakeClock(),
+      command: { argv: [':crash:'], env: {} },
+    })
+
+    expect(result.exitCode).toBe(1)
+    expect(result.stderr).toContain('invalid decision: deny')
+    expect(result.finalEvent.type).toBe('error')
+    if (result.finalEvent.type === 'error') {
+      expect(result.finalEvent.message).toContain('invalid decision: deny')
+    }
+  })
+})
+
 describe('runRunner onEvent hook (phase 13c observe mode)', () => {
   it('forwards every parsed RunnerEvent to the onEvent callback in order', async () => {
     const lines = ['info-1', 'info-2', 'terminal']

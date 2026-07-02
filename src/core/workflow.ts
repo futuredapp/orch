@@ -1575,6 +1575,7 @@ async function runAgentWithRecovery(args: RecoveryArgs): Promise<AgentRunResult>
         finalEvent: loop.result.finalEvent,
         exitCode: loop.result.exitCode,
         durationMs: totalDurationMs,
+        stderr: loop.result.stderr ?? '',
       },
       durationMs: totalDurationMs,
       checkpointSessionId,

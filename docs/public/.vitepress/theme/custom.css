@@ -1,0 +1,14 @@
+/* Landing-page polish on top of the default theme. */
+
+/* Gradient brand name in the hero. */
+.VPHero .name .clip {
+  background: linear-gradient(120deg, #79c0ff 10%, #646cff 60%, #bf7af0);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Tighten the gap between the hero and the terminal demo. */
+.VPHome .VPHero.VPHomeHero {
+  padding-bottom: 24px;
+}

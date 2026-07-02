@@ -2,6 +2,18 @@
 
 > **What you'll learn:** how to install orch, scaffold a project, write a one-step workflow, and run it.
 
+In a hurry? This is the whole page in four commands:
+
+```bash
+brew tap futuredapp/orch && brew trust futuredapp/orch && brew install orch
+orch init             # scaffolds .orch/ with a hello workflow
+orch run hello        # spawns Claude Code and watches it work
+orch resume --latest  # picks an interrupted run back up
+```
+
+(`brew trust` exists only on Homebrew 5.1+ - skip it if it errors.)
+The rest of the page explains what each command does.
+
 ## Prerequisites
 
 - [Bun](https://bun.sh) ≥ 1.2.0 — orch is a Bun project and ships TypeScript directly.

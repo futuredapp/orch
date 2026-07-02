@@ -28,6 +28,7 @@ export default defineConfig({
 
     nav: [
       { text: 'Guide', link: '/guide/1-what-is-orch' },
+      { text: 'Recipes', link: '/guides/built-in-workflows' },
       { text: 'Reference', link: '/reference/api' },
       { text: 'Examples', link: '/examples' },
     ],
@@ -45,14 +46,16 @@ export default defineConfig({
         ],
       },
       {
-        text: 'Guides',
+        // Task-oriented how-tos, ordered from "run something now" through
+        // composition and typing to extending orch itself.
+        text: 'Recipes',
         items: [
           { text: 'Built-in workflows', link: '/guides/built-in-workflows' },
           { text: 'Chain two agents', link: '/guides/chain-two-agents' },
-          { text: 'File-based prompts', link: '/guides/file-based-prompts' },
-          { text: 'Interactive steps', link: '/guides/interactive-steps' },
           { text: 'Parallel work', link: '/guides/parallel-work' },
           { text: 'Subworkflows', link: '/guides/subworkflows' },
+          { text: 'Interactive steps', link: '/guides/interactive-steps' },
+          { text: 'File-based prompts', link: '/guides/file-based-prompts' },
           { text: 'Typed prompt vars', link: '/guides/typed-prompt-vars' },
           { text: 'Typed returns', link: '/guides/typed-returns' },
           { text: 'Validators', link: '/guides/validators' },
