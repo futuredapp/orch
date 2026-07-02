@@ -17,6 +17,7 @@ import {
 } from '../../services/index.ts'
 import type { ProcessService, SpawnHandle } from '../../services/process/process-service.ts'
 import { type Path, path } from '../../services/types.ts'
+import type { RunnerOptionsBase } from '../runner-options.ts'
 import type {
   AutoStopPreparation,
   CaptureHandle,
@@ -68,10 +69,8 @@ const CodexTurnFailed = z
 
 type SandboxMode = 'full-auto' | 'read-only' | 'workspace-write' | 'danger-full-access'
 
-export interface CodexOptions {
-  readonly model?: string
+export interface CodexOptions extends RunnerOptionsBase {
   readonly sandbox?: SandboxMode
-  readonly flags?: readonly string[]
 }
 
 // ---------------------------------------------------------------------------
@@ -490,7 +489,7 @@ async function prepareCodexAutoStop(
 // ---------------------------------------------------------------------------
 
 export function codex(
-  opts: CodexOptions,
+  opts: CodexOptions = {},
   deps: { readonly fs?: FsService; readonly ps?: ProcessService } = {},
 ): Readonly<
   import('../types.ts').Runner & {

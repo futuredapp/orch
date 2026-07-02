@@ -8,6 +8,7 @@ import { z } from 'zod'
 import type { ClassifiedError } from '../../core/recovery/index.ts'
 import { BunFsService, type FsService, mergeEnv } from '../../services/index.ts'
 import { type Path, path } from '../../services/types.ts'
+import type { RunnerOptionsBase } from '../runner-options.ts'
 import type {
   AutoStopPreparation,
   ClassifyErrorSignal,
@@ -85,13 +86,11 @@ export type ClaudeResultErrorT = z.infer<typeof ClaudeResultError>
 // Options
 // ---------------------------------------------------------------------------
 
-export interface ClaudeOptions {
-  readonly model?: string
+export interface ClaudeOptions extends RunnerOptionsBase {
   readonly maxTurns?: number
   /** Pass `--bare` (API-key-only auth via ANTHROPIC_API_KEY, never the
    *  keychain). Opt-in: defaults to `false` so subscription auth works. */
   readonly bare?: boolean
-  readonly flags?: readonly string[]
 }
 
 // ---------------------------------------------------------------------------
