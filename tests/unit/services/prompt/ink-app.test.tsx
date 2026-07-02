@@ -1,7 +1,20 @@
-import { afterEach, describe, expect, it } from 'bun:test'
+import { afterEach, describe, expect, it, setDefaultTimeout } from 'bun:test'
 import { cleanup, render } from 'ink-testing-library'
 import { AskApp } from '../../../../src/services/prompt/ink-app.tsx'
 import type { PromptResult, PromptSpec } from '../../../../src/services/prompt/prompt-service.ts'
+
+// Every test here drives a real Ink mount through the real event loop: each
+// keystroke is a chain of real `setTimeout` + React-reconciler + effect-pass
+// round-trips (see `tick`/`pressKey`/`waitForFrame` below). A single test does
+// up to ~a dozen such serialized round-trips - e.g. the `hello` typing test
+// (8 presses) and the ArrowRight test (4 presses + 4 frame waits). Under
+// nominal timers each finishes in well under a second, but Ink relies on the
+// real event loop, so when timers are delayed (a slow or loaded machine, or a
+// cold process warming the reconciler) those round-trips inflate and the
+// heaviest tests brush past Bun's 5s default. This is a real-timer budget
+// ceiling, not a hang: bound loops cap the worst case, so a generous default
+// removes the flake without weakening a single assertion.
+setDefaultTimeout(20_000)
 
 // ink-testing-library raw key codes — Ink interprets these as keypress events.
 const TAB = '\t'

@@ -826,12 +826,21 @@ function wrapHostWithStepsView(
   const wrappedTeardown = async (): Promise<void> => {
     if (teardownPromise === undefined) {
       teardownPromise = (async () => {
-        // Order: stop intent dispatch (controller) first so a late intent can't
-        // reach the tearing-down tmux server, then stop the tailer + child,
-        // then the inner host (which kills the session).
-        if (controller !== undefined) await controller.stop()
-        if (steps !== undefined) await steps.stop()
-        await inner.teardown()
+        // Order: stop the steps-view tailers first so no NEW user intent can be
+        // dispatched at the tearing-down tmux server. Then run the inner host,
+        // which drains the lifecycle choreographer (so every in-flight
+        // `registerSource` settles into the pane map) BEFORE it stops the
+        // controller and reaps the per-source sessions. Stopping the controller
+        // here, ahead of the drain, would trip `registerSource`'s `stopped`
+        // guard and silently drop queued live-source registrations, leaking
+        // their per-source tmux sessions past teardown (U4 regression).
+        // The finally guarantees the inner teardown (and its killSession)
+        // runs even if a tailer refuses to stop cleanly.
+        try {
+          if (steps !== undefined) await steps.stop()
+        } finally {
+          await inner.teardown()
+        }
       })()
     }
     return teardownPromise
@@ -1481,8 +1490,17 @@ function buildHost(deps: BuildHostDeps): Host {
     torndown = true
     // Let any queued lifecycle choreography settle before draining the tee —
     // pending `handle()` work may still hold a tee sink open, and draining
-    // mid-write would race a close against a write (KTD6).
+    // mid-write would race a close against a write (KTD6). This must also run
+    // BEFORE the controller is stopped: the drain replays queued
+    // `registerSource` calls, and a stopped controller drops them at its
+    // `stopped` guard, orphaning the per-source sessions they would have
+    // reaped below (U4).
     await choreographer.quiescent()
+    // Now that every register/unregister has settled, stop the controller so no
+    // late user intent reaches the tmux server we are about to kill. Ordered
+    // after the drain, before `teardownSessions` - see the comment above and
+    // the wrapped-teardown ordering note.
+    if (deps.controller !== undefined) await deps.controller.stop()
     // Flush any open per-step formatted_output sinks so SIGINT mid-step
     // still leaves bytes on disk before the run-ended record.
     await deps.tee.drain()
