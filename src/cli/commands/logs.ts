@@ -241,7 +241,10 @@ function printEvent(stepName: string, line: string, format: CliOpts['format']): 
 
 const STATUS_POLL_MS = 1000
 
-const isTerminalStatus = (s: RunState['status']): boolean => s === 'completed' || s === 'crashed'
+// Inverted on purpose: any status other than 'running' is terminal, so a new
+// terminal status added to RunState cannot silently reintroduce an infinite
+// follow loop.
+const isTerminalStatus = (s: RunState['status']): boolean => s !== 'running'
 
 async function runFollow(
   deps: CliDeps,
