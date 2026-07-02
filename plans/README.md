@@ -44,9 +44,9 @@ operator's concern.
 
 | Plan | Title | Priority | Effort | Depends on | Status |
 |------|-------|----------|--------|------------|--------|
-| 007 | Make `orch logs --follow` exit on a `failed` run | P1 | S | — | TODO |
+| 007 | Make `orch logs --follow` exit on a `failed` run | P1 | S | — | DONE (2026-07-02) |
 | 008 | Make `orch status` show per-step outcome and the failure reason | P1 | M | — | TODO |
-| 009 | Preserve the real error message on the recovery-declined path | P1 | S | — | TODO |
+| 009 | Preserve the real error message on the recovery-declined path | P1 | S | — | DONE (2026-07-02) |
 | 010 | Log and persist fast-fail classifications | P1 | S | 009 | TODO |
 | 011 | Serialize `initRun`/`setArgs`/`setStatus` through the write-queue | P2 | M | — | TODO |
 | 012 | Add exit-code regression tests for `mapResumeError` | P2 | S | — | TODO |
@@ -61,13 +61,13 @@ operator's concern.
 |------|-------|----------|--------|------------|--------|
 | 017 | Per-command `--help` and a `--version` flag | P1 | M | — | TODO |
 | 018 | Accept a runId prefix in `orch logs` | P1 | S | — | TODO |
-| 019 | Reject unknown/typo'd keys in `orch.config.ts` | P1 | S | — | TODO |
+| 019 | Reject unknown/typo'd keys in `orch.config.ts` | P1 | S | — | DONE (2026-07-02) |
 | 020 | Throw on a duplicate step name in the same scope | P1 | M | — | TODO |
 | 021 | Add a typed `permissions` option to `claude()`/`codex()` | P2 | S | — | TODO |
-| 022 | Make `codex()` and `claude()` call shapes symmetric | P2 | S | — | TODO |
+| 022 | Make `codex()` and `claude()` call shapes symmetric | P2 | S | — | DONE (2026-07-02) |
 | 023 | Accept a bare Zod schema in `returns:` | P2 | M | — | TODO |
 | 024 | Make `orch init` scaffold a typed two-step handoff | P2 | M | — | TODO |
-| 025 | Add a troubleshooting guide page | P2 | M | — | TODO |
+| 025 | Add a troubleshooting guide page | P2 | M | — | DONE (2026-07-02) |
 | 026 | Move the unshipped `triggers.md` draft out of the published docs | P3 | S | — | DONE (2026-07-02, moved to `docs/brainstorms/2026-07-02-triggers-design-draft.md`) |
 
 ## Dependency notes (Round 2)
