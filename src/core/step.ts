@@ -1,3 +1,4 @@
+import type { ZodType, ZodTypeDef } from 'zod'
 import type { Runner } from '../runners/index.ts'
 import type { Validator } from '../validators/index.ts'
 import type { AskStepConfig } from './ask.ts'
@@ -12,7 +13,7 @@ import { resolvePromptPath } from './prompt-file/resolve-prompt-path.ts'
 import type { PromptVars, PromptVarsBound } from './prompt-file/substitute.ts'
 import type { VarsOf } from './prompt-file/template-vars.ts'
 import type { RecoveryStrategy } from './recovery/index.ts'
-import { SchemaValidationError, type SchemaWrapper } from './schema.ts'
+import { SchemaValidationError, schema, type SchemaWrapper } from './schema.ts'
 import type { InteractiveResult, Path, StepMode } from './types.ts'
 import { type StepName, stepName } from './types.ts'
 import { BUILTIN_VIEW_KINDS, isBuiltinViewKind, type PaneRole, type ViewKind } from './view.ts'
@@ -199,10 +200,16 @@ type InteractiveStepInput = {
 }
 
 /** Autonomous overload input: optional `returns` for structured output. */
-type AutonomousStepInput<T> = Omit<AgentStepConfig<T>, 'kind' | 'promptFile'> & {
+type AutonomousStepInput<T> = Omit<AgentStepConfig<T>, 'kind' | 'promptFile' | 'returns'> & {
   readonly promptFile?: string
   /** See note on `InteractiveStepInput.vars` — vars-on-define is a type error. */
   readonly vars?: never
+  /**
+   * Accepts either a precomputed wrapper (`schema(z.object({...}))`) or a bare
+   * Zod schema (`z.object({...})`). A bare schema is normalized via `schema()`
+   * at define time, so the STORED config `returns` is always a `SchemaWrapper`.
+   */
+  readonly returns?: SchemaWrapper<T> | ZodType<T, ZodTypeDef, unknown>
 }
 
 // ---------------------------------------------------------------------------
@@ -301,10 +308,33 @@ function defineStep(
   assertPromptFieldsValid(name, config)
   assertViewFieldsValid(name, config)
   const resolved = resolvePromptFile(name, config)
+  const returns = normalizeReturns(resolved.returns)
   return Object.freeze({
     name: stepName(name),
-    config: { kind: 'agent' as const, ...resolved } satisfies AgentStepConfig<unknown>,
+    config: {
+      kind: 'agent' as const,
+      ...resolved,
+      ...(returns !== undefined ? { returns } : {}),
+    } satisfies AgentStepConfig<unknown>,
   })
+}
+
+// The accepted `returns` input widens to `SchemaWrapper<T> | ZodType<T>`, but the
+// STORED config must keep a `SchemaWrapper` (the executor reads `.jsonSchema` /
+// `.zodSchema`). Normalize a bare Zod schema to a wrapper at define time. The
+// duck-type is intentional: a wrapper carries a string `jsonSchema`, a Zod schema
+// carries a `safeParse` function.
+function normalizeReturns(returns: unknown): SchemaWrapper<unknown> | undefined {
+  if (returns === undefined) return undefined
+  // Already a wrapper — leave it (also covers a precomputed `schema(...)`).
+  if (typeof (returns as { jsonSchema?: unknown }).jsonSchema === 'string') {
+    return returns as SchemaWrapper<unknown>
+  }
+  // Bare Zod schema — wrap it (this also runs `assertNonEmptyJsonSchema`).
+  if (typeof (returns as { safeParse?: unknown }).safeParse === 'function') {
+    return schema(returns as ZodType<unknown, ZodTypeDef, unknown>)
+  }
+  return returns as SchemaWrapper<unknown>
 }
 
 function assertPromptFieldsValid(
