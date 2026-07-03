@@ -15,17 +15,23 @@
 // Hosts handle ANSI, glyphs, and the `[<step>] ` prefix — categories carry
 // the semantic intent, never the visual treatment.
 
+import {
+  firstLine,
+  firstNonEmptyLine,
+  humanCount,
+  MAX_ASSISTANT_TEXT,
+  MAX_BASH_COMMAND,
+  MAX_ERROR_TEXT,
+  MAX_FILE_PATH,
+  MAX_GENERIC_INPUT,
+  MAX_TOOL_RESULT_LINE,
+  middleEllipsis,
+  readObject,
+  readString,
+  safeJson,
+  truncate,
+} from '../transcript-format-utils.ts'
 import type { InfoEvent, RunnerEvent, TerminalEvent, TranscriptLine } from '../types.ts'
-
-// PROMOTE-WHEN: a third runner needs these — extract to
-// `src/runners/_shared/format-helpers.ts` at that point. Mirror Claude's
-// limits so the two transcripts stay visually consistent.
-const MAX_BASH_COMMAND = 120
-const MAX_FILE_PATH = 60
-const MAX_GENERIC_INPUT = 80
-const MAX_TOOL_RESULT_LINE = 80
-const MAX_ERROR_TEXT = 200
-const MAX_ASSISTANT_TEXT = 4000
 
 export function toCodexTranscriptLines(event: RunnerEvent): readonly TranscriptLine[] {
   if (event.kind === 'terminal') return formatTerminal(event)
@@ -202,53 +208,9 @@ function formatTokens(usage: Readonly<Record<string, unknown>> | undefined): str
   return parts.join(' · ')
 }
 
-function truncate(s: string, max: number): string {
-  if (s.length <= max) return s
-  return `${s.slice(0, max - 1)}…`
-}
-
-function middleEllipsis(p: string, max: number): string {
-  if (p.length <= max) return p
-  const tail = p.slice(p.lastIndexOf('/') + 1)
-  if (tail.length + 4 >= max) return `…/${tail.slice(-(max - 2))}`
-  return `…/${tail}`
-}
-
-function firstLine(s: string): string {
-  const nl = s.indexOf('\n')
-  return nl === -1 ? s : s.slice(0, nl)
-}
-
-function firstNonEmptyLine(s: string): string {
-  for (const line of s.split('\n')) {
-    const trimmed = line.trim()
-    if (trimmed.length > 0) return trimmed
-  }
-  return ''
-}
-
-function humanCount(n: number): string {
-  if (n >= 1000) return `${Math.round(n / 1000)}k`
-  return String(n)
-}
-
-function readString(obj: Readonly<Record<string, unknown>>, key: string): string | undefined {
-  const v = obj[key]
-  return typeof v === 'string' ? v : undefined
-}
-
 function readNumber(obj: Readonly<Record<string, unknown>>, key: string): number | undefined {
   const v = obj[key]
   return typeof v === 'number' ? v : undefined
-}
-
-function readObject(
-  obj: Readonly<Record<string, unknown>>,
-  key: string,
-): Readonly<Record<string, unknown>> | undefined {
-  const v = obj[key]
-  if (v === null || typeof v !== 'object' || Array.isArray(v)) return undefined
-  return v as Readonly<Record<string, unknown>>
 }
 
 function numberField(
@@ -258,12 +220,4 @@ function numberField(
   if (obj === undefined) return undefined
   const v = obj[key]
   return typeof v === 'number' ? v : undefined
-}
-
-function safeJson(value: unknown): string {
-  try {
-    return JSON.stringify(value) ?? ''
-  } catch {
-    return ''
-  }
 }
