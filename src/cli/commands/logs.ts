@@ -121,12 +121,29 @@ async function resolveRunId(
     return EXIT.CONFIG_ERROR
   }
 
-  try {
-    return parseRunId(idArg)
-  } catch {
-    process.stderr.write(`orch: invalid runId "${idArg}"\n`)
+  // Resolve a runId prefix the same way `orch status`/`orch resume` do, so the
+  // debug loop (`orch runs` → copy prefix → `orch logs <prefix>`) stays
+  // consistent. The resolved id comes from the registry's known ids, so
+  // re-parsing it through the smart constructor restores the validated `RunId`
+  // return type without ever throwing (path-traversal guard stays intact).
+  const matches = await deps.registry.findByPrefix(idArg)
+  if (matches.length === 0) {
+    process.stderr.write(`No run found matching "${idArg}"\n`)
     return EXIT.CONFIG_ERROR
   }
+  if (matches.length > 1) {
+    process.stderr.write(
+      `Ambiguous run ID prefix "${idArg}" matches ${matches.length} runs: ${matches.join(', ')}\n`,
+    )
+    return EXIT.CONFIG_ERROR
+  }
+
+  const match = matches[0]
+  if (match === undefined) {
+    process.stderr.write(`No run found matching "${idArg}"\n`)
+    return EXIT.CONFIG_ERROR
+  }
+  return parseRunId(match)
 }
 
 async function loadState(

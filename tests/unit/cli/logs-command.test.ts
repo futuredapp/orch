@@ -334,3 +334,56 @@ describe('orch logs <runId> --follow', () => {
     }
   }, 10_000)
 })
+
+// ---------------------------------------------------------------------------
+// runId prefix resolution (mirrors `orch status`)
+// ---------------------------------------------------------------------------
+
+describe('orch logs <prefix>', () => {
+  it('resolves a unique runId prefix like status does and streams the transcript', async () => {
+    tmpDir = await fs.mkdtemp('/tmp/orch-logs-prefix-unique-')
+    const deps = makeDeps()
+    await seedRun(deps, 'r-2026-04-29-000030-cc' as RunId, 'demo', 'completed')
+
+    const io = capture()
+    try {
+      const code = await logsCmd(deps, 'r-2026-04-29-000030', {}, opts())
+      expect(code).toBe(EXIT.OK)
+    } finally {
+      io.restore()
+    }
+    expect(io.stdout()).toContain('── done ──')
+    expect(io.stderr()).toBe('')
+  })
+
+  it('exits 2 with the ambiguous message when a prefix matches more than one run', async () => {
+    tmpDir = await fs.mkdtemp('/tmp/orch-logs-prefix-ambiguous-')
+    const deps = makeDeps()
+    await seedRun(deps, 'r-2026-04-29-000020-aa' as RunId, 'demo', 'completed')
+    await seedRun(deps, 'r-2026-04-29-000021-bb' as RunId, 'demo', 'completed')
+
+    const io = capture()
+    try {
+      const code = await logsCmd(deps, 'r-2026-04-29-00002', {}, opts())
+      expect(code).toBe(EXIT.CONFIG_ERROR)
+    } finally {
+      io.restore()
+    }
+    expect(io.stderr()).toContain('Ambiguous run ID prefix "r-2026-04-29-00002" matches 2 runs')
+  })
+
+  it('exits 2 with the not-found message when a prefix matches no run', async () => {
+    tmpDir = await fs.mkdtemp('/tmp/orch-logs-prefix-nomatch-')
+    const deps = makeDeps()
+    await seedRun(deps, 'r-2026-04-29-000040-dd' as RunId, 'demo', 'completed')
+
+    const io = capture()
+    try {
+      const code = await logsCmd(deps, 'r-2026-04-29-999999', {}, opts())
+      expect(code).toBe(EXIT.CONFIG_ERROR)
+    } finally {
+      io.restore()
+    }
+    expect(io.stderr()).toContain('No run found matching "r-2026-04-29-999999"')
+  })
+})
