@@ -129,6 +129,26 @@ export class StepNameCollisionError extends Error {
 }
 
 /**
+ * Thrown by `runStepOnce` when two DIFFERENT step definitions claim the same
+ * name in the same scope. Without this guard the second `run()` silently
+ * returns the first step's memoized value (name-keyed memoization is orch's
+ * core mechanism), so the second step never executes. Points the author at the
+ * two escape routes: rename one step, or disambiguate with `as:`.
+ */
+export class DuplicateStepNameError extends Error {
+  constructor(readonly stepName: StepName) {
+    super(
+      `Duplicate step name "${stepName}" in the same scope. ` +
+        `Two different step definitions share this name, so the second would ` +
+        `silently return the first step's cached result. ` +
+        `Rename one step, or pass a distinct name via run(STEP, { as: '<unique>' }).`,
+    )
+    this.name = 'DuplicateStepNameError'
+    Object.setPrototypeOf(this, new.target.prototype)
+  }
+}
+
+/**
  * Thrown by `runWorkflow` when a sub would push the active sub-frame past the
  * configured `maxSubworkflowDepth` bound (default 8). Names the chain so the
  * author can locate the recursion and the bound so they can override it via

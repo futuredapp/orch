@@ -9,7 +9,7 @@ import { describe, expect, it } from 'bun:test'
 import { createFakeHost } from '@orch/test/fake-host.ts'
 import { executionContext } from '../../../src/core/execution-context.ts'
 import { step } from '../../../src/core/step.ts'
-import { type WorkflowDeps, workflow } from '../../../src/core/workflow.ts'
+import { DuplicateStepNameError, type WorkflowDeps, workflow } from '../../../src/core/workflow.ts'
 import { defineRunner, type Runner, type RunnerContext } from '../../../src/runners/index.ts'
 import {
   FakeClock,
@@ -244,5 +244,61 @@ describe('runStepOnce — sub-aware cache key', () => {
     expect(entry?.subPath).toBeUndefined()
     expect(entry?.subCallId).toBeUndefined()
     expect(entry?.insideParallel).toBeUndefined()
+  })
+})
+
+describe('runStepOnce — same-scope duplicate step name guard', () => {
+  it('throws DuplicateStepNameError naming the step when two different definitions share a name in one scope', async () => {
+    const deps = makeDeps()
+    const DUP_A = step.define('dup', { agent: silentRunner(deps, 'dup-a'), prompt: 'x' })
+    const DUP_B = step.define('dup', { agent: silentRunner(deps, 'dup-b'), prompt: 'x' })
+
+    let caught: unknown
+    const wf = workflow('test', async (run) => {
+      await run(DUP_A)
+      try {
+        await run(DUP_B)
+      } catch (err) {
+        caught = err
+      }
+    })
+
+    await wf.execute(deps)
+
+    expect(caught).toBeInstanceOf(DuplicateStepNameError)
+    expect((caught as Error).message).toContain('dup')
+    // Only the first definition's entry was written; the aliasing second run threw.
+    const state = await deps.stateStore.loadRun(deps.runId)
+    expect(Object.keys(state?.steps ?? {})).toEqual(['dup'])
+  })
+
+  it('does not throw when the same step object is run once in a scope', async () => {
+    const deps = makeDeps()
+    const SOLE = step.define('sole', { agent: silentRunner(deps, 'sole'), prompt: 'x' })
+
+    const wf = workflow('test', async (run) => {
+      await run(SOLE)
+    })
+
+    await wf.execute(deps)
+
+    const state = await deps.stateStore.loadRun(deps.runId)
+    expect(Object.keys(state?.steps ?? {})).toEqual(['sole'])
+  })
+
+  it('does not throw when a second same-named definition is disambiguated with an `as:` override', async () => {
+    const deps = makeDeps()
+    const DUP_A = step.define('dup', { agent: silentRunner(deps, 'dup-as-a'), prompt: 'x' })
+    const DUP_B = step.define('dup', { agent: silentRunner(deps, 'dup-as-b'), prompt: 'x' })
+
+    const wf = workflow('test', async (run) => {
+      await run(DUP_A)
+      await run(DUP_B, { as: 'dup-2' })
+    })
+
+    await wf.execute(deps)
+
+    const state = await deps.stateStore.loadRun(deps.runId)
+    expect(Object.keys(state?.steps ?? {}).sort()).toEqual(['dup', 'dup-2'])
   })
 })

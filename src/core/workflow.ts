@@ -45,6 +45,7 @@ import { isAskCacheValid, runAskStep } from './ask-executor.ts'
 import { runCommandStep } from './command.ts'
 import {
   AutoStopUnsupportedError,
+  DuplicateStepNameError,
   InteractiveParallelError,
   ResumeError,
   RunNotFoundError,
@@ -74,7 +75,14 @@ import { type StepTimer, withStepLifecycle } from './step-lifecycle.ts'
 import { resolveView } from './view-registry.ts'
 
 // Re-export so existing imports from './workflow.ts' remain valid.
-export { InteractiveParallelError, ResumeError, RunNotFoundError, RunnerCapabilityError, StepError }
+export {
+  DuplicateStepNameError,
+  InteractiveParallelError,
+  ResumeError,
+  RunNotFoundError,
+  RunnerCapabilityError,
+  StepError,
+}
 
 import { ParallelError } from './parallel.ts'
 import { stableHashHex } from './prompt-file/cache-key.ts'
@@ -1891,6 +1899,12 @@ type AnyStep = Step<unknown, PromptVarsBound>
 interface StepKeyOwner {
   readonly subPath: readonly string[]
   readonly subCallId?: string
+  // The live Step object that claimed this key. Optional because the
+  // persisted-state `cachedOwner` has no live object; it is set only on the
+  // in-execution `attemptedOwner`, which is the sole value stored in
+  // `keyOwnersThisExecution` and thus the only owner the different-object
+  // check ever compares.
+  readonly step?: AnyStep
 }
 
 function sameSubPath(a: readonly string[], b: readonly string[]): boolean {
@@ -1907,6 +1921,19 @@ function assertNoExecutionCollision(
     (attempted.subCallId !== undefined && prior.subCallId !== attempted.subCallId)
   ) {
     throw new StepNameCollisionError(step.name, prior.subPath, attempted.subPath)
+  }
+  // Same scope, but a DIFFERENT step definition is claiming an already-owned
+  // key — the copy-paste footgun. Restricted to `step.define` (agent) steps:
+  // the factory steps (worktree/ask/command) are content-addressed, memoize by
+  // name BY DESIGN, and carry their own cache-hit value guards (e.g.
+  // `onCacheHit` throws on a worktree branch mismatch), so a shared name there
+  // is intended idempotency, not a silent-wrong-result. `step.define` rejects
+  // the factory prefixes, so an agent key can never alias a factory key — the
+  // prior owner of an agent key is necessarily an agent step too. The same
+  // object re-invoked (a loop without `as:`) is left as-is
+  // (prior.step === attempted.step), out of scope for this guard.
+  if (prior.step !== attempted.step && step.config.kind === 'agent') {
+    throw new DuplicateStepNameError(step.name)
   }
 }
 
@@ -1939,6 +1966,7 @@ async function runStepOnce(
 
   const attemptedOwner: StepKeyOwner = {
     subPath,
+    step: s,
     ...(subCallId !== undefined ? { subCallId } : {}),
   }
 
