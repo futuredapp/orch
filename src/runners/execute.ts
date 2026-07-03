@@ -125,7 +125,6 @@ export async function runRunner(
 
     const waitResult = await handle.wait()
     exitCode = waitResult.exitCode
-    await stderrDone
   } catch (err) {
     // An aborted attempt (watchdog/cap kill) unwinds the iterator with an
     // `AbortError`. Treat it as "no terminal event" — the synthesized error
@@ -137,6 +136,12 @@ export async function runRunner(
     if (deps.signal !== undefined) deps.signal.removeEventListener('abort', onAbort)
     safeKill(handle)
   }
+
+  // Await the drain on both the normal and AbortError paths so the retained tail
+  // is fully flushed before it is read. `safeKill` in `finally` above closes the
+  // pipe first, so a killed child's stderr stream still terminates the drain.
+  // `stderrDone` is `.catch`-guarded, so this await never rejects.
+  await stderrDone
 
   const durationMs = deps.clock.now() - startedAt
   const stderr = stderrTail.value()
