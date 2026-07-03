@@ -39,7 +39,7 @@ const SLUG_SCHEMA = z.object({
 
 const AUTONOMOUS = claude({
   bare: false,
-  flags: ['--permission-mode', 'bypassPermissions'],
+  permissions: 'bypass',
 })
 
 export default workflow('file-prompts-demo', async (run, args) => {

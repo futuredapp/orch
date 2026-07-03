@@ -24,7 +24,7 @@ import { claude, step, workflow } from 'orch'
 const ASK_ANIMAL = step.define('ask-animal', {
   agent: claude({
     bare: false,
-    flags: ['--permission-mode', 'bypassPermissions'],
+    permissions: 'bypass',
   }),
   mode: 'interactive',
   prompt:

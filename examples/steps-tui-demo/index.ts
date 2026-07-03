@@ -30,7 +30,7 @@
 
 import { claude, command, commit, parallel, step, workflow } from 'orch'
 
-const AUTONOMOUS = claude({ bare: false, flags: ['--permission-mode', 'bypassPermissions'] })
+const AUTONOMOUS = claude({ bare: false, permissions: 'bypass' })
 
 const PLAN_FILES = command('plan-files', {
   argv: ['/bin/sh', '-c', 'ls -1 *.md 2>/dev/null || true'],

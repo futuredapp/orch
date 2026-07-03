@@ -70,7 +70,7 @@ const themeClause = promptSeed ? ` The riddle should be about: ${promptSeed}.` :
 const WRITE_RIDDLE = step.define('write-riddle', {
   agent: claude({
     bare: false,
-    flags: ['--permission-mode', 'bypassPermissions'],
+    permissions: 'bypass',
   }),
   mode: 'interactive',
   prompt:
@@ -92,7 +92,7 @@ const WRITE_RIDDLE = step.define('write-riddle', {
 const SOLVE_RIDDLE = step.define('solve-riddle', {
   agent: claude({
     bare: false,
-    flags: ['--permission-mode', 'bypassPermissions'],
+    permissions: 'bypass',
   }),
   prompt:
     `Read the riddle in ./${riddleFile}, work out the answer, and write your answer to ./${solutionFile}. ` +

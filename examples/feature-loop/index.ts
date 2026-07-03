@@ -53,7 +53,7 @@ const FEATURE_DIR = 'feature'
  */
 const AUTONOMOUS = claude({
   bare: false,
-  flags: ['--permission-mode', 'bypassPermissions'],
+  permissions: 'bypass',
 })
 
 const BRAINSTORM = step.define('brainstorm', {
