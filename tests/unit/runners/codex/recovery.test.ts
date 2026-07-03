@@ -112,6 +112,65 @@ describe('codex().classifyError', () => {
     expect(classified?.category).toBe('unknown')
     expect(classified?.transient).toBe(true)
   })
+
+  it('classifies an "unauthorized: invalid api key" turn.failed as auth (fail fast)', () => {
+    const runner = codex({})
+
+    const classified = runner.classifyError?.(
+      signal(turnFailed('unauthorized: invalid api key')),
+      'autonomous',
+    )
+
+    expect(classified?.category).toBe('auth')
+    expect(classified?.transient).toBe(false)
+  })
+
+  it('classifies a "not logged in" turn.failed as auth (fail fast)', () => {
+    const runner = codex({})
+
+    const classified = runner.classifyError?.(
+      signal(turnFailed('not logged in - run codex login')),
+      'autonomous',
+    )
+
+    expect(classified?.category).toBe('auth')
+    expect(classified?.transient).toBe(false)
+  })
+
+  it('classifies an "exceeded your quota" turn.failed as billing (fail fast)', () => {
+    const runner = codex({})
+
+    const classified = runner.classifyError?.(
+      signal(turnFailed('you have exceeded your quota')),
+      'autonomous',
+    )
+
+    expect(classified?.category).toBe('billing')
+    expect(classified?.transient).toBe(false)
+  })
+
+  it('classifies a "billing issue: payment required" turn.failed as billing (fail fast)', () => {
+    const runner = codex({})
+
+    const classified = runner.classifyError?.(
+      signal(turnFailed('billing issue: payment required')),
+      'autonomous',
+    )
+
+    expect(classified?.category).toBe('billing')
+    expect(classified?.transient).toBe(false)
+  })
+
+  it('does not classify a path containing "billing" as billing (word-boundary guard)', () => {
+    const runner = codex({})
+
+    const classified = runner.classifyError?.(
+      signal(turnFailed('cannot read /home/user/billingReport.json')),
+      'autonomous',
+    )
+
+    expect(classified?.category).not.toBe('billing')
+  })
 })
 
 describe('codex().isProgressEvent', () => {
