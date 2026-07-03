@@ -225,5 +225,15 @@ describe('a simulated agent that dies with a non-retryable launch reason', () =>
     const message = (caught as Error).message
     expect(message).toContain('recovery declined — auth is not retryable')
     expect(message).toContain('Error loading rules: invalid decision: deny')
+
+    // The fast-fail now persists a StepEntry whose recoveryLog names the class,
+    // so a field diagnosis reads the errorClass straight from state.json.
+    const state = await deps.stateStore.loadRun(deps.runId)
+    expect(state?.status).toBe('failed')
+    expect(state?.steps.analyze?.recoveryLog).toHaveLength(1)
+    expect(state?.steps.analyze?.recoveryLog?.[0]).toMatchObject({
+      errorClass: 'auth',
+      outcome: 'failed-fast',
+    })
   })
 })

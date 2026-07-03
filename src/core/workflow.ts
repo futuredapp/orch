@@ -1585,6 +1585,15 @@ async function runAgentWithRecovery(args: RecoveryArgs): Promise<AgentRunResult>
     }
   }
 
+  // Name the classification that killed the step in the lifecycle log, so a
+  // fast-fail leaves a trace of WHY it died even before the persisted StepEntry
+  // is inspected (the category is otherwise invisible on the fail-fast branch).
+  if (loop.failure.kind === 'fail') {
+    orchLog(deps.logger, 'recovery-fail-fast', {
+      category: loop.failure.category,
+      exitCode: first.result.exitCode,
+    })
+  }
   // Give-up / mid-recovery fail-fast. Persist the partial entry (carrying the
   // recovery log) BEFORE throwing — `executeWorkflowFn`'s catch only sets the
   // run status, never `saveStep`, so a naive throw would lose the failed run's

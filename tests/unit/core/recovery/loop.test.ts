@@ -246,7 +246,7 @@ describe('runRecoveryLoop give-up paths', () => {
 // ---------------------------------------------------------------------------
 
 describe('runRecoveryLoop fail-fast', () => {
-  it('declines immediately on auth with no attempts and an empty log', async () => {
+  it('declines immediately on auth with no attempts and logs a single failed-fast entry naming the class', async () => {
     const clock = new FakeClock()
     const { runAttempt, calls } = scripted([])
 
@@ -267,7 +267,13 @@ describe('runRecoveryLoop fail-fast', () => {
     expect(result.ok).toBe(false)
     if (!result.ok) {
       expect(result.failure.kind).toBe('fail')
-      expect(result.recoveryLog).toHaveLength(0)
+      expect(result.recoveryLog).toHaveLength(1)
+      expect(result.recoveryLog[0]).toMatchObject({
+        errorClass: 'auth',
+        outcome: 'failed-fast',
+        parentSessionId: 'checkpoint-0',
+        waitMs: 0,
+      })
     }
   })
 
@@ -292,8 +298,17 @@ describe('runRecoveryLoop fail-fast', () => {
     if (!result.ok) {
       expect(result.failure.kind).toBe('fail')
       if (result.failure.kind === 'fail') expect(result.failure.category).toBe('auth')
-      // The first overload attempt errored-again; the auth attempt then declined.
-      expect(result.recoveryLog.map((e) => e.outcome)).toEqual(['errored-again', 'errored-again'])
+      // Both overload attempts errored-again; the auth re-classification then
+      // fails fast, appending a failed-fast entry that names the class.
+      expect(result.recoveryLog.map((e) => e.outcome)).toEqual([
+        'errored-again',
+        'errored-again',
+        'failed-fast',
+      ])
+      expect(result.recoveryLog.at(-1)).toMatchObject({
+        errorClass: 'auth',
+        outcome: 'failed-fast',
+      })
     }
   })
 })
@@ -350,7 +365,8 @@ describe('runRecoveryLoop launch fail-fast', () => {
     if (!result.ok) {
       expect(result.failure.kind).toBe('fail')
       if (result.failure.kind === 'fail') expect(result.failure.category).toBe('launch')
-      expect(result.recoveryLog).toHaveLength(0)
+      expect(result.recoveryLog).toHaveLength(1)
+      expect(result.recoveryLog[0]).toMatchObject({ errorClass: 'launch', outcome: 'failed-fast' })
     }
   })
 })

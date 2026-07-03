@@ -30,7 +30,12 @@ import { DEFAULT_STALL_TIMEOUT_MS, type GiveUpSummary, type RecoveryStrategy } f
 
 /** Per-attempt outcome. Forward-tolerant at the persistence boundary (U8): a
  *  Phase-2-written value must not reject a Phase-1 state-file load. */
-export type RecoveryOutcome = 'progressed' | 'errored-again' | 'gave-up' | 'completed'
+export type RecoveryOutcome =
+  | 'progressed'
+  | 'errored-again'
+  | 'gave-up'
+  | 'completed'
+  | 'failed-fast'
 
 export interface RecoveryLogEntry {
   /** 1-based index of the fork attempt; the `gave-up` marker carries the next index. */
@@ -142,6 +147,13 @@ export async function runRecoveryLoop(deps: RecoveryLoopDeps): Promise<RecoveryL
     )
 
     if (verdict.kind === 'fail') {
+      log.push({
+        attemptIndex: attemptIndex + 1,
+        errorClass: classified.category,
+        waitMs: 0,
+        parentSessionId: checkpointSessionId,
+        outcome: 'failed-fast',
+      })
       return {
         ok: false,
         recoveryLog: log,
