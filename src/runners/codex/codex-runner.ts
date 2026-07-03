@@ -17,6 +17,7 @@ import {
 } from '../../services/index.ts'
 import type { ProcessService, SpawnHandle } from '../../services/process/process-service.ts'
 import { type Path, path } from '../../services/types.ts'
+import { makeFlagGuard } from '../flag-guard.ts'
 import type { RunnerOptionsBase } from '../runner-options.ts'
 import type {
   AutoStopPreparation,
@@ -86,13 +87,7 @@ const CODEX_FLAG_DENYLIST = [
   '--approval-mode',
 ] as const
 
-function assertFlagAllowed(flag: string): void {
-  for (const deny of CODEX_FLAG_DENYLIST) {
-    if (flag === deny || flag.startsWith(`${deny}=`)) {
-      throw new Error(`codex(): flag "${flag}" is on the denylist`)
-    }
-  }
-}
+const assertFlagAllowed = makeFlagGuard('codex', CODEX_FLAG_DENYLIST)
 
 const BYPASS_HOOK_TRUST_FLAG = '--dangerously-bypass-hook-trust' as const
 

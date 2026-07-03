@@ -8,6 +8,7 @@ import { z } from 'zod'
 import type { ClassifiedError } from '../../core/recovery/index.ts'
 import { BunFsService, type FsService, mergeEnv } from '../../services/index.ts'
 import { type Path, path } from '../../services/types.ts'
+import { makeFlagGuard } from '../flag-guard.ts'
 import type { RunnerOptionsBase } from '../runner-options.ts'
 import type {
   AutoStopPreparation,
@@ -116,13 +117,7 @@ const PERMISSION_FLAGS: Readonly<
 // a regular flag, not a secret denylist.
 const CLAUDE_FLAG_DENYLIST = ['--settings', '--mcp-config'] as const
 
-function assertFlagAllowed(flag: string): void {
-  for (const deny of CLAUDE_FLAG_DENYLIST) {
-    if (flag === deny || flag.startsWith(`${deny}=`)) {
-      throw new Error(`claude(): flag "${flag}" is on the denylist`)
-    }
-  }
-}
+const assertFlagAllowed = makeFlagGuard('claude', CLAUDE_FLAG_DENYLIST)
 
 // ---------------------------------------------------------------------------
 // Auto-stop hook injection (R3–R6, R9)
