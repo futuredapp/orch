@@ -38,6 +38,28 @@ describe('codex() factory', () => {
 
     expect(Object.isFrozen(runner)).toBe(true)
   })
+
+  it('constructs a runner when called with no arguments, like claude()', () => {
+    // The zero-argument form must type-check (`opts` defaults to `{}`) and
+    // build a real runner, mirroring `claude()`. Construction alone spawns no
+    // subprocess (the version check runs in buildCommand), so real services are
+    // safe here.
+    const runner = codex()
+
+    expect(runner.name).toBe('codex')
+    expect(Object.isFrozen(runner)).toBe(true)
+  })
+
+  it('keeps the default sandbox (--full-auto) when constructed with no options', async () => {
+    const deps = makeDeps()
+    const runner = codex(undefined, deps)
+
+    // The `= {}` default must not change the effective sandbox default.
+    const cmd = await runner.buildCommand(ctxFor('test'))
+
+    expect(cmd.argv).toContain('--full-auto')
+    expect(cmd.argv).not.toContain('--sandbox')
+  })
 })
 
 describe('buildCommand', () => {

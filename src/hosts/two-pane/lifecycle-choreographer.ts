@@ -34,6 +34,8 @@ import { type PerStepTee, teePathFor } from '../plain/per-step-tee.ts'
 import { renderFailurePanePayload } from './failure-pane.ts'
 import type { RightPaneController } from './pane-map/index.ts'
 import { createRollupAggregator, renderRollupPayload } from './parallel-rollup.ts'
+import { renderPromptPreamble } from './prompt-preamble.ts'
+import type { PromptStore } from './prompt-store.ts'
 
 // Fixed meta step key for the parallel-block rollup tee + hidden pane. Leading
 // underscore keeps it out of the user-facing `stepName()` namespace and sorts
@@ -51,6 +53,13 @@ export interface LifecycleChoreographerDeps {
   readonly controller: RightPaneController | undefined
   /** Per-step formatted_output tee, shared with the host's runner/command writes. */
   readonly tee: PerStepTee
+  /**
+   * Always-on per-step prompt sink (R8). Written unconditionally at autonomous
+   * `step:start`, independent of the optional file logger — this is what makes
+   * the prompt survive into replay even when `logger.logsDir === null`. The
+   * replay *fallback* branch reads it back. See `prompt-store.ts`.
+   */
+  readonly promptStore: PromptStore
   /** Session logger — read only via `teePathFor` to resolve the live tee path. */
   readonly logger: SessionLogger | undefined
   readonly runId: RunId
@@ -102,17 +111,46 @@ export function createLifecycleChoreographer(
     if (event.type === 'step:start') {
       if (event.mode !== 'autonomous') return
       tee.open(event.stepName)
-      // Force the tee file into existence with a visible marker so the live
-      // `tail -F` source has bytes to render immediately. Runners can take
-      // 5–25 s to emit their first transcript-renderable event; without this,
-      // the right pane stays blank long enough that users navigate away.
-      tee.write(event.stepName, `[${event.stepName}] starting…\r\n`)
+      // Write the prompt preamble (label + control-escaped prompt + separator)
+      // as the FIRST bytes of the step's tee, before any agent output. This both
+      // (a) shows the watcher what the agent was asked at the top of the pane
+      // (R1/R5/R6) and (b) forces the tee file into existence with visible
+      // content so the live `tail -F` source has bytes to render immediately —
+      // the role the old `[<step>] starting…` marker served. A real autonomous
+      // run always carries a non-empty prompt; the empty case is only reachable
+      // in fixtures that never set one (acceptance: empty prompt is out of
+      // scope), so fall back to the bare marker there to keep the pane non-blank.
+      const prompt =
+        event.prompt !== undefined && event.prompt.length > 0 ? event.prompt : undefined
+      const preamble =
+        prompt !== undefined ? renderPromptPreamble(prompt) : `[${event.stepName}] starting…\r\n`
+      tee.write(event.stepName, preamble)
+      // Always-on persistence (R8): write the RAW prompt to the stateDir-rooted
+      // sink unconditionally — NOT gated on the file logger. The frozen tee
+      // above serves replay when logging is on; this sink is what the replay
+      // fallback reads when it is off, so historical runs render the prompt
+      // consistently with live runs. (KTD7 / U5.)
+      //
+      // Fire-and-forget: the write must NOT block the FIFO. `tee.write` above
+      // already handed the prompt to the live pane and the replay-from-tee path,
+      // and the store's only consumer is the replay *fallback* branch, read long
+      // after the step completes — so nothing downstream depends on this flush.
+      // `await`-ing it here would head-of-line-block every later lifecycle event
+      // (this step's `registerSource`, later steps' `step:start`/`step:complete`,
+      // parallel rollups) behind a single `mkdir` + `writeFile` on a slow/stalled
+      // filesystem. The `.catch` keeps a rejected write from surfacing as an
+      // unhandled rejection. (Group C.)
+      if (prompt !== undefined) {
+        void deps.promptStore.write(event.stepName, prompt).catch(deps.onSendError)
+      }
       const teePath = teePathFor(logger, event.stepName)
       if (teePath !== null) {
         await controller
           ?.registerSource(
             { type: 'live', stepName: event.stepName },
-            { kind: 'file-tail', path: teePath },
+            // From-start (KTD8): a prompt longer than the bounded tail backfill
+            // window must keep its head (the `prompt:` label) on screen.
+            { kind: 'file-tail', path: teePath, fromStart: true },
           )
           .catch(deps.onSendError)
       } else if (controller !== undefined) {

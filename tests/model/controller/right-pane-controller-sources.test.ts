@@ -328,3 +328,89 @@ describe('right-pane-controller pane-map: unregisterSource', () => {
     await cleanup(tempDir)
   })
 })
+
+// R9 (show-initial-prompt): an autonomous prompt-bearing live source opens at
+// the TOP of the prompt. The controller decision is "enter copy-mode at the
+// top of history on the just-shown source pane" — proven here at the
+// FakeTmuxService seam; the user-visible viewport pin is covered by the
+// full-host AT-9 scenario.
+describe('right-pane-controller pane-map: open-at-top (R9)', () => {
+  it('pins a from-start autonomous live source to the top of history on auto-swap', async () => {
+    const { tmux, controller, tempDir } = await makeController()
+
+    tmux.nextCreateSessionPaneId(paneId('%100'))
+    const liveKey: SourceKey = { type: 'live', stepName: stepName('plan') }
+    await controller.registerSource(liveKey, {
+      kind: 'file-tail',
+      path: toPath(`${tempDir}/agents/plan/formatted_output.ansi`),
+      fromStart: true,
+    })
+
+    const copyModeCalls = tmux.recordedCalls.filter((c) => c.method === 'enterCopyModeTop')
+    expect(copyModeCalls).toHaveLength(1)
+    const call = copyModeCalls[0]
+    if (call?.method !== 'enterCopyModeTop') throw new Error('expected enterCopyModeTop')
+    // The pin targets the SOURCE pane (now in the visible slot after the swap),
+    // not the original visible right pane — the pane id is sticky to its tail.
+    expect(call.opts.target).toBe(paneId('%100'))
+
+    await controller.stop()
+    await cleanup(tempDir)
+  })
+
+  it('does not pin a bounded (non-fromStart) live source', async () => {
+    const { tmux, controller, tempDir } = await makeController()
+
+    tmux.nextCreateSessionPaneId(paneId('%100'))
+    const liveKey: SourceKey = { type: 'live', stepName: stepName('cmd') }
+    await controller.registerSource(liveKey, {
+      kind: 'file-tail',
+      path: toPath(`${tempDir}/cmd.ansi`),
+    })
+
+    expect(tmux.recordedCalls.filter((c) => c.method === 'enterCopyModeTop')).toHaveLength(0)
+
+    await controller.stop()
+    await cleanup(tempDir)
+  })
+
+  it('does not pin a rollup source', async () => {
+    const { tmux, controller, tempDir } = await makeController()
+
+    tmux.nextCreateSessionPaneId(paneId('%300'))
+    await controller.registerSource(
+      { type: 'rollup' },
+      { kind: 'file-tail', path: toPath(`${tempDir}/_rollup.ansi`), fromStart: true },
+    )
+
+    expect(tmux.recordedCalls.filter((c) => c.method === 'enterCopyModeTop')).toHaveLength(0)
+
+    await controller.stop()
+    await cleanup(tempDir)
+  })
+
+  it('cancels copy-mode on the visible pane when follow-live snaps back to the live tail', async () => {
+    const { tmux, controller, tempDir } = await makeController()
+
+    tmux.nextCreateSessionPaneId(paneId('%100'))
+    const liveKey: SourceKey = { type: 'live', stepName: stepName('plan') }
+    await controller.registerSource(liveKey, {
+      kind: 'file-tail',
+      path: toPath(`${tempDir}/agents/plan/formatted_output.ansi`),
+      fromStart: true,
+    })
+
+    await controller.followLive()
+
+    const cancelCalls = tmux.recordedCalls.filter((c) => c.method === 'cancelCopyMode')
+    expect(cancelCalls).toHaveLength(1)
+    const call = cancelCalls[0]
+    if (call?.method !== 'cancelCopyMode') throw new Error('expected cancelCopyMode')
+    // `f` reshowing the already-visible live source is a no-op swap, so the
+    // cancel must target the current visible pane id (the pinned source).
+    expect(call.opts.target).toBe(paneId('%100'))
+
+    await controller.stop()
+    await cleanup(tempDir)
+  })
+})

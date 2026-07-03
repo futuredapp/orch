@@ -53,6 +53,14 @@ This is the idea that shapes everything. Every `run()` call checks `state.json` 
 
 So **resume re-executes the whole workflow function**, but every `run()` that already completed returns instantly from cache. The first one that didn't finish actually runs.
 
+```
+First run                            orch resume
+─────────                            ───────────
+run(PLAN)   → executes, cached       run(PLAN)   → cache hit, instant
+run(WORK)   → executes, cached       run(WORK)   → cache hit, instant
+run(REVIEW) → crash 💥               run(REVIEW) → cache miss, executes
+```
+
 The practical consequence: **code between `run()` calls runs every time the function executes** — including on every resume. Keep it idempotent.
 
 ```ts

@@ -209,6 +209,21 @@ describe('FileStateStore', () => {
     await expect(store.setStatus(id, 'completed')).rejects.toThrow('does not exist')
   })
 
+  it('does not drop a concurrent saveStep when setStatus runs at the same time', async () => {
+    const { store } = makeStore()
+    const id = rid('r-2026-04-10-458000-q8')
+    await store.initRun(id)
+
+    await Promise.all([
+      store.saveStep(id, makeEntry({ name: 'branch-step', value: 'kept' })),
+      store.setStatus(id, 'completed'),
+    ])
+    const state = await store.loadRun(id)
+
+    expect(state?.steps['branch-step']?.value).toBe('kept')
+    expect(state?.status).toBe('completed')
+  })
+
   it('loadRun rethrows EACCES errors instead of returning undefined', async () => {
     const fakeFs = new FakeFsService()
     const eaccesError: Error & { code?: string } = new Error('EACCES: permission denied')

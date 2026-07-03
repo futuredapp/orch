@@ -18,6 +18,7 @@
 // injected per driver (`screen` → fixture.sendKey; `full-host` → harness.sendKeys).
 
 import type { NamedKey, PaneHandle } from '@orch/test/real-tmux/index.ts'
+import type { SocketName, TmuxService } from '../../../src/services/tmux/index.ts'
 import { retryUntil } from '../../_support/retry.ts'
 import { CARET_ECHO_TOKENS, type PaneDriver } from '../panes/pane-driver.ts'
 import {
@@ -48,6 +49,14 @@ export interface RealTmuxPaneDriverDeps {
   readonly driverLabel: string
   /** Keystroke transport — sends one key to the steps pane (parent U4, K1). */
   readonly sendKey: (input: NamedKey | string) => Promise<void>
+  /**
+   * Server-wide tmux paste-buffer reader for `assertClipboardUnchanged` (AT-6).
+   * Optional: only the full-host fixtures that own a real tmux service wire it;
+   * when absent the capability is omitted and the Pane Object falls back to
+   * `notImplemented`. Buffers are server-scoped, so socket + service is all the
+   * read needs.
+   */
+  readonly clipboard?: { readonly tmux: TmuxService; readonly socket: SocketName }
 }
 
 export function createRealTmuxPaneDriver(deps: RealTmuxPaneDriverDeps): PaneDriver {
@@ -111,7 +120,7 @@ export function createRealTmuxPaneDriver(deps: RealTmuxPaneDriverDeps): PaneDriv
     if (!matched) await deps.handle.waitFor(predicate, waitOpts)
   }
 
-  return {
+  const driver: PaneDriver = {
     assertBottomText(literal, { count }): Promise<void> {
       return deps.handle.waitFor((frame) => occurrences(frame, literal) === count, waitOpts)
     },
@@ -224,6 +233,15 @@ export function createRealTmuxPaneDriver(deps: RealTmuxPaneDriverDeps): PaneDriv
     assertAbsent(text): Promise<void> {
       return deps.handle.waitFor((frame) => !frame.includes(text), waitOpts)
     },
+    assertVisibleViewportShows(text): Promise<void> {
+      // Copy-mode-aware: reads the scrolled viewport (what a watcher sees), not
+      // the live screen `capture-pane -p` reports. Proves a top-pinned pane (R9)
+      // actually shows the prompt head.
+      return deps.handle.waitForVisible((frame) => frame.includes(text), waitOpts)
+    },
+    assertVisibleViewportHides(text): Promise<void> {
+      return deps.handle.waitForVisible((frame) => !frame.includes(text), waitOpts)
+    },
     async assertNoCaretEcho(): Promise<void> {
       const frame = await deps.handle.capture()
       const offender = CARET_ECHO_TOKENS.find((token) => frame.includes(token))
@@ -235,4 +253,27 @@ export function createRealTmuxPaneDriver(deps: RealTmuxPaneDriverDeps): PaneDriv
       }
     },
   }
+
+  // Only expose the clipboard capability when a tmux service is wired; without
+  // it the Pane Object falls back to `notImplemented` rather than reading a
+  // buffer it has no service to query.
+  const clipboard = deps.clipboard
+  if (clipboard !== undefined) {
+    driver.assertClipboardUnchanged = async (payload): Promise<void> => {
+      // The run is complete and the prompt-region bytes have already rendered by
+      // the time AT-6 calls this, so a single read is authoritative: under
+      // escaping the buffer never holds the payload; under a passthrough
+      // regression tmux would have stored it at step:start.
+      const buffers = await clipboard.tmux.showPasteBuffers({ socket: clipboard.socket })
+      if (buffers.includes(payload)) {
+        throw new Error(
+          `${deps.driverLabel}: tmux paste buffer contains the OSC 52 payload ` +
+            `${JSON.stringify(payload)} — the clipboard write executed instead of being ` +
+            `escaped to visible text.\nPaste buffers:\n${buffers}`,
+        )
+      }
+    }
+  }
+
+  return driver
 }

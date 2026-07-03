@@ -4,6 +4,8 @@
 
 Every run writes a self-contained log directory. When something goes wrong, the answer is almost always already on disk — you rarely need to re-run with a debugger attached.
 
+For common failures and their fixes, see [Troubleshooting](/guide/troubleshooting).
+
 ## Read the transcript
 
 The quickest view is `orch logs`. It replays the transcript a run produced:

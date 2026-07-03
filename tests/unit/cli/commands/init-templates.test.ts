@@ -31,9 +31,31 @@ describe('init templates', () => {
     expect(HELLO_WORKFLOW_TEMPLATE).toContain("export default workflow('hello'")
   })
 
-  it('STEPS_TEMPLATE imports claude and step from "orch" and exports HELLO', () => {
-    expect(STEPS_TEMPLATE).toContain("import { claude, step } from 'orch'")
-    expect(STEPS_TEMPLATE).toContain('export const HELLO = step.define')
+  it('STEPS_TEMPLATE imports claude, step, and z from "orch" and defines both handoff steps', () => {
+    expect(STEPS_TEMPLATE).toContain("import { claude, step, z } from 'orch'")
+    expect(STEPS_TEMPLATE).toContain("export const SUMMARIZE = step.define('summarize'")
+    expect(STEPS_TEMPLATE).toContain("export const WRITE_SUMMARY = step.define('write-summary'")
+  })
+
+  it('STEPS_TEMPLATE models a typed step-1 return with a bare Zod schema', () => {
+    // Step 1 hands back structured data via the bare `returns: z.object(...)`
+    // form (no `schema(...)` wrapper needed).
+    expect(STEPS_TEMPLATE).toContain('returns: z.object(')
+    expect(STEPS_TEMPLATE).toContain('topic: z.string()')
+    expect(STEPS_TEMPLATE).toContain('factCount: z.number().int()')
+  })
+
+  it('HELLO_WORKFLOW_TEMPLATE threads step 1 typed output into step 2 (the handoff)', () => {
+    expect(HELLO_WORKFLOW_TEMPLATE).toContain('const summary = await run(SUMMARIZE)')
+    expect(HELLO_WORKFLOW_TEMPLATE).toContain('run(WRITE_SUMMARY')
+    expect(HELLO_WORKFLOW_TEMPLATE).toContain('summary.topic')
+    expect(HELLO_WORKFLOW_TEMPLATE).toContain('summary.factCount')
+  })
+
+  it('STEPS_TEMPLATE scaffolds both runs with the typed permissions option', () => {
+    expect(STEPS_TEMPLATE).toContain("permissions: 'bypass'")
+    // The raw flag spelling is replaced by the canonical typed option.
+    expect(STEPS_TEMPLATE).not.toContain('--permission-mode')
   })
 
   it('CONFIG_TEMPLATE uses `export const config` (preferred over default export)', () => {

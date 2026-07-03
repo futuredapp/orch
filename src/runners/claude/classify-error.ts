@@ -24,6 +24,7 @@
 import {
   type ClassifiedError,
   categoryForStatus,
+  isLaunchFailureSignal,
   isTransientCategory,
 } from '../../core/recovery/index.ts'
 import type { ClassifyErrorSignal, InfoEvent } from '../types.ts'
@@ -89,6 +90,11 @@ function findStatusAndReset(signal: ClassifyErrorSignal): {
 export function classifyClaudeError(signal: ClassifyErrorSignal): ClassifiedError {
   const { status, resetsAt } = findStatusAndReset(signal)
   if (status === undefined) {
+    // No numeric status anywhere. A crash before any stdout event (missing
+    // binary, bad config, auth failure on first byte) shows up here with stderr
+    // carrying the reason — fail fast as a launch failure rather than burning
+    // the recovery envelope on a deterministic config error.
+    if (isLaunchFailureSignal(signal)) return { category: 'launch', transient: false }
     return { category: 'unknown', transient: true }
   }
 

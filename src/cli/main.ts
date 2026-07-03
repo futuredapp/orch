@@ -17,6 +17,7 @@ import {
   type PlainFormat,
   registerBuiltinHosts,
 } from '../hosts/index.ts'
+import { orchVersion } from '../observability/index.ts'
 import { toClaudeTranscriptLines } from '../runners/index.ts'
 import type { ProcessService } from '../services/process/index.ts'
 import { BUILTIN_NAMES, BUILTIN_PREFIX } from '../workflows/index.ts'
@@ -137,7 +138,8 @@ Commands:
   types [--watch]          Generate .d.ts sidecars for prompt files (--watch keeps a regen loop alive)
 
 Options:
-  -h, --help               Show this help message
+  -h, --help               Show this help message (per-command when a command is named)
+  --version                Print the orch version and exit
   --prompt <text>          Alias for the inline prompt positional
   --mode <m>               plain | single-pane | two-pane (single-pane deferred to v2)
   --format <f>             text | json — plain mode only; json suppresses the banner
@@ -156,6 +158,75 @@ Types options (orch types):
 `
 
 // ---------------------------------------------------------------------------
+// Per-command help
+//
+// `orch <cmd> --help` prints the focused entry instead of the global HELP.
+// Every key in COMMANDS must have an entry here — a loop test enforces this so
+// a new subcommand cannot ship without its own help. Content is derived from
+// the matching sections of the global HELP above.
+// ---------------------------------------------------------------------------
+
+export const COMMAND_HELP: Record<string, string> = {
+  init: `Usage: orch init
+
+Scaffold a fresh .orch/ in this project.
+`,
+  new: `Usage: orch new <name>
+
+Create a new workflow file under .orch/workflows/.
+`,
+  run: `Usage: orch run <name> [prompt] [options]
+
+Run a workflow. Built-ins (no .orch/workflows/ needed): ${BUILTINS_LINE}
+
+Options:
+  --prompt <text>          Alias for the inline prompt positional
+  --mode <m>               plain | single-pane | two-pane (single-pane deferred to v2)
+  --format <f>             text | json — plain mode only; json suppresses the banner
+  --no-attach              two-pane only: skip auto-attach; print attach hint and keep running
+  --debug                  turn on heavy session logs (agent stdout/stderr, tmux pipe-pane, subprocess spawns, orch.log)
+  --interactive            ask() prompts render normally (default); cancel via Ctrl-C / Ctrl-D
+  --noninteractive         ask() resolves declared defaults (CI, scheduled runs); errors if no default
+`,
+  resume: `Usage: orch resume [id] [prompt]
+
+Resume a run; optional prompt overrides persisted args.
+`,
+  retry: `Usage: orch retry <id> [prompt]
+
+Retry a failed run: re-run the failed step and continue to completion.
+`,
+  runs: `Usage: orch runs
+
+List recent runs.
+`,
+  status: `Usage: orch status <id>
+
+Show status of a run.
+`,
+  logs: `Usage: orch logs <runId> [options]
+
+Stream the per-step transcript for a run.
+
+Options:
+  --latest                 Resolve <runId> to the most recent run (snapshot at command time)
+  --step <name>            Print only the named step's transcript (exact match)
+  -f, --follow             Tail the named step until completed/failed/cancelled or SIGINT (requires --step)
+`,
+  'dry-run': `Usage: orch dry-run <name> [prompt]
+
+Preflight check + first-step peek.
+`,
+  types: `Usage: orch types [--watch]
+
+Generate .d.ts sidecars for prompt files.
+
+Options:
+  --watch                  Keep a regen loop alive that refreshes sidecars on prompt-file change (Ctrl-C to exit)
+`,
+}
+
+// ---------------------------------------------------------------------------
 // Argv parsing
 // ---------------------------------------------------------------------------
 
@@ -164,6 +235,7 @@ export function parseArgv(argv: string[]): {
   positional: string
   args: WorkflowArgs
   help: boolean
+  version: boolean
   mode: RunMode | undefined
   format: PlainFormat
   noAttach: boolean
@@ -178,6 +250,7 @@ export function parseArgv(argv: string[]): {
     args: argv,
     options: {
       help: { type: 'boolean', short: 'h', default: false },
+      version: { type: 'boolean', default: false },
       prompt: { type: 'string' },
       mode: { type: 'string' },
       format: { type: 'string' },
@@ -235,6 +308,7 @@ export function parseArgv(argv: string[]): {
     positional: positionals[1] ?? '',
     args,
     help: values.help as boolean,
+    version: values.version === true,
     mode,
     format,
     noAttach,
@@ -382,7 +456,7 @@ function pickHostFactory(
 // Dispatch
 // ---------------------------------------------------------------------------
 
-const COMMANDS: Record<
+export const COMMANDS: Record<
   string,
   (
     deps: ReturnType<typeof createDeps>,
@@ -461,8 +535,14 @@ export async function main(): Promise<never> {
     throw err
   }
 
+  if (parsed.version) {
+    process.stdout.write(`${await orchVersion()}\n`)
+    process.exit(EXIT.OK)
+  }
+
   if (parsed.help) {
-    process.stdout.write(HELP)
+    const cmdHelp = parsed.command !== undefined ? COMMAND_HELP[parsed.command] : undefined
+    process.stdout.write(cmdHelp ?? HELP)
     process.exit(EXIT.OK)
   }
 

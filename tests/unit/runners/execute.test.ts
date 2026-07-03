@@ -200,6 +200,117 @@ describe('runRunner recovery seams (U7)', () => {
     expect(result.finalEvent.type).toBe('error')
     expect(result.exitCode).toBe(-1)
   })
+
+  it('retains the stderr tail when an attempt is aborted before it exits', async () => {
+    // The stderr reason is still in flight when the watchdog kills the spawn: it
+    // lands one macrotask AFTER the abort unwinds stdout. Only awaiting the drain
+    // before reading the tail surfaces it — the regression this guards against.
+    let releaseKill!: () => void
+    const killed = new Promise<void>((resolve) => {
+      releaseKill = resolve
+    })
+
+    const stdout: AsyncIterable<string> = {
+      [Symbol.asyncIterator]: () => {
+        let sent = false
+        return {
+          async next(): Promise<IteratorResult<string>> {
+            if (!sent) {
+              sent = true
+              return { value: JSON.stringify({ kind: 'info', type: 'assistant' }), done: false }
+            }
+            await killed
+            throw new DOMException('Aborted', 'AbortError')
+          },
+        }
+      },
+    }
+
+    const stderr: AsyncIterable<string> = {
+      [Symbol.asyncIterator]: () => {
+        let sent = false
+        return {
+          async next(): Promise<IteratorResult<string>> {
+            if (sent) return { value: undefined, done: true }
+            sent = true
+            await killed
+            // One macrotask later than the abort unwind — so a tail read that
+            // skips the drain await sees an empty tail.
+            await new Promise<void>((r) => setImmediate(r))
+            return { value: 'agent panic: connection reset', done: false }
+          },
+        }
+      },
+    }
+
+    const state: Killable = { killed: false }
+    const handle: SpawnHandle & Killable = {
+      stdout,
+      stderr,
+      async wait() {
+        return { exitCode: -1 }
+      },
+      kill() {
+        state.killed = true
+        releaseKill()
+      },
+      get killed() {
+        return state.killed
+      },
+    }
+
+    const ps = new StubProcessService()
+    ps.setNext(handle)
+    const runner = dummyRunner((line) => JSON.parse(line) as RunnerEvent)
+    const controller = new AbortController()
+
+    const promise = runRunner(runner, ctxFor('x'), {
+      processService: ps,
+      clock: new FakeClock(),
+      signal: controller.signal,
+    })
+    // Let the runner drain the info line and wedge on the next stdout read.
+    await new Promise((r) => setImmediate(r))
+    controller.abort()
+
+    const result = await promise
+
+    expect(result.exitCode).toBe(-1)
+    expect(result.stderr).toContain('agent panic: connection reset')
+    expect(result.finalEvent.type).toBe('error')
+    if (result.finalEvent.type === 'error') {
+      expect(result.finalEvent.message).toContain('agent panic: connection reset')
+    }
+  })
+})
+
+describe('runRunner stderr retention on a startup crash', () => {
+  it('retains the stderr tail and folds it into the synthesized no-terminal-event error', async () => {
+    const fps = new FakeProcessService()
+    // A runner that dies at startup: no stdout JSON, output on stderr only, exit 1.
+    fps.when([':crash:']).respondWith({
+      stdout: [],
+      stderr: [
+        'Error loading rules:',
+        '…/.codex/rules/default.rules:5: error: invalid decision: deny',
+      ],
+      exitCode: 1,
+    })
+    const runner = dummyRunner((line) => JSON.parse(line) as RunnerEvent)
+
+    const result = await runRunner(runner, ctxFor('x'), {
+      processService: fps,
+      clock: new FakeClock(),
+      command: { argv: [':crash:'], env: {} },
+    })
+
+    expect(result.exitCode).toBe(1)
+    expect(result.stderr).toContain('invalid decision: deny')
+    expect(result.finalEvent.type).toBe('error')
+    if (result.finalEvent.type === 'error') {
+      expect(result.finalEvent.message).toContain('invalid decision: deny')
+    }
+  })
 })
 
 describe('runRunner onEvent hook (phase 13c observe mode)', () => {

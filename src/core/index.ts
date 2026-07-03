@@ -19,6 +19,7 @@ export {
   AskNoDefaultError,
   AskParallelError,
   AutoStopUnsupportedError,
+  DuplicateStepNameError,
   InteractiveParallelError,
   ResumeError,
   RunNotFoundError,

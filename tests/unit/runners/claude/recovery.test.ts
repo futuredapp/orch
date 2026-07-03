@@ -76,6 +76,17 @@ describe('claude().forkResumeCommand', () => {
     expect(argv).toContain('stream-json')
   })
 
+  it('expands permissions "bypass" into --permission-mode bypassPermissions on the fork argv', async () => {
+    const runner = claude({ permissions: 'bypass' })
+
+    const cmd = await runner.forkResumeCommand?.(forkCtx(), 'parent-session-id', 'continue')
+
+    const argv = cmd?.argv ?? []
+    const idx = argv.indexOf('--permission-mode')
+    expect(idx).toBeGreaterThan(-1)
+    expect(argv[idx + 1]).toBe('bypassPermissions')
+  })
+
   it('threads through caller extraArgs and rejects denylisted flags', () => {
     const runner = claude({})
 

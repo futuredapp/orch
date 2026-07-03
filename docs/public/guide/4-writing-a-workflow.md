@@ -67,15 +67,15 @@ For compile-time safety on the `vars` contract — TypeScript catching missing/e
 
 ## Passing a typed result into the next step
 
-A step can return structured data instead of only writing files. Declare what it returns with `returns: schema(...)`, where `schema` wraps a [Zod](https://zod.dev) schema. orch re-exports Zod as `z`, so you don't add it to your own dependencies:
+A step can return structured data instead of only writing files. Declare what it returns with `returns:`, passing a [Zod](https://zod.dev) schema. orch re-exports Zod as `z`, so you don't add it to your own dependencies:
 
 ```ts
-import { workflow, step, claude, schema, z } from 'orch'
+import { workflow, step, claude, z } from 'orch'
 
 const COUNT_PHASES = step.define('count-phases', {
   agent: claude(),
   prompt: 'Read ./feature/plan.md and return the number of phases as `phases`.',
-  returns: schema(z.object({ phases: z.number().int().min(1).max(30) })),
+  returns: z.object({ phases: z.number().int().min(1).max(30) }),
 })
 
 export default workflow('feature', async (run) => {
@@ -131,7 +131,7 @@ Putting it together — brainstorm, plan, count, then a phase-by-phase loop:
 
 ```ts
 // .orch/workflows/feature.ts
-import { workflow, step, claude, schema, z } from 'orch'
+import { workflow, step, claude, z } from 'orch'
 
 const BRAINSTORM = step.define('brainstorm', {
   agent: claude(),
@@ -146,7 +146,7 @@ const PLAN = step.define('plan', {
 const COUNT_PHASES = step.define('count-phases', {
   agent: claude(),
   prompt: 'Read ./feature/plan.md and return the number of phases as `phases`.',
-  returns: schema(z.object({ phases: z.number().int().min(1).max(30) })),
+  returns: z.object({ phases: z.number().int().min(1).max(30) }),
 })
 
 const EXECUTE_PHASE = step.define('execute-phase', {

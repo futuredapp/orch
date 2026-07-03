@@ -47,6 +47,8 @@ import { type Path, path as toPath } from '../../../services/types.ts'
 import type { RunId, StateStore, StepEntry } from '../../../state/index.ts'
 import { renderKindDetails } from '../kind-details.tsx'
 import type { PaneQueue } from '../pane-queue.ts'
+import { renderPromptPreamble } from '../prompt-preamble.ts'
+import { readPersistedPrompt } from '../prompt-store.ts'
 import { resolveCommandPaneSource } from '../replay-command-pane.ts'
 import { renderTranscriptToString } from '../replay-transcript.ts'
 import {
@@ -365,7 +367,11 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
   const commandForSpec = (spec: PaneSpec, key: SourceKey): readonly string[] => {
     if (key.type === 'placeholder') return SOURCE_HOLDER_ARGV
     if (spec.kind === 'file-tail') {
-      return ['tail', '-n', TAIL_BACKFILL_LINES, '-F', spec.path]
+      // Prompt-bearing sources read from the first line (`-n +1`) so a long
+      // prompt's head survives even when prompt+output exceeds the bounded
+      // backfill window (KTD8); every other source uses the bounded tail.
+      const lines = spec.fromStart === true ? '+1' : TAIL_BACKFILL_LINES
+      return ['tail', '-n', lines, '-F', spec.path]
     }
     return spec.argv
   }
@@ -454,6 +460,18 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
       if (key.type === 'live' || key.type === 'rollup') {
         if (isFollowingLive) {
           await showSource(key)
+          // R9 (show-initial-prompt): open an autonomous prompt-bearing step at
+          // the TOP of the prompt rather than auto-tailing past it. The source
+          // registered itself from-start (KTD8: `tail -n +1 -F`), so the
+          // prompt's head sits in the pane's scrollback; copy-mode + history-top
+          // pins the viewport there while streamed output accrues below the
+          // fold. Only the initial live auto-swap pins — `f` (followLive) and
+          // Enter return the watcher to the live tail. Gated on `fromStart` so
+          // only autonomous prompt sources pin; rollup and bounded file-tails
+          // are untouched.
+          if (key.type === 'live' && spec.kind === 'file-tail' && spec.fromStart === true) {
+            await pinSourceToPromptTop(entry.paneId)
+          }
           await setViewMode({ mode: 'live' })
         } else {
           const text =
@@ -520,6 +538,19 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
     visiblePaneId = src
     currentKey = key
     logLifecycle({ type: 'right-pane-swap', to: skey, paneId: src })
+  }
+
+  // R9: pin the just-shown autonomous source pane to the top of the prompt via
+  // tmux copy-mode. Best-effort — a copy-mode failure (e.g. an older tmux that
+  // rejects `history-top`) must NEVER break the step open, so it is logged and
+  // swallowed; the pane simply falls back to auto-tailing the live output.
+  const pinSourceToPromptTop = async (pane: PaneId): Promise<void> => {
+    try {
+      await opts.tmux.enterCopyModeTop({ socket: opts.socket, target: pane })
+      logLifecycle({ type: 'prompt-pinned-to-top', paneId: pane })
+    } catch (err) {
+      logLifecycle({ type: 'prompt-pin-failed', paneId: pane, ...errorLifecycleFields(err) })
+    }
   }
 
   const showSource = (key: SourceKey): Promise<void> => {
@@ -816,6 +847,18 @@ export function createRightPaneController(opts: RightPaneControllerOptions): Rig
     // leaves the footer stuck on `⏸ viewing <step>` (findings P-1). It also
     // re-arms `followLive` so subsequent steps auto-advance again.
     if (await swapToNewestLivePane()) {
+      // R9: a top-pinned autonomous pane (see registerSource) is still in
+      // copy-mode after `f` re-shows it — and when the live source is already
+      // visible the swap above is a no-op, so the watcher would stay stranded
+      // at the prompt. Cancel copy-mode so `f` snaps the viewport to the latest
+      // output, the whole point of follow-live. No-op when the pane is not in a
+      // mode (adapter swallows "not in a mode"); a failure must not abort the
+      // follow, so it is routed to the lifecycle log.
+      await opts.tmux
+        .cancelCopyMode({ socket: opts.socket, target: visiblePaneId })
+        .catch((err: unknown) =>
+          logLifecycle({ type: 'copy-mode-cancel-failed', ...errorLifecycleFields(err) }),
+        )
       isFollowingLive = true
       await setViewMode({ mode: 'live' })
     }
@@ -1179,7 +1222,9 @@ async function resolveAutonomousReplaySpec(
   if (teePath !== null) {
     try {
       const info = await stat(teePath)
-      if (info.size > 0) return { kind: 'file-tail', path: teePath }
+      // From-start so the frozen tee's head — the `prompt:` preamble embedded
+      // live at step:start — is shown on replay too (AT-7 interim, KTD8).
+      if (info.size > 0) return { kind: 'file-tail', path: teePath, fromStart: true }
     } catch {
       /* falls through to JSON re-render */
     }
@@ -1187,14 +1232,30 @@ async function resolveAutonomousReplaySpec(
   // Fallback: re-render the NDJSON sidecar into the warm-cache file. Covers
   // fixtures without a logger and runs that never persisted a tee (e.g. a
   // cancelled run with only `events.ndjson` on disk).
+  //
+  // U6 (R8 acceptance): the frozen tee — which carried the embedded preamble on
+  // the primary branch — is empty/absent here (file logging was off), so the
+  // prompt must be reconstructed from the always-on prompt store and prepended
+  // to the re-rendered transcript. Only this fallback prepends; the primary
+  // branch already embeds the preamble, so it is left untouched to avoid
+  // double-display.
+  const persistedPrompt = await readPersistedPrompt(opts.stateDir, step.name as StepName)
+  const preamble =
+    persistedPrompt !== null && persistedPrompt.length > 0
+      ? renderPromptPreamble(persistedPrompt)
+      : ''
   const filePath = replayFilePath(opts, step.name)
+  // From-start (`tail -n +1`) so the prepended `prompt:` head always backfills,
+  // regardless of stream length — the bounded `tail -n 5000` would drop the head
+  // when prompt+transcript exceed TAIL_BACKFILL_LINES (R2 no-truncation, R8/AT-7
+  // replay parity, KTD8). Mirrors the primary branch, which already sets it.
   if (step.transcriptPath === undefined) {
     await writeReplayFile(
       opts,
       filePath,
-      `── ${step.name} ──\r\n(no transcript recorded for this step)\r\n`,
+      `${preamble}── ${step.name} ──\r\n(no transcript recorded for this step)\r\n`,
     )
-    return { kind: 'file-tail', path: filePath }
+    return { kind: 'file-tail', path: filePath, fromStart: true }
   }
   const text = await renderTranscriptToString({
     transcriptPath: toPath(`${opts.stateDir}/${step.transcriptPath}`),
@@ -1203,8 +1264,8 @@ async function resolveAutonomousReplaySpec(
       ? { toTranscriptLines: opts.transcriptRenderer }
       : {}),
   })
-  await writeReplayFile(opts, filePath, text)
-  return { kind: 'file-tail', path: filePath }
+  await writeReplayFile(opts, filePath, `${preamble}${text}`)
+  return { kind: 'file-tail', path: filePath, fromStart: true }
 }
 
 async function resolveInteractiveReplaySpec(

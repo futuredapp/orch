@@ -45,6 +45,7 @@ import { isAskCacheValid, runAskStep } from './ask-executor.ts'
 import { runCommandStep } from './command.ts'
 import {
   AutoStopUnsupportedError,
+  DuplicateStepNameError,
   InteractiveParallelError,
   ResumeError,
   RunNotFoundError,
@@ -74,7 +75,14 @@ import { type StepTimer, withStepLifecycle } from './step-lifecycle.ts'
 import { resolveView } from './view-registry.ts'
 
 // Re-export so existing imports from './workflow.ts' remain valid.
-export { InteractiveParallelError, ResumeError, RunNotFoundError, RunnerCapabilityError, StepError }
+export {
+  DuplicateStepNameError,
+  InteractiveParallelError,
+  ResumeError,
+  RunNotFoundError,
+  RunnerCapabilityError,
+  StepError,
+}
 
 import { ParallelError } from './parallel.ts'
 import { stableHashHex } from './prompt-file/cache-key.ts'
@@ -191,6 +199,15 @@ export type StepLifecycleEvent =
       readonly runnerName?: string
       readonly subPath?: readonly string[]
       readonly insideParallel?: true
+      /**
+       * The assembled prompt orch sent the agent for this step (post-injection,
+       * verbatim). Carried so the two-pane host can render it at the top of the
+       * step's right pane (autonomous only — the choreographer's mode guard
+       * excludes interactive). Stripped from the structured `lifecycle.ndjson`
+       * record by `emitStepLifecycle` so a long prompt never bloats the trace.
+       * Absent for `command`/`ask` steps (they have no prompt).
+       */
+      readonly prompt?: string
     }
   | {
       readonly type: 'step:complete'
@@ -639,6 +656,37 @@ function validateSchemaOutput(config: AgentStepConfig, key: StepName, rawValue: 
 // parallel branch-update supplement) lives in `./step-lifecycle.ts`; every
 // per-kind executor below brackets its body with `withStepLifecycle`.
 
+// `assemblePrompt` is hoisted ahead of `withStepLifecycle` so the assembled
+// prompt can ride on `step:start` for the right-pane preamble — but a
+// `{{var}}`/template mismatch makes it throw, and that throw is a real,
+// user-reachable input error. Route it back through the lifecycle envelope so
+// `step:start` → `step:failed` still fire and the step keeps its per-step
+// attribution (steps-view / failure panes / cmux pills), exactly as it did when
+// the throw happened inside the produce body. No `prompt` is carried (there
+// isn't one), so the structured-record bloat guard (KTD2) is untouched and the
+// workflow-level catch still classifies the run `crashed`.
+function failedAssemblyLifecycle(
+  deps: WorkflowDeps,
+  key: StepName,
+  stepSpan: StepSpan | undefined,
+  mode: StepMode,
+  runnerName: string,
+  error: unknown,
+): Promise<{ value: never; entry: StepEntry }> {
+  return withStepLifecycle(
+    {
+      host: deps.host,
+      stepSpan,
+      clock: deps.clock,
+      key,
+      mode,
+      trackParallel: true,
+      runnerName,
+    },
+    () => Promise.reject(error),
+  )
+}
+
 function errorLogFields(err: unknown): JsonObject {
   const base: Record<string, unknown> = { error: String(err) }
   if (err instanceof Error) {
@@ -757,6 +805,27 @@ async function runInteractiveStep(
     })
   }
 
+  // Carried for AT-4 parity: interactive steps put the assembled prompt on
+  // `step:start` too, so only the choreographer's autonomous-only guard keeps it
+  // out of the interactive pane. Assembled once here and threaded into
+  // `produceInteractiveStep` so the carried prompt and the runner-received prompt
+  // are the same string by construction. Empty ⇒ carried as undefined. A
+  // template/var mismatch throws — route it through the lifecycle envelope so the
+  // step is still attributed (`step:start` → `step:failed`).
+  let prompt: string
+  try {
+    prompt = assemblePrompt(config.prompt, overrides, key)
+  } catch (assemblyError) {
+    return failedAssemblyLifecycle(
+      deps,
+      key,
+      stepSpan,
+      'interactive',
+      config.agent.name,
+      assemblyError,
+    )
+  }
+
   return withStepLifecycle(
     {
       host: deps.host,
@@ -766,9 +835,10 @@ async function runInteractiveStep(
       mode: 'interactive',
       trackParallel: true,
       runnerName: config.agent.name,
+      ...(prompt.length > 0 ? { prompt } : {}),
     },
     (timer) =>
-      produceInteractiveStep(deps, captureLock, config, key, overrides, stepSpan, autoStop, timer),
+      produceInteractiveStep(deps, captureLock, config, key, stepSpan, autoStop, timer, prompt),
   )
 }
 
@@ -789,13 +859,12 @@ async function produceInteractiveStep(
   captureLock: CaptureLock,
   config: AgentStepConfig,
   key: StepName,
-  overrides: RunOverrides | undefined,
   stepSpan: StepSpan | undefined,
   autoStop: boolean,
   timer: StepTimer,
+  prompt: string,
 ): Promise<{ value: InteractiveResult; entry: StepEntry }> {
   const orchSessionId = deps.generateSessionId?.() ?? randomUUID()
-  const prompt = assemblePrompt(config.prompt, overrides, key)
   const startedAtStep = deps.clock.now()
   const cwd = currentCwd(deps.cwd)
 
@@ -1132,6 +1201,28 @@ async function runAgentStep(
     ...(resolution.kind !== 'silent' ? { pane: resolution.pane } : {}),
   })
 
+  // Hoisted so the assembled prompt is available on `step:start` for the
+  // host's right-pane preamble, then threaded into `produceAgentStep` so the
+  // carried prompt and the runner-received prompt are the same string by
+  // construction (no second `substitute()` pass). An empty assembled prompt
+  // (only reachable from fixtures that set none) is carried as `undefined` so it
+  // neither pollutes the lifecycle event nor renders an empty preamble. A
+  // template/var mismatch throws — route it through the lifecycle envelope so the
+  // step is still attributed (`step:start` → `step:failed`).
+  let prompt: string
+  try {
+    prompt = assemblePrompt(config.prompt, overrides, key)
+  } catch (assemblyError) {
+    return failedAssemblyLifecycle(
+      deps,
+      key,
+      stepSpan,
+      'autonomous',
+      config.agent.name,
+      assemblyError,
+    )
+  }
+
   return withStepLifecycle(
     {
       host: deps.host,
@@ -1141,8 +1232,9 @@ async function runAgentStep(
       mode: 'autonomous',
       trackParallel: true,
       runnerName: config.agent.name,
+      ...(prompt.length > 0 ? { prompt } : {}),
     },
-    () => produceAgentStep(deps, captureLock, config, key, overrides, stepSpan, isSilent),
+    () => produceAgentStep(deps, captureLock, config, key, stepSpan, isSilent, prompt),
   )
 }
 
@@ -1207,9 +1299,9 @@ async function produceAgentStep(
   captureLock: CaptureLock,
   config: AgentStepConfig,
   key: StepName,
-  overrides: RunOverrides | undefined,
   stepSpan: StepSpan | undefined,
   isSilent: boolean,
+  prompt: string,
 ): Promise<{ value: unknown; entry: StepEntry }> {
   const cwd = currentCwd(deps.cwd)
   const normalized = normalizeValidators(config.validate, key)
@@ -1217,7 +1309,6 @@ async function produceAgentStep(
   const preRunSnapshot = headSha !== undefined ? { headSha } : undefined
 
   const startedAt = deps.clock.now()
-  const prompt = assemblePrompt(config.prompt, overrides, key)
   // Sidecar captures every RunnerEvent (silent steps included — `orch logs`
   // needs the trace even when the host renders nothing). Errors are logged
   // to stderr but do not abort the step; transcript loss is recoverable,
@@ -1492,6 +1583,7 @@ async function runAgentWithRecovery(args: RecoveryArgs): Promise<AgentRunResult>
         finalEvent: loop.result.finalEvent,
         exitCode: loop.result.exitCode,
         durationMs: totalDurationMs,
+        stderr: loop.result.stderr ?? '',
       },
       durationMs: totalDurationMs,
       checkpointSessionId,
@@ -1501,15 +1593,29 @@ async function runAgentWithRecovery(args: RecoveryArgs): Promise<AgentRunResult>
     }
   }
 
+  // Name the classification that killed the step in the lifecycle log, so a
+  // fast-fail leaves a trace of WHY it died even before the persisted StepEntry
+  // is inspected (the category is otherwise invisible on the fail-fast branch).
+  if (loop.failure.kind === 'fail') {
+    orchLog(deps.logger, 'recovery-fail-fast', {
+      category: loop.failure.category,
+      exitCode: first.result.exitCode,
+    })
+  }
   // Give-up / mid-recovery fail-fast. Persist the partial entry (carrying the
   // recovery log) BEFORE throwing — `executeWorkflowFn`'s catch only sets the
   // run status, never `saveStep`, so a naive throw would lose the failed run's
   // recovery log for exactly the runs most needing audit (R16).
   if (loop.recoveryLog.length > 0) await persistRecoveryFailure(args, loop.recoveryLog)
+  // The appended line is the ORIGINAL failure that triggered recovery, not the
+  // last attempt's error; label it so a give-up summary describing N later
+  // attempts is not misread as ending with the final attempt's reason.
+  const recoverySummary = formatRecoveryFailure(loop.failure, loop.recoveryLog)
+  const terminal = terminalErrorMessage(first.result)
   throw new StepError(
     key,
     first.result.exitCode,
-    formatRecoveryFailure(loop.failure, loop.recoveryLog),
+    `${recoverySummary}\noriginal failure: ${terminal}`,
   )
 }
 
@@ -1793,6 +1899,12 @@ type AnyStep = Step<unknown, PromptVarsBound>
 interface StepKeyOwner {
   readonly subPath: readonly string[]
   readonly subCallId?: string
+  // The live Step object that claimed this key. Optional because the
+  // persisted-state `cachedOwner` has no live object; it is set only on the
+  // in-execution `attemptedOwner`, which is the sole value stored in
+  // `keyOwnersThisExecution` and thus the only owner the different-object
+  // check ever compares.
+  readonly step?: AnyStep
 }
 
 function sameSubPath(a: readonly string[], b: readonly string[]): boolean {
@@ -1809,6 +1921,19 @@ function assertNoExecutionCollision(
     (attempted.subCallId !== undefined && prior.subCallId !== attempted.subCallId)
   ) {
     throw new StepNameCollisionError(step.name, prior.subPath, attempted.subPath)
+  }
+  // Same scope, but a DIFFERENT step definition is claiming an already-owned
+  // key — the copy-paste footgun. Restricted to `step.define` (agent) steps:
+  // the factory steps (worktree/ask/command) are content-addressed, memoize by
+  // name BY DESIGN, and carry their own cache-hit value guards (e.g.
+  // `onCacheHit` throws on a worktree branch mismatch), so a shared name there
+  // is intended idempotency, not a silent-wrong-result. `step.define` rejects
+  // the factory prefixes, so an agent key can never alias a factory key — the
+  // prior owner of an agent key is necessarily an agent step too. The same
+  // object re-invoked (a loop without `as:`) is left as-is
+  // (prior.step === attempted.step), out of scope for this guard.
+  if (prior.step !== attempted.step && step.config.kind === 'agent') {
+    throw new DuplicateStepNameError(step.name)
   }
 }
 
@@ -1841,6 +1966,7 @@ async function runStepOnce(
 
   const attemptedOwner: StepKeyOwner = {
     subPath,
+    step: s,
     ...(subCallId !== undefined ? { subCallId } : {}),
   }
 

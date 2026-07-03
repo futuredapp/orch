@@ -246,7 +246,7 @@ describe('runRecoveryLoop give-up paths', () => {
 // ---------------------------------------------------------------------------
 
 describe('runRecoveryLoop fail-fast', () => {
-  it('declines immediately on auth with no attempts and an empty log', async () => {
+  it('declines immediately on auth with no attempts and logs a single failed-fast entry naming the class', async () => {
     const clock = new FakeClock()
     const { runAttempt, calls } = scripted([])
 
@@ -267,7 +267,13 @@ describe('runRecoveryLoop fail-fast', () => {
     expect(result.ok).toBe(false)
     if (!result.ok) {
       expect(result.failure.kind).toBe('fail')
-      expect(result.recoveryLog).toHaveLength(0)
+      expect(result.recoveryLog).toHaveLength(1)
+      expect(result.recoveryLog[0]).toMatchObject({
+        errorClass: 'auth',
+        outcome: 'failed-fast',
+        parentSessionId: 'checkpoint-0',
+        waitMs: 0,
+      })
     }
   })
 
@@ -292,8 +298,75 @@ describe('runRecoveryLoop fail-fast', () => {
     if (!result.ok) {
       expect(result.failure.kind).toBe('fail')
       if (result.failure.kind === 'fail') expect(result.failure.category).toBe('auth')
-      // The first overload attempt errored-again; the auth attempt then declined.
-      expect(result.recoveryLog.map((e) => e.outcome)).toEqual(['errored-again', 'errored-again'])
+      // Both overload attempts errored-again; the auth re-classification then
+      // fails fast, appending a failed-fast entry that names the class.
+      expect(result.recoveryLog.map((e) => e.outcome)).toEqual([
+        'errored-again',
+        'errored-again',
+        'failed-fast',
+      ])
+      expect(result.recoveryLog.at(-1)).toMatchObject({
+        errorClass: 'auth',
+        outcome: 'failed-fast',
+      })
+    }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Launch failure — a startup crash fails fast with no backoff (issue 2026-06-23)
+// ---------------------------------------------------------------------------
+
+/** Wraps a FakeClock to count `sleep` calls — proves a fail-fast path never
+ *  enters the backoff. */
+class CountingClock {
+  sleeps = 0
+  readonly #inner = new FakeClock()
+  now(): number {
+    return this.#inner.now()
+  }
+  sleep(ms: number, signal?: AbortSignal): Promise<void> {
+    this.sleeps += 1
+    return this.#inner.sleep(ms, signal)
+  }
+}
+
+describe('runRecoveryLoop launch fail-fast', () => {
+  it('returns fail without forking or sleeping when the initial error is non-transient', async () => {
+    const clock = new CountingClock()
+    const { runAttempt, calls } = scripted([])
+    // A startup crash: stderr-bearing, no info events, non-zero exit.
+    const launchCrash: AttemptOutcome = {
+      result: {
+        finalEvent: { kind: 'terminal', type: 'error', message: 'produced no terminal event' },
+        exitCode: 1,
+        stderr: 'Error loading rules: invalid decision: deny',
+      },
+      sawProgress: false,
+      infoEvents: [],
+    }
+
+    const result = await runRecoveryLoop({
+      strategy: backoffResume(),
+      clock,
+      checkpointSessionId: 'checkpoint-0',
+      // Classify off the forwarded stderr — proves toSignal threads it through.
+      classify: (signal) =>
+        signal.stderr.includes('Error loading rules')
+          ? { category: 'launch', transient: false }
+          : { category: 'unknown', transient: true },
+      initial: launchCrash,
+      runAttempt,
+    })
+
+    expect(clock.sleeps).toBe(0)
+    expect(calls()).toBe(0)
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.failure.kind).toBe('fail')
+      if (result.failure.kind === 'fail') expect(result.failure.category).toBe('launch')
+      expect(result.recoveryLog).toHaveLength(1)
+      expect(result.recoveryLog[0]).toMatchObject({ errorClass: 'launch', outcome: 'failed-fast' })
     }
   })
 })

@@ -47,7 +47,7 @@ const runIdVal: RunId = forcedId !== undefined ? runId(forcedId) : generateRunId
 const CREATE_FILE = step.define('create-hello-file', {
   agent: claude({
     bare: false,
-    flags: ['--permission-mode', 'bypassPermissions'],
+    permissions: 'bypass',
   }),
   prompt:
     'Create a file at ./hello.txt containing exactly the text "Hello World" ' +

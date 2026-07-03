@@ -416,19 +416,29 @@ export class FileStateStore implements StateStore {
     return parseVersionedState(parsed, file)
   }
 
-  async saveStep(rid: RunId, entry: StepEntry): Promise<void> {
+  // Serializes an atomic-write op per run through #writeQueue so read-modify-write
+  // sequences can't race. ANY new method that mutates a run's state.json MUST route
+  // through here — otherwise it can clobber an in-flight queued write.
+  #enqueueWrite<T>(rid: RunId, op: () => Promise<T>): Promise<T> {
     const prev = this.#writeQueue.get(rid) ?? Promise.resolve()
-    const next = prev.then(() => this.#doSaveStep(rid, entry))
+    const next = prev.then(op)
     // Swallow rejections on the chain reference so a failed write doesn't
     // prevent subsequent writes from starting.
-    const swallowed = next.catch(() => {})
+    const swallowed = next.then(
+      () => {},
+      () => {},
+    )
     this.#writeQueue.set(rid, swallowed)
     // Clean up when the chain goes idle (no new write was enqueued after us).
     swallowed.then(() => {
       if (this.#writeQueue.get(rid) === swallowed) this.#writeQueue.delete(rid)
     })
     // The caller awaits the real (unswallowed) promise — errors propagate.
-    await next
+    return next
+  }
+
+  async saveStep(rid: RunId, entry: StepEntry): Promise<void> {
+    return this.#enqueueWrite(rid, () => this.#doSaveStep(rid, entry))
   }
 
   async #doSaveStep(rid: RunId, entry: StepEntry): Promise<void> {
@@ -470,54 +480,60 @@ export class FileStateStore implements StateStore {
       readonly args?: PersistedWorkflowArgs
     },
   ): Promise<void> {
-    const existing = await this.loadRun(rid)
-    if (existing !== undefined) return
+    return this.#enqueueWrite(rid, async () => {
+      const existing = await this.loadRun(rid)
+      if (existing !== undefined) return
 
-    const dir = this.#runDir(rid)
-    const file = this.#statePath(rid)
-    const state: RunState = {
-      schemaVersion: 5,
-      id: rid,
-      status: 'running',
-      workflowName: meta?.workflowName,
-      startedAt: meta?.startedAt ?? 0,
-      ...(meta?.args !== undefined ? { args: meta.args } : {}),
-      steps: {},
-    }
+      const dir = this.#runDir(rid)
+      const file = this.#statePath(rid)
+      const state: RunState = {
+        schemaVersion: 5,
+        id: rid,
+        status: 'running',
+        workflowName: meta?.workflowName,
+        startedAt: meta?.startedAt ?? 0,
+        ...(meta?.args !== undefined ? { args: meta.args } : {}),
+        steps: {},
+      }
 
-    await this.#fs.mkdir(dir, { recursive: true })
-    await this.#atomicWrite(file, JSON.stringify(state, null, 2))
+      await this.#fs.mkdir(dir, { recursive: true })
+      await this.#atomicWrite(file, JSON.stringify(state, null, 2))
+    })
   }
 
   async setArgs(rid: RunId, args: PersistedWorkflowArgs): Promise<void> {
-    const existing = await this.loadRun(rid)
-    if (existing === undefined) {
-      throw new Error(`Cannot set args: run "${rid}" does not exist`)
-    }
+    return this.#enqueueWrite(rid, async () => {
+      const existing = await this.loadRun(rid)
+      if (existing === undefined) {
+        throw new Error(`Cannot set args: run "${rid}" does not exist`)
+      }
 
-    const file = this.#statePath(rid)
-    const state: RunState = {
-      ...existing,
-      args,
-    }
+      const file = this.#statePath(rid)
+      const state: RunState = {
+        ...existing,
+        args,
+      }
 
-    await this.#atomicWrite(file, JSON.stringify(state, null, 2))
+      await this.#atomicWrite(file, JSON.stringify(state, null, 2))
+    })
   }
 
   async setStatus(rid: RunId, status: RunState['status'], endedAt?: number): Promise<void> {
-    const existing = await this.loadRun(rid)
-    if (existing === undefined) {
-      throw new Error(`Cannot set status: run "${rid}" does not exist`)
-    }
+    return this.#enqueueWrite(rid, async () => {
+      const existing = await this.loadRun(rid)
+      if (existing === undefined) {
+        throw new Error(`Cannot set status: run "${rid}" does not exist`)
+      }
 
-    const file = this.#statePath(rid)
-    const state: RunState = {
-      ...existing,
-      status,
-      ...(endedAt !== undefined ? { endedAt } : {}),
-    }
+      const file = this.#statePath(rid)
+      const state: RunState = {
+        ...existing,
+        status,
+        ...(endedAt !== undefined ? { endedAt } : {}),
+      }
 
-    await this.#atomicWrite(file, JSON.stringify(state, null, 2))
+      await this.#atomicWrite(file, JSON.stringify(state, null, 2))
+    })
   }
 
   // NOTE: fsync-before-rename is deferred to Phase 10+. Power-loss window

@@ -67,17 +67,21 @@ export function defineConfig(config: OrchestratorConfig): OrchestratorConfig {
 
 const RunModeSchema: z.ZodType<RunMode> = z.enum(RUN_MODES)
 
-const PromptsSchema = z.object({
-  include: z.array(z.string().min(1)),
-  exclude: z.array(z.string().min(1)),
-})
+const PromptsSchema = z
+  .object({
+    include: z.array(z.string().min(1)),
+    exclude: z.array(z.string().min(1)),
+  })
+  .strict()
 
-const ConfigSchema = z.object({
-  workflows: z.record(z.string().min(1), z.string().min(1)),
-  defaultMode: RunModeSchema.optional(),
-  prompts: PromptsSchema.optional(),
-  cmux: z.object({ enabled: z.boolean().optional() }).optional(),
-})
+const ConfigSchema = z
+  .object({
+    workflows: z.record(z.string().min(1), z.string().min(1)),
+    defaultMode: RunModeSchema.optional(),
+    prompts: PromptsSchema.optional(),
+    cmux: z.object({ enabled: z.boolean().optional() }).strict().optional(),
+  })
+  .strict()
 
 // ---------------------------------------------------------------------------
 // ConfigLoadError — thrown when config cannot be loaded or is invalid

@@ -26,6 +26,7 @@ export type ErrorCategory =
   | 'billing' // fail fast
   | 'invalid_request' // fail fast
   | 'model_not_found' // fail fast
+  | 'launch' // CLI died at startup before any stdout (bad config / missing binary) — fail fast
   | 'unknown' // unclassifiable — retry within the envelope
 
 /**
@@ -56,6 +57,7 @@ export const FAIL_FAST_CATEGORIES: ReadonlySet<ErrorCategory> = new Set<ErrorCat
   'billing',
   'invalid_request',
   'model_not_found',
+  'launch',
   'rate_limit',
   'usage_limit',
 ])
@@ -83,4 +85,23 @@ export function categoryForStatus(status: number): ErrorCategory {
   if (status === 401 || status === 403) return 'auth'
   if (status >= 500 && status <= 599) return 'server_error'
   return 'unknown'
+}
+
+/**
+ * True for the structural shape of a CLI that died at startup before doing any
+ * work: a non-zero exit, **no** parsed stdout info events, and a non-empty
+ * stderr tail. A genuine retryable API failure reports its status/keywords on
+ * stdout (caught earlier) and emits info events along the way, so this predicate
+ * only matches a launch/config crash — it must be consulted at a classifier's
+ * `unknown` fallthrough, after the status/keyword checks, never before.
+ *
+ * Wording-independent on purpose: it keys off the no-output shape, not the
+ * stderr phrasing, so it survives a CLI changing its error text.
+ */
+export function isLaunchFailureSignal(signal: {
+  readonly exitCode: number
+  readonly infoEvents: readonly unknown[]
+  readonly stderr: string
+}): boolean {
+  return signal.exitCode !== 0 && signal.infoEvents.length === 0 && signal.stderr.trim().length > 0
 }

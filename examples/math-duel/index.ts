@@ -49,7 +49,7 @@ const CHECK_SCHEMA = z.object({
 // --- runners ----------------------------------------------------------------
 
 // Autonomous Claude: bypass permission prompts so `-p` mode can finish unattended.
-const claudeAgent = claude({ bare: false, flags: ['--permission-mode', 'bypassPermissions'] })
+const claudeAgent = claude({ bare: false, permissions: 'bypass' })
 
 // Codex needs its own deps (schema temp files + version preflight). `read-only`
 // is enough — the solver computes, it never writes the workspace.

@@ -297,6 +297,22 @@ describe('orch logs <runId> --follow', () => {
     expect(io.stdout()).toContain('── done ──')
   })
 
+  it('exits the follow loop when the run terminates as failed', async () => {
+    tmpDir = await fs.mkdtemp('/tmp/orch-logs-follow-failed-')
+    const deps = makeDeps()
+    const rid = 'r-2026-04-29-000014-gh' as RunId
+    await seedRun(deps, rid, 'plan', 'failed')
+
+    const io = capture()
+    try {
+      const code = await logsCmd(deps, rid, {}, opts({ follow: true, step: 'plan' }))
+      expect(code).toBe(EXIT.OK)
+    } finally {
+      io.restore()
+    }
+    expect(io.stdout()).toContain('── done ──')
+  })
+
   it('tails an in-progress run and exits 0 once the run reaches a terminal status', async () => {
     tmpDir = await fs.mkdtemp('/tmp/orch-logs-follow-running-')
     const deps = makeDeps()
@@ -317,4 +333,57 @@ describe('orch logs <runId> --follow', () => {
       io.restore()
     }
   }, 10_000)
+})
+
+// ---------------------------------------------------------------------------
+// runId prefix resolution (mirrors `orch status`)
+// ---------------------------------------------------------------------------
+
+describe('orch logs <prefix>', () => {
+  it('resolves a unique runId prefix like status does and streams the transcript', async () => {
+    tmpDir = await fs.mkdtemp('/tmp/orch-logs-prefix-unique-')
+    const deps = makeDeps()
+    await seedRun(deps, 'r-2026-04-29-000030-cc' as RunId, 'demo', 'completed')
+
+    const io = capture()
+    try {
+      const code = await logsCmd(deps, 'r-2026-04-29-000030', {}, opts())
+      expect(code).toBe(EXIT.OK)
+    } finally {
+      io.restore()
+    }
+    expect(io.stdout()).toContain('── done ──')
+    expect(io.stderr()).toBe('')
+  })
+
+  it('exits 2 with the ambiguous message when a prefix matches more than one run', async () => {
+    tmpDir = await fs.mkdtemp('/tmp/orch-logs-prefix-ambiguous-')
+    const deps = makeDeps()
+    await seedRun(deps, 'r-2026-04-29-000020-aa' as RunId, 'demo', 'completed')
+    await seedRun(deps, 'r-2026-04-29-000021-bb' as RunId, 'demo', 'completed')
+
+    const io = capture()
+    try {
+      const code = await logsCmd(deps, 'r-2026-04-29-00002', {}, opts())
+      expect(code).toBe(EXIT.CONFIG_ERROR)
+    } finally {
+      io.restore()
+    }
+    expect(io.stderr()).toContain('Ambiguous run ID prefix "r-2026-04-29-00002" matches 2 runs')
+  })
+
+  it('exits 2 with the not-found message when a prefix matches no run', async () => {
+    tmpDir = await fs.mkdtemp('/tmp/orch-logs-prefix-nomatch-')
+    const deps = makeDeps()
+    await seedRun(deps, 'r-2026-04-29-000040-dd' as RunId, 'demo', 'completed')
+
+    const io = capture()
+    try {
+      const code = await logsCmd(deps, 'r-2026-04-29-999999', {}, opts())
+      expect(code).toBe(EXIT.CONFIG_ERROR)
+    } finally {
+      io.restore()
+    }
+    expect(io.stderr()).toContain('No run found matching "r-2026-04-29-999999"')
+  })
 })

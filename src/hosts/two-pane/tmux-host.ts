@@ -65,6 +65,7 @@ import {
 } from './pane-map/index.ts'
 import { createPaneQueue, type PaneQueue } from './pane-queue.ts'
 import { startPipePaneCapture } from './pipe-pane-capture.ts'
+import { createPromptStore, NULL_PROMPT_STORE, type PromptStore } from './prompt-store.ts'
 import { installStdioCapture, type StdioCapture } from './stdio-capture.ts'
 import { type StartStepsViewHandle, type StepsIntent, startStepsView } from './steps-view/index.ts'
 import { restoreTerminalModes } from './terminal-reset.ts'
@@ -669,6 +670,12 @@ export async function createTmuxHost(opts: TmuxHostOptions): Promise<Host> {
     stdout: opts.stdout ?? process.stdout,
     writeTerminalReset,
     tee: createPerStepTee(opts.logger),
+    // Always-on prompt sink (R8) rooted in the run's stateDir — independent of
+    // the file logger. NULL store when no basePath (pure fixtures, no replay).
+    promptStore:
+      opts.basePath !== undefined
+        ? createPromptStore(toPath(`${opts.basePath}/${opts.runId}`))
+        : NULL_PROMPT_STORE,
     ...(opts.logger !== undefined ? { logger: opts.logger } : {}),
     ...(pipePaneCapture !== undefined ? { pipePaneCapture } : {}),
     ...(stdioCapture !== undefined ? { stdioCapture } : {}),
@@ -819,12 +826,21 @@ function wrapHostWithStepsView(
   const wrappedTeardown = async (): Promise<void> => {
     if (teardownPromise === undefined) {
       teardownPromise = (async () => {
-        // Order: stop intent dispatch (controller) first so a late intent can't
-        // reach the tearing-down tmux server, then stop the tailer + child,
-        // then the inner host (which kills the session).
-        if (controller !== undefined) await controller.stop()
-        if (steps !== undefined) await steps.stop()
-        await inner.teardown()
+        // Order: stop the steps-view tailers first so no NEW user intent can be
+        // dispatched at the tearing-down tmux server. Then run the inner host,
+        // which drains the lifecycle choreographer (so every in-flight
+        // `registerSource` settles into the pane map) BEFORE it stops the
+        // controller and reaps the per-source sessions. Stopping the controller
+        // here, ahead of the drain, would trip `registerSource`'s `stopped`
+        // guard and silently drop queued live-source registrations, leaking
+        // their per-source tmux sessions past teardown (U4 regression).
+        // The finally guarantees the inner teardown (and its killSession)
+        // runs even if a tailer refuses to stop cleanly.
+        try {
+          if (steps !== undefined) await steps.stop()
+        } finally {
+          await inner.teardown()
+        }
       })()
     }
     return teardownPromise
@@ -879,6 +895,11 @@ interface BuildHostDeps {
    *  before pane-queue enqueue so the file mirrors per-step ordering even
    *  when two parallel branches interleave on the right pane. */
   readonly tee: PerStepTee
+  /** Always-on per-step prompt sink (R8). The choreographer writes the raw
+   *  assembled prompt here at autonomous `step:start`, independent of the
+   *  optional file logger, so replay can reconstruct the prompt even when
+   *  file logging is disabled. NULL store when no `stateDir` is available. */
+  readonly promptStore: PromptStore
   /**
    * Right-pane controller for the pane-map. When present, lifecycle hooks
    * register/unregister `file-tail` sources for autonomous + command live
@@ -960,6 +981,7 @@ function buildHost(deps: BuildHostDeps): Host {
   const choreographer = createLifecycleChoreographer({
     controller,
     tee: deps.tee,
+    promptStore: deps.promptStore,
     logger: deps.logger,
     runId: deps.runId,
     clock: deps.clock,
@@ -1468,8 +1490,17 @@ function buildHost(deps: BuildHostDeps): Host {
     torndown = true
     // Let any queued lifecycle choreography settle before draining the tee —
     // pending `handle()` work may still hold a tee sink open, and draining
-    // mid-write would race a close against a write (KTD6).
+    // mid-write would race a close against a write (KTD6). This must also run
+    // BEFORE the controller is stopped: the drain replays queued
+    // `registerSource` calls, and a stopped controller drops them at its
+    // `stopped` guard, orphaning the per-source sessions they would have
+    // reaped below (U4).
     await choreographer.quiescent()
+    // Now that every register/unregister has settled, stop the controller so no
+    // late user intent reaches the tmux server we are about to kill. Ordered
+    // after the drain, before `teardownSessions` - see the comment above and
+    // the wrapped-teardown ordering note.
+    if (deps.controller !== undefined) await deps.controller.stop()
     // Flush any open per-step formatted_output sinks so SIGINT mid-step
     // still leaves bytes on disk before the run-ended record.
     await deps.tee.drain()

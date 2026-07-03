@@ -31,6 +31,8 @@ export interface StepAgent {
   readonly agent: Runner
   /** Forwarded to the runner (real-agent carries a prompt; fakes do not). */
   readonly prompt?: string
+  /** Orch-injected fragment appended via the `extraPrompt` override (AT-8). */
+  readonly extraPrompt?: string
 }
 
 /** Builds the agent that drives a given step — the only axis that varies. */
@@ -62,6 +64,8 @@ export function createStaticFullHostApp(deps: StaticFullHostDeps): FullHostApp {
       driverLabel: label,
       // Navigation always drives the steps (left) pane; `sendKeys` targets it.
       sendKey: (input) => harness.sendKeys(input),
+      // Server-wide paste-buffer reader for the AT-6 clipboard assertion.
+      clipboard: { tmux: fixture.tmux, socket: fixture.socket },
     })
 
   const leftPane = new LeftPane(paneDeps(harness.left))
@@ -78,6 +82,7 @@ export function createStaticFullHostApp(deps: StaticFullHostDeps): FullHostApp {
           name,
           agent: built.agent,
           ...(built.prompt !== undefined ? { prompt: built.prompt } : {}),
+          ...(built.extraPrompt !== undefined ? { extraPrompt: built.extraPrompt } : {}),
           ...(spec.mode !== undefined ? { mode: spec.mode } : {}),
           ...(spec.autoStop !== undefined ? { autoStop: spec.autoStop } : {}),
         }

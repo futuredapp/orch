@@ -21,7 +21,7 @@ function turnFailed(message: string, extra: Record<string, unknown> = {}): Termi
 }
 
 function signal(finalEvent: TerminalEvent, exitCode = 1): ClassifyErrorSignal {
-  return { finalEvent, exitCode, infoEvents: [] }
+  return { finalEvent, exitCode, infoEvents: [], stderr: '' }
 }
 
 function info(type: string): RunnerEvent {
@@ -75,6 +75,101 @@ describe('codex().classifyError', () => {
 
     expect(classified?.category).toBe('unknown')
     expect(classified?.transient).toBe(true)
+  })
+
+  it('fails fast on a startup crash: no stdout events, fast non-zero exit, stderr only', () => {
+    const runner = codex({})
+    // The shape runRunner produces when the CLI dies before any stdout JSON:
+    // a synthesized "no terminal event" error, no info events, and the real
+    // reason captured on stderr.
+    const startupCrash: ClassifyErrorSignal = {
+      finalEvent: {
+        kind: 'terminal',
+        type: 'error',
+        message:
+          'runner "codex" produced no terminal event\nError loading rules:\n…default.rules:5: invalid decision: deny',
+      },
+      exitCode: 1,
+      infoEvents: [],
+      stderr: 'Error loading rules:\n…default.rules:5: invalid decision: deny',
+    }
+
+    const classified = runner.classifyError?.(startupCrash, 'autonomous')
+
+    expect(classified?.category).toBe('launch')
+    expect(classified?.transient).toBe(false)
+  })
+
+  it('does not flip a genuine transient turn.failed to launch just because nothing parsed', () => {
+    const runner = codex({})
+    // A real turn.failed reports on stdout (parsed terminal event, no stderr) —
+    // the launch heuristic must not fire here.
+    const classified = runner.classifyError?.(
+      signal(turnFailed('something inscrutable')),
+      'autonomous',
+    )
+
+    expect(classified?.category).toBe('unknown')
+    expect(classified?.transient).toBe(true)
+  })
+
+  it('classifies an "unauthorized: invalid api key" turn.failed as auth (fail fast)', () => {
+    const runner = codex({})
+
+    const classified = runner.classifyError?.(
+      signal(turnFailed('unauthorized: invalid api key')),
+      'autonomous',
+    )
+
+    expect(classified?.category).toBe('auth')
+    expect(classified?.transient).toBe(false)
+  })
+
+  it('classifies a "not logged in" turn.failed as auth (fail fast)', () => {
+    const runner = codex({})
+
+    const classified = runner.classifyError?.(
+      signal(turnFailed('not logged in - run codex login')),
+      'autonomous',
+    )
+
+    expect(classified?.category).toBe('auth')
+    expect(classified?.transient).toBe(false)
+  })
+
+  it('classifies an "exceeded your quota" turn.failed as billing (fail fast)', () => {
+    const runner = codex({})
+
+    const classified = runner.classifyError?.(
+      signal(turnFailed('you have exceeded your quota')),
+      'autonomous',
+    )
+
+    expect(classified?.category).toBe('billing')
+    expect(classified?.transient).toBe(false)
+  })
+
+  it('classifies a "billing issue: payment required" turn.failed as billing (fail fast)', () => {
+    const runner = codex({})
+
+    const classified = runner.classifyError?.(
+      signal(turnFailed('billing issue: payment required')),
+      'autonomous',
+    )
+
+    expect(classified?.category).toBe('billing')
+    expect(classified?.transient).toBe(false)
+  })
+
+  it('does not classify a path containing "billing" as billing (word-boundary guard)', () => {
+    const runner = codex({})
+
+    const classified = runner.classifyError?.(
+      signal(turnFailed('cannot read /home/user/billingReport.json')),
+      'autonomous',
+    )
+
+    expect(classified?.category).not.toBe('billing')
   })
 })
 

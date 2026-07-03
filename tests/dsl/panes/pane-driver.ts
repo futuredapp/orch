@@ -104,4 +104,31 @@ export interface PaneDriver {
    * than a required interface method) so the rendering drivers need no stub.
    */
   assertFocused?(): Promise<void>
+
+  // --- R9 / AT-9: copy-mode viewport (real-tmux only) -----------------------
+
+  /**
+   * Assert `text` IS in the pane's copy-mode-aware VISIBLE viewport — what a
+   * watcher actually sees when the pane is scrolled (e.g. an autonomous step
+   * pinned to the top of its prompt). OPTIONAL: only the real-tmux driver can
+   * observe the copy-mode scroll position; other drivers omit it and the Pane
+   * Object falls back to `notImplemented`.
+   */
+  assertVisibleViewportShows?(text: string): Promise<void>
+  /** Assert `text` is NOT in the copy-mode-aware visible viewport (below the
+   *  fold). Counterpart to `assertVisibleViewportShows`; same optionality. */
+  assertVisibleViewportHides?(text: string): Promise<void>
+
+  // --- AT-6: OSC 52 "escaped, not executed" (real-tmux only) ----------------
+
+  /**
+   * Assert the tmux paste buffer does NOT contain `payload` — the decoded body
+   * of the prompt's OSC 52 clipboard-write. With the appliance's
+   * `set-clipboard on`, an OSC 52 that reached a pane unescaped would populate
+   * a paste buffer with `payload`; its absence proves the sequence was escaped
+   * to visible text before the tee, not executed against the clipboard (AE6).
+   * OPTIONAL: only the real-tmux driver can observe a real paste buffer; other
+   * drivers omit it and the Pane Object falls back to `notImplemented`.
+   */
+  assertClipboardUnchanged?(payload: string): Promise<void>
 }

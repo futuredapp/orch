@@ -19,7 +19,7 @@ function apiRetry(errorStatus: number, extra: Record<string, unknown> = {}): Inf
 }
 
 function signal(overrides: Partial<ClassifyErrorSignal>): ClassifyErrorSignal {
-  return { finalEvent: errorTerminal(), exitCode: 1, infoEvents: [], ...overrides }
+  return { finalEvent: errorTerminal(), exitCode: 1, infoEvents: [], stderr: '', ...overrides }
 }
 
 describe('classifyClaudeError', () => {
@@ -103,5 +103,33 @@ describe('classifyClaudeError', () => {
     )
 
     expect(classified.category).toBe('unknown')
+  })
+
+  it('fails fast as launch on a startup crash: no status, no info events, stderr only', () => {
+    const classified = classifyClaudeError(
+      signal({
+        finalEvent: { kind: 'terminal', type: 'error', message: 'produced no terminal event' },
+        infoEvents: [],
+        exitCode: 1,
+        stderr: 'env: claude: No such file or directory',
+      }),
+    )
+
+    expect(classified.category).toBe('launch')
+    expect(classified.transient).toBe(false)
+  })
+
+  it('keeps an unreadable failure with empty stderr as unknown/retryable, not launch', () => {
+    const classified = classifyClaudeError(
+      signal({
+        finalEvent: errorTerminal({ error: 'rate_limit', isApiErrorMessage: true }),
+        infoEvents: [],
+        exitCode: 1,
+        stderr: '',
+      }),
+    )
+
+    expect(classified.category).toBe('unknown')
+    expect(classified.transient).toBe(true)
   })
 })

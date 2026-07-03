@@ -127,6 +127,8 @@ export interface HarnessStep {
   readonly mode?: StepMode
   /** Optional prompt forwarded to the runner. */
   readonly prompt?: string
+  /** Orch-injected fragment appended to the assembled prompt via `extraPrompt` (AT-8). */
+  readonly extraPrompt?: string
   /** Interactive auto-stop opt-in. Only valid with `mode: 'interactive'`. */
   readonly autoStop?: boolean
 }
@@ -372,6 +374,7 @@ type WorkflowRun = Parameters<Parameters<typeof workflow>[1]>[0]
 async function runHarnessStep(run: WorkflowRun, harnessStep: HarnessStep): Promise<void> {
   const overrides: RunOverrides = {
     ...(harnessStep.prompt !== undefined ? { prompt: harnessStep.prompt } : {}),
+    ...(harnessStep.extraPrompt !== undefined ? { extraPrompt: harnessStep.extraPrompt } : {}),
     ...(harnessStep.mode !== undefined ? { mode: harnessStep.mode } : {}),
   }
   await run(

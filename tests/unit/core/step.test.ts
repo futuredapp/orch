@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'bun:test'
+import type { Equal, Expect } from '@orch/test/type-assertions.ts'
 import { z } from 'zod'
 import { executionContext } from '../../../src/core/execution-context.ts'
 import { backoffResume, noRetry } from '../../../src/core/index.ts'
 import { schema } from '../../../src/core/schema.ts'
-import { onCacheHit, type StepConfig, step } from '../../../src/core/step.ts'
+import { onCacheHit, type Step, type StepConfig, step } from '../../../src/core/step.ts'
 import { type Path, path, stepName } from '../../../src/core/types.ts'
 import { FakeRunner } from '../../../src/runners/index.ts'
 import { FakeProcessService } from '../../../src/services/index.ts'
@@ -135,6 +136,62 @@ describe('step.define', () => {
 
     expect(() => step.define('brainstorm', badConfig as never)).toThrow(
       'interactive steps cannot have "returns:"',
+    )
+  })
+
+  it('stores a SchemaWrapper when returns is a bare Zod schema', () => {
+    const agent = makeFakeRunner()
+
+    const s = step.define('extract', { agent, prompt: 'go', returns: z.object({ n: z.number() }) })
+
+    expect(s.config.kind).toBe('agent')
+    if (s.config.kind === 'agent') {
+      expect(typeof s.config.returns?.jsonSchema).toBe('string')
+      expect(s.config.returns?.jsonSchema).toContain('"type":"object"')
+      expect(s.config.returns?.zodSchema.safeParse({ n: 1 }).success).toBe(true)
+    }
+  })
+
+  it('infers Step<T> from a bare Zod schema in returns', () => {
+    const BARE = step.define('bare', {
+      agent: makeFakeRunner(),
+      returns: z.object({ n: z.number() }),
+    })
+
+    type _BareInfersResult = Expect<Equal<typeof BARE, Step<{ n: number }>>>
+    expect(BARE.config.kind).toBe('agent')
+  })
+
+  it('still stores an equivalent SchemaWrapper when returns is a wrapped schema', () => {
+    const agent = makeFakeRunner()
+
+    const bare = step.define('extract-bare', {
+      agent,
+      prompt: 'go',
+      returns: z.object({ n: z.number() }),
+    })
+    const wrapped = step.define('extract-wrapped', {
+      agent,
+      prompt: 'go',
+      returns: schema(z.object({ n: z.number() })),
+    })
+
+    if (bare.config.kind !== 'agent' || wrapped.config.kind !== 'agent') {
+      throw new Error('expected agent configs')
+    }
+    expect(wrapped.config.returns?.jsonSchema).toBe(bare.config.returns?.jsonSchema)
+  })
+
+  it('throws when a bare Zod schema produces an empty JSON Schema', () => {
+    const agent = makeFakeRunner()
+    const fakeV4Schema = {
+      _def: { typeName: 'ZodSomethingV4Only' },
+      safeParse: () => ({ success: true }),
+      // biome-ignore lint/suspicious/noExplicitAny: deliberately mis-typed input
+    } as any
+
+    expect(() => step.define('extract', { agent, prompt: 'go', returns: fakeV4Schema })).toThrow(
+      'empty JSON Schema',
     )
   })
 

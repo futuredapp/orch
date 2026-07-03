@@ -2,15 +2,16 @@
 // Recording fakes for LifecycleChoreographer unit tests.
 // ---------------------------------------------------------------------------
 //
-// The choreographer drives two collaborators — a `RightPaneController` and a
-// `PerStepTee`. Its payload is the *ordering* of calls across both (e.g.
-// "unregisterSource BEFORE tee.close"), so both fakes push into one shared,
-// ordered `calls` log. This is the repo's first recording
+// The choreographer drives three collaborators — a `RightPaneController`, a
+// `PerStepTee`, and a `PromptStore`. Its payload is the *ordering* of calls
+// across them (e.g. "unregisterSource BEFORE tee.close"), so the fakes push
+// into one shared, ordered `calls` log. This is the repo's first recording
 // `FakeRightPaneController`; it is deliberately reusable by future right-pane
 // tests.
 
 import type { PerStepTee } from '../../src/hosts/plain/per-step-tee.ts'
 import type { RightPaneController } from '../../src/hosts/two-pane/pane-map/index.ts'
+import type { PromptStore } from '../../src/hosts/two-pane/prompt-store.ts'
 
 type RegisterArgs = Parameters<RightPaneController['registerSource']>
 type UnregisterArgs = Parameters<RightPaneController['unregisterSource']>
@@ -58,6 +59,13 @@ export type RecordedCall =
       readonly label: 'controller.emitBanner'
       readonly banner: BannerArg
     }
+  | {
+      readonly on: 'promptStore'
+      readonly method: 'write'
+      readonly label: 'promptStore.write'
+      readonly step: string
+      readonly prompt: string
+    }
 
 /**
  * Decide whether a given controller call should reject. `method` is the call
@@ -73,6 +81,7 @@ export interface RecordingCollaborators {
   labels(): string[]
   readonly controller: RightPaneController
   readonly tee: PerStepTee
+  readonly promptStore: PromptStore
 }
 
 export function createRecordingCollaborators(
@@ -100,6 +109,13 @@ export function createRecordingCollaborators(
     },
     async drain(): Promise<void> {
       /* no-op */
+    },
+  }
+
+  const promptStore: PromptStore = {
+    async write(step, prompt): Promise<void> {
+      calls.push({ on: 'promptStore', method: 'write', label: 'promptStore.write', step, prompt })
+      await maybeReject('promptStore.write')
     },
   }
 
@@ -156,5 +172,6 @@ export function createRecordingCollaborators(
     labels: () => calls.map((c) => c.label),
     controller,
     tee,
+    promptStore,
   }
 }

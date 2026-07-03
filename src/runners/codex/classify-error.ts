@@ -23,6 +23,7 @@
 import {
   type ClassifiedError,
   categoryForStatus,
+  isLaunchFailureSignal,
   isTransientCategory,
 } from '../../core/recovery/index.ts'
 import type { ClassifyErrorSignal } from '../types.ts'
@@ -101,6 +102,13 @@ export function classifyCodexError(signal: ClassifyErrorSignal): ClassifiedError
 
   const byKeyword = categoryFromKeywords(text)
   if (byKeyword !== undefined) return byKeyword
+
+  // A crash before any stdout protocol event (bad `.codex/rules`, missing
+  // binary, auth failure on first byte) is a launch/config failure, not a
+  // retryable hiccup — fail fast so the stderr surfaces instead of a 5-minute
+  // silent backoff. Consulted only here, after status/keyword checks, so a real
+  // transient turn.failed (reported on stdout) is never reclassified.
+  if (isLaunchFailureSignal(signal)) return { category: 'launch', transient: false }
 
   return { category: 'unknown', transient: true }
 }

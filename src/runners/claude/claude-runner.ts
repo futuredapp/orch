@@ -8,6 +8,8 @@ import { z } from 'zod'
 import type { ClassifiedError } from '../../core/recovery/index.ts'
 import { BunFsService, type FsService, mergeEnv } from '../../services/index.ts'
 import { type Path, path } from '../../services/types.ts'
+import { makeFlagGuard } from '../flag-guard.ts'
+import type { RunnerOptionsBase } from '../runner-options.ts'
 import type {
   AutoStopPreparation,
   ClassifyErrorSignal,
@@ -85,13 +87,23 @@ export type ClaudeResultErrorT = z.infer<typeof ClaudeResultError>
 // Options
 // ---------------------------------------------------------------------------
 
-export interface ClaudeOptions {
-  readonly model?: string
+export interface ClaudeOptions extends RunnerOptionsBase {
   readonly maxTurns?: number
   /** Pass `--bare` (API-key-only auth via ANTHROPIC_API_KEY, never the
    *  keychain). Opt-in: defaults to `false` so subscription auth works. */
   readonly bare?: boolean
-  readonly flags?: readonly string[]
+  /** Permission handling for unattended runs. 'bypass' expands to
+   *  `--permission-mode bypassPermissions`. Omit for Claude's default prompting.
+   *  For anything else, use `flags`. */
+  readonly permissions?: 'bypass'
+}
+
+// Canonical expansion for each `permissions` value. Extend this map and the
+// `permissions` union together if a second mode is ever needed.
+const PERMISSION_FLAGS: Readonly<
+  Record<NonNullable<ClaudeOptions['permissions']>, readonly string[]>
+> = {
+  bypass: ['--permission-mode', 'bypassPermissions'],
 }
 
 // ---------------------------------------------------------------------------
@@ -105,13 +117,7 @@ export interface ClaudeOptions {
 // a regular flag, not a secret denylist.
 const CLAUDE_FLAG_DENYLIST = ['--settings', '--mcp-config'] as const
 
-function assertFlagAllowed(flag: string): void {
-  for (const deny of CLAUDE_FLAG_DENYLIST) {
-    if (flag === deny || flag.startsWith(`${deny}=`)) {
-      throw new Error(`claude(): flag "${flag}" is on the denylist`)
-    }
-  }
-}
+const assertFlagAllowed = makeFlagGuard('claude', CLAUDE_FLAG_DENYLIST)
 
 // ---------------------------------------------------------------------------
 // Auto-stop hook injection (R3–R6, R9)
@@ -377,7 +383,14 @@ export function claude(
   opts: ClaudeOptions = {},
   deps: { readonly fs?: FsService } = {},
 ): Readonly<Runner> {
-  const { model, maxTurns, bare = false, flags } = opts
+  const { model, maxTurns, bare = false, permissions, flags } = opts
+  // Expand the typed `permissions` knob into its canonical flag once, then thread
+  // the combined list through every argv path (autonomous, interactive, resume,
+  // and fork recovery) so unattended runs never prompt on any of them.
+  const effectiveFlags = [
+    ...(permissions !== undefined ? PERMISSION_FLAGS[permissions] : []),
+    ...(flags ?? []),
+  ]
   // `fs` is only needed by `prepareAutoStop` (auto-stop opt-in). Defaulted so
   // the public `claude({...})` call form stays intact; tests inject a fake.
   const fs = deps.fs ?? new BunFsService()
@@ -388,7 +401,7 @@ export function claude(
     defaultView: { kind: 'transcript', pane: 'right' },
 
     buildCommand(ctx: RunnerContext): RunnerCommand {
-      for (const flag of flags ?? []) assertFlagAllowed(flag)
+      for (const flag of effectiveFlags) assertFlagAllowed(flag)
       for (const flag of ctx.extraArgs) assertFlagAllowed(flag)
 
       // Env: passthrough by default — every key from `process.env` reaches the
@@ -402,8 +415,8 @@ export function claude(
       const env = mergeEnv(process.env, extras, ctx.env)
       const argv =
         ctx.mode === 'interactive'
-          ? buildInteractiveArgv(ctx, { model, flags })
-          : buildAutonomousArgv(ctx, { model, maxTurns, bare, flags })
+          ? buildInteractiveArgv(ctx, { model, flags: effectiveFlags })
+          : buildAutonomousArgv(ctx, { model, maxTurns, bare, flags: effectiveFlags })
       return { argv, env }
     },
 
@@ -429,7 +442,7 @@ export function claude(
         '--resume',
         sessionId,
         ...(model ? ['--model', model] : []),
-        ...(flags ?? []),
+        ...effectiveFlags,
         ...ctx.extraArgs,
       ]
       const env = mergeEnv(process.env, { FORCE_COLOR: '3' }, ctx.env)
@@ -466,12 +479,12 @@ export function claude(
       checkpointSessionId: string,
       nudge: string,
     ): RunnerCommand {
-      for (const flag of flags ?? []) assertFlagAllowed(flag)
+      for (const flag of effectiveFlags) assertFlagAllowed(flag)
       for (const flag of ctx.extraArgs) assertFlagAllowed(flag)
       const argv = buildForkArgv(
         checkpointSessionId,
         nudge,
-        { model, maxTurns, bare, flags },
+        { model, maxTurns, bare, flags: effectiveFlags },
         ctx.extraArgs,
       )
       const env = mergeEnv(process.env, {}, ctx.env)

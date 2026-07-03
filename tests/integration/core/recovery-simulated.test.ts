@@ -190,3 +190,50 @@ for (const flavor of [
     })
   })
 }
+
+// The recovery-declined path (R15): a fail-fast category stops recovery without a
+// fork, and the thrown StepError must carry BOTH the declined summary AND the
+// runner's real terminal message - so a human can still see WHY it died, not just
+// that it was "not retryable".
+describe('a simulated agent that dies with a non-retryable launch reason', () => {
+  it('includes the runner error message when recovery declines a fail-fast category', async () => {
+    const deps = makeDeps('r-2026-06-08-200003-ff')
+    const forkCalls: string[] = []
+    const runner = simulate(
+      deps,
+      [
+        {
+          events: [assistant('launching the agent')],
+          failWith: { message: 'auth failed: Error loading rules: invalid decision: deny' },
+        },
+      ],
+      forkCalls,
+    )
+
+    const STEP = step.define('analyze', { agent: runner, recovery: FAST })
+    const wf = workflow('recovery-declined', async (run) => {
+      await run(STEP)
+    })
+
+    let caught: unknown
+    await wf.execute(deps).catch((e) => {
+      caught = e
+    })
+
+    expect(forkCalls).toHaveLength(0)
+    expect(caught).toBeInstanceOf(Error)
+    const message = (caught as Error).message
+    expect(message).toContain('recovery declined — auth is not retryable')
+    expect(message).toContain('Error loading rules: invalid decision: deny')
+
+    // The fast-fail now persists a StepEntry whose recoveryLog names the class,
+    // so a field diagnosis reads the errorClass straight from state.json.
+    const state = await deps.stateStore.loadRun(deps.runId)
+    expect(state?.status).toBe('failed')
+    expect(state?.steps.analyze?.recoveryLog).toHaveLength(1)
+    expect(state?.steps.analyze?.recoveryLog?.[0]).toMatchObject({
+      errorClass: 'auth',
+      outcome: 'failed-fast',
+    })
+  })
+})

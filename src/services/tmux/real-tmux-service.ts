@@ -7,7 +7,9 @@ import { path } from '../types.ts'
 import type {
   AttachSessionOptions,
   BindKeyOptions,
+  CancelCopyModeOptions,
   CapturePaneOptions,
+  CopyModeTopOptions,
   CreateSessionOptions,
   CreateSessionResult,
   DisplayMessageOptions,
@@ -28,6 +30,7 @@ import type {
   SendKeysOptions,
   SetHookOptions,
   SetOptionOptions,
+  ShowPasteBuffersOptions,
   SignalChannelOptions,
   SplitPaneOptions,
   SwapPaneOptions,
@@ -461,14 +464,61 @@ export class RealTmuxService implements TmuxService {
     if (exitCode !== 0) throw fail(exitCode, stderr, 'tmux select-pane failed')
   }
 
+  async enterCopyModeTop(opts: CopyModeTopOptions): Promise<void> {
+    // Two commands: enter copy-mode, then jump to the oldest history line.
+    // `history-top` is the same copy-command the appliance binds to `g`
+    // (session-init.ts), so it is known-good on the enforced tmux floor.
+    const enterArgv = ['tmux', '-L', opts.socket, 'copy-mode', '-t', opts.target]
+    const enter = await this.#run(enterArgv)
+    if (enter.exitCode !== 0) throw fail(enter.exitCode, enter.stderr, 'tmux copy-mode failed')
+
+    const topArgv = ['tmux', '-L', opts.socket, 'send-keys', '-X', '-t', opts.target, 'history-top']
+    const top = await this.#run(topArgv)
+    if (top.exitCode !== 0) {
+      throw fail(top.exitCode, top.stderr, 'tmux send-keys -X history-top failed')
+    }
+  }
+
+  async cancelCopyMode(opts: CancelCopyModeOptions): Promise<void> {
+    const argv = ['tmux', '-L', opts.socket, 'send-keys', '-X', '-t', opts.target, 'cancel']
+    const { stderr, exitCode } = await this.#run(argv)
+    if (exitCode === 0) return
+    // Tolerate "not in a mode": the pane was not in copy-mode, so there is
+    // nothing to cancel and the desired post-state (at the live tail) already
+    // holds. Anything else surfaces as a real failure.
+    if (/not in a mode/i.test(stderr)) return
+    throw fail(exitCode, stderr, 'tmux send-keys -X cancel failed')
+  }
+
   async capturePane(opts: CapturePaneOptions): Promise<string> {
     const argv = ['tmux', '-L', opts.socket, 'capture-pane', '-p', '-t', opts.target]
     if (opts.escapeCodes === true) argv.push('-e')
     if (opts.joinWrapped === true) argv.push('-J')
+    if (opts.startLine !== undefined) argv.push('-S', String(opts.startLine))
+    if (opts.endLine !== undefined) argv.push('-E', String(opts.endLine))
 
     const { stdout, stderr, exitCode } = await this.#run(argv)
     if (exitCode !== 0) throw fail(exitCode, stderr, 'tmux capture-pane failed')
     return stdout
+  }
+
+  async showPasteBuffers(opts: ShowPasteBuffersOptions): Promise<string> {
+    // Enumerate buffer names first — `list-buffers` exits 0 with empty stdout
+    // when none exist (whereas a bare `show-buffer` exits non-zero with "no
+    // buffers"), so this branch needs no error handling for the common case.
+    const listArgv = ['tmux', '-L', opts.socket, 'list-buffers', '-F', '#{buffer_name}']
+    const list = await this.#run(listArgv)
+    if (list.exitCode !== 0) throw fail(list.exitCode, list.stderr, 'tmux list-buffers failed')
+
+    const names = list.stdout.split('\n').filter((line) => line.length > 0)
+    const contents: string[] = []
+    for (const name of names) {
+      const showArgv = ['tmux', '-L', opts.socket, 'show-buffer', '-b', name]
+      const show = await this.#run(showArgv)
+      if (show.exitCode !== 0) throw fail(show.exitCode, show.stderr, 'tmux show-buffer failed')
+      contents.push(show.stdout)
+    }
+    return contents.join('\n')
   }
 
   async pipePane(opts: PipePaneOptions): Promise<void> {

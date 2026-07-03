@@ -2,9 +2,20 @@
 
 > **What you'll learn:** what orch does, the problem it solves, and the four ideas that make everything else fall into place.
 
-`orch` is a small tool for chaining coding-agent CLIs — Claude Code, Codex, and anything else you wrap — into deterministic, resumable workflows. You write the workflow as a plain TypeScript async function. orch handles the parts that are boring but important: spawning the agents, passing typed data between steps, observing them in tmux, asking you for input when a decision is needed, validating that each step produced what it promised, and resuming from exactly where a run crashed.
+`orch` is a small tool for chaining coding-agent CLIs (Claude Code, Codex, and anything else you wrap) into deterministic, resumable workflows.
+You write the workflow as a plain TypeScript async function.
+orch handles the parts that are boring but important:
 
-The problem it solves: a "compound engineering" loop — brainstorm → plan → work → review → ship — is already a deterministic chain. You, the human, say *"yes, do the next one"* at every transition. orch automates the transitions and keeps you in the loop only at the moments that actually need a decision.
+- spawning the agents and streaming their output,
+- passing typed data between steps,
+- letting you watch each agent live in tmux,
+- pausing for your input when a decision is needed,
+- validating that each step produced what it promised,
+- resuming from exactly where a run crashed.
+
+The problem it solves: a "compound engineering" loop (brainstorm → plan → work → review → ship) is already a deterministic chain.
+You, the human, say *"yes, do the next one"* at every transition.
+orch automates the transitions and keeps you in the loop only at the moments that actually need a decision.
 
 ## What it is not
 
@@ -43,7 +54,7 @@ export default workflow('feature', async (run) => {
   await run(WORK, { prompt: 'Add a CHANGELOG.md with an Unreleased section' })
 
   // A first-class commit step — shows up in status and state.json.
-  await commit('docs: add changelog')
+  await run(commit('docs: add changelog'))
 })
 ```
 

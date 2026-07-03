@@ -283,6 +283,16 @@ export interface SelectPaneOptions {
   readonly target: PaneId
 }
 
+export interface CopyModeTopOptions {
+  readonly socket: SocketName
+  readonly target: PaneId
+}
+
+export interface CancelCopyModeOptions {
+  readonly socket: SocketName
+  readonly target: PaneId
+}
+
 export interface CapturePaneOptions {
   readonly socket: SocketName
   readonly target: PaneId
@@ -290,6 +300,20 @@ export interface CapturePaneOptions {
   readonly escapeCodes?: boolean
   /** Join wrapped lines (`-J`). Defaults to `false`. */
   readonly joinWrapped?: boolean
+  /**
+   * Start line for the capture (`-S`). In tmux line addressing 0 is the top of
+   * the visible screen and negative numbers reach up into the scrollback. Pair
+   * with `endLine` to capture the copy-mode VIEWPORT — the window a scrolled-up
+   * watcher actually sees — which a bare `capture-pane -p` does not reflect (it
+   * always reports the live screen). Omit for the default visible capture.
+   */
+  readonly startLine?: number
+  /** End line for the capture (`-E`); see `startLine`. */
+  readonly endLine?: number
+}
+
+export interface ShowPasteBuffersOptions {
+  readonly socket: SocketName
 }
 
 export interface PipePaneOptions {
@@ -534,10 +558,49 @@ export interface TmuxService {
   selectPane(opts: SelectPaneOptions): Promise<void>
 
   /**
+   * `tmux -L <socket> copy-mode -t <pane>` then
+   * `tmux -L <socket> send-keys -X -t <pane> history-top` — put the pane into
+   * copy-mode and scroll to the oldest line in its history. Used to open an
+   * autonomous step's pane at the top of the prompt (R9 / show-initial-prompt):
+   * in copy-mode tmux pauses auto-follow, so streamed agent output accrues
+   * below the fold while the viewport stays pinned to the `prompt:` preamble.
+   * The pane must have been spawned reading from the start of its tee
+   * (`tail -n +1 -F`, the `fromStart` PaneSpec) so the prompt's head is in the
+   * scrollback to scroll to. The user leaves copy-mode by scrolling to the live
+   * tail (`q` / wheel) or by `f` (which calls `cancelCopyMode`).
+   */
+  enterCopyModeTop(opts: CopyModeTopOptions): Promise<void>
+
+  /**
+   * `tmux -L <socket> send-keys -X -t <pane> cancel` — exit copy-mode on the
+   * pane if it is in a mode, snapping the viewport back to the live tail.
+   * Tolerant of a pane that is NOT in a mode: adapters swallow tmux's "not in
+   * a mode" error as a no-op, so `followLive` can call it unconditionally on
+   * the visible pane to undo a top-pin (R9) without first probing the mode.
+   */
+  cancelCopyMode(opts: CancelCopyModeOptions): Promise<void>
+
+  /**
    * `tmux -L <socket> capture-pane -p -t <pane> [-e] [-J]` — returns the
    * rendered pane contents. Used by observe mode for one-shot snapshots.
    */
   capturePane(opts: CapturePaneOptions): Promise<string>
+
+  /**
+   * `tmux -L <socket> list-buffers` + `show-buffer -b <name>` per buffer —
+   * returns the concatenated contents of every paste buffer on the server
+   * (newline-joined), or an empty string when no buffers exist. tmux's paste
+   * buffers are server-wide, not pane-scoped, so no target is needed.
+   *
+   * Read-only observation seam for the AT-6 "escaped, not executed" guarantee:
+   * with `set-clipboard on` (the appliance config), an OSC 52 clipboard-write
+   * that reaches a pane unescaped populates a paste buffer with the decoded
+   * payload. Asserting the payload is absent here proves the prompt's OSC 52
+   * was escaped to visible text before the tee rather than executed against the
+   * clipboard. Routing through the port keeps the harness off a direct tmux
+   * subprocess call.
+   */
+  showPasteBuffers(opts: ShowPasteBuffersOptions): Promise<string>
 
   /**
    * `tmux -L <socket> pipe-pane [-O] -t <pane> <cmd>` — install or remove a

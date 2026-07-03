@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { ArgvError, parseArgv } from '../../../src/cli/main.ts'
+import { ArgvError, COMMAND_HELP, COMMANDS, parseArgv } from '../../../src/cli/main.ts'
 
 describe('parseArgv', () => {
   it('parses a command with a positional argument', () => {
@@ -153,6 +153,47 @@ describe('parseArgv mode and format flags', () => {
 
   it('rejects unknown --format value', () => {
     expect(() => parseArgv(['run', 'brainstorm', '--format=xml'])).toThrow(ArgvError)
+  })
+})
+
+describe('parseArgv version flag', () => {
+  it('defaults version to false when the flag is absent', () => {
+    const result = parseArgv(['runs'])
+
+    expect(result.version).toBe(false)
+  })
+
+  it('sets version to true for --version', () => {
+    const result = parseArgv(['--version'])
+
+    expect(result.version).toBe(true)
+  })
+})
+
+describe('parseArgv per-command help routing', () => {
+  it('yields help true and the command name for a command with --help', () => {
+    const result = parseArgv(['logs', '--help'])
+
+    expect(result.help).toBe(true)
+    expect(result.command).toBe('logs')
+  })
+
+  it('yields help true and no command for a bare --help', () => {
+    const result = parseArgv(['--help'])
+
+    expect(result.help).toBe(true)
+    expect(result.command).toBeUndefined()
+  })
+})
+
+describe('COMMAND_HELP coverage', () => {
+  it('has a non-empty help entry for every command in COMMANDS', () => {
+    for (const name of Object.keys(COMMANDS)) {
+      const entry = COMMAND_HELP[name]
+
+      expect(typeof entry).toBe('string')
+      expect((entry ?? '').length).toBeGreaterThan(0)
+    }
   })
 })
 

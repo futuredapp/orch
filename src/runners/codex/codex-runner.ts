@@ -17,6 +17,8 @@ import {
 } from '../../services/index.ts'
 import type { ProcessService, SpawnHandle } from '../../services/process/process-service.ts'
 import { type Path, path } from '../../services/types.ts'
+import { makeFlagGuard } from '../flag-guard.ts'
+import type { RunnerOptionsBase } from '../runner-options.ts'
 import type {
   AutoStopPreparation,
   CaptureHandle,
@@ -68,10 +70,8 @@ const CodexTurnFailed = z
 
 type SandboxMode = 'full-auto' | 'read-only' | 'workspace-write' | 'danger-full-access'
 
-export interface CodexOptions {
-  readonly model?: string
+export interface CodexOptions extends RunnerOptionsBase {
   readonly sandbox?: SandboxMode
-  readonly flags?: readonly string[]
 }
 
 // ---------------------------------------------------------------------------
@@ -87,13 +87,7 @@ const CODEX_FLAG_DENYLIST = [
   '--approval-mode',
 ] as const
 
-function assertFlagAllowed(flag: string): void {
-  for (const deny of CODEX_FLAG_DENYLIST) {
-    if (flag === deny || flag.startsWith(`${deny}=`)) {
-      throw new Error(`codex(): flag "${flag}" is on the denylist`)
-    }
-  }
-}
+const assertFlagAllowed = makeFlagGuard('codex', CODEX_FLAG_DENYLIST)
 
 const BYPASS_HOOK_TRUST_FLAG = '--dangerously-bypass-hook-trust' as const
 
@@ -490,7 +484,7 @@ async function prepareCodexAutoStop(
 // ---------------------------------------------------------------------------
 
 export function codex(
-  opts: CodexOptions,
+  opts: CodexOptions = {},
   deps: { readonly fs?: FsService; readonly ps?: ProcessService } = {},
 ): Readonly<
   import('../types.ts').Runner & {

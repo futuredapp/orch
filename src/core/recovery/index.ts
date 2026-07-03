@@ -6,6 +6,7 @@ export {
   categoryForStatus,
   FAIL_FAST_CATEGORIES,
   isFailFast,
+  isLaunchFailureSignal,
   isTransientCategory,
 } from './classified-error.ts'
 export type {

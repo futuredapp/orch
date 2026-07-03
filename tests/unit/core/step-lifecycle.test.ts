@@ -143,6 +143,59 @@ describe('withStepLifecycle', () => {
     ])
   })
 
+  it('carries the prompt on step:start when the ctx supplies it, and omits the field when it does not', async () => {
+    const withPrompt = createFakeHost()
+    const without = createFakeHost()
+    const clock = new FakeClock(1000)
+
+    await withStepLifecycle({ ...ctx(withPrompt, clock), prompt: 'assemble me' }, async () => ({
+      value: null,
+      entry: makeEntry(KEY, null),
+    }))
+    await withStepLifecycle(ctx(without, clock), async () => ({
+      value: null,
+      entry: makeEntry(KEY, null),
+    }))
+
+    const startWith = lifecycleEvents(withPrompt).find((e) => e.type === 'step:start')
+    const startWithout = lifecycleEvents(without).find((e) => e.type === 'step:start')
+    expect(startWith).toEqual({
+      type: 'step:start',
+      stepName: KEY,
+      mode: 'autonomous',
+      prompt: 'assemble me',
+    })
+    expect(startWithout).not.toHaveProperty('prompt')
+  })
+
+  it('does NOT include the prompt in the structured record appended to the span', async () => {
+    const host = createFakeHost()
+    const clock = new FakeClock(1000)
+    const appended: Array<{ category: string; record: Record<string, unknown> }> = []
+    const stepSpan = {
+      stepSpanId: 'span' as never,
+      stepName: KEY,
+      async append(category: string, record: Record<string, unknown>): Promise<void> {
+        appended.push({ category, record })
+      },
+    } as unknown as Parameters<typeof withStepLifecycle>[0]['stepSpan']
+
+    await withStepLifecycle(
+      { ...ctx(host, clock), stepSpan, prompt: 'secret prompt body' },
+      async () => ({
+        value: null,
+        entry: makeEntry(KEY, null),
+      }),
+    )
+
+    const startRecord = appended.find((a) => a.record.type === 'step:start')?.record
+    expect(startRecord).toBeDefined()
+    expect(startRecord).not.toHaveProperty('prompt')
+    // The host (rendering observer) still received it, even though the span did not.
+    const hostStart = lifecycleEvents(host).find((e) => e.type === 'step:start')
+    expect(hostStart).toHaveProperty('prompt', 'secret prompt body')
+  })
+
   it('omits all branch-updates when trackParallel is false even inside parallel()', async () => {
     const host = createFakeHost()
     const clock = new FakeClock(1000)

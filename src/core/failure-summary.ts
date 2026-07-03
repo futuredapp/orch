@@ -68,8 +68,12 @@ function extractStackTrace(err: unknown): readonly string[] {
   if (!(err instanceof Error)) return []
   const stack = err.stack
   if (stack === undefined || stack.length === 0) return []
-  // Error.stack starts with "<name>: <message>" on the first line — the
-  // FailureSummary already carries that via errorMessage, so drop it.
+  // Error.stack opens with "<name>: <message>" before the frames, and the
+  // message itself may span multiple lines (recovery failures compose a
+  // summary plus the runner's terminal error). The FailureSummary already
+  // carries the message via errorMessage, so skip every message line, not
+  // just the first physical line.
+  const messageLineCount = err.message.length > 0 ? err.message.split('\n').length : 1
   const lines = stack.split('\n').map((l) => l.trimEnd())
-  return lines.slice(1).filter((l) => l.length > 0)
+  return lines.slice(messageLineCount).filter((l) => l.length > 0)
 }
