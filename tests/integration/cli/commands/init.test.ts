@@ -187,7 +187,7 @@ describe('initCmd — F2 re-init flow', () => {
     expect(await fs.readFile(path('/proj/.orch/workflows/hello.ts'))).toContain(
       "export default workflow('hello'",
     )
-    expect(await fs.readFile(path('/proj/.orch/steps.ts'))).toContain('export const HELLO')
+    expect(await fs.readFile(path('/proj/.orch/steps.ts'))).toContain('export const SUMMARIZE')
 
     // Manifest contains both the rewritten hello entry AND my-real-workflow.
     const manifest = await fs.readFile(path('/proj/.orch/orch.config.ts'))
