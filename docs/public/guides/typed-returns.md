@@ -1,29 +1,31 @@
 # Typed returns
 
-> **What you'll learn:** how to get structured, type-checked data back from an agent step with `schema()` and `returns:`, and how to consume it.
+> **What you'll learn:** how to get structured, type-checked data back from an agent step with `returns:`, and how to consume it.
 
 Most steps produce files. Sometimes you need the agent to hand a *value* back to the workflow — a slug, a count, a list of phases — so you can loop or branch on it. That's what `returns:` is for.
 
 ## Declare what a step returns
 
-Add `returns: schema(...)` to a step, wrapping a [Zod](https://zod.dev) schema. orch re-exports Zod as `z`, so you don't add it to your own dependencies:
+Add `returns:` to a step, passing a [Zod](https://zod.dev) schema. orch re-exports Zod as `z`, so you don't add it to your own dependencies:
 
 ```ts
 // .orch/workflows/plan-runner.ts
-import { workflow, step, claude, schema, z } from 'orch'
+import { workflow, step, claude, z } from 'orch'
 
 const COUNT_PHASES = step.define('count-phases', {
   agent: claude(),
   prompt:
     'Read every file under ./docs/plan/ and count the distinct implementation phases. ' +
     'Return a single integer in `phases`. If the plan is not phased, return 1.',
-  returns: schema(z.object({ phases: z.number().int().min(1).max(30) })),
+  returns: z.object({ phases: z.number().int().min(1).max(30) }),
 })
 
 export default workflow('plan-runner', async (run) => {
   const { phases } = await run(COUNT_PHASES) // phases: number
 })
 ```
+
+This bare form is what `orch init` scaffolds. `returns:` also accepts a `schema(...)`-wrapped schema — see [Reusing a wrapped schema](#reusing-a-wrapped-schema) below.
 
 ## What orch does with the schema
 
@@ -52,9 +54,9 @@ Branch on a richer shape:
 ```ts
 const PLAN = step.define('plan', {
   agent: claude(),
-  returns: schema(z.object({
+  returns: z.object({
     phases: z.array(z.object({ name: z.string(), riskLevel: z.enum(['low', 'high']) })),
-  })),
+  }),
 })
 
 const plan = await run(PLAN)
@@ -67,6 +69,26 @@ for (const phase of plan.phases) {
 ```
 
 `plan.phases[number].riskLevel` is narrowed to `'low' | 'high'` — the schema drives the types end to end.
+
+## Reusing a wrapped schema
+
+A bare Zod schema is the shortest form and is what `orch init` scaffolds.
+When you want to reuse one schema across several steps, wrap it once with `schema()` and reference the wrapper by name:
+
+```ts
+import { workflow, step, claude, schema, z } from 'orch'
+
+const DECISION = schema(z.object({ type: z.enum(['simple', 'complex']) }))
+
+const DECIDE = step.define('decide', {
+  agent: claude(),
+  prompt: 'Classify the request as "simple" or "complex". Reply JSON.',
+  returns: DECISION,
+})
+```
+
+Both forms behave identically: orch converts the schema to JSON Schema, validates the reply, and types the result.
+See the [`schema` reference](/reference/api#schema) for the exact signature.
 
 ## Autonomous only
 

@@ -89,15 +89,18 @@ Do not pass `TVars` explicitly: `step.define<…, { x: string }>(…)` short-cir
 :::
 
 ```ts
-import { step, claude, schema, z, fileProduced } from 'orch'
+import { step, claude, z, fileProduced } from 'orch'
 
 const PLAN = step.define('plan', {
   agent: claude({ model: 'claude-opus-4-7' }),
   prompt: 'Draft an implementation plan.',
-  returns: schema(z.object({ phases: z.array(z.string()) })),
+  returns: z.object({ phases: z.array(z.string()) }),
   validate: fileProduced('docs/plans/*.md'),
 })
 ```
+
+`returns:` accepts either a bare Zod schema (`z.object({...})`, shown above) or a `schema(...)`-wrapped one (`schema(z.object({...}))`).
+A bare schema is normalized through [`schema`](#schema) at define time, so both forms behave identically.
 
 `AgentStepConfig` fields:
 
@@ -106,7 +109,7 @@ const PLAN = step.define('plan', {
 | `agent` | `Runner` | Required. From `claude()`, `codex()`, or `defineRunner(...)`. |
 | `prompt` | `string` | Default prompt; overridable per call. Mutually exclusive with `promptFile`. |
 | `promptFile` | `string` | Path to a sibling `.md` file holding the prompt text. Resolves against the declaring workflow's directory, or against the orch project root if it starts with `@/`. The file is read at `step.define` time; substitution happens per `run()` call. See [File-based prompts](../guides/file-based-prompts). |
-| `returns` | `SchemaWrapper<T>` | A `schema(zod)` for structured output. Enables `--json-schema` and Zod validation. Not allowed on interactive steps. |
+| `returns` | `SchemaWrapper<T> \| ZodType<T>` | A bare Zod schema (`z.object({...})`) or a `schema(zod)`-wrapped one, for structured output. Enables `--json-schema` and Zod validation. Not allowed on interactive steps. |
 | `validate` | `Validator \| Validator[]` | Post-run assertions; all must pass. See [Validators](#validators). |
 | `mode` | `'interactive' \| 'autonomous'` | Default `'autonomous'`. |
 | `view` | `ViewKind` | Step-level render override (two-pane). Mutually exclusive with `silent`. |
@@ -399,6 +402,9 @@ function schema<T>(zodSchema: ZodType<T>): SchemaWrapper<T>
 ```
 
 Wraps a Zod schema for use in a step's `returns:`. orch passes the JSON Schema to the agent (`--json-schema` for Claude, `--output-schema` for Codex), then validates and types the result.
+
+`returns:` also accepts a bare Zod schema directly (`returns: z.object({...})`), which orch wraps for you.
+Call `schema()` explicitly only when you want to reuse one wrapper across steps or validate the JSON Schema eagerly at define time.
 
 ```ts
 import { schema, z } from 'orch'

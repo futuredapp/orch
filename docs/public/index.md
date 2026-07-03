@@ -38,7 +38,7 @@ Define each step once, then compose them with the TypeScript you already know:
 
 ```ts
 // .orch/workflows/goal.ts
-import { workflow, step, commit, claude, schema, z } from 'orch'
+import { workflow, step, commit, claude, z } from 'orch'
 
 const PLAN = step.define('plan', {
   agent: claude(),
@@ -48,7 +48,7 @@ const PLAN = step.define('plan', {
 const COUNT = step.define('count-phases', {
   agent: claude(),
   prompt: 'Read ./plan.md and return the number of phases as `phases`.',
-  returns: schema(z.object({ phases: z.number().int().min(1) })),
+  returns: z.object({ phases: z.number().int().min(1) }),
 })
 
 const BUILD = step.define('build', {
