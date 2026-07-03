@@ -19,7 +19,7 @@ export const STEPS_TEMPLATE = `import { claude, step } from 'orch'
 export const HELLO = step.define('write-hello', {
   agent: claude({
     bare: false,
-    flags: ['--permission-mode', 'bypassPermissions'],
+    permissions: 'bypass',
   }),
   prompt:
     'Create a file at ./hello.txt containing exactly the text "hello from orch" ' +

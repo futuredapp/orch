@@ -36,6 +36,12 @@ describe('init templates', () => {
     expect(STEPS_TEMPLATE).toContain('export const HELLO = step.define')
   })
 
+  it('STEPS_TEMPLATE scaffolds the unattended run with the typed permissions option', () => {
+    expect(STEPS_TEMPLATE).toContain("permissions: 'bypass'")
+    // The raw flag spelling is replaced by the canonical typed option.
+    expect(STEPS_TEMPLATE).not.toContain('--permission-mode')
+  })
+
   it('CONFIG_TEMPLATE uses `export const config` (preferred over default export)', () => {
     expect(CONFIG_TEMPLATE).toContain('export const config = defineConfig')
     expect(CONFIG_TEMPLATE).not.toContain('export default')

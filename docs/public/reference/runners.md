@@ -17,6 +17,7 @@ interface ClaudeOptions {
   readonly model?: string          // e.g. 'claude-opus-4-7'
   readonly maxTurns?: number       // cap agent turns
   readonly bare?: boolean          // pass --bare (API-key-only auth); default false
+  readonly permissions?: 'bypass'  // 'bypass' => --permission-mode bypassPermissions
   readonly flags?: readonly string[]  // extra CLI flags, passed through
 }
 ```
@@ -31,7 +32,7 @@ const PLAN = step.define('plan', {
 ```
 
 ::: tip `bare` and authentication
-`--bare` tells the Claude CLI to read auth strictly from `ANTHROPIC_API_KEY` (or `apiKeyHelper`) and never from the keychain. It is off by default, so subscription / OAuth users (Claude Pro) work out of the box. Pass `bare: true` to opt in for API-key-only environments (e.g. CI with `ANTHROPIC_API_KEY` set). For autonomous steps that need to skip permission prompts, pass `flags: ['--permission-mode', 'bypassPermissions']`.
+`--bare` tells the Claude CLI to read auth strictly from `ANTHROPIC_API_KEY` (or `apiKeyHelper`) and never from the keychain. It is off by default, so subscription / OAuth users (Claude Pro) work out of the box. Pass `bare: true` to opt in for API-key-only environments (e.g. CI with `ANTHROPIC_API_KEY` set). For autonomous steps that need to skip permission prompts, pass `permissions: 'bypass'` (it expands to `--permission-mode bypassPermissions`).
 :::
 
 ### Scrollback in two-pane mode

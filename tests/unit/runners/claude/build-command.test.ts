@@ -259,6 +259,45 @@ describe('buildCommand interactive mode', () => {
   })
 })
 
+describe('claude() permissions option', () => {
+  it('expands permissions "bypass" into --permission-mode bypassPermissions on the autonomous argv', async () => {
+    const runner = claude({ permissions: 'bypass' })
+    const cmd = await runner.buildCommand(ctxFor('test'))
+
+    const idx = cmd.argv.indexOf('--permission-mode')
+    expect(idx).toBeGreaterThan(-1)
+    expect(cmd.argv[idx + 1]).toBe('bypassPermissions')
+  })
+
+  it('expands permissions "bypass" on the interactive argv too', async () => {
+    const runner = claude({ permissions: 'bypass' })
+    const cmd = await runner.buildCommand(ctxFor('test', { mode: 'interactive' }))
+
+    const idx = cmd.argv.indexOf('--permission-mode')
+    expect(idx).toBeGreaterThan(-1)
+    expect(cmd.argv[idx + 1]).toBe('bypassPermissions')
+  })
+
+  it('omits --permission-mode when permissions is not set', async () => {
+    const runner = claude()
+    const cmd = await runner.buildCommand(ctxFor('test'))
+
+    expect(cmd.argv).not.toContain('--permission-mode')
+  })
+
+  it('keeps flags working and places the permission flag before user flags', async () => {
+    const runner = claude({ permissions: 'bypass', flags: ['--allowedTools', 'Read'] })
+    const cmd = await runner.buildCommand(ctxFor('test'))
+
+    const permIdx = cmd.argv.indexOf('--permission-mode')
+    const flagsIdx = cmd.argv.indexOf('--allowedTools')
+
+    expect(permIdx).toBeGreaterThan(-1)
+    expect(flagsIdx).toBeGreaterThan(-1)
+    expect(permIdx).toBeLessThan(flagsIdx)
+  })
+})
+
 describe('claude() flag denylist', () => {
   it('rejects --settings in flags', () => {
     const runner = claude({ flags: ['--settings', '/tmp/evil.json'] })
